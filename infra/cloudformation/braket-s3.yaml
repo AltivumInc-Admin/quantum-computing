@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 bucket for Amazon Braket quantum task results
+
+Parameters:
+  BucketPrefix:
+    Type: String
+    Default: amazon-braket-results
+    Description: Prefix for the S3 bucket name (account ID appended automatically)
+  RetentionDays:
+    Type: Number
+    Default: 90
+    Description: Number of days to retain results before auto-deletion
+
+Resources:
+  BraketResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${BucketPrefix}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoCleanupOldResults
+            Status: Enabled
+            ExpirationInDays: !Ref RetentionDays
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  BucketName:
+    Description: Name of the Braket results bucket
+    Value: !Ref BraketResultsBucket
+  BucketArn:
+    Description: ARN of the Braket results bucket
+    Value: !GetAtt BraketResultsBucket.Arn

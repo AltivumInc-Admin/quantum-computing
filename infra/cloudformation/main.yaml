@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Amazon Braket Quantum Workspace - Main Stack
+
+Parameters:
+  MonthlyBudget:
+    Type: Number
+    Default: 50
+    Description: Monthly budget threshold in USD
+  NotificationEmail:
+    Type: String
+    Description: Email address for budget alerts
+  ResultsRetentionDays:
+    Type: Number
+    Default: 90
+    Description: Days to retain quantum task results in S3
+  DeployNotebook:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Whether to deploy a managed notebook instance
+
+Conditions:
+  ShouldDeployNotebook: !Equals [!Ref DeployNotebook, "true"]
+
+Resources:
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./braket-s3.yaml
+      Parameters:
+        RetentionDays: !Ref ResultsRetentionDays
+
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: S3Stack
+    Properties:
+      TemplateURL: ./braket-iam.yaml
+      Parameters:
+        S3BucketArn: !GetAtt S3Stack.Outputs.BucketArn
+
+  BudgetStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./braket-budget.yaml
+      Parameters:
+        MonthlyBudget: !Ref MonthlyBudget
+        NotificationEmail: !Ref NotificationEmail
+
+  NotebookStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployNotebook
+    DependsOn: IAMStack
+    Properties:
+      TemplateURL: ./braket-notebook.yaml
+      Parameters:
+        RoleArn: !GetAtt IAMStack.Outputs.RoleArn
+
+Outputs:
+  ResultsBucket:
+    Description: S3 bucket for quantum task results
+    Value: !GetAtt S3Stack.Outputs.BucketName
+  IAMRoleArn:
+    Description: IAM role ARN for Braket access
+    Value: !GetAtt IAMStack.Outputs.RoleArn

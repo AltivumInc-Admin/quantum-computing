@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: IAM role with least-privilege permissions for Amazon Braket usage
+
+Parameters:
+  S3BucketArn:
+    Type: String
+    Description: ARN of the Braket results S3 bucket
+
+Resources:
+  BraketUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: BraketQuantumWorkspaceRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - braket.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BraketAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BraketFullAccess
+                Effect: Allow
+                Action:
+                  - braket:SearchDevices
+                  - braket:GetDevice
+                  - braket:SearchQuantumTasks
+                  - braket:GetQuantumTask
+                  - braket:CancelQuantumTask
+                  - braket:CreateQuantumTask
+                  - braket:SearchJobs
+                  - braket:GetJob
+                  - braket:CreateJob
+                  - braket:CancelJob
+                Resource: "*"
+              - Sid: S3ResultsAccess
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref S3BucketArn
+                  - !Sub "${S3BucketArn}/*"
+              - Sid: CloudWatchLogging
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:GetLogEvents
+                Resource: "arn:aws:logs:*:*:log-group:/aws/braket/*"
+
+Outputs:
+  RoleArn:
+    Description: ARN of the Braket workspace IAM role
+    Value: !GetAtt BraketUserRole.Arn

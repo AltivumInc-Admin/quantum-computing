@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Optional Amazon Braket managed notebook instance
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: ml.t3.medium
+    AllowedValues:
+      - ml.t3.medium
+      - ml.t3.large
+      - ml.m5.large
+    Description: Notebook instance type
+  RoleArn:
+    Type: String
+    Description: IAM role ARN for the notebook instance
+
+Resources:
+  BraketNotebook:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties:
+      NotebookInstanceName: braket-quantum-workspace
+      InstanceType: !Ref InstanceType
+      RoleArn: !Ref RoleArn
+      VolumeSizeInGB: 20
+
+Outputs:
+  NotebookUrl:
+    Description: URL of the Braket notebook instance
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/notebook-instances/${BraketNotebook}"
