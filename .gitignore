@@ -34,3 +34,4 @@ Thumbs.db
 
 # Braket results (large files)
 braket-results/
+.ruff_cache/

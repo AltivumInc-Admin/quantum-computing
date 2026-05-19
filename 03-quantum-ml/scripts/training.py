@@ -49,22 +49,22 @@ def train_vqc(X_train: np.ndarray, y_train: np.ndarray, n_layers: int = 3,
             correct += int((prediction > 0.5) == y)
 
             # Parameter-shift gradients
-            for l in range(n_layers):
+            for layer in range(n_layers):
                 for q in range(n_qubits):
                     params_plus = params.copy()
-                    params_plus[l, q] += np.pi / 2
+                    params_plus[layer, q] += np.pi / 2
                     circuit_plus = build_vqc_circuit(n_qubits, n_layers, x, params_plus)
                     result_plus = device.run(circuit_plus, shots=shots).result()
                     prob_plus = 1.0 - result_plus.measurement_counts.get("0" * n_qubits, 0) / shots
 
                     params_minus = params.copy()
-                    params_minus[l, q] -= np.pi / 2
+                    params_minus[layer, q] -= np.pi / 2
                     circuit_minus = build_vqc_circuit(n_qubits, n_layers, x, params_minus)
                     result_minus = device.run(circuit_minus, shots=shots).result()
                     prob_minus = 1.0 - result_minus.measurement_counts.get("0" * n_qubits, 0) / shots
 
                     grad = (prob_plus - prob_minus) / 2
-                    gradients[l, q] += 2 * (prediction - y) * grad
+                    gradients[layer, q] += 2 * (prediction - y) * grad
 
         # Update parameters
         params -= learning_rate * gradients / len(X_train)

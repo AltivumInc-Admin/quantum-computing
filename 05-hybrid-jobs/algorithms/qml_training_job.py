@@ -73,22 +73,22 @@ def main():
 
         # Simple gradient update (finite differences for speed)
         eps = 0.01
-        for l in range(n_layers):
+        for layer in range(n_layers):
             for q in range(n_qubits):
-                params[l, q] += eps
+                params[layer, q] += eps
                 loss_plus = sum(
                     (1.0 - device.run(build_vqc_circuit(n_qubits, n_layers, x, params), shots=shots)
                      .result().measurement_counts.get("0" * n_qubits, 0) / shots - y) ** 2
                     for x, y in zip(X_train[:10], y_train[:10])
                 ) / 10
-                params[l, q] -= 2 * eps
+                params[layer, q] -= 2 * eps
                 loss_minus = sum(
                     (1.0 - device.run(build_vqc_circuit(n_qubits, n_layers, x, params), shots=shots)
                      .result().measurement_counts.get("0" * n_qubits, 0) / shots - y) ** 2
                     for x, y in zip(X_train[:10], y_train[:10])
                 ) / 10
-                params[l, q] += eps
-                gradients[l, q] = (loss_plus - loss_minus) / (2 * eps)
+                params[layer, q] += eps
+                gradients[layer, q] = (loss_plus - loss_minus) / (2 * eps)
 
         params -= learning_rate * gradients
 
