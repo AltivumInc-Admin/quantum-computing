@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getSectionBySlug } from "@/lib/sections";
+import { getSections, getSectionBySlug } from "@/lib/sections";
 import { getContent } from "@/lib/content";
 import { Sidebar } from "@/components/sidebar";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -8,6 +8,10 @@ import { PrevNext } from "@/components/prev-next";
 
 interface PageProps {
   params: Promise<{ section: string }>;
+}
+
+export function generateStaticParams() {
+  return getSections().map((s) => ({ section: s.slug }));
 }
 
 export async function generateMetadata({ params }: PageProps) {
