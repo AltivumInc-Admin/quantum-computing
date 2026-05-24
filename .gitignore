@@ -35,3 +35,6 @@ Thumbs.db
 # Braket results (large files)
 braket-results/
 .ruff_cache/
+
+# Superpowers brainstorm sessions
+.superpowers/
