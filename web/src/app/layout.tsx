@@ -1,26 +1,28 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { ThemeProvider } from "next-themes";
+import { Nav } from "@/components/nav";
 import "./globals.css";
 
 const inter = Inter({
-  variable: "--font-inter",
   subsets: ["latin"],
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
-  title: "Quantum Learning Portal",
-  description:
-    "A progressive learning path for quantum computing with Amazon Braket",
+  title: "Quantum Computing Workspace",
+  description: "A progressive learning path through quantum computing with Amazon Braket",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <body className="font-sans antialiased">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <Nav />
+          <main>{children}</main>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
