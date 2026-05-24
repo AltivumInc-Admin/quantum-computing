@@ -1,6 +1,7 @@
 import { getSections } from "@/lib/sections";
 import { getContentSummary } from "@/lib/content";
 import { SectionCard } from "@/components/section-card";
+import { OrbitalDecoration } from "@/components/orbital-decoration";
 
 export default async function HomePage() {
   const sections = getSections();
@@ -10,13 +11,16 @@ export default async function HomePage() {
 
   return (
     <div className="relative overflow-hidden">
-      {/* Background texture */}
-      <div className="absolute inset-0 dark:bg-[radial-gradient(ellipse_at_top,_oklch(0.18_0.03_250)_0%,_transparent_50%)]" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-accent/5 dark:bg-accent/[0.03] rounded-full blur-3xl" />
+      {/* Layered atmosphere */}
+      <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
+      <div className="absolute inset-0 bg-grid-dots-light dark:bg-grid-dots [mask-image:radial-gradient(ellipse_70%_50%_at_50%_50%,black,transparent)]" />
+      <div className="absolute top-0 left-1/3 w-[600px] h-[600px] bg-accent/[0.07] rounded-full blur-[120px] animate-[glow-pulse_6s_ease-in-out_infinite] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-warm/[0.05] rounded-full blur-[100px] animate-[glow-pulse_6s_ease-in-out_infinite_3s] pointer-events-none" />
 
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         {/* Hero */}
-        <section className="mb-24 animate-fade-up">
+        <section className="mb-24 animate-hero-enter relative">
+          <OrbitalDecoration />
           <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-4">
             Amazon Braket Learning Platform
           </p>
@@ -29,7 +33,7 @@ export default async function HomePage() {
             A progressive curriculum spanning circuit fundamentals through production
             hybrid workloads. Build real quantum algorithms with hands-on notebooks.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3 animate-fade-up" style={{ animationDelay: "200ms" }}>
+          <div className="mt-8 flex flex-wrap gap-3 animate-slide-in" style={{ animationDelay: "400ms" }}>
             {["Amazon Braket", "PennyLane", "OpenFermion", "IonQ", "IQM"].map((tech) => (
               <span
                 key={tech}
@@ -43,7 +47,7 @@ export default async function HomePage() {
 
         {/* Section grid */}
         <section>
-          <div className="flex items-center gap-4 mb-10 animate-fade-up" style={{ animationDelay: "250ms" }}>
+          <div className="flex items-center gap-4 mb-10 animate-slide-in" style={{ animationDelay: "500ms" }}>
             <h2 className="font-display text-3xl text-gray-900 dark:text-white">Learning Path</h2>
             <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
             <span className="text-sm text-gray-500 dark:text-gray-500 tabular-nums">{sections.length} sections</span>
@@ -52,8 +56,8 @@ export default async function HomePage() {
             {sections.map((section, i) => (
               <div
                 key={section.slug}
-                className="animate-fade-up"
-                style={{ animationDelay: `${300 + i * 100}ms` }}
+                className="animate-card-enter"
+                style={{ animationDelay: `${600 + i * 80}ms` }}
               >
                 <SectionCard
                   slug={section.slug}

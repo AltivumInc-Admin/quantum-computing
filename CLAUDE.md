@@ -52,3 +52,24 @@ Managed via pyproject.toml. Key packages:
 - `amazon-braket-sdk` — Core SDK
 - `pennylane` + `pennylane-braket` — Variational algorithms
 - `openfermion` + `openfermionpyscf` — Quantum chemistry
+
+## Web App (`web/`)
+
+### Stack
+- Next.js 16 + React 19, static export via `output: "export"`
+- Tailwind CSS v4 (PostCSS plugin) — uses `@theme inline` for compile-time tokens
+- Fonts: Plus Jakarta Sans (body) + Instrument Serif (display) via `next/font/google`
+- Dark mode: `next-themes` with `@variant dark (&:where(.dark, .dark *));` in globals.css
+- Deployment: AWS Amplify (auto-deploys from git push, `amplify.yml` at repo root)
+
+### Key Patterns
+- `@theme inline` values compile statically — they cannot be overridden at runtime via CSS classes. Use standard Tailwind `dark:` utilities for theme-dependent values.
+- Custom animation keyframes live in `globals.css`; utility classes (`.animate-*`) reference them. All animations must have `prefers-reduced-motion` coverage.
+- CSS utilities `.bg-atmosphere`, `.bg-grid-dots` provide layered background depth.
+- `OrbitalDecoration` component is purely decorative SVG — hidden below `lg:` breakpoint, `aria-hidden="true"`.
+
+### Commands
+- `npm run dev` — Start dev server (port 3000)
+- `npm test` — Run Jest test suite (59 tests)
+- `npm run build` — Static export (10 pages)
+- `npm run lint` — ESLint check

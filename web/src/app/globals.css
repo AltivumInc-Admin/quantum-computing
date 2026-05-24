@@ -24,14 +24,57 @@
   }
 }
 
+@keyframes hero-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 @keyframes glow-pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.7; }
 }
 
+@keyframes orbit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.5); }
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-800 dark:bg-[#0a0f1a] dark:text-gray-200;
+    @apply bg-[#f8fafb] text-gray-800 dark:bg-[#080c14] dark:text-gray-200;
   }
 }
 
@@ -56,6 +99,18 @@
 @layer utilities {
   .animate-fade-up {
     animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-hero-enter {
+    animation: hero-enter 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-slide-in {
+    animation: slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-card-enter {
+    animation: card-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .focus-ring {
@@ -87,15 +142,44 @@
   .card-glow:hover::before {
     opacity: 1;
   }
+
+  .bg-atmosphere {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.25 0.08 200 / 0.4), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 50%, oklch(0.2 0.06 280 / 0.2), transparent),
+      radial-gradient(ellipse 50% 60% at 20% 80%, oklch(0.18 0.05 150 / 0.15), transparent);
+  }
+
+  .bg-atmosphere-light {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.92 0.04 200 / 0.3), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 50%, oklch(0.94 0.03 280 / 0.2), transparent),
+      radial-gradient(ellipse 50% 60% at 20% 80%, oklch(0.93 0.03 150 / 0.15), transparent);
+  }
+
+  .bg-grid-dots {
+    background-image: radial-gradient(circle, oklch(0.4 0.02 250 / 0.15) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .bg-grid-dots-light {
+    background-image: radial-gradient(circle, oklch(0.7 0.01 250 / 0.12) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-up {
+  .animate-fade-up,
+  .animate-hero-enter,
+  .animate-slide-in,
+  .animate-card-enter {
     animation: none;
     opacity: 1;
+    transform: none;
   }
 
   * {
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }
