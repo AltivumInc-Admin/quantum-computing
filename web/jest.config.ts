@@ -8,6 +8,9 @@ const config: Config = {
   },
   testPathIgnorePatterns: ["/node_modules/", "/.next/"],
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
+  transform: {
+    "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tsconfig.json" }],
+  },
 };
 
 export default config;
