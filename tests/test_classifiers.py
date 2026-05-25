@@ -1,0 +1,67 @@
+"""Tests for lib/ml/classifiers.py — local simulator only."""
+
+import numpy as np
+import pytest
+
+from lib.ml.classifiers import build_vqc_circuit, quantum_kernel
+from lib.ml.feature_maps import angle_encoding
+
+
+pennylane = pytest.importorskip("pennylane")
+from lib.ml.classifiers import vqc_qnode  # noqa: E402
+
+
+def test_build_vqc_circuit_qubit_count():
+    n_qubits, n_layers = 3, 2
+    features = np.array([0.1, 0.2, 0.3])
+    params = np.zeros((n_layers, n_qubits))
+    circuit = build_vqc_circuit(n_qubits, n_layers, features, params)
+    assert circuit.qubit_count == n_qubits
+
+
+def test_build_vqc_circuit_param_shape_mismatch_raises():
+    n_qubits, n_layers = 3, 2
+    features = np.array([0.1, 0.2, 0.3])
+    # wrong shape: only 1 layer of params for 2 layers
+    params = np.zeros((1, n_qubits))
+    with pytest.raises(IndexError):
+        build_vqc_circuit(n_qubits, n_layers, features, params)
+
+
+def test_quantum_kernel_self_overlap_is_near_one():
+    # K(x, x) must be 1.0 — overlap of a state with itself.
+    x = np.array([0.4, 0.7])
+    k = quantum_kernel(x, x, feature_map_fn=angle_encoding, shots=2000)
+    assert k >= 0.95, f"self-overlap was {k:.3f}, expected ≥ 0.95"
+
+
+def test_quantum_kernel_orthogonal_features_low_overlap():
+    # Ry(0) ≈ I and Ry(π) flips |0>→|1>, so phi(x1) and phi(x2) are orthogonal.
+    x1 = np.array([0.0, 0.0])
+    x2 = np.array([np.pi, np.pi])
+    k = quantum_kernel(x1, x2, feature_map_fn=angle_encoding, shots=2000)
+    assert k <= 0.05, f"orthogonal-overlap was {k:.3f}, expected ≤ 0.05"
+
+
+# ---------------------------------------------------------------------------
+# vqc_qnode (PennyLane)
+# ---------------------------------------------------------------------------
+
+def test_vqc_qnode_returns_expval_one_at_zero():
+    # All-zero features and params keep the state at |0...0>, so <Z_0> = +1.
+    n_qubits, n_layers = 3, 2
+    qnode = vqc_qnode(n_qubits, n_layers)
+    features = np.zeros(n_qubits)
+    params = np.zeros((n_layers, n_qubits))
+    val = qnode(features, params)
+    assert abs(float(val) - 1.0) < 1e-10
+
+
+def test_vqc_qnode_flips_under_ry_pi():
+    # Ry(pi) on qubit 0 flips |0> to |1> (up to a sign), giving <Z_0> = -1.
+    n_qubits, n_layers = 2, 1
+    qnode = vqc_qnode(n_qubits, n_layers)
+    features = np.array([np.pi, 0.0])
+    params = np.zeros((n_layers, n_qubits))
+    val = qnode(features, params)
+    assert abs(float(val) + 1.0) < 1e-10

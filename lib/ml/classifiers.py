@@ -1,4 +1,18 @@
-"""Variational Quantum Classifier and Quantum Kernel implementations."""
+"""Variational Quantum Classifier and Quantum Kernel implementations.
+
+Two parallel APIs are provided:
+
+* :func:`build_vqc_circuit` returns a native :class:`braket.circuits.Circuit`
+  — used by :func:`quantum_kernel` and by didactic notebooks that show the
+  Braket primitives directly.
+* :func:`vqc_qnode` returns a PennyLane :class:`~pennylane.QNode` (default
+  device ``default.qubit``; ``braket.local.qubit`` and ``lightning.qubit``
+  are opt-in via the ``device_name`` argument), used by
+  :func:`lib.ml.training.train_vqc` for fast analytic-gradient training.
+
+Both use the same gate sequence — angle encoding then alternating
+Ry-rotation/CNOT-entangling layers.
+"""
 
 import numpy as np
 from braket.circuits import Circuit
@@ -71,3 +85,59 @@ def quantum_kernel(x1: np.ndarray, x2: np.ndarray, feature_map_fn, shots: int = 
     all_zeros = "0" * n_qubits
     kernel_value = counts.get(all_zeros, 0) / shots
     return kernel_value
+
+
+def vqc_qnode(
+    n_qubits: int,
+    n_layers: int,
+    device_name: str = "default.qubit",
+    diff_method: str = "best",
+):
+    """Return a PennyLane QNode implementing the VQC architecture.
+
+    Builds the same gate sequence as :func:`build_vqc_circuit` — angle
+    encoding followed by ``n_layers`` rotation+CNOT-entangling layers — but
+    as a differentiable :class:`~pennylane.QNode`. Returns the expectation
+    value of :class:`~pennylane.PauliZ` on qubit 0.
+
+    Args:
+        n_qubits: Number of qubits (= number of features).
+        n_layers: Number of variational layers.
+        device_name: PennyLane device. Defaults to ``"default.qubit"`` — the
+            pure-Python simulator with backprop, fastest for small VQC
+            circuits. Pass ``"braket.local.qubit"`` to route through the
+            Amazon Braket local simulator (slower for tiny circuits because
+            of the plugin's per-call serialization overhead, but matches
+            the simulator used elsewhere in this workspace). Pass
+            ``"lightning.qubit"`` for the PennyLane C++ backend.
+        diff_method: PennyLane differentiation method. The default ``"best"``
+            picks backprop on the local simulator (analytic gradients).
+
+    Returns:
+        A callable QNode with signature ``qnode(features, params) -> float``
+        where ``features`` is a 1D array of length ``n_qubits`` and ``params``
+        is a 2D array of shape ``(n_layers, n_qubits)``.
+
+    Raises:
+        ImportError: if ``pennylane`` is not installed (it lives in the
+            ``[full]`` extras), or if ``amazon-braket-pennylane-plugin`` is
+            missing when ``device_name="braket.local.qubit"`` is requested.
+    """
+    import pennylane as qml
+
+    dev = qml.device(device_name, wires=n_qubits)
+
+    @qml.qnode(dev, interface="autograd", diff_method=diff_method)
+    def circuit(features, params):
+        for i in range(n_qubits):
+            qml.RY(features[i], wires=i)
+        for layer in range(n_layers):
+            for i in range(n_qubits):
+                qml.RY(params[layer, i], wires=i)
+            for i in range(n_qubits - 1):
+                qml.CNOT(wires=[i, i + 1])
+            if n_qubits > 2:
+                qml.CNOT(wires=[n_qubits - 1, 0])
+        return qml.expval(qml.PauliZ(0))
+
+    return circuit

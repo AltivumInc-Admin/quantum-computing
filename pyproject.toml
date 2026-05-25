@@ -16,7 +16,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.5", "pip-tools>=7.0"]
 full = [
     "pennylane>=0.38",
-    "pennylane-braket>=1.25",
+    "amazon-braket-pennylane-plugin>=1.30",
     "openfermion>=1.6",
     "openfermionpyscf>=0.5",
     "jupyterlab>=4.0",
@@ -31,3 +31,6 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

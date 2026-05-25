@@ -1,83 +1,91 @@
-"""Hybrid quantum-classical training loops for QML models."""
+"""Hybrid quantum-classical training loops for QML models.
+
+Uses PennyLane (default device ``default.qubit``; ``braket.local.qubit``
+opt-in via ``device_name``) for analytic gradients — per the project's
+"Use PennyLane for variational and hybrid quantum-classical algorithms"
+guidance. The previous implementation used raw parameter-shift on Braket
+which was O(n_samples * n_params * 2) circuit runs per epoch; this
+implementation uses backprop on the local simulator.
+
+The ``shots`` argument is preserved for API compatibility but ignored on
+the local simulator — analytic expectation values are used. Pass through
+a different entrypoint when targeting QPU hardware.
+"""
 
 import numpy as np
-from braket.devices import LocalSimulator
 
 
-def train_vqc(X_train: np.ndarray, y_train: np.ndarray, n_layers: int = 3,
-              learning_rate: float = 0.1, epochs: int = 50,
-              shots: int = 1000) -> dict:
-    """Train a Variational Quantum Classifier with parameter-shift gradients.
+def train_vqc(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    n_layers: int = 3,
+    learning_rate: float = 0.1,
+    epochs: int = 50,
+    shots: int = 1000,  # noqa: ARG001  (accepted for API compatibility; analytic)
+    device_name: str = "default.qubit",
+) -> dict:
+    """Train a Variational Quantum Classifier with PennyLane analytic gradients.
 
     Args:
-        X_train: Training features, shape (n_samples, n_features).
-        y_train: Training labels (0 or 1), shape (n_samples,).
+        X_train: Training features, shape ``(n_samples, n_features)``.
+        y_train: Training labels (0 or 1), shape ``(n_samples,)``.
         n_layers: Number of variational layers.
         learning_rate: Gradient descent step size.
         epochs: Number of training epochs.
-        shots: Measurement shots per circuit evaluation.
+        shots: Accepted for backward compatibility. Ignored — analytic
+            expectation values are used on the local simulator.
+        device_name: PennyLane device. Defaults to ``"default.qubit"`` for
+            the fastest local backprop. Pass ``"braket.local.qubit"`` to
+            route through the Amazon Braket simulator (slower for tiny
+            circuits). See :func:`lib.ml.classifiers.vqc_qnode`.
 
     Returns:
-        Dict with optimal_params, loss_history, accuracy_history.
+        Dict with ``optimal_params`` (numpy array, shape ``(n_layers, n_qubits)``),
+        ``loss_history`` (list[float]), ``accuracy_history`` (list[float]).
     """
-    from lib.ml.classifiers import build_vqc_circuit
+    import pennylane as qml
+    from pennylane import numpy as pnp
+
+    from lib.ml.classifiers import vqc_qnode
 
     n_qubits = X_train.shape[1]
-    params = np.random.uniform(-np.pi, np.pi, size=(n_layers, n_qubits))
-    device = LocalSimulator()
+    circuit = vqc_qnode(n_qubits, n_layers, device_name=device_name)
 
-    loss_history = []
-    accuracy_history = []
+    params = pnp.array(
+        np.random.uniform(-np.pi, np.pi, size=(n_layers, n_qubits)),
+        requires_grad=True,
+    )
+    opt = qml.GradientDescentOptimizer(stepsize=learning_rate)
+
+    def predict(features, p):
+        # <Z> ∈ [-1, 1] → probability ∈ [0, 1]
+        return (1.0 - circuit(features, p)) / 2.0
+
+    def loss_fn(p):
+        total = 0.0
+        for x, y in zip(X_train, y_train):
+            pred = predict(x, p)
+            total = total + (pred - y) ** 2
+        return total / len(X_train)
+
+    loss_history: list[float] = []
+    accuracy_history: list[float] = []
 
     for epoch in range(epochs):
-        epoch_loss = 0.0
-        correct = 0
-        gradients = np.zeros_like(params)
-
-        for x, y in zip(X_train, y_train):
-            # Forward pass
-            circuit = build_vqc_circuit(n_qubits, n_layers, x, params)
-            result = device.run(circuit, shots=shots).result()
-            counts = result.measurement_counts
-            prob_zero = counts.get("0" * n_qubits, 0) / shots
-            prediction = 1.0 - prob_zero  # Map to [0, 1]
-
-            # Loss (MSE)
-            loss = (prediction - y) ** 2
-            epoch_loss += loss
-            correct += int((prediction > 0.5) == y)
-
-            # Parameter-shift gradients
-            for layer in range(n_layers):
-                for q in range(n_qubits):
-                    params_plus = params.copy()
-                    params_plus[layer, q] += np.pi / 2
-                    circuit_plus = build_vqc_circuit(n_qubits, n_layers, x, params_plus)
-                    result_plus = device.run(circuit_plus, shots=shots).result()
-                    prob_plus = 1.0 - result_plus.measurement_counts.get("0" * n_qubits, 0) / shots
-
-                    params_minus = params.copy()
-                    params_minus[layer, q] -= np.pi / 2
-                    circuit_minus = build_vqc_circuit(n_qubits, n_layers, x, params_minus)
-                    result_minus = device.run(circuit_minus, shots=shots).result()
-                    prob_minus = 1.0 - result_minus.measurement_counts.get("0" * n_qubits, 0) / shots
-
-                    grad = (prob_plus - prob_minus) / 2
-                    gradients[layer, q] += 2 * (prediction - y) * grad
-
-        # Update parameters
-        params -= learning_rate * gradients / len(X_train)
-
-        avg_loss = epoch_loss / len(X_train)
-        accuracy = correct / len(X_train)
-        loss_history.append(avg_loss)
-        accuracy_history.append(accuracy)
+        params, loss_val = opt.step_and_cost(loss_fn, params)
+        correct = sum(
+            int((predict(x, params) > 0.5) == bool(y))
+            for x, y in zip(X_train, y_train)
+        )
+        loss_history.append(float(loss_val))
+        accuracy_history.append(correct / len(X_train))
 
         if epoch % 10 == 0:
-            print(f"Epoch {epoch}: loss={avg_loss:.4f}, accuracy={accuracy:.2%}")
+            print(f"Epoch {epoch}: loss={float(loss_val):.4f}, "
+                  f"accuracy={correct / len(X_train):.2%}")
 
     return {
-        "optimal_params": params,
+        "optimal_params": np.asarray(params),
         "loss_history": loss_history,
         "accuracy_history": accuracy_history,
     }
