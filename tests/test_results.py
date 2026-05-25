@@ -4,15 +4,8 @@ from collections import Counter
 from lib.utils.results import parse_counts, top_results, expectation_from_counts
 
 
-class MockResult:
-    """Mock Braket result for testing without AWS."""
-
-    def __init__(self, measurements):
-        self.measurements = measurements
-
-
-def test_parse_counts_basic():
-    result = MockResult([[0, 0], [0, 0], [1, 1], [0, 0]])
+def test_parse_counts_basic(mock_result_factory):
+    result = mock_result_factory([[0, 0], [0, 0], [1, 1], [0, 0]])
     counts = parse_counts(result)
     assert counts["00"] == 3
     assert counts["11"] == 1

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Generate starter Jupyter notebooks for the workspace."""
 import json
-import sys
 
 
 def create_notebook(filepath, title, description, section_guide):
@@ -25,8 +24,7 @@ def create_notebook(filepath, title, description, section_guide):
                 "outputs": [],
                 "source": [
                     "# Setup: Run this cell first\n",
-                    "import sys\n",
-                    "sys.path.insert(0, '../..')\n",
+                    "# Requires: pip install -e '.[dev]' from the project root (see `make setup`)\n",
                     "\n",
                     "from braket.circuits import Circuit\n",
                     "from braket.devices import LocalSimulator\n",

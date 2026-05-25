@@ -1,6 +1,5 @@
 """Visualization utilities for qubit states and circuit results."""
 
-import numpy as np
 import matplotlib.pyplot as plt
 from braket.devices import LocalSimulator
 from braket.circuits import Circuit

@@ -1,0 +1,8 @@
+# Input constraints for the Braket hybrid job container.
+# Regenerate the lock file with: make lock-container
+openfermion>=1.6
+openfermionpyscf>=0.5
+pyscf>=2.4
+pennylane>=0.38
+amazon-braket-pennylane-plugin>=1.25
+scikit-learn>=1.4

@@ -42,9 +42,7 @@ def main():
     from braket.devices import LocalSimulator
     device = LocalSimulator()
 
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-    from scripts.classifiers import build_vqc_circuit
+    from lib.ml.classifiers import build_vqc_circuit
 
     for epoch in range(start_epoch, epochs):
         epoch_loss = 0.0

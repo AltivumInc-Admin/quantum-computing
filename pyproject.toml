@@ -3,22 +3,27 @@ name = "quantum-braket-workspace"
 version = "0.1.0"
 description = "Amazon Braket quantum computing learning workspace"
 requires-python = ">=3.10"
-
-[project.dependencies]
-amazon-braket-sdk = ">=1.80"
-amazon-braket-default-simulator = ">=1.25"
-pennylane = ">=0.38"
-pennylane-braket = ">=1.25"
-openfermion = ">=1.6"
-openfermionpyscf = ">=0.5"
-numpy = ">=1.26"
-scipy = ">=1.12"
-matplotlib = ">=3.8"
-jupyterlab = ">=4.0"
-boto3 = ">=1.34"
+dependencies = [
+    "amazon-braket-sdk>=1.80",
+    "amazon-braket-default-simulator>=1.25",
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "matplotlib>=3.8",
+    "boto3>=1.34",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5", "pip-tools>=7.0"]
+full = [
+    "pennylane>=0.38",
+    "pennylane-braket>=1.25",
+    "openfermion>=1.6",
+    "openfermionpyscf>=0.5",
+    "jupyterlab>=4.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["lib*"]
 
 [tool.ruff]
 line-length = 100

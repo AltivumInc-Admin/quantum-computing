@@ -1,6 +1,5 @@
 """Tests for lib/circuits/common.py — runs on local simulator only."""
 
-import numpy as np
 from braket.devices import LocalSimulator
 from lib.circuits.common import bell_pair, ghz_state, qft_circuit
 
@@ -16,7 +15,8 @@ def test_bell_pair_produces_entangled_state():
 
 def test_bell_pair_custom_qubits():
     circuit = bell_pair(qubit_0=2, qubit_1=3)
-    assert circuit.qubit_count == 4
+    assert circuit.qubit_count == 2
+    assert {int(q) for q in circuit.qubits} == {2, 3}
 
 
 def test_ghz_state_all_agree():

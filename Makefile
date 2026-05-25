@@ -1,4 +1,4 @@
-.PHONY: setup lab test devices cost lint deploy-infra teardown-infra
+.PHONY: setup lab test devices cost lint deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -32,3 +32,8 @@ deploy-infra:
 
 teardown-infra:
 	bash infra/scripts/teardown-infra.sh
+
+lock-container:
+	pip-compile 05-hybrid-jobs/containers/requirements.in \
+		--output-file=05-hybrid-jobs/containers/requirements.lock \
+		--strip-extras --allow-unsafe

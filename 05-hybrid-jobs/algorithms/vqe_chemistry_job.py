@@ -15,9 +15,7 @@ def main():
     maxiter = int(hp.get("maxiter", "100"))
     shots = int(hp.get("n_shots", "4000"))
 
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-    from scripts.hamiltonians import build_h2_hamiltonian, build_lih_hamiltonian
+    from lib.chemistry.hamiltonians import build_h2_hamiltonian, build_lih_hamiltonian
 
     if molecule == "H2":
         hamiltonian, n_qubits, n_electrons = build_h2_hamiltonian(bond_length)
@@ -26,7 +24,7 @@ def main():
     else:
         raise ValueError(f"Unsupported molecule: {molecule}")
 
-    from scripts.ansatz import hardware_efficient_ansatz
+    from lib.chemistry.ansatz import hardware_efficient_ansatz
 
     n_params = n_layers * n_qubits * 2
     initial_params = np.random.uniform(-0.1, 0.1, size=(n_layers, n_qubits, 2))
