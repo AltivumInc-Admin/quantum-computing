@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.5", "pip-tools>=7.0"]
+dev = ["pytest>=8.0", "pytest-cov>=4.0", "ruff>=0.5", "pip-tools>=7.0", "nbstripout>=0.7"]
 full = [
     "pennylane>=0.38",
     "amazon-braket-pennylane-plugin>=1.30",

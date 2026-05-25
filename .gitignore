@@ -36,5 +36,9 @@ Thumbs.db
 braket-results/
 .ruff_cache/
 
+# Coverage
+.coverage
+htmlcov/
+
 # Superpowers brainstorm sessions
 .superpowers/

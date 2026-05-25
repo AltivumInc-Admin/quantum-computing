@@ -5,6 +5,8 @@ setup:
 	pip install -e ".[dev]"
 	@echo "Validating AWS credentials..."
 	@bash infra/scripts/validate-setup.sh
+	@echo "Installing nbstripout git filter..."
+	@nbstripout --install --attributes .gitattributes
 
 lab:
 	jupyter lab --notebook-dir=.
