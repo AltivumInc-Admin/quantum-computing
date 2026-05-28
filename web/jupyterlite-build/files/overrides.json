@@ -1,0 +1,5 @@
+{
+  "@jupyterlite/pyodide-kernel-extension:kernel": {
+    "pipliteUrls": ["./files/wheels/qcsim-0.1.0-py3-none-any.whl"]
+  }
+}

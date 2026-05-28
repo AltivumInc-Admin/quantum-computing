@@ -50,9 +50,10 @@ export default async function SectionPage({ params }: PageProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 {content.notebooks.map((nb) => (
                   <NotebookLink
-                    key={nb}
-                    filename={nb}
+                    key={nb.filename}
+                    filename={nb.filename}
                     sectionDir={section.dirName}
+                    browserRunnable={nb.browserRunnable}
                   />
                 ))}
               </div>

@@ -6,8 +6,8 @@ const config: Config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  testPathIgnorePatterns: ["/node_modules/", "/.next/"],
-  modulePathIgnorePatterns: ["<rootDir>/.next/"],
+  testPathIgnorePatterns: ["/node_modules/", "/.next/", "/public/lab/", "/out/"],
+  modulePathIgnorePatterns: ["<rootDir>/.next/", "<rootDir>/public/lab/", "<rootDir>/out/"],
   transform: {
     "^.+\\.tsx?$": ["ts-jest", { tsconfig: "tsconfig.json" }],
   },
