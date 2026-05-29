@@ -46,15 +46,14 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         pip_name="jupyterlab",
         purpose="running the notebooks themselves",
     ),
-)
-
-OPTIONAL: tuple[Requirement, ...] = (
     Requirement(
         module="ipywidgets",
         pip_name="ipywidgets",
         purpose="interactive Bloch-sphere sliders in notebook 06 (a static fallback exists)",
     ),
 )
+
+OPTIONAL: tuple[Requirement, ...] = ()
 
 
 def python_version_ok() -> bool:

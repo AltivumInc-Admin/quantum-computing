@@ -182,7 +182,8 @@ Complete these notebooks in order. Each takes 20-40 minutes.
 **Scripts:**
 
 - `scripts/check_prereqs.py` — Run from terminal: `python 00-prereqs/scripts/check_prereqs.py`
-  to verify your environment has NumPy/Matplotlib/Jupyter installed at compatible versions.
+  to verify your environment has NumPy, Matplotlib, JupyterLab, and ipywidgets installed,
+  and that you are on Python 3.10 or newer.
 
 ---
 

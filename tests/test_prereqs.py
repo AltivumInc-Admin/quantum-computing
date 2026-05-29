@@ -82,35 +82,37 @@ def test_notebook_has_self_check(name):
 # ---------------------------------------------------------------------------
 
 
-def _load_check_prereqs():
+@pytest.fixture
+def check_prereqs_module(monkeypatch):
+    """Load check_prereqs.py as a module with sys.modules cleanup after the test.
+
+    The module must be in sys.modules so dataclass introspection inside it can
+    resolve its own globals. monkeypatch removes the entry once the test ends,
+    avoiding leakage across the rest of the session.
+    """
     path = PREREQ_DIR / "scripts" / "check_prereqs.py"
     module_name = "_prereqs_check_prereqs_under_test"
     spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
-    # Register in sys.modules so dataclass introspection inside the loaded
-    # module can find its own globals.
-    sys.modules[module_name] = module
+    monkeypatch.setitem(sys.modules, module_name, module)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
 
 
-def test_check_prereqs_lists_required_packages():
-    module = _load_check_prereqs()
-    names = {req.module for req in module.REQUIREMENTS}
+def test_check_prereqs_lists_required_packages(check_prereqs_module):
+    names = {req.module for req in check_prereqs_module.REQUIREMENTS}
     # The core stack that every notebook in the module imports.
     assert {"numpy", "matplotlib", "jupyterlab"} <= names
 
 
-def test_check_prereqs_detects_present_packages():
-    module = _load_check_prereqs()
-    numpy_req = next(r for r in module.REQUIREMENTS if r.module == "numpy")
+def test_check_prereqs_detects_present_packages(check_prereqs_module):
+    numpy_req = next(r for r in check_prereqs_module.REQUIREMENTS if r.module == "numpy")
     assert numpy_req.is_installed()
 
 
-def test_check_prereqs_detects_missing_packages():
-    module = _load_check_prereqs()
-    fake = module.Requirement(
+def test_check_prereqs_detects_missing_packages(check_prereqs_module):
+    fake = check_prereqs_module.Requirement(
         module="this_module_does_not_exist_xyzzy",
         pip_name="fake",
         purpose="testing",
@@ -118,9 +120,8 @@ def test_check_prereqs_detects_missing_packages():
     assert not fake.is_installed()
 
 
-def test_check_prereqs_python_version_helper():
-    module = _load_check_prereqs()
-    assert module.python_version_ok() is (sys.version_info >= (3, 10))
+def test_check_prereqs_python_version_helper(check_prereqs_module):
+    assert check_prereqs_module.python_version_ok() is (sys.version_info >= (3, 10))
 
 
 # ---------------------------------------------------------------------------
