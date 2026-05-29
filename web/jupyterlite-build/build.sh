@@ -29,7 +29,7 @@ cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
 
 # 3) Stage curriculum notebooks into files/<section>/notebooks/.
 echo "==> Staging notebooks"
-for section in 00-foundations 01-hardware 02-algorithms 03-quantum-ml 04-quantum-chemistry 05-hybrid-jobs; do
+for section in 00-prereqs 00-foundations 01-hardware 02-algorithms 03-quantum-ml 04-quantum-chemistry 05-hybrid-jobs; do
   mkdir -p "files/$section/notebooks"
   cp ../../$section/notebooks/*.ipynb "files/$section/notebooks/" 2>/dev/null || true
 done
