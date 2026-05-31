@@ -44,7 +44,9 @@ Instead of tracking each electron's position, second quantization uses creation 
 
 The molecular Hamiltonian in second quantization:
 
-$$H = \sum_{pq} h_{pq}\, a_p^\dagger a_q + \frac{1}{2} \sum_{pqrs} h_{pqrs}\, a_p^\dagger a_q^\dagger a_s a_r$$
+$$
+H = \sum_{pq} h_{pq}\, a_p^\dagger a_q + \frac{1}{2} \sum_{pqrs} h_{pqrs}\, a_p^\dagger a_q^\dagger a_s a_r
+$$
 
 where $h_{pq}$ (one-electron integrals) and $h_{pqrs}$ (two-electron integrals) are computed classically from the basis set and molecular geometry.
 

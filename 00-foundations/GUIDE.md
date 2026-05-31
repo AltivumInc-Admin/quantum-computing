@@ -23,19 +23,25 @@ After completing this section, you will be able to:
 
 A classical bit is either 0 or 1. A qubit exists in a superposition of both:
 
-$$\ket{\psi} = \alpha\ket{0} + \beta\ket{1}$$
+$$
+\ket{\psi} = \alpha\ket{0} + \beta\ket{1}
+$$
 
 where $\alpha$ and $\beta$ are complex amplitudes satisfying $|\alpha|^2 + |\beta|^2 = 1$.
 
 **State vector representation:** A qubit state is a unit vector in a 2D complex vector space ($\mathbb{C}^2$):
 
-$$\ket{0} = \begin{bmatrix} 1 \\ 0 \end{bmatrix} \text{ (basis "zero")}, \qquad \ket{1} = \begin{bmatrix} 0 \\ 1 \end{bmatrix} \text{ (basis "one")}$$
+$$
+\ket{0} = \begin{bmatrix} 1 \\ 0 \end{bmatrix} \text{ (basis "zero")}, \qquad \ket{1} = \begin{bmatrix} 0 \\ 1 \end{bmatrix} \text{ (basis "one")}
+$$
 
 The probability of measuring $\ket{0}$ is $|\alpha|^2$ and $\ket{1}$ is $|\beta|^2$.
 
 **Bloch sphere:** Any single-qubit pure state can be visualized as a point on the unit sphere:
 
-$$\ket{\psi} = \cos\tfrac{\theta}{2}\ket{0} + e^{i\phi}\sin\tfrac{\theta}{2}\ket{1}$$
+$$
+\ket{\psi} = \cos\tfrac{\theta}{2}\ket{0} + e^{i\phi}\sin\tfrac{\theta}{2}\ket{1}
+$$
 
 - North pole ($\theta=0$): $\ket{0}$
 - South pole ($\theta=\pi$): $\ket{1}$

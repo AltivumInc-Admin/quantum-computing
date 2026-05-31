@@ -50,7 +50,9 @@ Optimal number of iterations: approximately $\tfrac{\pi}{4}\sqrt{N}$
 
 The QFT is the quantum analogue of the Discrete Fourier Transform. It maps computational basis states to the frequency domain:
 
-$$\text{QFT}\ket{j} = \frac{1}{\sqrt{N}} \sum_{k=0}^{N-1} e^{2\pi i jk/N} \ket{k}$$
+$$
+\text{QFT}\ket{j} = \frac{1}{\sqrt{N}} \sum_{k=0}^{N-1} e^{2\pi i jk/N} \ket{k}
+$$
 
 **Circuit construction:**
 - Apply H to qubit j
