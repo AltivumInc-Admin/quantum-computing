@@ -1,6 +1,7 @@
 """Tests for lib/utils/visualization.py."""
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt

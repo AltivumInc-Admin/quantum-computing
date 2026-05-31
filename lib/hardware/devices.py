@@ -34,13 +34,21 @@ def list_available_devices() -> list[dict]:
     ]
 
 
-def run_circuit(circuit: Circuit, device_name: str = "local", shots: int = 1000, s3_location: tuple | None = None):
+def run_circuit(
+    circuit: Circuit,
+    device_name: str = "local",
+    shots: int = 1000,
+    s3_location: tuple | None = None,
+):
     """Run a circuit on the specified device."""
-    device = get_device(device_name)
     if device_name == "local":
+        device = get_device(device_name)
         task = device.run(circuit, shots=shots)
     else:
+        # Validate inputs before constructing the AwsDevice so the error is
+        # raised without any network/credentials (fail fast, CI-safe).
         if s3_location is None:
             raise ValueError("s3_location required for AWS devices: (bucket, prefix)")
+        device = get_device(device_name)
         task = device.run(circuit, s3_destination_folder=s3_location, shots=shots)
     return task.result()

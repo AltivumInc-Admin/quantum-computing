@@ -18,6 +18,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored / generated JupyterLite distribution and staged notebooks —
+    // not first-party source, must not be linted.
+    "public/lab/**",
+    "jupyterlite-build/**",
   ]),
 ]);
 

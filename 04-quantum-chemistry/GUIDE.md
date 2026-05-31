@@ -36,23 +36,24 @@ The central problem in computational chemistry: given a molecular geometry (nucl
 
 ### Second Quantization
 
-Instead of tracking each electron's position, second quantization uses creation (a_p^dagger) and annihilation (a_p) operators for each spin-orbital p:
+Instead of tracking each electron's position, second quantization uses creation ($a_p^\dagger$) and annihilation ($a_p$) operators for each spin-orbital $p$:
 
-- a_p^dagger|0> = |1_p> (create an electron in orbital p)
-- a_p|1_p> = |0> (remove an electron from orbital p)
-- Anticommutation: {a_p, a_q^dagger} = delta_pq
+- $a_p^\dagger\ket{0} = \ket{1_p}$ (create an electron in orbital p)
+- $a_p\ket{1_p} = \ket{0}$ (remove an electron from orbital p)
+- Anticommutation: $\{a_p, a_q^\dagger\} = \delta_{pq}$
 
 The molecular Hamiltonian in second quantization:
-H = sum_{pq} h_pq * a_p^dagger * a_q + (1/2) * sum_{pqrs} h_pqrs * a_p^dagger * a_q^dagger * a_s * a_r
 
-where h_pq (one-electron integrals) and h_pqrs (two-electron integrals) are computed classically from the basis set and molecular geometry.
+$$H = \sum_{pq} h_{pq}\, a_p^\dagger a_q + \frac{1}{2} \sum_{pqrs} h_{pqrs}\, a_p^\dagger a_q^\dagger a_s a_r$$
+
+where $h_{pq}$ (one-electron integrals) and $h_{pqrs}$ (two-electron integrals) are computed classically from the basis set and molecular geometry.
 
 ### Fermion-to-Qubit Mappings
 
 Quantum computers use qubits, not fermions. We need a mapping that preserves the fermionic anticommutation relations.
 
 **Jordan-Wigner Transformation:**
-- Maps occupation of orbital p to qubit p: |0> = unoccupied, |1> = occupied
+- Maps occupation of orbital $p$ to qubit $p$: $\ket{0}$ = unoccupied, $\ket{1}$ = occupied
 - a_p^dagger -> (X_p - iY_p)/2 * Z_{p-1} * Z_{p-2} * ... * Z_0
 - The Z-string encodes fermionic antisymmetry (parity of all lower orbitals)
 - Pro: Intuitive mapping. Con: Non-local — operators on orbital p involve all lower qubits.

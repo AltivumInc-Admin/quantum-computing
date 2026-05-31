@@ -111,6 +111,29 @@ def _apply_three(
 
 
 # ---------------------------------------------------------------------------
+# Instruction (minimal Braket-compatible view of an applied gate)
+# ---------------------------------------------------------------------------
+
+
+class Instruction:
+    """Minimal stand-in for ``braket.circuits.Instruction``.
+
+    Exposes the two attributes curriculum notebooks read — ``operator`` (the
+    gate label) and ``target`` (a tuple of qubit indices) — and supports the
+    common ``sum(1 for _ in circuit.instructions)`` gate-count idiom.
+    """
+
+    __slots__ = ("operator", "target")
+
+    def __init__(self, operator: str, target: tuple[int, ...]) -> None:
+        self.operator = operator
+        self.target = target
+
+    def __repr__(self) -> str:
+        return f"Instruction(operator={self.operator!r}, target={self.target})"
+
+
+# ---------------------------------------------------------------------------
 # Circuit
 # ---------------------------------------------------------------------------
 
@@ -215,14 +238,42 @@ class Circuit:
 
     # ----- composition -----
 
-    def add_circuit(self, other: "Circuit", target_mapping: dict[int, int] | None = None) -> "Circuit":
+    def add_circuit(
+        self, other: "Circuit", target_mapping: dict[int, int] | None = None
+    ) -> "Circuit":
         for name, gate, qubits in other._gates:
             mapped = tuple(target_mapping[q] if target_mapping else q for q in qubits)
             self._touch(mapped)
             self._gates.append((name, gate, mapped))
         return self
 
+    def adjoint(self) -> "Circuit":
+        """Return a NEW circuit implementing the inverse U-dagger of this one.
+
+        For a gate sequence ``U = U_k ... U_2 U_1`` the inverse is
+        ``U_dagger = U_1_dagger ... U_k_dagger``: reverse the gate order and
+        replace each gate matrix with its conjugate transpose. This powers the
+        compute-uncompute overlap in :func:`lib.ml.classifiers.quantum_kernel`,
+        and mirrors ``braket.circuits.Circuit.adjoint``.
+
+        The original circuit is not modified. Gate *labels* are preserved as-is
+        (they are cosmetic, used only by ``__str__``); correctness comes from
+        the daggered matrices, so e.g. ``Rz(theta)`` keeps its label while
+        carrying the ``Rz(-theta)`` matrix.
+        """
+        inv = Circuit()
+        inv._max_qubit = self._max_qubit
+        inv._gates = [
+            (name, np.conj(gate).T.copy(), qubits) for name, gate, qubits in reversed(self._gates)
+        ]
+        return inv
+
     # ----- properties -----
+
+    @property
+    def instructions(self) -> list[Instruction]:
+        """Applied instructions in order (Braket-compatible; for iteration/counting)."""
+        return [Instruction(name, qubits) for name, _gate, qubits in self._gates]
 
     @property
     def qubit_count(self) -> int:
@@ -256,9 +307,7 @@ class Circuit:
             elif len(qubits) == 3:
                 state = _apply_three(state, gate, qubits[0], qubits[1], qubits[2], n)
             else:
-                raise NotImplementedError(
-                    f"gate on {len(qubits)} qubits is not supported"
-                )
+                raise NotImplementedError(f"gate on {len(qubits)} qubits is not supported")
         return state
 
     # ----- rendering -----
@@ -301,10 +350,7 @@ class Circuit:
         return "\n".join(out)
 
     def __repr__(self) -> str:
-        return (
-            f"Circuit(n_qubits={self.qubit_count}, depth={self.depth}, "
-            f"gates={len(self._gates)})"
-        )
+        return f"Circuit(n_qubits={self.qubit_count}, depth={self.depth}, gates={len(self._gates)})"
 
 
-__all__ = ["Circuit"]
+__all__ = ["Circuit", "Instruction"]

@@ -129,7 +129,7 @@ The default Braket container includes the SDK and common packages. For specializ
 - Set AWS Budget alerts (see infra/ templates)
 
 **Approximate costs:**
-- EC2 instance: $0.10-$3.00/hour depending on type
+- EC2 instance: \$0.10-\$3.00/hour depending on type
 - QPU charges: Same per-task and per-shot rates as standalone
 - Total: Job instance cost + quantum hardware cost
 

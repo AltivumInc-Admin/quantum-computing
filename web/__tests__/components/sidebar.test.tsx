@@ -29,10 +29,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("Learning Path")).toBeInTheDocument();
   });
 
-  it("should render all 6 section links", () => {
+  it("should render all 7 section links", () => {
     render(<Sidebar />);
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(6);
+    expect(links).toHaveLength(7);
   });
 
   it("should render each section title", () => {
@@ -48,9 +48,9 @@ describe("Sidebar", () => {
   it("should link each section to /learn/{slug}", () => {
     render(<Sidebar />);
     const links = screen.getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/learn/00-foundations");
-    expect(links[1]).toHaveAttribute("href", "/learn/01-hardware");
-    expect(links[5]).toHaveAttribute("href", "/learn/05-hybrid-jobs");
+    expect(links[0]).toHaveAttribute("href", "/learn/00-prereqs");
+    expect(links[1]).toHaveAttribute("href", "/learn/00-foundations");
+    expect(links[6]).toHaveAttribute("href", "/learn/05-hybrid-jobs");
   });
 
   it("should render the mobile toggle button", () => {

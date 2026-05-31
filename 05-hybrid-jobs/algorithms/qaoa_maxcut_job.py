@@ -13,7 +13,7 @@ import os
 import json
 import numpy as np
 from braket.circuits import Circuit
-from braket.jobs import save_job_result, load_job_checkpoint, save_job_checkpoint
+from braket.jobs import save_job_result, load_job_checkpoint
 from braket.jobs.metrics import log_metric
 
 
@@ -28,7 +28,7 @@ def qaoa_circuit(graph_edges, n_qubits, gammas, betas):
 
     for layer in range(n_layers):
         # Cost unitary: exp(-i * gamma * C)
-        for (i, j) in graph_edges:
+        for i, j in graph_edges:
             circuit.cnot(i, j)
             circuit.rz(j, gammas[layer])
             circuit.cnot(i, j)
@@ -43,7 +43,7 @@ def qaoa_circuit(graph_edges, n_qubits, gammas, betas):
 def maxcut_cost(bitstring, graph_edges):
     """Compute MaxCut cost for a given bitstring."""
     cost = 0
-    for (i, j) in graph_edges:
+    for i, j in graph_edges:
         if bitstring[i] != bitstring[j]:
             cost += 1
     return cost
@@ -74,9 +74,11 @@ def main():
     device_arn = os.environ.get("AMZN_BRAKET_DEVICE_ARN", None)
     if device_arn:
         from braket.aws import AwsDevice
+
         device = AwsDevice(device_arn)
     else:
         from braket.devices import LocalSimulator
+
         device = LocalSimulator()
 
     # Check for checkpoint
@@ -106,6 +108,7 @@ def main():
                 result = task.result()
             except Exception:
                 from braket.devices import LocalSimulator
+
                 result = LocalSimulator().run(circuit, shots=n_shots).result()
         else:
             result = device.run(circuit, shots=n_shots).result()
@@ -114,8 +117,7 @@ def main():
         counts = result.measurement_counts
         total = sum(counts.values())
         expected_cost = sum(
-            maxcut_cost(bs, graph_edges) * count / total
-            for bs, count in counts.items()
+            maxcut_cost(bs, graph_edges) * count / total for bs, count in counts.items()
         )
 
         neg_cost = -expected_cost  # Minimize negative cost = maximize cut
@@ -126,25 +128,27 @@ def main():
         log_metric(metric_name="maxcut_value", value=expected_cost)
         return neg_cost
 
-    result = minimize(cost_fn, params, method="COBYLA",
-                     options={"maxiter": maxiter})
+    minimize(cost_fn, params, method="COBYLA", options={"maxiter": maxiter})
 
     # Save results
     gammas = best_params[:n_layers]
     betas = best_params[n_layers:]
     final_circuit = qaoa_circuit(graph_edges, n_qubits, gammas, betas)
     from braket.devices import LocalSimulator
+
     final_result = LocalSimulator().run(final_circuit, shots=n_shots * 10).result()
     counts = final_result.measurement_counts
     best_bitstring = max(counts, key=lambda bs: maxcut_cost(bs, graph_edges))
 
-    save_job_result({
-        "optimal_params": best_params.tolist(),
-        "best_cut_value": maxcut_cost(best_bitstring, graph_edges),
-        "best_partition": best_bitstring,
-        "n_edges": len(graph_edges),
-        "graph_edges": graph_edges,
-    })
+    save_job_result(
+        {
+            "optimal_params": best_params.tolist(),
+            "best_cut_value": maxcut_cost(best_bitstring, graph_edges),
+            "best_partition": best_bitstring,
+            "n_edges": len(graph_edges),
+            "graph_edges": graph_edges,
+        }
+    )
 
 
 if __name__ == "__main__":

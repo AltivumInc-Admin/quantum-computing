@@ -99,19 +99,19 @@ Amazon Braket provides three fully managed classical simulators that run your qu
 - Simulates up to 34 qubits
 - Exact simulation (no sampling noise from the simulator itself)
 - Best for: Debugging circuits, verifying algorithms, circuits up to ~30 qubits
-- Cost: $0.075/minute
+- Cost: \$0.075/minute
 
 **DM1 — Density Matrix Simulator:**
 - Simulates up to 17 qubits
 - Supports noise modeling (depolarizing, amplitude damping, etc.)
 - Best for: Studying noise effects, error mitigation research, small noisy circuits
-- Cost: $0.075/minute
+- Cost: \$0.075/minute
 
 **TN1 — Tensor Network Simulator:**
 - Handles circuits with up to 50 qubits (depending on entanglement structure)
 - Uses tensor network contraction — efficient for circuits with limited entanglement
 - Best for: Large shallow circuits, circuits with 1D/2D local connectivity
-- Cost: $0.275/minute
+- Cost: \$0.275/minute
 
 **Local Simulator:**
 - Runs on your machine (free)
@@ -124,7 +124,7 @@ When choosing a device, consider:
 
 | Factor | Local | SV1/DM1/TN1 | IonQ | IQM | QuEra |
 |--------|-------|--------------|------|-----|-------|
-| Cost | Free | $/minute | $/shot+task | $/shot+task | $/shot+task |
+| Cost | Free | \$/minute | \$/shot+task | \$/shot+task | \$/shot+task |
 | Qubits | ~25 | 34/17/50 | 25-36 | 20 | 256 (analog) |
 | Noise | None | Optional (DM1) | Real | Real | Real |
 | Speed | Instant | Seconds-minutes | Minutes-hours (queue) | Minutes-hours (queue) | Minutes-hours (queue) |
@@ -139,14 +139,14 @@ When choosing a device, consider:
 ### Cost Model
 
 **QPU devices (IonQ, IQM, QuEra):**
-- Per-task fee: $0.30 (charged each time you submit a circuit)
+- Per-task fee: \$0.30 (charged each time you submit a circuit)
 - Per-shot fee: Varies by provider (see CLAUDE.md for current rates)
-- Example: 1000 shots on IonQ = $0.30 + (1000 x $0.01) = $10.30
+- Example: 1000 shots on IonQ = \$0.30 + (1000 x \$0.01) = \$10.30
 
 **Managed simulators:**
 - Per-minute billing (minimum varies)
 - No per-shot charge
-- Example: 2-minute SV1 run = $0.15
+- Example: 2-minute SV1 run = \$0.15
 
 ---
 

@@ -45,15 +45,13 @@ def _assert_distributions_close(qcounts, bcounts, shots: int):
         p_avg = (q + b) / (2 * shots)
         if p_avg < 1e-9 or p_avg > 1 - 1e-9:
             # Deterministic outcome — must match exactly.
-            assert q == b, (
-                f"deterministic bin {k!r}: qcsim={q}, braket={b}"
-            )
+            assert q == b, f"deterministic bin {k!r}: qcsim={q}, braket={b}"
             continue
         sigma = math.sqrt(shots * p_avg * (1 - p_avg))
         diff = abs(q - b)
         assert diff <= SIGMA_TOL * sigma + 5, (
             f"distribution mismatch on bin {k!r}: qcsim={q}, braket={b}, "
-            f"diff={diff}, {SIGMA_TOL}-sigma={SIGMA_TOL*sigma:.1f}"
+            f"diff={diff}, {SIGMA_TOL}-sigma={SIGMA_TOL * sigma:.1f}"
         )
 
 
@@ -102,17 +100,7 @@ def _deutsch_jozsa_balanced(C):
         - H on the two input qubits
         - Measurement on q0,q1 should be "11" deterministically (non-constant).
     """
-    return (
-        C()
-        .x(2)
-        .h(0)
-        .h(1)
-        .h(2)
-        .cnot(0, 2)
-        .cnot(1, 2)
-        .h(0)
-        .h(1)
-    )
+    return C().x(2).h(0).h(1).h(2).cnot(0, 2).cnot(1, 2).h(0).h(1)
 
 
 def _grover_n2_marked_11(C):
@@ -139,6 +127,17 @@ def _grover_n2_marked_11(C):
     )
 
 
+def _adjoint_identity(C):
+    """U followed by U-dagger must return to |00> deterministically.
+
+    Exercises Circuit.adjoint() against real Braket, which also provides
+    ``.adjoint()``. Uses a non-self-inverse gate (Ry) plus entanglement so a
+    naive (order-preserving or non-conjugated) adjoint would fail.
+    """
+    base = C().ry(0, 0.7).cnot(0, 1)
+    return base.add_circuit(base.adjoint())
+
+
 CIRCUITS = [
     ("single_h", _single_h, True),  # name, builder, probabilistic
     ("bell", _bell, True),
@@ -149,6 +148,7 @@ CIRCUITS = [
     ("parameterized_ry", _parameterized_ry, True),
     ("deutsch_jozsa_balanced", _deutsch_jozsa_balanced, False),
     ("grover_n2_marked_11", _grover_n2_marked_11, False),
+    ("adjoint_identity", _adjoint_identity, False),
 ]
 
 
@@ -170,6 +170,27 @@ def test_state_vector_bell():
     sv = c.state_vector()
     expected = np.array([1, 0, 0, 1], dtype=np.complex128) / np.sqrt(2)
     assert np.allclose(sv, expected, atol=1e-12)
+
+
+def test_state_vector_adjoint_identity():
+    """A circuit composed with its adjoint returns the |0...0> state exactly."""
+    base = QCircuit().ry(0, 0.9).cnot(0, 1).rz(1, 0.4)
+    base.add_circuit(base.adjoint())  # snapshot adjoint, then append in place
+    sv = base.state_vector()
+    expected = np.zeros(4, dtype=np.complex128)
+    expected[0] = 1.0
+    assert np.allclose(sv, expected, atol=1e-12)
+
+
+def test_adjoint_does_not_mutate_original():
+    """adjoint() must return a new circuit and leave the original untouched."""
+    base = QCircuit().s(0).t(1)
+    n_before = len(base._gates)
+    adj = base.adjoint()
+    assert len(base._gates) == n_before
+    assert adj is not base
+    # S-dagger is diag(1, -1j): the daggered matrix differs from the original.
+    assert np.allclose(adj._gates[-1][1], np.array([[1, 0], [0, -1j]], dtype=np.complex128))
 
 
 def test_state_vector_random_norm_preserved():
@@ -201,6 +222,15 @@ def test_state_vector_random_norm_preserved():
         assert abs(norm - 1.0) < 1e-10, (
             f"trial {trial}: norm = {norm}, gates = {n_gates}, qubits = {n_qubits}"
         )
+
+
+def test_instructions_iterable_and_counts():
+    """circuit.instructions supports the curriculum's gate-count idiom."""
+    c = QCircuit().h(0).cnot(0, 1).ry(1, 0.3)
+    assert len(c.instructions) == 3
+    assert sum(1 for _ in c.instructions) == 3
+    assert c.instructions[0].target == (0,)
+    assert c.instructions[1].target == (0, 1)
 
 
 def test_qubit_count_and_depth():

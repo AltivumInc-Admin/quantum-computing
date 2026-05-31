@@ -24,9 +24,12 @@ def main():
     else:
         # Generate toy dataset (moons)
         from sklearn.datasets import make_moons
+
         X_train, y_train = make_moons(n_samples=100, noise=0.1, random_state=42)
         # Normalize to [0, pi]
-        X_train = (X_train - X_train.min(axis=0)) / (X_train.max(axis=0) - X_train.min(axis=0)) * np.pi
+        X_train = (
+            (X_train - X_train.min(axis=0)) / (X_train.max(axis=0) - X_train.min(axis=0)) * np.pi
+        )
 
     n_qubits = X_train.shape[1]
 
@@ -40,6 +43,7 @@ def main():
         start_epoch = 0
 
     from braket.devices import LocalSimulator
+
     device = LocalSimulator()
 
     from lib.ml.classifiers import build_vqc_circuit
@@ -74,28 +78,54 @@ def main():
         for layer in range(n_layers):
             for q in range(n_qubits):
                 params[layer, q] += eps
-                loss_plus = sum(
-                    (1.0 - device.run(build_vqc_circuit(n_qubits, n_layers, x, params), shots=shots)
-                     .result().measurement_counts.get("0" * n_qubits, 0) / shots - y) ** 2
-                    for x, y in zip(X_train[:10], y_train[:10])
-                ) / 10
+                loss_plus = (
+                    sum(
+                        (
+                            1.0
+                            - device.run(
+                                build_vqc_circuit(n_qubits, n_layers, x, params), shots=shots
+                            )
+                            .result()
+                            .measurement_counts.get("0" * n_qubits, 0)
+                            / shots
+                            - y
+                        )
+                        ** 2
+                        for x, y in zip(X_train[:10], y_train[:10])
+                    )
+                    / 10
+                )
                 params[layer, q] -= 2 * eps
-                loss_minus = sum(
-                    (1.0 - device.run(build_vqc_circuit(n_qubits, n_layers, x, params), shots=shots)
-                     .result().measurement_counts.get("0" * n_qubits, 0) / shots - y) ** 2
-                    for x, y in zip(X_train[:10], y_train[:10])
-                ) / 10
+                loss_minus = (
+                    sum(
+                        (
+                            1.0
+                            - device.run(
+                                build_vqc_circuit(n_qubits, n_layers, x, params), shots=shots
+                            )
+                            .result()
+                            .measurement_counts.get("0" * n_qubits, 0)
+                            / shots
+                            - y
+                        )
+                        ** 2
+                        for x, y in zip(X_train[:10], y_train[:10])
+                    )
+                    / 10
+                )
                 params[layer, q] += eps
                 gradients[layer, q] = (loss_plus - loss_minus) / (2 * eps)
 
         params -= learning_rate * gradients
 
-    save_job_result({
-        "optimal_params": params.tolist(),
-        "final_loss": float(avg_loss),
-        "final_accuracy": float(accuracy),
-        "epochs_completed": epochs,
-    })
+    save_job_result(
+        {
+            "optimal_params": params.tolist(),
+            "final_loss": float(avg_loss),
+            "final_accuracy": float(accuracy),
+            "epochs_completed": epochs,
+        }
+    )
 
 
 if __name__ == "__main__":

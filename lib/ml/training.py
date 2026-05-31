@@ -73,16 +73,14 @@ def train_vqc(
 
     for epoch in range(epochs):
         params, loss_val = opt.step_and_cost(loss_fn, params)
-        correct = sum(
-            int((predict(x, params) > 0.5) == bool(y))
-            for x, y in zip(X_train, y_train)
-        )
+        correct = sum(int((predict(x, params) > 0.5) == bool(y)) for x, y in zip(X_train, y_train))
         loss_history.append(float(loss_val))
         accuracy_history.append(correct / len(X_train))
 
         if epoch % 10 == 0:
-            print(f"Epoch {epoch}: loss={float(loss_val):.4f}, "
-                  f"accuracy={correct / len(X_train):.2%}")
+            print(
+                f"Epoch {epoch}: loss={float(loss_val):.4f}, accuracy={correct / len(X_train):.2%}"
+            )
 
     return {
         "optimal_params": np.asarray(params),

@@ -44,10 +44,10 @@ describe("PrevNext", () => {
   });
 
   it("should not render a previous link for the first section", () => {
-    render(<PrevNext currentSlug="00-foundations" />);
+    render(<PrevNext currentSlug="00-prereqs" />);
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(1);
-    expect(screen.getByText("Quantum Hardware on Amazon Braket")).toBeInTheDocument();
+    expect(screen.getByText("Quantum Computing Foundations")).toBeInTheDocument();
   });
 
   it("should not render a next link for the last section", () => {
@@ -63,7 +63,7 @@ describe("PrevNext", () => {
     render(<PrevNext currentSlug="non-existent" />);
     const links = screen.queryAllByRole("link");
     expect(links).toHaveLength(1);
-    expect(screen.getByText("Quantum Computing Foundations")).toBeInTheDocument();
+    expect(screen.getByText("Prerequisites: From Zero to Ready-for-Quantum")).toBeInTheDocument();
   });
 
   it("should render the correct prev/next for the second section", () => {

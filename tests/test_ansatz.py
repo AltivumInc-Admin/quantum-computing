@@ -1,7 +1,6 @@
 """Tests for lib/chemistry/ansatz.py — local simulator only."""
 
 import numpy as np
-import pytest
 
 from lib.chemistry.ansatz import hardware_efficient_ansatz, uccsd_singles_circuit
 
@@ -9,6 +8,7 @@ from lib.chemistry.ansatz import hardware_efficient_ansatz, uccsd_singles_circui
 # ---------------------------------------------------------------------------
 # hardware_efficient_ansatz
 # ---------------------------------------------------------------------------
+
 
 def test_hardware_efficient_ansatz_qubit_count():
     n_qubits, n_layers = 4, 2
@@ -30,6 +30,7 @@ def test_hardware_efficient_ansatz_zero_params_gives_zero_state(run_local):
 # ---------------------------------------------------------------------------
 # uccsd_singles_circuit
 # ---------------------------------------------------------------------------
+
 
 def test_uccsd_singles_initial_state_is_hartree_fock(run_local):
     # With zero excitation amplitudes, the only occupied state is HF: |1100>

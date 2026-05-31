@@ -5,8 +5,15 @@ from braket.devices import LocalSimulator
 from braket.circuits import Circuit
 
 
-def run_vqe(qubit_hamiltonian, ansatz_fn, n_qubits: int, n_params: int,
-            shots: int = 4000, maxiter: int = 100, optimizer: str = "cobyla") -> dict:
+def run_vqe(
+    qubit_hamiltonian,
+    ansatz_fn,
+    n_qubits: int,
+    n_params: int,
+    shots: int = 4000,
+    maxiter: int = 100,
+    optimizer: str = "cobyla",
+) -> dict:
     """Run VQE to find the ground state energy of a qubit Hamiltonian.
 
     Args:
@@ -22,6 +29,7 @@ def run_vqe(qubit_hamiltonian, ansatz_fn, n_qubits: int, n_params: int,
         Dict with optimal_energy, optimal_params, history, n_evaluations.
     """
     import sys
+
     sys.path.insert(0, "../..")
     from variational_utils import optimize_cobyla, optimize_spsa
 

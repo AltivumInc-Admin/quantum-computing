@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""Static contract check for browser-runnable notebooks.
+
+A notebook is offered a green "Run in browser" action in the web portal iff its
+first markdown cell contains the literal marker ``<!-- browser-runnable -->``
+(see ``web/src/lib/content.ts``). In the browser that notebook runs under
+Pyodide against ``qcsim`` (the pure-NumPy stand-in for the Braket SDK), so it
+must only use the subset of the API ``qcsim`` implements.
+
+This script enforces that promise *statically*: for every marker-bearing
+notebook it AST-scans the code cells and rejects imports / calls that ``qcsim``
+cannot satisfy in the browser (real hardware, PennyLane, OpenFermion, Braket
+result-type methods, etc.). It is the fast first line of defense;
+``tests/test_notebook_contract.py`` additionally *executes* each notebook under
+``qcsim`` to catch anything static analysis misses.
+
+Usage:
+    python scripts/validate_runnable.py                 # scan, exit 1 on violation
+    python scripts/validate_runnable.py --write-manifest # also (re)write the manifest
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+BROWSER_RUNNABLE_MARKER = "<!-- browser-runnable -->"
+
+# Curriculum section directories that hold authored notebooks. We list them
+# explicitly so we never scan the staged copies under web/jupyterlite-build/.
+SECTION_DIRS = [
+    "00-prereqs",
+    "00-foundations",
+    "01-hardware",
+    "02-algorithms",
+    "03-quantum-ml",
+    "04-quantum-chemistry",
+    "05-hybrid-jobs",
+]
+
+# Manifest consumed for the homepage runnable list / drift guard.
+MANIFEST_PATH = REPO_ROOT / "web" / "src" / "lib" / "runnable-manifest.json"
+
+# qcsim provides exactly braket.circuits.Circuit and braket.devices.LocalSimulator.
+ALLOWED_BRAKET_MODULES = {"braket", "braket.circuits", "braket.devices"}
+
+# Imports that cannot resolve in the Pyodide/qcsim runtime.
+DENIED_IMPORT_PREFIXES = (
+    "pennylane",
+    "openfermion",
+    "openfermionpyscf",
+    "pyscf",
+    "boto3",
+    "botocore",
+    "qiskit",
+    "cirq",
+)
+
+# Names that only exist in the real Braket SDK (hardware / managed jobs).
+DENIED_NAMES = {"AwsDevice", "AwsQuantumJob", "AwsSession", "AwsQuantumJobResult"}
+
+# Braket result-type methods qcsim does not implement (it exposes state_vector()
+# directly and computes expectations from counts instead).
+DENIED_CALL_ATTRS = {
+    "probability",
+    "expectation",
+    "amplitude",
+    "density_matrix",
+    "add_result_type",
+}
+
+
+def _cell_source(cell: dict) -> str:
+    src = cell.get("source", "")
+    return "".join(src) if isinstance(src, list) else (src or "")
+
+
+def is_marked_runnable(notebook: dict) -> bool:
+    """Mirror web/src/lib/content.ts: marker in the FIRST markdown cell."""
+    for cell in notebook.get("cells") or []:
+        if cell.get("cell_type") == "markdown":
+            return BROWSER_RUNNABLE_MARKER in _cell_source(cell)
+    return False
+
+
+def find_runnable_notebooks() -> list[Path]:
+    found: list[Path] = []
+    for section in SECTION_DIRS:
+        nb_dir = REPO_ROOT / section / "notebooks"
+        if not nb_dir.is_dir():
+            continue
+        for nb_path in sorted(nb_dir.glob("*.ipynb")):
+            try:
+                nb = json.loads(nb_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if is_marked_runnable(nb):
+                found.append(nb_path)
+    return found
+
+
+def _strip_magics(source: str) -> str | None:
+    """Drop IPython line magics / shell escapes so the cell parses as Python.
+
+    Returns ``None`` for a cell magic (``%%bash`` etc.) whose body is not
+    Python and should be skipped entirely.
+    """
+    lines = source.splitlines()
+    for line in lines:
+        if line.strip():
+            if line.lstrip().startswith("%%"):
+                return None  # whole-cell magic, not Python
+            break
+    kept = [ln for ln in lines if not ln.lstrip().startswith(("%", "!"))]
+    return "\n".join(kept)
+
+
+def _import_module_violation(module: str | None) -> bool:
+    if not module:
+        return False
+    if module in ALLOWED_BRAKET_MODULES:
+        return False
+    if module.startswith("braket."):
+        # Any braket submodule other than circuits/devices is unsupported.
+        return module not in ALLOWED_BRAKET_MODULES
+    return any(module == p or module.startswith(p + ".") for p in DENIED_IMPORT_PREFIXES)
+
+
+def scan_notebook(notebook_path: Path) -> list[str]:
+    """Return a list of human-readable contract violations (empty == clean)."""
+    violations: list[str] = []
+    nb = json.loads(notebook_path.read_text(encoding="utf-8"))
+    for idx, cell in enumerate(nb.get("cells") or []):
+        if cell.get("cell_type") != "code":
+            continue
+        source = _strip_magics(_cell_source(cell))
+        if source is None or not source.strip():
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as exc:
+            # Unparseable after magic-stripping; the execution test is the
+            # backstop. Surface as a warning, not a hard violation.
+            print(
+                f"  warning: {notebook_path.name} cell {idx} did not parse "
+                f"({exc.msg}); relying on execution test",
+                file=sys.stderr,
+            )
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if _import_module_violation(alias.name):
+                        violations.append(f"cell {idx}: forbidden import '{alias.name}'")
+            elif isinstance(node, ast.ImportFrom):
+                if _import_module_violation(node.module):
+                    violations.append(f"cell {idx}: forbidden import from '{node.module}'")
+            elif isinstance(node, ast.Name):
+                if node.id in DENIED_NAMES:
+                    violations.append(f"cell {idx}: forbidden name '{node.id}'")
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in DENIED_CALL_ATTRS:
+                    violations.append(
+                        f"cell {idx}: forbidden call '.{node.func.attr}()' "
+                        f"(qcsim has no Braket result types)"
+                    )
+    return violations
+
+
+def build_manifest() -> dict:
+    runnable = []
+    for nb_path in find_runnable_notebooks():
+        if not scan_notebook(nb_path):
+            runnable.append(nb_path.relative_to(REPO_ROOT).as_posix())
+    return {
+        "_comment": (
+            "Generated by scripts/validate_runnable.py. Do not edit by hand. "
+            "Lists notebooks marked <!-- browser-runnable --> that pass the static "
+            "qcsim-compatibility scan. Regenerate with: "
+            "python scripts/validate_runnable.py --write-manifest"
+        ),
+        "runnable": sorted(runnable),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--write-manifest",
+        action="store_true",
+        help="(re)write web/src/lib/runnable-manifest.json after a clean scan",
+    )
+    args = parser.parse_args()
+
+    runnable = find_runnable_notebooks()
+    print(f"Found {len(runnable)} browser-runnable notebook(s).")
+
+    total_violations = 0
+    for nb_path in runnable:
+        violations = scan_notebook(nb_path)
+        rel = nb_path.relative_to(REPO_ROOT).as_posix()
+        if violations:
+            total_violations += len(violations)
+            print(f"FAIL  {rel}")
+            for v in violations:
+                print(f"        {v}")
+        else:
+            print(f"ok    {rel}")
+
+    if total_violations:
+        print(
+            f"\n{total_violations} contract violation(s): a notebook marked "
+            f"<!-- browser-runnable --> uses an API qcsim cannot run in the browser. "
+            f"Remove the marker or rewrite the cell.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.write_manifest:
+        MANIFEST_PATH.write_text(json.dumps(build_manifest(), indent=2) + "\n", encoding="utf-8")
+        print(f"\nWrote manifest: {MANIFEST_PATH.relative_to(REPO_ROOT).as_posix()}")
+
+    print("\nAll browser-runnable notebooks pass the static qcsim contract.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

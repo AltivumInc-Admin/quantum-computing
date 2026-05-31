@@ -41,6 +41,5 @@ def test_train_vqc_loss_decreases():
     losses = out["loss_history"]
     # With analytic gradients we expect a non-trivial drop.
     assert losses[-1] < losses[0] - 0.01, (
-        f"loss did not decrease meaningfully: "
-        f"start={losses[0]:.4f}, end={losses[-1]:.4f}"
+        f"loss did not decrease meaningfully: start={losses[0]:.4f}, end={losses[-1]:.4f}"
     )

@@ -12,7 +12,11 @@ def main():
     try:
         devices = AwsDevice.get_devices()
         for d in sorted(devices, key=lambda x: x.provider_name):
-            qubits = getattr(d.properties, "qubitCount", "N/A") if hasattr(d.properties, "qubitCount") else "N/A"
+            qubits = (
+                getattr(d.properties, "qubitCount", "N/A")
+                if hasattr(d.properties, "qubitCount")
+                else "N/A"
+            )
             dev_type = "QPU" if "qpu" in d.arn else "Simulator"
             print(f"{d.name:<35} {d.provider_name:<12} {d.status:<10} {str(qubits):<8} {dev_type}")
     except Exception as e:

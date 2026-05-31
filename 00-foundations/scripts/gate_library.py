@@ -50,6 +50,7 @@ def demonstrate_gate(gate_name: str, shots: int = 1000) -> dict:
         raise ValueError(f"Unknown gate: {gate_name}. Available: {list(GATES.keys())}")
 
     from braket.devices import LocalSimulator
+
     device = LocalSimulator()
     results = {}
 

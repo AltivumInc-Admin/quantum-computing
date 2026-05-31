@@ -14,6 +14,7 @@ from lib.ml.feature_maps import (
 # angle_encoding
 # ---------------------------------------------------------------------------
 
+
 def test_angle_encoding_qubit_count():
     circuit = angle_encoding(np.zeros(4))
     assert circuit.qubit_count == 4
@@ -29,6 +30,7 @@ def test_angle_encoding_zero_features_gives_zero_state(run_local):
 # ---------------------------------------------------------------------------
 # iqp_encoding
 # ---------------------------------------------------------------------------
+
 
 def test_iqp_encoding_qubit_count():
     circuit = iqp_encoding(np.array([0.1, 0.2, 0.3]))
@@ -52,6 +54,7 @@ def test_iqp_encoding_is_unitary(run_local):
 # amplitude_encoding (Möttönen)
 # ---------------------------------------------------------------------------
 
+
 def test_amplitude_encoding_uniform_features_is_uniform(run_local):
     # [1,1,1,1] should give each of the 4 basis states ~25%.
     result = run_local(amplitude_encoding(np.array([1.0, 1.0, 1.0, 1.0])), shots=4000)
@@ -64,7 +67,7 @@ def test_amplitude_encoding_uniform_features_is_uniform(run_local):
 def test_amplitude_encoding_matches_squared_amplitudes(run_local):
     # Probabilities must equal |amplitudes|^2 within shot noise.
     features = np.array([3.0, 1.0, 4.0, 1.0])
-    expected = (features ** 2) / np.sum(features ** 2)
+    expected = (features**2) / np.sum(features**2)
     result = run_local(amplitude_encoding(features), shots=8000)
     counts = result.measurement_counts
     for idx, state in enumerate(("00", "01", "10", "11")):
@@ -77,7 +80,7 @@ def test_amplitude_encoding_matches_squared_amplitudes(run_local):
 def test_amplitude_encoding_eight_dim(run_local):
     # Verify the 3-qubit recursion path.
     features = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
-    expected = (features ** 2) / np.sum(features ** 2)
+    expected = (features**2) / np.sum(features**2)
     result = run_local(amplitude_encoding(features), shots=20000)
     counts = result.measurement_counts
     for idx in range(8):

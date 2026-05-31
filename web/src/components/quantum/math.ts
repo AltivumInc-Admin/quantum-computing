@@ -1,0 +1,148 @@
+/**
+ * Pure-TypeScript state-vector kernel for the inline `qsim` circuit lab.
+ *
+ * Conventions mirror qcsim (qcsim/src/qcsim/circuits.py) exactly so the browser
+ * and Python simulators never disagree: state is a length-2^n array of complex
+ * amplitudes, and qubit 0 is the MOST-significant bit of the basis-state index
+ * (big-endian), matching Braket's measurement output. The committed gate
+ * fixtures (__fixtures__/gates.json) are generated from qcsim, and
+ * math.test.ts asserts these matrices agree to 1e-10.
+ */
+
+/** A complex number as [real, imaginary]. */
+export type Complex = [number, number];
+
+/** A 2x2 single-qubit gate. */
+export type Gate2 = [[Complex, Complex], [Complex, Complex]];
+
+// --- complex arithmetic ---------------------------------------------------
+
+export const cAdd = (a: Complex, b: Complex): Complex => [a[0] + b[0], a[1] + b[1]];
+export const cMul = (a: Complex, b: Complex): Complex => [
+  a[0] * b[0] - a[1] * b[1],
+  a[0] * b[1] + a[1] * b[0],
+];
+export const cAbs2 = (a: Complex): number => a[0] * a[0] + a[1] * a[1];
+export const cConj = (a: Complex): Complex => [a[0], -a[1]];
+
+const R2 = Math.SQRT1_2; // 1/sqrt(2)
+
+// --- constant gate matrices (match qcsim) ---------------------------------
+
+export const I: Gate2 = [[[1, 0], [0, 0]], [[0, 0], [1, 0]]];
+export const X: Gate2 = [[[0, 0], [1, 0]], [[1, 0], [0, 0]]];
+export const Y: Gate2 = [[[0, 0], [0, -1]], [[0, 1], [0, 0]]];
+export const Z: Gate2 = [[[1, 0], [0, 0]], [[0, 0], [-1, 0]]];
+export const H: Gate2 = [[[R2, 0], [R2, 0]], [[R2, 0], [-R2, 0]]];
+export const S: Gate2 = [[[1, 0], [0, 0]], [[0, 0], [0, 1]]];
+export const T: Gate2 = [[[1, 0], [0, 0]], [[0, 0], [Math.SQRT1_2, Math.SQRT1_2]]];
+
+// --- parameterized rotation gates (match qcsim _rx/_ry/_rz) ---------------
+
+export function rx(theta: number): Gate2 {
+  const c = Math.cos(theta / 2);
+  const s = Math.sin(theta / 2);
+  return [[[c, 0], [0, -s]], [[0, -s], [c, 0]]];
+}
+
+export function ry(theta: number): Gate2 {
+  const c = Math.cos(theta / 2);
+  const s = Math.sin(theta / 2);
+  return [[[c, 0], [-s, 0]], [[s, 0], [c, 0]]];
+}
+
+export function rz(theta: number): Gate2 {
+  const c = Math.cos(theta / 2);
+  const s = Math.sin(theta / 2);
+  return [[[c, -s], [0, 0]], [[0, 0], [c, s]]];
+}
+
+const NAMED_GATES: Record<string, Gate2> = { I, X, Y, Z, H, S, T };
+
+// --- state-vector operations ----------------------------------------------
+
+/** The |0...0> state for `n` qubits. */
+export function zeroState(n: number): Complex[] {
+  const state: Complex[] = Array.from({ length: 1 << n }, () => [0, 0] as Complex);
+  state[0] = [1, 0];
+  return state;
+}
+
+/** Apply a 2x2 gate to `qubit` (big-endian: qubit 0 is the MSB). */
+export function applyGate1(state: Complex[], gate: Gate2, qubit: number, n: number): Complex[] {
+  const out = state.map((c) => [c[0], c[1]] as Complex);
+  const stride = 1 << (n - 1 - qubit);
+  for (let i = 0; i < state.length; i++) {
+    if ((i & stride) === 0) {
+      const j = i | stride;
+      const a = state[i];
+      const b = state[j];
+      out[i] = cAdd(cMul(gate[0][0], a), cMul(gate[0][1], b));
+      out[j] = cAdd(cMul(gate[1][0], a), cMul(gate[1][1], b));
+    }
+  }
+  return out;
+}
+
+/** Apply CNOT: flip `target` when `control` is |1>. */
+export function applyCNOT(state: Complex[], control: number, target: number, n: number): Complex[] {
+  const out = state.map((c) => [c[0], c[1]] as Complex);
+  const cMask = 1 << (n - 1 - control);
+  const tMask = 1 << (n - 1 - target);
+  for (let i = 0; i < state.length; i++) {
+    if ((i & cMask) !== 0 && (i & tMask) === 0) {
+      const j = i | tMask;
+      out[i] = [state[j][0], state[j][1]];
+      out[j] = [state[i][0], state[i][1]];
+    }
+  }
+  return out;
+}
+
+/** Measurement probabilities P(basis state) = |amplitude|^2. */
+export function probabilities(state: Complex[]): number[] {
+  return state.map(cAbs2);
+}
+
+/** Bloch-sphere coordinates for a single-qubit state [a|0> + b|1>]. */
+export function blochVector(state: Complex[]): { x: number; y: number; z: number } {
+  const a = state[0];
+  const b = state[1];
+  const ab = cMul(cConj(a), b); // <0|psi>* <1|psi>
+  return { x: 2 * ab[0], y: 2 * ab[1], z: cAbs2(a) - cAbs2(b) };
+}
+
+// --- a tiny circuit runner for the inline lab DSL -------------------------
+
+export interface Op {
+  gate: string; // H,X,Y,Z,S,T,I,RX,RY,RZ,CNOT
+  target: number;
+  control?: number;
+  theta?: number;
+}
+
+/** Run a sequence of ops on |0...0> and return the final state vector. */
+export function simulate(ops: Op[], n: number): Complex[] {
+  let state = zeroState(n);
+  for (const op of ops) {
+    const g = op.gate.toUpperCase();
+    if (g === "CNOT") {
+      if (op.control === undefined) throw new Error("CNOT requires a control qubit");
+      state = applyCNOT(state, op.control, op.target, n);
+    } else if (g === "RX" || g === "RY" || g === "RZ") {
+      const theta = op.theta ?? 0;
+      const gate = g === "RX" ? rx(theta) : g === "RY" ? ry(theta) : rz(theta);
+      state = applyGate1(state, gate, op.target, n);
+    } else if (g in NAMED_GATES) {
+      state = applyGate1(state, NAMED_GATES[g], op.target, n);
+    } else {
+      throw new Error(`unknown gate '${op.gate}'`);
+    }
+  }
+  return state;
+}
+
+/** Binary basis-state label for index `i` over `n` qubits (qubit 0 leftmost). */
+export function basisLabel(i: number, n: number): string {
+  return i.toString(2).padStart(n, "0");
+}

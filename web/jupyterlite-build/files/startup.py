@@ -10,6 +10,7 @@ import sys
 
 try:
     import piplite
+
     await piplite.install("qcsim")  # noqa: F704
     import qcsim  # noqa: F401 — triggers braket.* alias registration
 except Exception as exc:  # pragma: no cover - kernel diagnostic only

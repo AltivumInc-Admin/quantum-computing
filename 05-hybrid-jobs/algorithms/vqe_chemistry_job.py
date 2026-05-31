@@ -3,7 +3,7 @@
 import os
 import json
 import numpy as np
-from braket.jobs import save_job_result, load_job_checkpoint, save_job_checkpoint
+from braket.jobs import save_job_result
 from braket.jobs.metrics import log_metric
 
 
@@ -26,10 +26,10 @@ def main():
 
     from lib.chemistry.ansatz import hardware_efficient_ansatz
 
-    n_params = n_layers * n_qubits * 2
     initial_params = np.random.uniform(-0.1, 0.1, size=(n_layers, n_qubits, 2))
 
     from braket.devices import LocalSimulator
+
     device = LocalSimulator()
 
     def energy_fn(flat_params):
@@ -43,6 +43,7 @@ def main():
                 continue
 
             from braket.circuits import Circuit
+
             meas_circuit = Circuit()
             for gate in circuit.instructions:
                 meas_circuit.add_instruction(gate)
@@ -67,17 +68,21 @@ def main():
         return total_energy
 
     from scipy.optimize import minimize
-    result = minimize(energy_fn, initial_params.flatten(), method="COBYLA",
-                     options={"maxiter": maxiter})
 
-    save_job_result({
-        "molecule": molecule,
-        "bond_length": bond_length,
-        "ground_state_energy": float(result.fun),
-        "optimal_params": result.x.tolist(),
-        "n_qubits": n_qubits,
-        "converged": result.success,
-    })
+    result = minimize(
+        energy_fn, initial_params.flatten(), method="COBYLA", options={"maxiter": maxiter}
+    )
+
+    save_job_result(
+        {
+            "molecule": molecule,
+            "bond_length": bond_length,
+            "ground_state_energy": float(result.fun),
+            "optimal_params": result.x.tolist(),
+            "n_qubits": n_qubits,
+            "converged": result.success,
+        }
+    )
 
 
 if __name__ == "__main__":

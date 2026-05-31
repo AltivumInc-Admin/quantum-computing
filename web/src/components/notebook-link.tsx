@@ -10,7 +10,8 @@ export function NotebookLink({
   browserRunnable = false,
 }: NotebookLinkProps) {
   const repoUrl =
-    process.env.NEXT_PUBLIC_GITHUB_REPO || "https://github.com/altivum/quantum";
+    process.env.NEXT_PUBLIC_GITHUB_REPO ||
+    "https://github.com/thechrisgrey/quantum-computing";
   const githubHref = `${repoUrl}/blob/main/${sectionDir}/notebooks/${filename}`;
   const runHref = `/lab/lab/index.html?path=${encodeURIComponent(
     `${sectionDir}/notebooks/${filename}`

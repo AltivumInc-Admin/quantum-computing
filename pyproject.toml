@@ -13,7 +13,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=4.0", "ruff>=0.5", "pip-tools>=7.0", "nbstripout>=0.7"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.5",
+    "pip-tools>=7.0",
+    "nbstripout>=0.7",
+    # Notebook-contract test (tests/test_notebook_contract.py): execute every
+    # browser-runnable notebook headlessly under qcsim. ipywidgets is bundled
+    # by JupyterLite in the browser, so the local/CI test env needs it too.
+    "nbclient>=0.10",
+    "ipykernel>=6.29",
+    "ipywidgets>=8.1",
+]
 full = [
     "pennylane>=0.38",
     "amazon-braket-pennylane-plugin>=1.30",
@@ -28,6 +40,9 @@ include = ["lib*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Notebooks are taught content with a standard import preamble; they are
+# executed/validated by tests/test_notebook_contract.py, not linted as source.
+extend-exclude = ["*.ipynb"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

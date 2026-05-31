@@ -37,20 +37,20 @@ Given f(x) = s . x (dot product mod 2) for hidden string s:
 
 **Grover's Search Algorithm:**
 Given an oracle that marks one item out of N = 2^n:
-- Classical: O(N) queries needed
-- Quantum: O(sqrt(N)) queries — quadratic speedup
+- Classical: $O(N)$ queries needed
+- Quantum: $O(\sqrt{N})$ queries — quadratic speedup
 
 Key steps (one "Grover iteration"):
 1. Apply oracle: Flip phase of the marked state
 2. Apply diffusion: Reflect about the mean amplitude
 
-Optimal number of iterations: approximately (pi/4) * sqrt(N)
+Optimal number of iterations: approximately $\tfrac{\pi}{4}\sqrt{N}$
 
 ### Quantum Fourier Transform (QFT)
 
 The QFT is the quantum analogue of the Discrete Fourier Transform. It maps computational basis states to the frequency domain:
 
-QFT|j> = (1/sqrt(N)) * sum_{k=0}^{N-1} e^(2*pi*i*j*k/N) |k>
+$$\text{QFT}\ket{j} = \frac{1}{\sqrt{N}} \sum_{k=0}^{N-1} e^{2\pi i jk/N} \ket{k}$$
 
 **Circuit construction:**
 - Apply H to qubit j
@@ -58,15 +58,15 @@ QFT|j> = (1/sqrt(N)) * sum_{k=0}^{N-1} e^(2*pi*i*j*k/N) |k>
 - Repeat for each qubit
 - Reverse qubit order (SWAP)
 
-The QFT circuit uses O(n^2) gates for n qubits — exponentially faster than the classical FFT's O(n * 2^n) operations on the amplitudes.
+The QFT circuit uses $O(n^2)$ gates for $n$ qubits — exponentially faster than the classical FFT's $O(n \cdot 2^n)$ operations on the amplitudes.
 
 **Applications:** Phase estimation, Shor's algorithm, quantum simulation, amplitude estimation.
 
 ### Quantum Phase Estimation (QPE)
 
 QPE extracts the eigenvalue of a unitary operator. Given:
-- A unitary U with eigenvector |u> such that U|u> = e^(2*pi*i*phi)|u>
-- QPE estimates phi to n bits of precision using n ancilla qubits
+- A unitary $U$ with eigenvector $\ket{u}$ such that $U\ket{u} = e^{2\pi i\phi}\ket{u}$
+- QPE estimates $\phi$ to $n$ bits of precision using $n$ ancilla qubits
 
 **Circuit:**
 1. Prepare ancilla qubits in |+> (Hadamard on each)

@@ -3,6 +3,8 @@
 setup:
 	@echo "Installing dependencies..."
 	pip install -e ".[dev]"
+	@echo "Installing qcsim (separate package; required by parity + notebook-contract tests)..."
+	pip install -e ./qcsim
 	@echo "Validating AWS credentials..."
 	@bash infra/scripts/validate-setup.sh
 	@echo "Installing nbstripout git filter..."

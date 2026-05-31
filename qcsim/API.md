@@ -27,6 +27,9 @@ already imported.
 | `.rx(q, theta)` `.ry(q, theta)` `.rz(q, theta)` | Single-qubit rotations |
 | `.cnot(c, t)` `.cz(c, t)` `.swap(a, b)` | Two-qubit gates |
 | `.ccnot(c1, c2, t)` | Toffoli |
+| `.add_circuit(other)` | Append another circuit's gates (optional `target_mapping` remap) |
+| `.adjoint()` | New circuit implementing the inverse U-dagger (reverse order + conjugate-transpose each gate). Mirrors Braket; powers compute-uncompute kernels |
+| `.instructions` | List of applied `Instruction` objects (`.operator` label, `.target` qubit tuple). Supports `sum(1 for _ in circuit.instructions)` |
 | `.qubit_count` | Highest target qubit + 1 |
 | `.depth` | Length of the gate list (informational) |
 | `str(circuit)` | Multi-line ASCII rendering |
@@ -60,6 +63,6 @@ Notebooks that import `braket.aws` MUST NOT be marked
 
 ## Parity guarantee
 
-`tests/test_qcsim_parity.py` exercises 8 reference circuits and asserts
+`tests/test_qcsim_parity.py` exercises 10 reference circuits and asserts
 that `qcsim` and real Braket produce measurement distributions matching
-within 3-sigma at 1000 shots, plus exact equality on deterministic states.
+within 4-sigma at 1000 shots, plus exact equality on deterministic states.

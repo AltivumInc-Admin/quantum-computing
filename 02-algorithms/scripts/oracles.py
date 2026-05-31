@@ -1,7 +1,6 @@
 """Reusable oracle circuit construction for quantum algorithms."""
 
 from braket.circuits import Circuit
-import numpy as np
 
 
 def constant_oracle(n_qubits: int, output_value: int = 0) -> Circuit:

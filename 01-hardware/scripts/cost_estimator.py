@@ -3,17 +3,20 @@
 
 import argparse
 import sys
+
 sys.path.insert(0, "../..")
 from lib.utils.cost import estimate_cost, format_cost_warning, PRICING
 
 
 def main():
     parser = argparse.ArgumentParser(description="Estimate Amazon Braket task costs")
-    parser.add_argument("--device", required=True, choices=list(PRICING.keys()),
-                       help="Device/provider name")
+    parser.add_argument(
+        "--device", required=True, choices=list(PRICING.keys()), help="Device/provider name"
+    )
     parser.add_argument("--shots", type=int, default=1000, help="Number of shots")
-    parser.add_argument("--minutes", type=float, default=1.0,
-                       help="Estimated runtime in minutes (for simulators)")
+    parser.add_argument(
+        "--minutes", type=float, default=1.0, help="Estimated runtime in minutes (for simulators)"
+    )
     parser.add_argument("--tasks", type=int, default=1, help="Number of tasks to submit")
     args = parser.parse_args()
 

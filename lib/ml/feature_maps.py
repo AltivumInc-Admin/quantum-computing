@@ -84,9 +84,7 @@ def amplitude_encoding(features: np.ndarray) -> Circuit:
 
     n_amplitudes = features.size
     if n_amplitudes < 2 or (n_amplitudes & (n_amplitudes - 1)) != 0:
-        raise ValueError(
-            f"Feature length must be a power of 2 and >= 2, got {n_amplitudes}"
-        )
+        raise ValueError(f"Feature length must be a power of 2 and >= 2, got {n_amplitudes}")
     if np.any(features < 0):
         raise ValueError(
             "amplitude_encoding requires non-negative features. "
@@ -125,12 +123,12 @@ def _mottonen_alphas(amplitudes: np.ndarray, level: int, n_qubits: int) -> list[
     n_groups = 1 << level
     alphas: list[float] = []
     for j in range(n_groups):
-        group = amplitudes[j * group_size:(j + 1) * group_size]
+        group = amplitudes[j * group_size : (j + 1) * group_size]
         full_norm = float(np.linalg.norm(group))
         if full_norm < 1e-15:
             alphas.append(0.0)
             continue
-        upper_norm = float(np.linalg.norm(group[group_size // 2:]))
+        upper_norm = float(np.linalg.norm(group[group_size // 2 :]))
         # Clip to [0, 1] to guard against tiny floating-point overshoot.
         ratio = float(np.clip(upper_norm / full_norm, 0.0, 1.0))
         alphas.append(2.0 * float(np.arcsin(ratio)))

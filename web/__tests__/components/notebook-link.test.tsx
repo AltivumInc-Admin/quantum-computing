@@ -25,7 +25,7 @@ describe("NotebookLink", () => {
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute(
       "href",
-      "https://github.com/altivum/quantum/blob/main/00-foundations/notebooks/01-first-circuit.ipynb"
+      "https://github.com/thechrisgrey/quantum-computing/blob/main/00-foundations/notebooks/01-first-circuit.ipynb"
     );
   });
 
@@ -72,7 +72,7 @@ describe("NotebookLink", () => {
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute(
       "href",
-      "https://github.com/altivum/quantum/blob/main/03-quantum-ml/notebooks/01-data-encoding.ipynb"
+      "https://github.com/thechrisgrey/quantum-computing/blob/main/03-quantum-ml/notebooks/01-data-encoding.ipynb"
     );
   });
 });

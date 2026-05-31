@@ -4,8 +4,9 @@ import numpy as np
 from scipy.optimize import minimize
 
 
-def optimize_cobyla(cost_fn, initial_params: np.ndarray, maxiter: int = 200,
-                    rhobeg: float = 0.5, callback=None) -> dict:
+def optimize_cobyla(
+    cost_fn, initial_params: np.ndarray, maxiter: int = 200, rhobeg: float = 0.5, callback=None
+) -> dict:
     """Optimize using COBYLA (gradient-free).
 
     Args:
@@ -27,8 +28,12 @@ def optimize_cobyla(cost_fn, initial_params: np.ndarray, maxiter: int = 200,
             callback(params, cost)
         return cost
 
-    result = minimize(tracked_cost, initial_params, method="COBYLA",
-                     options={"maxiter": maxiter, "rhobeg": rhobeg})
+    result = minimize(
+        tracked_cost,
+        initial_params,
+        method="COBYLA",
+        options={"maxiter": maxiter, "rhobeg": rhobeg},
+    )
 
     return {
         "optimal_params": result.x,
@@ -39,8 +44,14 @@ def optimize_cobyla(cost_fn, initial_params: np.ndarray, maxiter: int = 200,
     }
 
 
-def optimize_spsa(cost_fn, initial_params: np.ndarray, maxiter: int = 200,
-                  a: float = 0.1, c: float = 0.1, callback=None) -> dict:
+def optimize_spsa(
+    cost_fn,
+    initial_params: np.ndarray,
+    maxiter: int = 200,
+    a: float = 0.1,
+    c: float = 0.1,
+    callback=None,
+) -> dict:
     """Optimize using SPSA (stochastic gradient approximation).
 
     Only 2 function evaluations per iteration regardless of parameter count.
@@ -62,8 +73,8 @@ def optimize_spsa(cost_fn, initial_params: np.ndarray, maxiter: int = 200,
     n_evals = 0
 
     for k in range(1, maxiter + 1):
-        ak = a / (k ** 0.602)
-        ck = c / (k ** 0.101)
+        ak = a / (k**0.602)
+        ck = c / (k**0.101)
 
         delta = np.random.choice([-1, 1], size=len(params))
         params_plus = params + ck * delta

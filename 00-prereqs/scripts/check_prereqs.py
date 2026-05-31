@@ -104,7 +104,9 @@ def main() -> int:
         print(f"Optional install for the best experience:\n    pip install {names}")
 
     if ok:
-        print("Environment is ready. Launch the notebooks with:\n    jupyter lab 00-prereqs/notebooks")
+        print(
+            "Environment is ready. Launch the notebooks with:\n    jupyter lab 00-prereqs/notebooks"
+        )
         return 0
     return 1
 

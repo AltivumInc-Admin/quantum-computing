@@ -47,6 +47,7 @@ def test_quantum_kernel_orthogonal_features_low_overlap():
 # vqc_qnode (PennyLane)
 # ---------------------------------------------------------------------------
 
+
 def test_vqc_qnode_returns_expval_one_at_zero():
     # All-zero features and params keep the state at |0...0>, so <Z_0> = +1.
     n_qubits, n_layers = 3, 2

@@ -19,8 +19,9 @@ from braket.circuits import Circuit
 from braket.devices import LocalSimulator
 
 
-def build_vqc_circuit(n_qubits: int, n_layers: int, features: np.ndarray,
-                      params: np.ndarray) -> Circuit:
+def build_vqc_circuit(
+    n_qubits: int, n_layers: int, features: np.ndarray, params: np.ndarray
+) -> Circuit:
     """Build a Variational Quantum Classifier circuit.
 
     Architecture: angle encoding -> (Ry rotations + CNOT entangling) x n_layers

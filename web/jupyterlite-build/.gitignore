@@ -1,5 +1,6 @@
 .venv/
 .cache/
+files/00-prereqs/
 files/00-foundations/
 files/01-hardware/
 files/02-algorithms/

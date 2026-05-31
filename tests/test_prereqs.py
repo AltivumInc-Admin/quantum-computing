@@ -227,9 +227,7 @@ def test_bloch_parametrization_round_trip():
                 # phi is undefined at the poles, only check off-pole.
                 assert np.isclose(
                     np.mod(recovered_phi - phi, 2 * np.pi), 0, atol=1e-10
-                ) or np.isclose(
-                    np.mod(recovered_phi - phi, 2 * np.pi), 2 * np.pi, atol=1e-10
-                )
+                ) or np.isclose(np.mod(recovered_phi - phi, 2 * np.pi), 2 * np.pi, atol=1e-10)
 
 
 def test_bloch_probabilities_match_amplitudes():

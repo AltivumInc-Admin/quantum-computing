@@ -19,9 +19,7 @@ class _Result:
 
     @property
     def measurement_counts(self) -> Counter:
-        return Counter(
-            "".join(str(int(b)) for b in row) for row in self.measurements
-        )
+        return Counter("".join(str(int(b)) for b in row) for row in self.measurements)
 
     @property
     def measurement_probabilities(self) -> dict[str, float]:

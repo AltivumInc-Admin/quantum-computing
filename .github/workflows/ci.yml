@@ -1,0 +1,122 @@
+name: CI
+
+# Gate every PR and every push to main on the full test + lint + build-smoke
+# matrix. main is intended to be a protected branch with the three jobs below
+# (python, web, build-smoke) as required status checks, so Amplify only ever
+# auto-builds a commit that has already passed CI.
+#
+# Version pinning: keep PYTHON_VERSION / NODE_VERSION aligned with the Amplify
+# build image (Amplify console -> App settings -> Build settings / build logs).
+# Python is pinned to 3.12 because openfermionpyscf/pyscf (the [full] extra)
+# ship wheels for 3.12; newer interpreters may lack them.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python tests + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # MUST be .[dev,full] (not .[dev]) or the pytest.importorskip tests
+          # for pennylane / openfermion silently skip and CI is green-but-blind.
+          pip install -e ".[dev,full]"
+          # qcsim is a separate package the parity + contract tests import; it
+          # is NOT installed by the root project, so install it explicitly.
+          pip install -e ./qcsim
+
+      - name: Run tests
+        run: make test
+
+      - name: Lint
+        run: make lint
+
+  web:
+    name: Web tests + lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+  build-smoke:
+    name: JupyterLite + static export build smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # build.sh creates its own .venv and downloads the Pyodide kernel; cache
+      # both to keep the smoke build fast.
+      - name: Cache JupyterLite build environment
+        uses: actions/cache@v4
+        with:
+          path: |
+            web/jupyterlite-build/.venv
+            web/jupyterlite-build/.jupyterlite.doit.db
+            web/jupyterlite-build/.cache
+          key: jupyterlite-${{ runner.os }}-${{ hashFiles('web/jupyterlite-build/requirements.txt', 'qcsim/**/*.py', 'qcsim/pyproject.toml') }}
+
+      - name: Build JupyterLite distribution (qcsim wheel -> Pyodide)
+        run: bash web/jupyterlite-build/build.sh
+
+      - name: Build static export
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assert build artifacts exist
+        run: |
+          test -d web/out || { echo "missing web/out (static export)"; exit 1; }
+          test -d web/public/lab || { echo "missing web/public/lab (JupyterLite)"; exit 1; }
+          echo "Build artifacts present: web/out/ and web/public/lab/"
