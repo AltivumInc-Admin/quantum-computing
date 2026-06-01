@@ -192,7 +192,7 @@ export function CircuitLab({ source }: { source: string }) {
     return (
       <span
         key={i}
-        className="rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300"
+        className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300"
       >
         {label}
       </span>
@@ -200,7 +200,7 @@ export function CircuitLab({ source }: { source: string }) {
   });
 
   return (
-    <div className="not-prose my-6 rounded-xl border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-gray-900/40 overflow-hidden">
+    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
       <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
           Live circuit

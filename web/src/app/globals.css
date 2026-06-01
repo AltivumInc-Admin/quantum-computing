@@ -7,11 +7,15 @@
 @theme inline {
   --color-accent: oklch(0.72 0.15 192);
   --color-accent-light: oklch(0.82 0.12 192);
-  --color-accent-dark: oklch(0.58 0.15 192);
+  --color-accent-dark: oklch(0.5 0.15 192);
   --color-warm: oklch(0.78 0.12 75);
   --color-warm-light: oklch(0.88 0.08 75);
+  --color-warm-dark: oklch(0.52 0.12 75);
   --font-sans: var(--font-jakarta), system-ui, sans-serif;
   --font-display: var(--font-instrument), Georgia, serif;
+  --radius-chip: 0.5rem;
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
 }
 
 @keyframes fade-up {
@@ -74,26 +78,131 @@
 }
 
 @layer base {
+  :root {
+    --surface-base: #f8fafb;
+    --surface-1: #ffffff;
+    --surface-2: #f1f5f7;
+
+    /* Two-step elevation: ambient + contact shadows from a fixed top-down
+       light. Theme-aware alphas keep depth legible on both surfaces. */
+    --shadow-resting: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 8px -2px oklch(0 0 0 / 0.05);
+    --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.05), 0 12px 20px -6px oklch(0 0 0 / 0.12),
+      0 24px 40px -12px oklch(0 0 0 / 0.1);
+  }
+
+  .dark {
+    --surface-base: #080c14;
+    --surface-1: #0d1320;
+    --surface-2: #0a0f1a;
+
+    --shadow-resting: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 8px -2px oklch(0 0 0 / 0.4);
+    --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.4), 0 12px 24px -6px oklch(0 0 0 / 0.55),
+      0 24px 48px -12px oklch(0 0 0 / 0.45);
+  }
+
   body {
-    @apply bg-[#f8fafb] text-gray-800 dark:bg-[#080c14] dark:text-gray-200;
+    @apply text-gray-800 dark:text-gray-200;
+    background: var(--surface-base);
   }
 }
 
 @layer components {
+  /* Section accents driven by a single --hue token set on the card. One hue
+     feeds the gradient bleed, the number badge, and the hover glow, so they
+     can never drift out of agreement (oklch keeps lightness perceptually
+     matched across hues). */
+  .section-bleed {
+    background: linear-gradient(
+      135deg,
+      oklch(0.72 0.15 var(--hue) / 0.2),
+      transparent 70%
+    );
+  }
+
+  .section-badge {
+    background: oklch(0.72 0.15 var(--hue) / 0.12);
+    color: oklch(0.5 0.16 var(--hue));
+  }
+
+  .dark .section-badge {
+    color: oklch(0.82 0.13 var(--hue));
+  }
+
+  .section-glow {
+    background: linear-gradient(
+      135deg,
+      oklch(0.72 0.15 var(--hue) / 0.18),
+      transparent 60%
+    );
+  }
+
   .prose pre {
     @apply bg-gray-900 dark:bg-gray-900/80 rounded-xl overflow-x-auto border border-gray-800;
   }
 
-  .prose code {
+  /* Inline code reads as a tinted brand chip; fenced blocks keep github-dark
+     via .prose pre code below. */
+  .prose :not(pre) > code {
     @apply text-accent dark:text-accent-light font-medium;
+    background: oklch(0.72 0.15 192 / 0.1);
+    padding: 0.1em 0.4em;
+    border-radius: var(--radius-chip);
+  }
+
+  /* @tailwindcss/typography wraps inline code in literal backticks; drop them
+     now that inline code carries its own chip. */
+  .prose :not(pre) > code::before,
+  .prose :not(pre) > code::after {
+    content: none;
   }
 
   .prose pre code {
     @apply text-gray-200;
   }
 
-  .prose h1, .prose h2, .prose h3 {
+  .prose h1,
+  .prose h2,
+  .prose h3 {
     font-family: var(--font-display);
+  }
+
+  /* Fluid heading scale: continuous sizing with no breakpoint jumps; balanced
+     wrapping so a title never leaves a lone word on the last line. */
+  .prose h1 {
+    font-size: clamp(2rem, 1.4rem + 2.6vw, 3rem);
+    text-wrap: balance;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .prose h2 {
+    font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2rem);
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+
+  .prose h3 {
+    text-wrap: balance;
+  }
+
+  .prose p,
+  .prose li {
+    text-wrap: pretty;
+  }
+
+  .prose a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 1px;
+  }
+
+  .prose blockquote {
+    border-inline-start: 3px solid var(--color-accent);
+    font-style: normal;
+    color: inherit;
+  }
+
+  .prose thead th {
+    border-bottom-color: var(--color-accent);
   }
 }
 
@@ -115,7 +224,7 @@
   }
 
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:focus-visible:ring-offset-[#0a0f1a];
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:focus-visible:ring-offset-(--surface-2);
   }
 
   .interactive {
@@ -167,6 +276,10 @@
     background-image: radial-gradient(circle, oklch(0.7 0.01 250 / 0.12) 1px, transparent 1px);
     background-size: 32px 32px;
   }
+}
+
+::selection {
+  background: oklch(0.72 0.15 192 / 0.25);
 }
 
 @media (prefers-reduced-motion: reduce) {

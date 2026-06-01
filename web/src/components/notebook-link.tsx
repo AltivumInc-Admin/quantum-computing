@@ -22,7 +22,7 @@ export function NotebookLink({
     .replace(/-/g, " ");
 
   return (
-    <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-gray-900/40 hover:border-accent/30 dark:hover:border-accent/30 transition-colors duration-200 group">
+    <div className="flex items-center gap-3 p-4 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) hover:border-accent/30 dark:hover:border-accent/30 transition-colors duration-200 group">
       <div className="shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-gray-100 to-gray-50 dark:from-gray-800 dark:to-gray-800/50 flex items-center justify-center">
         <svg
           className="w-4.5 h-4.5 text-gray-400"

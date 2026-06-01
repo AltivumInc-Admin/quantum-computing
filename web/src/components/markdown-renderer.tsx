@@ -4,6 +4,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import { CircuitLab } from "./quantum/circuit-lab";
+import { Quiz } from "./quantum/quiz";
 
 interface MarkdownRendererProps {
   content: string;
@@ -39,6 +40,9 @@ const components: Components = {
       code && code.type === "element" ? code.properties?.className : undefined;
     if (code && Array.isArray(className) && className.includes("language-qsim")) {
       return <CircuitLab source={hastText(code as unknown as HastTextNode)} />;
+    }
+    if (code && Array.isArray(className) && className.includes("language-quiz")) {
+      return <Quiz source={hastText(code as unknown as HastTextNode)} />;
     }
     return <pre {...rest}>{children}</pre>;
   },

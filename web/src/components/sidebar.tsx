@@ -33,7 +33,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-16 left-0 z-40 w-72 h-[calc(100vh-4rem)] overflow-y-auto border-r border-gray-200/60 dark:border-gray-800/40 bg-white/95 dark:bg-[#0a0f1a]/95 backdrop-blur-xl p-6 transition-transform lg:translate-x-0 ${
+        className={`fixed top-16 left-0 z-40 w-72 h-[calc(100vh-4rem)] overflow-y-auto border-r border-gray-200/60 dark:border-gray-800/40 bg-white/95 dark:bg-[color-mix(in_oklab,var(--surface-2)_95%,transparent)] backdrop-blur-xl p-6 transition-transform lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >

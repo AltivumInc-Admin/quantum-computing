@@ -3,7 +3,7 @@ import { ThemeToggle } from "./theme-toggle";
 
 export function Nav() {
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-200/60 dark:border-gray-800/40 bg-white/80 dark:bg-[#0a0f1a]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-gray-200/60 dark:border-gray-800/40 bg-white/80 dark:bg-[color-mix(in_oklab,var(--surface-2)_80%,transparent)] backdrop-blur-xl">
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 interactive focus-ring rounded-lg px-2 py-1.5 -mx-2 group">
           <div className="w-7 h-7 rounded-md bg-gradient-to-br from-accent to-accent-dark flex items-center justify-center">
