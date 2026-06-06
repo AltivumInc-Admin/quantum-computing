@@ -12,7 +12,7 @@ After completing this section, you will be able to:
 
 ## Prerequisites
 
-- Completed: 00-foundations, 01-hardware, 02-algorithms (especially QPE and variational sections)
+- Completed: 01-foundations, 02-hardware, 03-algorithms (especially QPE and variational sections)
 - Basic chemistry: atomic orbitals, molecular bonds, electron configuration
 - Linear algebra: eigenvalue problems, Hermitian operators
 

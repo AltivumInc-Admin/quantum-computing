@@ -2,11 +2,11 @@
 
 This is the on-ramp module. If you have **no quantum background**, start here. By the end
 of this module you will have the math, code, and intuition you need to start
-[00-foundations](../00-foundations/GUIDE.md) without getting lost in notation.
+[01-foundations](../01-foundations/GUIDE.md) without getting lost in notation.
 
 If you already feel comfortable with complex numbers, vectors, matrices, NumPy, basic
 probability, and the idea of a qubit as a unit vector in C^2, you can skip to
-[00-foundations](../00-foundations/GUIDE.md). The placement quiz at the bottom of this
+[01-foundations](../01-foundations/GUIDE.md). The placement quiz at the bottom of this
 GUIDE will tell you for sure.
 
 ## Learning Objectives
@@ -57,7 +57,7 @@ jupyter lab 00-prereqs/notebooks
 ```
 
 That is the whole setup. No `make setup`, no AWS credentials, no IAM roles. Those come
-later in `01-hardware`.
+later in `02-hardware`.
 
 ---
 
@@ -91,7 +91,7 @@ You need a working memory of five things:
 - **Tensor product** `⊗` — how you build multi-qubit states out of single-qubit ones.
 
 You do NOT need eigenvalues, determinants, or rank for this module. They show up later
-in `02-algorithms` and we will introduce them there.
+in `03-algorithms` and we will introduce them there.
 
 ### 3. Probability and measurement (no quantum yet)
 
@@ -158,7 +158,7 @@ qubits 1
 RY 0 theta
 ```
 
-…then you are ready for `00-foundations`.
+…then you are ready for `01-foundations`.
 
 ---
 
@@ -199,7 +199,7 @@ Complete these notebooks in order. Each takes 20-40 minutes.
 When you finish, you should be able to answer all ten questions in the
 **Placement Quiz** at the end of this GUIDE without looking anything up. If three or
 more give you trouble, replay the corresponding notebooks before starting
-`00-foundations`.
+`01-foundations`.
 
 A short list of what "ready" looks like:
 
@@ -210,7 +210,7 @@ A short list of what "ready" looks like:
 - You can explain in one sentence why measurement is probabilistic
 - You can draw `|+>` on a Bloch sphere
 
-If those feel routine, move on to [00-foundations](../00-foundations/GUIDE.md).
+If those feel routine, move on to [01-foundations](../01-foundations/GUIDE.md).
 
 ---
 
@@ -238,7 +238,7 @@ If those feel routine, move on to [00-foundations](../00-foundations/GUIDE.md).
 ## Placement Quiz
 
 Ten short questions. If you can answer at least seven without looking anything up, you
-are ready for `00-foundations`. Stuck on one? Reveal a hint. Want to check yourself? Show
+are ready for `01-foundations`. Stuck on one? Reveal a hint. Want to check yourself? Show
 the answer under each question — but try first.
 
 ```quiz
