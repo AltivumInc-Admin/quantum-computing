@@ -73,7 +73,7 @@ export function TableOfContents({ headings }: { headings: Heading[] }) {
                   h.level === 3 ? "pl-6" : "pl-4"
                 } ${
                   isActive
-                    ? "border-accent text-accent-dark dark:text-accent-light font-medium"
+                    ? "hue-border hue-text font-medium"
                     : "border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-200"
                 }`}
               >

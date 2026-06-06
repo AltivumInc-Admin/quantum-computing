@@ -141,6 +141,34 @@
     );
   }
 
+  /* Lesson chrome inherits --hue from the section wrapper so a section keeps the
+     identity its home card established. Lightness anchors match .section-badge,
+     already proven legible across all six hues, so text contrast holds in both
+     themes regardless of the hue angle. */
+  .hue-text {
+    color: oklch(0.5 0.16 var(--hue));
+  }
+
+  .dark .hue-text {
+    color: oklch(0.82 0.13 var(--hue));
+  }
+
+  .hue-border {
+    border-color: oklch(0.62 0.16 var(--hue));
+  }
+
+  .hue-soft-bg {
+    background: oklch(0.72 0.15 var(--hue) / 0.12);
+  }
+
+  .hue-divider {
+    background-image: linear-gradient(
+      to right,
+      oklch(0.72 0.15 var(--hue) / 0.4),
+      transparent
+    );
+  }
+
   .prose pre {
     @apply bg-gray-900 dark:bg-gray-900/80 rounded-xl overflow-x-auto border border-gray-800;
   }
@@ -307,6 +335,44 @@
   }
 }
 
+/* Reveal each block as it scrolls into view — replaces mount-timed fade-up for
+   below-fold lesson content, so a section animates when the reader reaches it
+   rather than firing offscreen on load. view-timeline progress is scroll-mapped,
+   not time-based, so the global reduced-motion `animation-duration: 0.01ms`
+   override does NOT neutralize it — hence the explicit no-preference gate. Where
+   unsupported (Firefox) or reduced-motion, the element simply renders visible. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: fade-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+  }
+}
+
+/* Reading-progress rail: a thin bar whose scaleX tracks document scroll depth.
+   Pure CSS, no scroll listener. Resting state is collapsed (invisible), so where
+   unsupported or reduced-motion it just stays hidden — no layout shift. */
+.read-progress {
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    .read-progress {
+      animation: read-grow linear both;
+      animation-timeline: scroll(root block);
+    }
+  }
+}
+
+@keyframes read-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
 ::selection {
   background: oklch(0.72 0.15 192 / 0.25);
 }
@@ -314,6 +380,33 @@
 /* Brighter selection on the dark github-dark code blocks for legible manual copy. */
 .prose pre ::selection {
   background: oklch(0.82 0.12 192 / 0.35);
+}
+
+/* Page-turn navigation between lessons (View Transitions API, driven by
+   TransitionLink). The outgoing view lifts and fades, the incoming one rises in.
+   Reduced-motion users never start a transition (TransitionLink skips the API),
+   so this is gated to no-preference for belt-and-suspenders consistency. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: vt-out 0.2s ease both;
+  }
+  ::view-transition-new(root) {
+    animation: vt-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

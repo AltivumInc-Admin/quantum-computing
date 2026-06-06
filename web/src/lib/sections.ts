@@ -19,6 +19,16 @@ const sections: Section[] = getManifestSections().map((s) => ({
   notebookCount: s.notebookCount,
 }));
 
+// One hue per section (oklch hue angle). Single source of truth shared by the
+// home cards (SectionCard) and the lesson chrome (sidebar active pill, TOC rail,
+// dividers, completion toggle), so a section keeps one color identity end to end.
+// Six hues cycle across the seven sections — index 6 wraps back to the first hue.
+export const sectionHue = [192, 290, 75, 160, 15, 230];
+
+export function hueFor(index: number): number {
+  return sectionHue[index % sectionHue.length];
+}
+
 export function getSections(): Section[] {
   return sections;
 }

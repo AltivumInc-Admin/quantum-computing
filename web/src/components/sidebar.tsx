@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { TransitionLink } from "@/components/transition-link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { getSections, type Section } from "@/lib/sections";
@@ -33,13 +33,13 @@ function SidebarItem({
   const complete = useSectionComplete(section.slug);
 
   return (
-    <Link
+    <TransitionLink
       href={`/learn/${section.slug}`}
       onClick={onNavigate}
       aria-current={isActive ? "page" : undefined}
       className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-150 focus-ring ${
         isActive
-          ? "bg-accent/10 text-accent dark:text-accent-light font-medium shadow-sm"
+          ? "hue-soft-bg hue-text font-medium shadow-sm"
           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-gray-200"
       }`}
     >
@@ -48,7 +48,7 @@ function SidebarItem({
           complete
             ? "bg-accent text-white shadow-sm shadow-accent/40"
             : isActive
-              ? "bg-accent/20 text-accent dark:text-accent-light"
+              ? "hue-soft-bg hue-text"
               : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
         }`}
       >
@@ -56,7 +56,7 @@ function SidebarItem({
       </span>
       <span className="truncate">{section.title}</span>
       {complete && <span className="sr-only">completed</span>}
-    </Link>
+    </TransitionLink>
   );
 }
 
