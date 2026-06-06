@@ -45,12 +45,12 @@ QCSIM_INIT = REPO_ROOT / "qcsim" / "src" / "qcsim" / "__init__.py"
 # explicitly so we never scan the staged copies under web/jupyterlite-build/.
 SECTION_DIRS = [
     "00-prereqs",
-    "00-foundations",
-    "01-hardware",
-    "02-algorithms",
-    "03-quantum-ml",
-    "04-quantum-chemistry",
-    "05-hybrid-jobs",
+    "01-foundations",
+    "02-hardware",
+    "03-algorithms",
+    "04-quantum-ml",
+    "05-quantum-chemistry",
+    "06-hybrid-jobs",
 ]
 
 # Legacy flat runnable list (kept as a generated subset for the contract tests).

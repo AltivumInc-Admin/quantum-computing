@@ -37,8 +37,8 @@
       ]
     },
     {
-      "slug": "00-foundations",
-      "dirName": "00-foundations",
+      "slug": "01-foundations",
+      "dirName": "01-foundations",
       "title": "Quantum Computing Foundations",
       "index": 1,
       "notebookCount": 5,
@@ -66,8 +66,8 @@
       ]
     },
     {
-      "slug": "01-hardware",
-      "dirName": "01-hardware",
+      "slug": "02-hardware",
+      "dirName": "02-hardware",
       "title": "Quantum Hardware on Amazon Braket",
       "index": 2,
       "notebookCount": 6,
@@ -99,8 +99,8 @@
       ]
     },
     {
-      "slug": "02-algorithms",
-      "dirName": "02-algorithms",
+      "slug": "03-algorithms",
+      "dirName": "03-algorithms",
       "title": "Quantum Algorithms",
       "index": 3,
       "notebookCount": 6,
@@ -132,8 +132,8 @@
       ]
     },
     {
-      "slug": "03-quantum-ml",
-      "dirName": "03-quantum-ml",
+      "slug": "04-quantum-ml",
+      "dirName": "04-quantum-ml",
       "title": "Quantum Machine Learning",
       "index": 4,
       "notebookCount": 7,
@@ -169,8 +169,8 @@
       ]
     },
     {
-      "slug": "04-quantum-chemistry",
-      "dirName": "04-quantum-chemistry",
+      "slug": "05-quantum-chemistry",
+      "dirName": "05-quantum-chemistry",
       "title": "Quantum Chemistry & Biochemistry",
       "index": 5,
       "notebookCount": 8,
@@ -210,8 +210,8 @@
       ]
     },
     {
-      "slug": "05-hybrid-jobs",
-      "dirName": "05-hybrid-jobs",
+      "slug": "06-hybrid-jobs",
+      "dirName": "06-hybrid-jobs",
       "title": "Production Hybrid Quantum-Classical Jobs",
       "index": 6,
       "notebookCount": 7,
