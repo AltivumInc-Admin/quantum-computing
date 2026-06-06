@@ -22,6 +22,7 @@ jest.mock("next/navigation", () => ({
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname = "/learn/00-foundations";
+    localStorage.clear();
   });
 
   it("should render the 'Learning Path' heading", () => {
@@ -56,6 +57,30 @@ describe("Sidebar", () => {
   it("should render the mobile toggle button", () => {
     render(<Sidebar />);
     expect(screen.getByRole("button", { name: "Toggle navigation" })).toBeInTheDocument();
+  });
+
+  it("should expose the drawer open state via aria-expanded on the toggle", async () => {
+    render(<Sidebar />);
+    const toggle = screen.getByRole("button", { name: "Toggle navigation" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await act(async () => {
+      toggle.click();
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("should close the mobile drawer when Escape is pressed", async () => {
+    const { container } = render(<Sidebar />);
+    const toggle = screen.getByRole("button", { name: "Toggle navigation" });
+    await act(async () => {
+      toggle.click();
+    });
+    const aside = container.querySelector("aside");
+    expect(aside!.className).toContain("translate-x-0");
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(aside!.className).toContain("-translate-x-full");
   });
 
   it("should show the sidebar with translated class when mobile toggle is clicked", async () => {
@@ -129,5 +154,34 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     const inactiveLink = screen.getByText("Quantum Computing Foundations").closest("a");
     expect(inactiveLink!.className).not.toContain("bg-accent/10");
+  });
+
+  it("should expose an overall progress bar reflecting completed sections", () => {
+    localStorage.setItem("qc:section:00-foundations", "1");
+    localStorage.setItem("qc:section:01-hardware", "1");
+    render(<Sidebar />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "2");
+    expect(bar).toHaveAttribute("aria-valuemax", "7");
+    expect(bar).toHaveAttribute("aria-valuemin", "0");
+  });
+
+  it("should report zero completed sections by default", () => {
+    render(<Sidebar />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+  });
+
+  it("should mark a completed section in the nav for screen readers", () => {
+    localStorage.setItem("qc:section:02-algorithms", "1");
+    render(<Sidebar />);
+    const completedLink = screen.getByText("Quantum Algorithms").closest("a");
+    expect(completedLink).toHaveTextContent(/completed/i);
+  });
+
+  it("should not mark an unfinished section as completed", () => {
+    localStorage.setItem("qc:section:02-algorithms", "1");
+    render(<Sidebar />);
+    const otherLink = screen.getByText("Quantum Machine Learning").closest("a");
+    expect(otherLink).not.toHaveTextContent(/completed/i);
   });
 });

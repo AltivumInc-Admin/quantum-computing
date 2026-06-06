@@ -9,12 +9,12 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
-  if (!mounted) return <div className="w-9 h-9" />;
+  if (!mounted) return <div className="w-11 h-11" />;
 
   return (
     <button
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 interactive focus-ring"
+      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 interactive focus-ring"
       aria-label="Toggle theme"
     >
       {theme === "dark" ? (

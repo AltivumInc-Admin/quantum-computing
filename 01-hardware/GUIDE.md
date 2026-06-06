@@ -30,6 +30,14 @@ There is no single "best" quantum computer. Different physical implementations h
 - Clock speed (how fast gates execute)
 - Qubit count (total available qubits)
 
+Every device below must implement two-qubit *entangling* gates — that is what makes a quantum computer more than a collection of independent qubits. Scrub the circuit below to watch a Hadamard create superposition, then a CNOT entangle the pair into a Bell state (the $\ket{00}$ and $\ket{11}$ bars rise together while $\ket{01}$ and $\ket{10}$ stay empty):
+
+```qscrub
+qubits 2
+H 0
+CNOT 0 1
+```
+
 ### IonQ — Trapped Ion Quantum Computers
 
 **Technology:** Individual ions (charged atoms) trapped in electromagnetic fields. Qubit states are encoded in the energy levels of each ion. Gates are performed using precisely tuned laser pulses.

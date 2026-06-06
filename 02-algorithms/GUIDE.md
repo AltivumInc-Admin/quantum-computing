@@ -19,6 +19,15 @@ After completing this section, you will be able to:
 
 ## Concepts
 
+Before the algorithms, a quick warm-up on the resource they all exploit — entanglement. Scrub this circuit to watch a single Hadamard plus a chain of CNOTs spread entanglement across three qubits into a GHZ state $\tfrac{1}{\sqrt{2}}(\ket{000} + \ket{111})$:
+
+```qscrub
+qubits 3
+H 0
+CNOT 0 1
+CNOT 1 2
+```
+
 ### Oracle-Based Algorithms
 
 An oracle is a black-box function f(x) implemented as a quantum gate. Oracle-based algorithms demonstrate quantum speedup by querying the oracle fewer times than any classical algorithm.
@@ -29,6 +38,19 @@ Given f: {0,1}^n -> {0,1} that is either constant (same output for all inputs) o
 - Quantum: Need exactly 1 query
 
 The circuit: Apply H to all qubits, query the oracle, apply H again, measure. If all qubits measure 0, f is constant. Otherwise, f is balanced.
+
+Your turn — build the very first step every oracle algorithm shares: put both input qubits into an equal superposition so the oracle is queried on all inputs at once. Press Check to grade your circuit in-browser:
+
+```qchallenge
+{
+  "prompt": "Put two qubits into an equal superposition over all four basis states (the H-on-all-qubits step that opens Deutsch–Jozsa).",
+  "qubits": 2,
+  "target": { "program": "H 0\nH 1" },
+  "starter": "H 0",
+  "allowedGates": ["H"],
+  "hint": "A Hadamard on each qubit creates an equal superposition of |00⟩, |01⟩, |10⟩, and |11⟩."
+}
+```
 
 **Bernstein-Vazirani Algorithm:**
 Given f(x) = s . x (dot product mod 2) for hidden string s:

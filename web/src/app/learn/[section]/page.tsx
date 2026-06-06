@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
 import { getSections, getSectionBySlug } from "@/lib/sections";
 import { getContent } from "@/lib/content";
+import { extractHeadings } from "@/lib/extract-headings";
 import { Sidebar } from "@/components/sidebar";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { NotebookLink } from "@/components/notebook-link";
 import { PrevNext } from "@/components/prev-next";
+import { SectionProgress } from "@/components/section-progress";
+import { TableOfContents } from "@/components/table-of-contents";
 
 interface PageProps {
   params: Promise<{ section: string }>;
@@ -32,37 +35,62 @@ export default async function SectionPage({ params }: PageProps) {
   const content = await getContent(slug);
   if (!content) notFound();
 
+  const headings = extractHeadings(content.markdown);
+
   return (
     <div className="flex">
       <Sidebar />
       <div className="flex-1 lg:ml-72">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="animate-fade-up">
-            <MarkdownRenderer content={content.markdown} />
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-16 xl:grid xl:grid-cols-[minmax(0,1fr)_14rem] xl:gap-12">
+          <div className="mx-auto w-full max-w-3xl xl:mx-0">
+            <div className="animate-fade-up">
+              <MarkdownRenderer content={content.markdown} />
+            </div>
+
+            {content.notebooks.length > 0 && (
+              <section className="mt-16 animate-fade-up" style={{ animationDelay: "150ms" }}>
+                <div className="flex items-center gap-4 mb-6">
+                  <h2 className="font-display text-2xl text-gray-900 dark:text-white">Notebooks</h2>
+                  <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {content.notebooks.map((nb) => (
+                    <NotebookLink
+                      key={nb.filename}
+                      filename={nb.filename}
+                      sectionDir={section.dirName}
+                      browserRunnable={nb.browserRunnable}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <div
+              className="mt-16 flex flex-wrap items-center gap-4 border-t border-gray-200/60 dark:border-gray-800/40 pt-10 animate-fade-up"
+              style={{ animationDelay: "200ms" }}
+            >
+              <SectionProgress slug={slug} />
+              <p className="text-sm text-gray-400 dark:text-gray-500">
+                Mark this lesson done to track your progress through the path.
+              </p>
+            </div>
+
+            <div className="animate-fade-up" style={{ animationDelay: "250ms" }}>
+              <PrevNext currentSlug={slug} />
+            </div>
           </div>
 
-          {content.notebooks.length > 0 && (
-            <section className="mt-16 animate-fade-up" style={{ animationDelay: "150ms" }}>
-              <div className="flex items-center gap-4 mb-6">
-                <h2 className="font-display text-2xl text-gray-900 dark:text-white">Notebooks</h2>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
+          {headings.length > 0 && (
+            <aside className="hidden xl:block">
+              <div
+                className="sticky top-24 animate-fade-up"
+                style={{ animationDelay: "300ms" }}
+              >
+                <TableOfContents headings={headings} />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {content.notebooks.map((nb) => (
-                  <NotebookLink
-                    key={nb.filename}
-                    filename={nb.filename}
-                    sectionDir={section.dirName}
-                    browserRunnable={nb.browserRunnable}
-                  />
-                ))}
-              </div>
-            </section>
+            </aside>
           )}
-
-          <div className="animate-fade-up" style={{ animationDelay: "250ms" }}>
-            <PrevNext currentSlug={slug} />
-          </div>
         </div>
       </div>
     </div>

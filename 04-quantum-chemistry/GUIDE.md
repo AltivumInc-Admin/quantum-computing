@@ -107,6 +107,14 @@ The ansatz (trial wavefunction circuit) determines VQE's quality:
 - Pro: Short circuits, works on any hardware topology
 - Con: Barren plateaus, may not converge to the right answer
 
+A single hardware-efficient layer is just a rotation followed by an entangler. Drag $\theta$ to sweep the variational parameter and scrub to watch the two-qubit state evolve — VQE's classical optimizer searches exactly this landscape for the energy minimum:
+
+```qscrub
+qubits 2
+RY 0 theta
+CNOT 0 1
+```
+
 **ADAPT-VQE:**
 - Grows the ansatz adaptively by selecting operators with the largest gradient
 - Starts with empty circuit, adds one operator at a time

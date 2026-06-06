@@ -1,6 +1,21 @@
 import { getSections, getSectionBySlug } from "@/lib/sections";
+import { getManifestSections } from "@/lib/manifest";
 
 describe("sections", () => {
+  it("derives every section from the content manifest (no hardcoded drift)", () => {
+    const sections = getSections();
+    const manifest = getManifestSections();
+    expect(sections.map((s) => s.slug)).toEqual(manifest.map((m) => m.slug));
+    for (const m of manifest) {
+      const s = getSectionBySlug(m.slug)!;
+      expect(s).toBeDefined();
+      expect(s.title).toBe(m.title);
+      expect(s.index).toBe(m.index);
+      expect(s.dirName).toBe(m.dirName);
+      expect(s.notebookCount).toBe(m.notebookCount);
+    }
+  });
+
   it("returns all 7 sections in order", () => {
     const sections = getSections();
     expect(sections).toHaveLength(7);

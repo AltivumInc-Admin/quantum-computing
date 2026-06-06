@@ -28,6 +28,12 @@ describe("ThemeToggle", () => {
     expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
   });
 
+  it("meets the 44px minimum touch target", () => {
+    render(<ThemeToggle />);
+    const button = screen.getByRole("button", { name: "Toggle theme" });
+    expect(button).toHaveClass("min-h-11", "min-w-11");
+  });
+
   it("should render a button with aria-label after mounting", async () => {
     await act(async () => {
       render(<ThemeToggle />);

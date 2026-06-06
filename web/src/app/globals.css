@@ -104,6 +104,11 @@
     @apply text-gray-800 dark:text-gray-200;
     background: var(--surface-base);
   }
+
+  /* Anchor landings (and skip-link focus) clear the 4rem sticky nav. */
+  html {
+    scroll-padding-top: 5rem;
+  }
 }
 
 @layer components {
@@ -231,6 +236,30 @@
     @apply transition-[transform,background-color,box-shadow,border-color,opacity] duration-200 ease-out active:scale-[0.97];
   }
 
+  /* Accent range thumb so the scrub/theta sliders aren't the tiny native default. */
+  .slider {
+    @apply h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 accent-accent;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 3px oklch(0.72 0.15 192 / 0.18);
+    cursor: pointer;
+  }
+  .slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 9999px;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 3px oklch(0.72 0.15 192 / 0.18);
+    cursor: pointer;
+  }
+
   .text-gradient {
     @apply bg-clip-text text-transparent;
     background-image: linear-gradient(135deg, oklch(0.82 0.12 192), oklch(0.78 0.12 75));
@@ -282,6 +311,11 @@
   background: oklch(0.72 0.15 192 / 0.25);
 }
 
+/* Brighter selection on the dark github-dark code blocks for legible manual copy. */
+.prose pre ::selection {
+  background: oklch(0.82 0.12 192 / 0.35);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-up,
   .animate-hero-enter,
@@ -289,6 +323,11 @@
   .animate-card-enter {
     animation: none;
     opacity: 1;
+    transform: none;
+  }
+
+  /* Neutralize the .interactive press-squish (a transform, not a transition). */
+  .interactive:active {
     transform: none;
   }
 

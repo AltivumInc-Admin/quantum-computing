@@ -121,25 +121,70 @@ export interface Op {
   theta?: number;
 }
 
+/** Apply a single op to a state, returning the new state (no mutation). */
+function applyOp(state: Complex[], op: Op, n: number): Complex[] {
+  const g = op.gate.toUpperCase();
+  if (g === "CNOT") {
+    if (op.control === undefined) throw new Error("CNOT requires a control qubit");
+    return applyCNOT(state, op.control, op.target, n);
+  }
+  if (g === "RX" || g === "RY" || g === "RZ") {
+    const theta = op.theta ?? 0;
+    const gate = g === "RX" ? rx(theta) : g === "RY" ? ry(theta) : rz(theta);
+    return applyGate1(state, gate, op.target, n);
+  }
+  if (g in NAMED_GATES) {
+    return applyGate1(state, NAMED_GATES[g], op.target, n);
+  }
+  throw new Error(`unknown gate '${op.gate}'`);
+}
+
 /** Run a sequence of ops on |0...0> and return the final state vector. */
 export function simulate(ops: Op[], n: number): Complex[] {
   let state = zeroState(n);
+  for (const op of ops) state = applyOp(state, op, n);
+  return state;
+}
+
+/**
+ * Snapshot the state after each op, including the initial |0...0> frame, so the
+ * wavefunction scrubber can step gate-by-gate. `simulateSteps(ops, n)` returns
+ * `ops.length + 1` frames; the last is identical to `simulate(ops, n)`.
+ */
+export function simulateSteps(ops: Op[], n: number): Complex[][] {
+  const frames: Complex[][] = [zeroState(n)];
+  let state = frames[0];
   for (const op of ops) {
-    const g = op.gate.toUpperCase();
-    if (g === "CNOT") {
-      if (op.control === undefined) throw new Error("CNOT requires a control qubit");
-      state = applyCNOT(state, op.control, op.target, n);
-    } else if (g === "RX" || g === "RY" || g === "RZ") {
-      const theta = op.theta ?? 0;
-      const gate = g === "RX" ? rx(theta) : g === "RY" ? ry(theta) : rz(theta);
-      state = applyGate1(state, gate, op.target, n);
-    } else if (g in NAMED_GATES) {
-      state = applyGate1(state, NAMED_GATES[g], op.target, n);
-    } else {
-      throw new Error(`unknown gate '${op.gate}'`);
+    state = applyOp(state, op, n);
+    frames.push(state);
+  }
+  return frames;
+}
+
+/**
+ * Whether two state vectors are equal up to an unobservable global phase. Used
+ * by the challenge grader: a learner's circuit is correct if its state matches
+ * the target regardless of overall phase. Aligns phase on the first significant
+ * amplitude of `a`, then compares all amplitudes within `eps`.
+ */
+export function statesApproxEqual(a: Complex[], b: Complex[], eps = 1e-9): boolean {
+  if (a.length !== b.length) return false;
+  let phase: Complex = [1, 0];
+  for (let i = 0; i < a.length; i++) {
+    if (cAbs2(a[i]) > eps * eps) {
+      const num = cMul(b[i], cConj(a[i])); // b[i] / a[i], since |a[i]|^2 divides out
+      const denom = cAbs2(a[i]);
+      phase = [num[0] / denom, num[1] / denom];
+      break;
     }
   }
-  return state;
+  for (let i = 0; i < a.length; i++) {
+    const rotated = cMul(a[i], phase);
+    if (Math.abs(rotated[0] - b[i][0]) > eps || Math.abs(rotated[1] - b[i][1]) > eps) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Binary basis-state label for index `i` over `n` qubits (qubit 0 leftmost). */

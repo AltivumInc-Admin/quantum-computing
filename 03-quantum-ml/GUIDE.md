@@ -34,6 +34,13 @@ Map each feature x_i to a rotation angle:
 - Simple and hardware-efficient
 - Feature space is the surface of n Bloch spheres
 
+Angle encoding is the most tangible of the four. Drag $\theta$ to encode a feature value and watch the single qubit's state — and its measurement probabilities — move continuously along its Bloch sphere:
+
+```qscrub
+qubits 1
+RY 0 theta
+```
+
 **Amplitude Encoding:**
 Encode N features into log2(N) qubits as amplitudes:
 - |x> = sum_i (x_i / ||x||) |i>

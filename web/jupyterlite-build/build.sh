@@ -27,9 +27,25 @@ echo "==> Building qcsim wheel"
 mkdir -p files/wheels
 cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
 
+# 2b) Generate the kernel's wheel pin from the ACTUAL built wheel filename, so a
+#     qcsim version bump can never desync overrides.json (a stale pin 404s the
+#     in-browser kernel). overrides.json is generated, not committed.
+WHEEL_NAME=$(basename "$QCSIM_DIR"/dist/qcsim-*.whl)
+echo "==> Pinning lab kernel to $WHEEL_NAME"
+cat > files/overrides.json <<EOF
+{
+  "@jupyterlite/pyodide-kernel-extension:kernel": {
+    "pipliteUrls": ["./files/wheels/${WHEEL_NAME}"]
+  }
+}
+EOF
+
 # 3) Stage curriculum notebooks into files/<section>/notebooks/.
+#    Section list is read from the content manifest (the single source of truth)
+#    so this loop can never drift from sections.ts / the curriculum on disk.
 echo "==> Staging notebooks"
-for section in 00-prereqs 00-foundations 01-hardware 02-algorithms 03-quantum-ml 04-quantum-chemistry 05-hybrid-jobs; do
+SECTIONS=$(python3 -c "import json; print('\n'.join(s['dirName'] for s in json.load(open('../src/lib/content-manifest.json'))['sections']))")
+for section in $SECTIONS; do
   mkdir -p "files/$section/notebooks"
   cp ../../$section/notebooks/*.ipynb "files/$section/notebooks/" 2>/dev/null || true
 done
@@ -57,6 +73,12 @@ jupyter lite build
 echo "==> Copying auxiliary files into lab output"
 cp -R files/lib ../public/lab/files/lib
 cp files/overrides.json ../public/lab/files/overrides.json 2>/dev/null || true
+
+# 8) Strip JupyterLite source maps from the production payload. They are ~45MB
+#    of the ~65MB output and are only fetched when devtools is open, so deleting
+#    them cuts the deployed lab to ~20MB with zero functional impact.
+echo "==> Stripping source maps from lab output (production payload)"
+find ../public/lab -name '*.map' -type f -delete
 
 echo ""
 echo "==> Build complete: ../public/lab/"
