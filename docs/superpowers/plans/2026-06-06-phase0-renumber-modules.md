@@ -112,6 +112,14 @@ git add -A
 git commit -m "docs: fix module cross-links after renumber"
 ```
 
+> **Blast-radius addendum (found by the Task 6 gate during execution):** cross-links also live OUTSIDE the GUIDEs — apply the same rename map to these tracked files, which the original Task 2 scope missed:
+> - `00-prereqs/notebooks/06-bloch-sphere-playground.ipynb` and `01-foundations/notebooks/05-circuit-composition.ipynb` (notebook "Next section" links)
+> - `06-hybrid-jobs/algorithms/qaoa_maxcut_job.py` (`source_module` string)
+> - `06-hybrid-jobs/containers/Dockerfile` + `06-hybrid-jobs/containers/build_and_push.sh` (COPY / `docker build -f` paths)
+> - `Makefile` (pip-compile container paths)
+>
+> Authoritative sweep for any tracked stale reference: `git grep -n "00-foundations\|01-hardware\|02-algorithms\|03-quantum-ml\|04-quantum-chemistry\|05-hybrid-jobs" -- ':!docs/superpowers/*'` must return empty. Validate `.ipynb` edits with `python -c "import json; json.load(open(<nb>))"`.
+
 ---
 
 ### Task 3: Update the web test suite slugs/URLs
