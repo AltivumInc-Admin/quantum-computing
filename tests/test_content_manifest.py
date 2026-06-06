@@ -51,7 +51,7 @@ def test_runnable_flags_match_the_static_contract():
     """A notebook is runnable in the manifest iff it passes the AST contract."""
     manifest = vr.build_content_manifest()
     runnable_from_sections = {
-        f'{s["dirName"]}/notebooks/{nb["filename"]}'
+        f"{s['dirName']}/notebooks/{nb['filename']}"
         for s in manifest["sections"]
         for nb in s["notebooks"]
         if nb["runnable"]
