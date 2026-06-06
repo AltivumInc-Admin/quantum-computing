@@ -96,10 +96,12 @@ Regenerate (do not hand-edit):
 
 ### Redirects
 
-Add `customHttp.yml` redirects (301) mapping each old `/learn/<old-slug>` to its new slug so
-existing links and bookmarks do not 404. Six mappings (foundations→01, hardware→02,
-algorithms→03, quantum-ml→04, quantum-chemistry→05, hybrid-jobs→06); `00-prereqs` is
-unchanged.
+Add 301 redirects in the **Amplify Console → Hosting → Rewrites and redirects** JSON editor
+(`customHttp.yml` is headers-only and cannot express redirects; the app auto-deploys from git
+rather than from in-repo IaC, so redirects are console-managed). Map each old
+`/learn/<old-slug>` to its new slug so existing links and bookmarks do not 404. Six mappings
+(foundations→01, hardware→02, algorithms→03, quantum-ml→04, quantum-chemistry→05,
+hybrid-jobs→06); `00-prereqs` is unchanged.
 
 ### Phase 0 verification
 
@@ -246,7 +248,8 @@ error card on a parse error, matching `Quiz`/`Challenge`.
 
 ## Risks & Mitigations
 
-- **URL changes break links/SEO** → 301 redirects in `customHttp.yml` for all six old slugs.
+- **URL changes break links/SEO** → 301 redirects in the Amplify Console (Rewrites and
+  redirects) for all six old slugs; internal nav derives from the manifest and is unaffected.
 - **Lab content path drift** (generated under `web/public/lab`) → rename the staging sources
   and regenerate via `build.sh`; confirm committed-vs-gitignored status before deciding whether
   to commit regenerated artifacts.
