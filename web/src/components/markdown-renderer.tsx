@@ -8,6 +8,7 @@ import { WavefunctionScrubber } from "./quantum/wavefunction-scrubber";
 import { Challenge } from "./quantum/challenge";
 import { Quiz } from "./quantum/quiz";
 import { RunnableEditor } from "./quantum/runnable-editor";
+import { BlochBuilder } from "./quantum/bloch-builder-widget";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 
@@ -87,6 +88,9 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
       }
       if (code && Array.isArray(className) && className.includes("language-runnable")) {
         return <RunnableEditor source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qbloch")) {
+        return <BlochBuilder />;
       }
       // Every other fence becomes a CodeBlock: the highlighted <code> children are
       // preserved (syntax colors intact) and a copy button + language chip + wrap
