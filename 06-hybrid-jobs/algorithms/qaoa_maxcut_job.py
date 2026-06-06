@@ -2,7 +2,7 @@
 
 Usage as a Hybrid Job:
     job = AwsQuantumJob.create(
-        source_module="05-hybrid-jobs/algorithms/qaoa_maxcut_job.py",
+        source_module="06-hybrid-jobs/algorithms/qaoa_maxcut_job.py",
         device="arn:aws:braket:::device/quantum-simulator/amazon/sv1",
         hyperparameters={"n_layers": "2", "n_shots": "1000", "maxiter": "100"},
         ...

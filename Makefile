@@ -38,6 +38,6 @@ teardown-infra:
 	bash infra/scripts/teardown-infra.sh
 
 lock-container:
-	pip-compile 05-hybrid-jobs/containers/requirements.in \
-		--output-file=05-hybrid-jobs/containers/requirements.lock \
+	pip-compile 06-hybrid-jobs/containers/requirements.in \
+		--output-file=06-hybrid-jobs/containers/requirements.lock \
 		--strip-extras --allow-unsafe
