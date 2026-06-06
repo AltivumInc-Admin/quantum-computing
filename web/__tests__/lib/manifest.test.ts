@@ -9,7 +9,7 @@ describe("manifest", () => {
     const sections = getManifestSections();
     expect(sections).toHaveLength(7);
     expect(sections[0].slug).toBe("00-prereqs");
-    expect(sections[6].slug).toBe("05-hybrid-jobs");
+    expect(sections[6].slug).toBe("06-hybrid-jobs");
   });
 
   it("marks a contract-passing notebook runnable", () => {
@@ -19,8 +19,8 @@ describe("manifest", () => {
   });
 
   it("does NOT mark a non-runnable section's notebook runnable", () => {
-    // 01-hardware notebooks are not browser-runnable (no marker / hardware APIs).
-    expect(isNotebookRunnable("01-hardware", "01-device-discovery.ipynb")).toBe(
+    // 02-hardware notebooks are not browser-runnable (no marker / hardware APIs).
+    expect(isNotebookRunnable("02-hardware", "01-device-discovery.ipynb")).toBe(
       false
     );
   });

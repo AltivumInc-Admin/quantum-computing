@@ -14,25 +14,25 @@ describe("progress-store", () => {
   beforeEach(() => localStorage.clear());
 
   it("reports an unmarked section as incomplete", () => {
-    expect(isSectionComplete("00-foundations")).toBe(false);
+    expect(isSectionComplete("01-foundations")).toBe(false);
   });
 
   it("persists completion so a marked section reads back as complete", () => {
-    setSectionComplete("00-foundations", true);
-    expect(isSectionComplete("00-foundations")).toBe(true);
+    setSectionComplete("01-foundations", true);
+    expect(isSectionComplete("01-foundations")).toBe(true);
   });
 
   it("clears completion when marked incomplete", () => {
-    setSectionComplete("00-foundations", true);
-    setSectionComplete("00-foundations", false);
-    expect(isSectionComplete("00-foundations")).toBe(false);
+    setSectionComplete("01-foundations", true);
+    setSectionComplete("01-foundations", false);
+    expect(isSectionComplete("01-foundations")).toBe(false);
   });
 
   it("toggles completion state", () => {
-    toggleSectionComplete("01-hardware");
-    expect(isSectionComplete("01-hardware")).toBe(true);
-    toggleSectionComplete("01-hardware");
-    expect(isSectionComplete("01-hardware")).toBe(false);
+    toggleSectionComplete("02-hardware");
+    expect(isSectionComplete("02-hardware")).toBe(true);
+    toggleSectionComplete("02-hardware");
+    expect(isSectionComplete("02-hardware")).toBe(false);
   });
 
   it("counts only the completed sections from a list", () => {
@@ -44,10 +44,10 @@ describe("progress-store", () => {
   it("dispatches the shared progress event on write so subscribers update", () => {
     const listener = jest.fn();
     const unsubscribe = subscribe(listener);
-    setSectionComplete("02-algorithms", true);
+    setSectionComplete("03-algorithms", true);
     expect(listener).toHaveBeenCalledTimes(1);
     unsubscribe();
-    setSectionComplete("02-algorithms", false);
+    setSectionComplete("03-algorithms", false);
     expect(listener).toHaveBeenCalledTimes(1); // no further calls after unsubscribe
   });
 

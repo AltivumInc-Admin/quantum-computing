@@ -8,7 +8,7 @@ import { NotebookLink } from "@/components/notebook-link";
 describe("NotebookLink", () => {
   const defaultProps = {
     filename: "01-first-circuit.ipynb",
-    sectionDir: "00-foundations",
+    sectionDir: "01-foundations",
   };
 
   beforeEach(() => {
@@ -25,7 +25,7 @@ describe("NotebookLink", () => {
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute(
       "href",
-      "https://github.com/AltivumInc-Admin/quantum-computing/blob/main/00-foundations/notebooks/01-first-circuit.ipynb"
+      "https://github.com/AltivumInc-Admin/quantum-computing/blob/main/01-foundations/notebooks/01-first-circuit.ipynb"
     );
   });
 
@@ -35,7 +35,7 @@ describe("NotebookLink", () => {
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute(
       "href",
-      "https://github.com/custom-org/custom-repo/blob/main/00-foundations/notebooks/01-first-circuit.ipynb"
+      "https://github.com/custom-org/custom-repo/blob/main/01-foundations/notebooks/01-first-circuit.ipynb"
     );
   });
 
@@ -63,16 +63,16 @@ describe("NotebookLink", () => {
   });
 
   it("should handle filenames with multiple dashes in the name", () => {
-    render(<NotebookLink filename="03-multi-qubit-gates.ipynb" sectionDir="00-foundations" />);
+    render(<NotebookLink filename="03-multi-qubit-gates.ipynb" sectionDir="01-foundations" />);
     expect(screen.getByText("multi qubit gates")).toBeInTheDocument();
   });
 
   it("should construct the path using the sectionDir prop", () => {
-    render(<NotebookLink filename="01-data-encoding.ipynb" sectionDir="03-quantum-ml" />);
+    render(<NotebookLink filename="01-data-encoding.ipynb" sectionDir="04-quantum-ml" />);
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute(
       "href",
-      "https://github.com/AltivumInc-Admin/quantum-computing/blob/main/03-quantum-ml/notebooks/01-data-encoding.ipynb"
+      "https://github.com/AltivumInc-Admin/quantum-computing/blob/main/04-quantum-ml/notebooks/01-data-encoding.ipynb"
     );
   });
 });

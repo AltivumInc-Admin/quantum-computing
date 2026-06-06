@@ -25,14 +25,14 @@ jest.mock("@/components/transition-link", () => {
   };
 });
 
-let mockPathname = "/learn/00-foundations";
+let mockPathname = "/learn/01-foundations";
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));
 
 describe("Sidebar", () => {
   beforeEach(() => {
-    mockPathname = "/learn/00-foundations";
+    mockPathname = "/learn/01-foundations";
     localStorage.clear();
   });
 
@@ -61,8 +61,8 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     const links = screen.getAllByRole("link");
     expect(links[0]).toHaveAttribute("href", "/learn/00-prereqs");
-    expect(links[1]).toHaveAttribute("href", "/learn/00-foundations");
-    expect(links[6]).toHaveAttribute("href", "/learn/05-hybrid-jobs");
+    expect(links[1]).toHaveAttribute("href", "/learn/01-foundations");
+    expect(links[6]).toHaveAttribute("href", "/learn/06-hybrid-jobs");
   });
 
   it("should render the mobile toggle button", () => {
@@ -153,7 +153,7 @@ describe("Sidebar", () => {
   });
 
   it("should highlight the active section based on the current pathname", () => {
-    mockPathname = "/learn/02-algorithms";
+    mockPathname = "/learn/03-algorithms";
     render(<Sidebar />);
     const activeLink = screen.getByText("Quantum Algorithms").closest("a");
     // The active item takes the section's identity hue (see .hue-* in globals.css).
@@ -162,15 +162,15 @@ describe("Sidebar", () => {
   });
 
   it("should not highlight non-active sections", () => {
-    mockPathname = "/learn/02-algorithms";
+    mockPathname = "/learn/03-algorithms";
     render(<Sidebar />);
     const inactiveLink = screen.getByText("Quantum Computing Foundations").closest("a");
     expect(inactiveLink!.className).not.toContain("hue-soft-bg");
   });
 
   it("should expose an overall progress bar reflecting completed sections", () => {
-    localStorage.setItem("qc:section:00-foundations", "1");
-    localStorage.setItem("qc:section:01-hardware", "1");
+    localStorage.setItem("qc:section:01-foundations", "1");
+    localStorage.setItem("qc:section:02-hardware", "1");
     render(<Sidebar />);
     const bar = screen.getByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "2");
@@ -184,14 +184,14 @@ describe("Sidebar", () => {
   });
 
   it("should mark a completed section in the nav for screen readers", () => {
-    localStorage.setItem("qc:section:02-algorithms", "1");
+    localStorage.setItem("qc:section:03-algorithms", "1");
     render(<Sidebar />);
     const completedLink = screen.getByText("Quantum Algorithms").closest("a");
     expect(completedLink).toHaveTextContent(/completed/i);
   });
 
   it("should not mark an unfinished section as completed", () => {
-    localStorage.setItem("qc:section:02-algorithms", "1");
+    localStorage.setItem("qc:section:03-algorithms", "1");
     render(<Sidebar />);
     const otherLink = screen.getByText("Quantum Machine Learning").closest("a");
     expect(otherLink).not.toHaveTextContent(/completed/i);

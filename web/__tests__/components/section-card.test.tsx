@@ -26,7 +26,7 @@ jest.mock("@/components/transition-link", () => {
 });
 
 const defaultProps = {
-  slug: "00-foundations",
+  slug: "01-foundations",
   index: 0,
   title: "Quantum Computing Foundations",
   summary: "Learn the basics of quantum computing with Amazon Braket.",
@@ -37,7 +37,7 @@ describe("SectionCard", () => {
   it("should render a link to the section page", () => {
     render(<SectionCard {...defaultProps} />);
     const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/learn/00-foundations");
+    expect(link).toHaveAttribute("href", "/learn/01-foundations");
   });
 
   it("should display the section title", () => {
@@ -71,8 +71,8 @@ describe("SectionCard", () => {
   });
 
   it("should construct the correct href from the slug prop", () => {
-    render(<SectionCard {...defaultProps} slug="03-quantum-ml" />);
+    render(<SectionCard {...defaultProps} slug="04-quantum-ml" />);
     const link = screen.getByRole("link");
-    expect(link).toHaveAttribute("href", "/learn/03-quantum-ml");
+    expect(link).toHaveAttribute("href", "/learn/04-quantum-ml");
   });
 });
