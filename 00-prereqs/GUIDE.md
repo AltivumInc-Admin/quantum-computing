@@ -151,6 +151,13 @@ This notebook is where intuition consolidates. If you walk away believing that
 - the equator is "maximum superposition"
 - rotations on the sphere are exactly what gates do
 
+Drag $\theta$ below and watch the Bloch vector swing from the north pole ($\ket{0}$) toward the equator — this is exactly what $R_y(\theta)$ does. Drag the sphere itself to rotate your view, or press play to sweep the rotation:
+
+```qscrub
+qubits 1
+RY 0 theta
+```
+
 …then you are ready for `00-foundations`.
 
 ---

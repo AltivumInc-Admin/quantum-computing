@@ -9,4 +9,5 @@ files/04-quantum-chemistry/
 files/05-hybrid-jobs/
 files/lib/
 files/wheels/*.whl
+files/overrides.json
 .jupyterlite.doit.db

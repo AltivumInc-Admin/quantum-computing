@@ -86,6 +86,15 @@ result2 = device.run(circuit, shots=1000, inputs={"theta": 0.7})
 
 Parametric compilation saves significant time on hardware that requires transpilation (IQM, Rigetti). The circuit is compiled to native gates once, then only parameter values are updated.
 
+This is the inner loop of every hybrid job: the same parameterized circuit, a new $\theta$ each iteration, chosen by a classical optimizer. Drag $\theta$ to play the optimizer's role and scrub to watch the two-qubit variational state respond:
+
+```qscrub
+qubits 2
+RY 0 theta
+RY 1 theta
+CNOT 0 1
+```
+
 ### Job Lifecycle
 
 1. **Create:** `AwsQuantumJob.create(...)` — defines script, device, hyperparameters

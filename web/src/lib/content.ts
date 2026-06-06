@@ -1,10 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
 import { getSectionBySlug } from "./sections";
+import { isNotebookRunnable } from "./manifest";
 
 const REPO_ROOT = path.resolve(process.cwd(), "..");
-
-const BROWSER_RUNNABLE_MARKER = "<!-- browser-runnable -->";
 
 export interface NotebookEntry {
   filename: string;
@@ -84,34 +83,14 @@ async function listNotebooks(dirName: string): Promise<NotebookEntry[]> {
   try {
     const files = await fs.readdir(notebooksDir);
     const ipynbs = files.filter((f) => f.endsWith(".ipynb")).sort();
-    return Promise.all(
-      ipynbs.map(async (filename) => ({
-        filename,
-        browserRunnable: await detectBrowserRunnable(
-          path.join(notebooksDir, filename)
-        ),
-      }))
-    );
+    // Runnable status comes from the generated manifest, so the green "Run in
+    // browser" button matches exactly what CI validated (marked AND passing the
+    // qcsim contract) rather than the weaker marker-only check this used to do.
+    return ipynbs.map((filename) => ({
+      filename,
+      browserRunnable: isNotebookRunnable(dirName, filename),
+    }));
   } catch {
     return [];
-  }
-}
-
-async function detectBrowserRunnable(notebookPath: string): Promise<boolean> {
-  try {
-    const raw = await fs.readFile(notebookPath, "utf-8");
-    const nb = JSON.parse(raw) as {
-      cells?: Array<{ cell_type?: string; source?: string | string[] }>;
-    };
-    const firstMarkdown = (nb.cells ?? []).find(
-      (c) => c.cell_type === "markdown"
-    );
-    if (!firstMarkdown) return false;
-    const source = Array.isArray(firstMarkdown.source)
-      ? firstMarkdown.source.join("")
-      : firstMarkdown.source ?? "";
-    return source.includes(BROWSER_RUNNABLE_MARKER);
-  } catch {
-    return false;
   }
 }

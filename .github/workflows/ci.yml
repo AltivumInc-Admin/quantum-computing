@@ -52,6 +52,12 @@ jobs:
       - name: Lint
         run: make lint
 
+      # Drift gate: the committed manifests must match a fresh scan, so the
+      # curriculum catalog (sections.ts), the runnable Run-button gate, and the
+      # qcsim wheel pin can never silently diverge from the notebooks on disk.
+      - name: Check content manifests are in sync
+        run: python scripts/validate_runnable.py --check
+
   web:
     name: Web tests + lint
     runs-on: ubuntu-latest

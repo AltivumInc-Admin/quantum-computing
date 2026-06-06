@@ -120,6 +120,19 @@ Measuring one qubit of a Bell pair instantly determines the other's outcome, reg
 
 **GHZ State:** The n-qubit generalization: $\tfrac{1}{\sqrt{2}}(\ket{00\dots0} + \ket{11\dots1})$. Maximally entangled — measuring any one qubit collapses all others.
 
+Your turn — build a Bell pair yourself. Write the circuit, press Check, and your state is graded instantly in your browser against the target (up to global phase):
+
+```qchallenge
+{
+  "prompt": "Prepare the Bell state |Φ+⟩ = (|00⟩ + |11⟩)/√2 on two qubits.",
+  "qubits": 2,
+  "target": { "program": "H 0\nCNOT 0 1" },
+  "starter": "H 0",
+  "allowedGates": ["H", "X", "CNOT"],
+  "hint": "Put qubit 0 into superposition with H, then let it control a flip of qubit 1 with CNOT."
+}
+```
+
 ### Measurement
 
 Quantum measurement is probabilistic and irreversible. In the computational basis:
@@ -154,6 +167,18 @@ result = device.run(circuit, shots=1000).result()
 
 # Get measurement counts
 counts = result.measurement_counts
+```
+
+**Try it live.** Edit and run this Bell-state circuit in your browser — no install required. The output is the four-amplitude state vector $\tfrac{1}{\sqrt2}(\ket{00} + \ket{11})$:
+
+```runnable
+from braket.circuits import Circuit
+
+# Entangle two qubits: a Hadamard on q0, then a CNOT controlled by q0.
+circuit = Circuit().h(0).cnot(0, 1)
+
+# Inspect the resulting state vector (amplitudes of |00>, |01>, |10>, |11>).
+print(circuit.state_vector())
 ```
 
 ---

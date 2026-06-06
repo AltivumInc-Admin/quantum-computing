@@ -1,0 +1,19 @@
+# AWS Amplify Hosting custom HTTP response headers.
+# Schema + monorepo placement verified against AWS docs:
+#   https://docs.aws.amazon.com/amplify/latest/userguide/custom-header-YAML-format.html
+#   https://docs.aws.amazon.com/amplify/latest/userguide/monorepo-custom-headers.html
+# For a monorepo (appRoot: web) this file MUST live at the repository root.
+#
+# JupyterLite emits content-hashed asset filenames under /lab/build/ and
+# version-pinned wheels under /lab/files/wheels/, so both are safe to cache
+# immutably — any rebuild changes the filename (and thus the URL), busting the
+# cache automatically. This makes repeat visits to the in-browser lab instant.
+customHeaders:
+  - pattern: '/lab/build/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  - pattern: '/lab/files/wheels/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, s-maxage=31536000, immutable'

@@ -1,3 +1,8 @@
+"use client";
+
+import { getRepoUrl } from "@/lib/manifest";
+import { CopyButton } from "./copy-button";
+
 interface NotebookLinkProps {
   filename: string;
   sectionDir: string;
@@ -9,9 +14,9 @@ export function NotebookLink({
   sectionDir,
   browserRunnable = false,
 }: NotebookLinkProps) {
-  const repoUrl =
-    process.env.NEXT_PUBLIC_GITHUB_REPO ||
-    "https://github.com/thechrisgrey/quantum-computing";
+  // Canonical repo URL comes from the content manifest; an explicit env var
+  // (set in Amplify) can still override it for forks/previews.
+  const repoUrl = process.env.NEXT_PUBLIC_GITHUB_REPO || getRepoUrl();
   const githubHref = `${repoUrl}/blob/main/${sectionDir}/notebooks/${filename}`;
   const runHref = `/lab/lab/index.html?path=${encodeURIComponent(
     `${sectionDir}/notebooks/${filename}`
@@ -43,10 +48,15 @@ export function NotebookLink({
         <p className="text-sm font-medium text-gray-800 dark:text-gray-200 capitalize truncate">
           {label}
         </p>
-        <div className="flex items-center gap-2 mt-0.5">
+        <div className="flex items-center gap-1.5 mt-0.5">
           <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate font-mono">
             {filename}
           </p>
+          <CopyButton
+            getText={() => `${sectionDir}/notebooks/${filename}`}
+            label="Copy notebook path"
+            className="h-6 w-6 [&_svg]:h-3 [&_svg]:w-3"
+          />
           {browserRunnable && (
             <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-accent/10 text-accent dark:text-accent-light">
               Pyodide
