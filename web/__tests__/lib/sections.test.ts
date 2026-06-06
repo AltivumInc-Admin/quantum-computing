@@ -1,4 +1,4 @@
-import { getSections, getSectionBySlug } from "@/lib/sections";
+import { getSections, getSectionBySlug, hueFor, sectionHue } from "@/lib/sections";
 import { getManifestSections } from "@/lib/manifest";
 
 describe("sections", () => {
@@ -32,5 +32,18 @@ describe("sections", () => {
 
   it("returns undefined for unknown slug", () => {
     expect(getSectionBySlug("99-unknown")).toBeUndefined();
+  });
+
+  describe("hueFor", () => {
+    it("maps each section index to its identity hue", () => {
+      expect(hueFor(0)).toBe(192);
+      expect(hueFor(3)).toBe(160);
+      expect(hueFor(5)).toBe(230);
+    });
+
+    it("wraps the seventh section back to the first hue", () => {
+      expect(sectionHue).toHaveLength(6);
+      expect(hueFor(6)).toBe(hueFor(0));
+    });
   });
 });

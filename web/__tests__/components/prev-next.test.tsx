@@ -14,6 +14,17 @@ jest.mock("next/link", () => {
   };
 });
 
+// PrevNext now navigates via TransitionLink (View Transitions). Mock it to a
+// plain anchor so the test doesn't need a mounted app router.
+jest.mock("@/components/transition-link", () => {
+  const React = require("react");
+  return {
+    __esModule: true,
+    TransitionLink: ({ href, children, onClick, ...props }: { href: string; children: React.ReactNode; onClick?: () => void }) =>
+      React.createElement("a", { href, onClick, ...props }, children),
+  };
+});
+
 describe("PrevNext", () => {
   it("should render both previous and next links for a middle section", () => {
     render(<PrevNext currentSlug="02-algorithms" />);

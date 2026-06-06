@@ -14,6 +14,17 @@ jest.mock("next/link", () => {
   };
 });
 
+// SidebarItem now navigates via TransitionLink (View Transitions). Mock it to a
+// plain anchor so the test doesn't need a mounted app router.
+jest.mock("@/components/transition-link", () => {
+  const React = require("react");
+  return {
+    __esModule: true,
+    TransitionLink: ({ href, children, onClick, ...props }: { href: string; children: React.ReactNode; onClick?: () => void }) =>
+      React.createElement("a", { href, onClick, ...props }, children),
+  };
+});
+
 let mockPathname = "/learn/00-foundations";
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
@@ -145,15 +156,16 @@ describe("Sidebar", () => {
     mockPathname = "/learn/02-algorithms";
     render(<Sidebar />);
     const activeLink = screen.getByText("Quantum Algorithms").closest("a");
-    expect(activeLink!.className).toContain("text-accent");
-    expect(activeLink!.className).toContain("bg-accent/10");
+    // The active item takes the section's identity hue (see .hue-* in globals.css).
+    expect(activeLink!.className).toContain("hue-text");
+    expect(activeLink!.className).toContain("hue-soft-bg");
   });
 
   it("should not highlight non-active sections", () => {
     mockPathname = "/learn/02-algorithms";
     render(<Sidebar />);
     const inactiveLink = screen.getByText("Quantum Computing Foundations").closest("a");
-    expect(inactiveLink!.className).not.toContain("bg-accent/10");
+    expect(inactiveLink!.className).not.toContain("hue-soft-bg");
   });
 
   it("should expose an overall progress bar reflecting completed sections", () => {

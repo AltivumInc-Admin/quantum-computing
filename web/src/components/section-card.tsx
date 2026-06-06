@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { TransitionLink } from "@/components/transition-link";
+import { hueFor } from "@/lib/sections";
 
 interface SectionCardProps {
   slug: string;
@@ -8,16 +9,14 @@ interface SectionCardProps {
   notebookCount: number;
 }
 
-// One hue per section is the single source of truth. The gradient bleed, the
-// number badge, and the hover glow are all derived from this value in CSS
-// (see .section-* classes in globals.css), so they always agree.
-const sectionHue = [192, 290, 75, 160, 15, 230];
-
+// One hue per section is the single source of truth (sectionHue in lib/sections).
+// The gradient bleed, the number badge, and the hover glow are all derived from
+// this value in CSS (see .section-* classes in globals.css), so they always agree.
 export function SectionCard({ slug, index, title, summary, notebookCount }: SectionCardProps) {
-  const hue = sectionHue[index % sectionHue.length];
+  const hue = hueFor(index);
 
   return (
-    <Link
+    <TransitionLink
       href={`/learn/${slug}`}
       style={{ "--hue": hue } as React.CSSProperties}
       className="group relative block rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) backdrop-blur-md overflow-hidden interactive focus-ring shadow-(--shadow-resting) hover:-translate-y-1.5 hover:shadow-(--shadow-raised) hover:border-gray-300/80 dark:hover:border-white/[0.12] transition-all duration-300"
@@ -57,6 +56,6 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
           </svg>
         </div>
       </div>
-    </Link>
+    </TransitionLink>
   );
 }
