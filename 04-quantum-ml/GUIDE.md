@@ -12,7 +12,7 @@ After completing this section, you will be able to:
 
 ## Prerequisites
 
-- Completed: 00-foundations, 01-hardware, 02-algorithms (especially variational section)
+- Completed: 01-foundations, 02-hardware, 03-algorithms (especially variational section)
 - Classical ML basics: supervised learning, loss functions, gradient descent, SVMs
 - Python: NumPy, basic familiarity with scikit-learn
 

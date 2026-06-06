@@ -20,11 +20,11 @@ describe("sections", () => {
     const sections = getSections();
     expect(sections).toHaveLength(7);
     expect(sections[0].slug).toBe("00-prereqs");
-    expect(sections[6].slug).toBe("05-hybrid-jobs");
+    expect(sections[6].slug).toBe("06-hybrid-jobs");
   });
 
   it("returns a section by slug", () => {
-    const section = getSectionBySlug("02-algorithms");
+    const section = getSectionBySlug("03-algorithms");
     expect(section).toBeDefined();
     expect(section!.title).toBe("Quantum Algorithms");
     expect(section!.index).toBe(3);

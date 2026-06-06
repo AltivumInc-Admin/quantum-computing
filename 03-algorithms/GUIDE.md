@@ -11,8 +11,8 @@ After completing this section, you will be able to:
 
 ## Prerequisites
 
-- Completed: 00-foundations (all gates, entanglement, measurement)
-- Completed: 01-hardware (device selection, simulators)
+- Completed: 01-foundations (all gates, entanglement, measurement)
+- Completed: 02-hardware (device selection, simulators)
 - Linear algebra: eigenvalues, unitary operators, tensor products
 
 ---

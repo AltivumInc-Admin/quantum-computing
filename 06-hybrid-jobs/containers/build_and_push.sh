@@ -26,7 +26,7 @@ aws ecr get-login-password --region us-east-1 | \
 
 # Build from project root (need access to lib/)
 cd "$(dirname "$0")/../.."
-docker build -f 05-hybrid-jobs/containers/Dockerfile -t "$FULL_NAME" .
+docker build -f 06-hybrid-jobs/containers/Dockerfile -t "$FULL_NAME" .
 
 # Push
 docker push "$FULL_NAME"

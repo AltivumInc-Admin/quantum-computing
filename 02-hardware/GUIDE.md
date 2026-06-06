@@ -11,7 +11,7 @@ After completing this section, you will be able to:
 
 ## Prerequisites
 
-- Completed: 00-foundations (circuit building, gates, measurement)
+- Completed: 01-foundations (circuit building, gates, measurement)
 - AWS credentials configured (run `make setup` to validate)
 
 ---
@@ -173,8 +173,8 @@ When choosing a device, consider:
 6. **`notebooks/06-noise-and-errors.ipynb`** — Add noise channels (depolarizing, amplitude damping) to circuits on DM1. Compare noisy vs. ideal results. Introduction to error mitigation (zero-noise extrapolation concept).
 
 **Scripts:**
-- `scripts/device_status.py` — Run from terminal: `python 01-hardware/scripts/device_status.py` to check current device availability without opening a notebook
-- `scripts/cost_estimator.py` — Estimate costs: `python 01-hardware/scripts/cost_estimator.py --device ionq --shots 1000`
+- `scripts/device_status.py` — Run from terminal: `python 02-hardware/scripts/device_status.py` to check current device availability without opening a notebook
+- `scripts/cost_estimator.py` — Estimate costs: `python 02-hardware/scripts/cost_estimator.py --device ionq --shots 1000`
 
 ---
 

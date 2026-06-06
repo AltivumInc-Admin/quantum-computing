@@ -44,14 +44,14 @@ describe("TransitionLink", () => {
   });
 
   it("routes a plain click through startViewTransition and the router", () => {
-    render(<TransitionLink href="/learn/02-algorithms">Next</TransitionLink>);
+    render(<TransitionLink href="/learn/03-algorithms">Next</TransitionLink>);
     fireEvent.click(screen.getByText("Next"));
     expect(startViewTransition).toHaveBeenCalledTimes(1);
-    expect(pushMock).toHaveBeenCalledWith("/learn/02-algorithms");
+    expect(pushMock).toHaveBeenCalledWith("/learn/03-algorithms");
   });
 
   it("lets the browser handle modified clicks (new tab / etc.)", () => {
-    render(<TransitionLink href="/learn/02-algorithms">Next</TransitionLink>);
+    render(<TransitionLink href="/learn/03-algorithms">Next</TransitionLink>);
     fireEvent.click(screen.getByText("Next"), { metaKey: true });
     expect(startViewTransition).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
@@ -61,7 +61,7 @@ describe("TransitionLink", () => {
     window.matchMedia = jest
       .fn()
       .mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
-    render(<TransitionLink href="/learn/02-algorithms">Next</TransitionLink>);
+    render(<TransitionLink href="/learn/03-algorithms">Next</TransitionLink>);
     fireEvent.click(screen.getByText("Next"));
     // Returns before preventDefault → native <Link> navigation, no VT.
     expect(startViewTransition).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ describe("TransitionLink", () => {
   it("forwards an incoming onClick handler", () => {
     const onClick = jest.fn();
     render(
-      <TransitionLink href="/learn/02-algorithms" onClick={onClick}>
+      <TransitionLink href="/learn/03-algorithms" onClick={onClick}>
         Next
       </TransitionLink>
     );
