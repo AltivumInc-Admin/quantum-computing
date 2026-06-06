@@ -3,8 +3,8 @@
 ## About This Project
 
 This is a quantum computing learning and experimentation workspace using Amazon Braket.
-It follows a progressive learning path from circuit fundamentals (00-foundations) through
-production hybrid quantum-classical workloads (05-hybrid-jobs), with focused tracks on
+It follows a progressive learning path from circuit fundamentals (01-foundations) through
+production hybrid quantum-classical workloads (06-hybrid-jobs), with focused tracks on
 Quantum Machine Learning and Quantum Chemistry.
 
 ## Development Guidelines
@@ -18,7 +18,7 @@ Quantum Machine Learning and Quantum Chemistry.
 
 ## Structure
 
-- `00-foundations/` through `05-hybrid-jobs/` — Progressive learning sections
+- `00-prereqs/` through `06-hybrid-jobs/` — Progressive learning sections
 - `lib/` — Shared Python library (circuits, utils, hardware abstraction)
 - `infra/` — CloudFormation templates and setup scripts
 - `tests/` — Pytest suite for lib/ (runs on local simulator only)

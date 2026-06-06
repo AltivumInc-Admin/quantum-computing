@@ -99,7 +99,7 @@ flowchart LR
 | **05** | **Production Hybrid Quantum-Classical Jobs** | 7 | 0/7 | Braket Hybrid Jobs, parametric compilation, checkpointing, custom containers, monitoring & cost controls |
 | | **Total** | **45** | **14** | |
 
-Each module's `GUIDE.md` follows the same shape: **Learning Objectives → Prerequisites → Concepts → Hands-On Exercises (numbered notebooks, each with a Scripts subsection) → References.** Reusable helper scripts (`scripts/`) keep shared logic out of the lessons. `00-prereqs` is the exception — it adds a Setup section and a Self-Assessment, and ends with a **10-question placement quiz** (rendered interactively in the portal): pass ≥ 7 unaided and skip straight to `00-foundations`.
+Each module's `GUIDE.md` follows the same shape: **Learning Objectives → Prerequisites → Concepts → Hands-On Exercises (numbered notebooks, each with a Scripts subsection) → References.** Reusable helper scripts (`scripts/`) keep shared logic out of the lessons. `00-prereqs` is the exception — it adds a Setup section and a Self-Assessment, and ends with a **10-question placement quiz** (rendered interactively in the portal): pass ≥ 7 unaided and skip straight to `01-foundations`.
 
 ---
 
@@ -129,7 +129,7 @@ python 00-prereqs/scripts/check_prereqs.py          # verifies your environment
 jupyter lab 00-prereqs/notebooks                    # start learning
 ```
 
-Everything in `00-prereqs`, `00-foundations`, and the first three `02-algorithms` notebooks runs on the **free local simulator** — no AWS credentials needed.
+Everything in `00-prereqs`, `01-foundations`, and the first three `03-algorithms` notebooks runs on the **free local simulator** — no AWS credentials needed.
 
 ### Path C — Full workspace (AWS Braket, real hardware)
 
@@ -257,12 +257,12 @@ flowchart TB
 ```text
 quantum-computing/
 ├── 00-prereqs/              # NumPy on-ramp — no AWS, no quantum SDK (6 notebooks)
-├── 00-foundations/          # Qubits, gates, entanglement, Braket basics (5)
-├── 01-hardware/             # QPUs, managed simulators, noise, cost (6)
-├── 02-algorithms/           # Deutsch-Jozsa, Grover, QFT, QPE, QAOA (6)
-├── 03-quantum-ml/           # Encodings, VQCs, kernels, barren plateaus (7)
-├── 04-quantum-chemistry/    # Hamiltonians, VQE/SSVQE, active spaces (8)
-├── 05-hybrid-jobs/          # Production Braket Hybrid Jobs (7)
+├── 01-foundations/          # Qubits, gates, entanglement, Braket basics (5)
+├── 02-hardware/             # QPUs, managed simulators, noise, cost (6)
+├── 03-algorithms/           # Deutsch-Jozsa, Grover, QFT, QPE, QAOA (6)
+├── 04-quantum-ml/           # Encodings, VQCs, kernels, barren plateaus (7)
+├── 05-quantum-chemistry/    # Hamiltonians, VQE/SSVQE, active spaces (8)
+├── 06-hybrid-jobs/          # Production Braket Hybrid Jobs (7)
 │   ├── algorithms/          #   qaoa_maxcut_job.py · vqe_chemistry_job.py · qml_training_job.py
 │   └── containers/          #   Dockerfile + pip-tools requirements.{in,lock}
 │       └─ each section also has  notebooks/  +  scripts/  +  GUIDE.md
