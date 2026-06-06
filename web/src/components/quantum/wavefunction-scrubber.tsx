@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { simulateSteps, probabilities, zeroState, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { diracString, toPythonState } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
 import { CopyButton } from "../copy-button";
+import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 
 /**
  * Scrubbable, gate-by-gate state-evolution player rendered from a ```qscrub
@@ -20,39 +21,6 @@ import { CopyButton } from "../copy-button";
 const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
 
 const STEP_MS = 750;
-
-// External-store hooks (like theme-toggle's pattern) avoid set-state-in-effect
-// and give a stable `false` server snapshot so the static export prerenders the
-// 2D fallback, then upgrades after hydration.
-function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-      mq.addEventListener("change", onChange);
-      return () => mq.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    () => false
-  );
-}
-
-function detectWebGL(): boolean {
-  try {
-    const c = document.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-function useWebGL(): boolean {
-  // WebGL support does not change during a session, so the store never notifies.
-  return useSyncExternalStore(
-    () => () => {},
-    detectWebGL,
-    () => false
-  );
-}
 
 function PlayIcon({ playing }: { playing: boolean }) {
   return (
