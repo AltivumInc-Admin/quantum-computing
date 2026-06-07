@@ -1,160 +1,200 @@
 # Quantum Hardware on Amazon Braket
 
-## Learning Objectives
+You spent the last two modules building flawless circuits on an ideal simulator — perfect gates,
+perfect measurements, infinite patience, no bill. Real quantum computers are none of those
+things. They are **noisy**, **sparsely wired**, **slow**, and **metered**. This module is about
+meeting that reality: what today's machines actually are, how their imperfections bite your
+circuits, and how to choose (and pay for) the right one.
 
-After completing this section, you will be able to:
-- Explain the differences between trapped-ion, superconducting, and neutral-atom quantum computers
-- Query Amazon Braket for available devices and their properties
-- Choose the appropriate device for a given circuit based on connectivity, gate set, and cost
-- Understand noise sources and their impact on computation fidelity
-- Estimate costs before submitting tasks to real hardware
+Everything here runs live in your browser — the noise, the routing, and the cost are all
+simulated or computed locally. Nothing submits a task or spends a cent.
 
-## Prerequisites
-
-- Completed: 01-foundations (circuit building, gates, measurement)
-- AWS credentials configured (run `make setup` to validate)
+> **You'll come away able to** tell trapped-ion, superconducting, and neutral-atom machines
+> apart, read a device's connectivity and fidelity, reason about noise, climb the simulator
+> ladder, and estimate cost before you ever touch a QPU. **You'll want first:** `01-foundations`
+> (circuits, gates, measurement). To run the notebooks on real hardware you'll also need AWS
+> credentials (`make setup`) — but none of this page requires them.
 
 ---
 
-## Concepts
+## Why there's no single "best" quantum computer
 
-### Quantum Hardware Technologies
+If one hardware approach were strictly better, there would only be one. Instead, every physical
+implementation trades one virtue for another, and Amazon Braket hands you several of them behind
+a single API so you can pick per problem. The axes that actually decide a circuit's fate:
 
-There is no single "best" quantum computer. Different physical implementations have different strengths, and Amazon Braket gives you access to multiple technologies through a unified API.
+- **Connectivity** — which qubits can directly interact. All-to-all means any pair entangles
+  directly; a 2D lattice means distant qubits must be shuttled together first.
+- **Gate fidelity** — how accurately each gate executes. Errors compound, so a long circuit on a
+  98%-per-gate machine can be mostly noise by the end.
+- **Coherence time** — how long a qubit holds its state before it decays. Your whole circuit must
+  finish well inside it.
+- **Clock speed** — how fast gates run (nanoseconds vs microseconds).
+- **Qubit count** — how big a problem you can even express.
 
-**Key differentiators between hardware:**
-- Qubit connectivity (which qubits can directly interact)
-- Native gate set (what operations the hardware performs directly)
-- Gate fidelity (how accurately gates execute)
-- Coherence time (how long qubits maintain their quantum state)
-- Clock speed (how fast gates execute)
-- Qubit count (total available qubits)
+Hold these five in mind. Every device below is just a different point in this trade-off space —
+and the next two sections show the two trade-offs that bite hardest.
 
-Every device below must implement two-qubit *entangling* gates — that is what makes a quantum computer more than a collection of independent qubits. Scrub the circuit below to watch a Hadamard create superposition, then a CNOT entangle the pair into a Bell state (the $\ket{00}$ and $\ket{11}$ bars rise together while $\ket{01}$ and $\ket{10}$ stay empty):
+## Noise — the defining reality of NISQ
 
-```qscrub
+We live in the **NISQ** era: Noisy Intermediate-Scale Quantum. "Noisy" is the operative word.
+Real gates are slightly wrong, qubits slowly leak their state to the environment
+(**decoherence**), and measurement itself can misread. The result: the clean probability peaks
+your circuit *should* produce smear out toward random noise, more so the deeper the circuit.
+
+Two canonical error models capture most of it. **Depolarizing** noise nudges a qubit toward the
+maximally mixed state — a coin that forgets which way it was leaning. **Amplitude damping**
+models energy loss — an excited $\ket{1}$ relaxing back toward $\ket{0}$, the way a real qubit
+decays. **Fidelity** measures how close the noisy result stays to the ideal.
+
+Watch it happen. Below is the Bell pair you built in foundations. At error rate 0 the two peaks
+($\ket{00}$ and $\ket{11}$) are crisp and the fidelity is 100%. Push the slider, and watch the
+distribution rot toward flat noise — then switch the channel from depolarizing to amplitude
+damping and see how differently they corrupt:
+
+```qnoise
 qubits 2
 H 0
 CNOT 0 1
 ```
 
-### IonQ — Trapped Ion Quantum Computers
+This is *the* reason quantum computing is hard, and why so much of the field is about error
+mitigation and, eventually, error correction. Every circuit you run on real hardware is a race
+against this decay.
 
-**Technology:** Individual ions (charged atoms) trapped in electromagnetic fields. Qubit states are encoded in the energy levels of each ion. Gates are performed using precisely tuned laser pulses.
+## Connectivity — the wiring constraint
 
-**Available on Braket:**
-- IonQ Aria (25 qubits) — Production workhorse
-- IonQ Forte (36 qubits) — Higher qubit count, enhanced performance
+The second tax is geometric. A two-qubit gate needs the two qubits to be physically adjacent. If
+your hardware only wires up nearest neighbors and your algorithm wants qubit 0 to talk to qubit
+8, the compiler must first **SWAP** the states along a chain of intermediate qubits to bring them
+together — and every SWAP is three more two-qubit gates, adding depth and, per the section above,
+more noise.
 
-**Strengths:**
-- All-to-all connectivity: Any qubit can interact with any other qubit directly. No need for SWAP chains to move information.
-- High gate fidelity: Single-qubit gates >99.5%, two-qubit gates >97%
-- Long coherence times: Qubits maintain state for seconds (vs. microseconds for superconducting)
+Drag the endpoints below on a 3×3 grid (IQM-style nearest-neighbor lattice) and watch the SWAP
+chain the router has to insert. Then imagine the same gate on a trapped-ion machine, where every
+qubit is already connected to every other: **zero** SWAPs.
 
-**Trade-offs:**
-- Slower clock speed: Gate operations take microseconds (vs. nanoseconds for superconducting)
-- Fewer qubits than superconducting approaches (currently)
+```qtopo
+{"topology": "grid", "qubits": 9, "gate": [0, 8]}
+```
 
-**Native gate set on Braket:** GPi, GPi2, MS (Molmer-Sorensen)
+Connectivity is why an algorithm that looks shallow on paper can balloon in depth on real
+hardware — and why all-to-all machines are prized for densely connected problems.
 
-**Best for:** Algorithms requiring heavy qubit connectivity (QAOA on dense graphs), circuits where gate fidelity matters more than speed.
+## The three hardware families
 
-### IQM — Superconducting Quantum Computers
+With those two trade-offs in hand, the devices on Braket sort into three physical families, each
+sitting at a different point in the space.
 
-**Technology:** Superconducting circuits cooled to near absolute zero (~15 millikelvin). Qubits are tiny electrical circuits (transmons) that behave quantum mechanically at these temperatures. Gates are microwave pulses.
+**IonQ — trapped ions.** Individual charged atoms held in electromagnetic fields; qubits encoded
+in their energy levels, gates driven by laser pulses. *Aria* (25 qubits) and *Forte* (36) are on
+Braket, with native gates GPi, GPi2, and the Mølmer–Sørensen (MS) entangler. Their superpower is
+**all-to-all connectivity** (no SWAP tax) and high fidelity (single-qubit >99.5%, two-qubit
+>97%) with coherence measured in *seconds*. The cost: slow, microsecond-scale gates, and fewer
+qubits. Best for circuits where connectivity and fidelity matter more than raw speed.
 
-**Available on Braket:**
-- IQM Garnet (20 qubits) — Square lattice topology
+**IQM — superconducting.** Tiny transmon circuits cooled to ~15 millikelvin, driven by microwave
+pulses. *Garnet* (20 qubits, square lattice) is on Braket with native gates CZ and PRx. Gates run
+in *nanoseconds* — orders of magnitude faster — and the fabrication leverages decades of
+semiconductor manufacturing. The cost: **nearest-neighbor connectivity** (the SWAP tax above) and
+~100-microsecond coherence. Best for circuits with local structure where speed wins.
 
-**Strengths:**
-- Fast gate speed: Operations complete in nanoseconds
-- Mature fabrication: Leverages semiconductor manufacturing techniques
-- Good for circuits with local interactions
+**QuEra — neutral atoms (analog).** Arrays of rubidium atoms held in optical tweezers. *Aquila*
+(256 atoms) is fundamentally different: it does **not** run gate circuits. Instead you place the
+atoms in a geometry, drive them with time-dependent fields (Rabi frequency, detuning), and let
+the system evolve under the Rydberg Hamiltonian — **analog** quantum computation. Its superpower
+is scale (256 qubits) and a natural fit for problems with geometric structure, like Maximum
+Independent Set. The cost: it's not a general gate-model machine.
 
-**Trade-offs:**
-- Limited connectivity: Nearest-neighbor only (square lattice). Distant qubit interactions require SWAP chains, adding depth and error.
-- Shorter coherence times: ~100 microseconds
-- Lower two-qubit gate fidelity than trapped ions (improving rapidly)
+The interactive table makes the trade-offs concrete — sort by qubit count, or filter to one
+technology. Note that Aquila is the lone non-gate-model row:
 
-**Native gate set on Braket:** CZ, PRx (parameterized rotation)
+```qdevices
+```
 
-**Best for:** Circuits with nearest-neighbor structure, algorithms where speed matters, research on error mitigation.
+## The simulator ladder — your defense
 
-### QuEra — Neutral Atom (Analog Hamiltonian Simulation)
+Given all of the above, you almost never start on a QPU. You climb a ladder of classical
+simulators, each a defense against wasting time and money on real hardware:
 
-**Technology:** Arrays of neutral atoms (rubidium) held in optical tweezers (focused laser beams). Qubits are encoded in atomic energy levels. Computation happens by evolving the system under a carefully designed Hamiltonian — this is analog quantum computing, fundamentally different from the gate model.
+- **Local simulator** (free, instant) — runs on your laptop, exact state-vector up to ~25 qubits
+  (each qubit doubles memory: $2^n$ amplitudes). Your default for development and debugging.
+- **SV1** (state vector, up to 34 qubits, $0.075/min) — exact, managed, for validating algorithms
+  at a scale your laptop can't hold.
+- **DM1** (density matrix, up to 17 qubits, $0.075/min) — the only simulator that models **noise**.
+  This is where you study the decay you saw above before paying a real machine to show it to you.
+- **TN1** (tensor network, up to ~50 qubits, $0.275/min) — efficient for large but lightly
+  entangled circuits.
 
-**Available on Braket:**
-- QuEra Aquila (256 qubits) — Analog Hamiltonian Simulator
+The Bell pair you debug locally costs nothing and returns instantly:
 
-**Key difference:** Aquila does NOT run gate-based circuits. Instead, you define:
-- Atom positions (the geometry of your problem)
-- Time-dependent driving fields (Rabi frequency, detuning)
-- The system evolves under the Rydberg Hamiltonian
+```qsim
+qubits 2
+H 0
+CNOT 0 1
+```
 
-**Strengths:**
-- Large qubit count (256 atoms)
-- Natural for optimization and simulation problems that map to geometric arrangements
-- Programmable atom positions allow problem-specific configurations
+The discipline, in order: **develop on Local → validate at scale on SV1 → study noise on DM1 →
+run on a QPU only when the algorithm is proven.** Skipping rungs is how you burn a budget.
 
-**Best for:** Maximum Independent Set problems, quantum simulation of condensed matter systems, optimization problems with geometric structure.
+## Cost — the discipline
 
-### Managed Simulators (SV1, DM1, TN1)
+That last rung is metered, and the model has two shapes. QPUs charge **per task** (a flat fee each
+time you submit a circuit, $0.30) plus **per shot** (each repetition; e.g. $0.01 on IonQ). Managed
+simulators charge **per minute** of compute. The local simulator is free.
 
-Amazon Braket provides three fully managed classical simulators that run your quantum circuits on AWS infrastructure:
+The arithmetic matters: 1,000 shots on IonQ is $0.30 + 1{,}000 \times \$0.01 = \$10.30$ — per
+task. Submit a 100-point parameter sweep and that's over a thousand dollars. Estimate before you
+run:
 
-**SV1 — State Vector Simulator:**
-- Simulates up to 34 qubits
-- Exact simulation (no sampling noise from the simulator itself)
-- Best for: Debugging circuits, verifying algorithms, circuits up to ~30 qubits
-- Cost: \$0.075/minute
+```qcost
+```
 
-**DM1 — Density Matrix Simulator:**
-- Simulates up to 17 qubits
-- Supports noise modeling (depolarizing, amplitude damping, etc.)
-- Best for: Studying noise effects, error mitigation research, small noisy circuits
-- Cost: \$0.075/minute
+This is exactly why the workflow above exists, and why the project's rule is *local simulator
+first, QPU only when validated, always with a cost estimate.*
 
-**TN1 — Tensor Network Simulator:**
-- Handles circuits with up to 50 qubits (depending on entanglement structure)
-- Uses tensor network contraction — efficient for circuits with limited entanglement
-- Best for: Large shallow circuits, circuits with 1D/2D local connectivity
-- Cost: \$0.275/minute
+## Choosing a device
 
-**Local Simulator:**
-- Runs on your machine (free)
-- State vector simulation, up to ~25 qubits (depends on your RAM — each qubit doubles memory: 2^n complex amplitudes)
-- Best for: Development, debugging, rapid iteration
+Putting it together, a quick decision flow:
 
-### Device Properties and Selection
+1. **Developing or debugging?** Local simulator. Always.
+2. **Validating a gate circuit at scale, noiselessly?** SV1.
+3. **Studying how noise affects results?** DM1.
+4. **Large but lightly entangled circuit?** TN1.
+5. **Ready for real hardware, densely connected problem (e.g. dense-graph QAOA)?** IonQ —
+   all-to-all connectivity, high fidelity.
+6. **Real hardware, local structure, speed matters?** IQM.
+7. **Optimization or simulation with geometric structure (e.g. Maximum Independent Set)?** QuEra
+   Aquila (analog).
 
-When choosing a device, consider:
+Check yourself:
 
-| Factor | Local | SV1/DM1/TN1 | IonQ | IQM | QuEra |
-|--------|-------|--------------|------|-----|-------|
-| Cost | Free | \$/minute | \$/shot+task | \$/shot+task | \$/shot+task |
-| Qubits | ~25 | 34/17/50 | 25-36 | 20 | 256 (analog) |
-| Noise | None | Optional (DM1) | Real | Real | Real |
-| Speed | Instant | Seconds-minutes | Minutes-hours (queue) | Minutes-hours (queue) | Minutes-hours (queue) |
-| Gate model | Yes | Yes | Yes | Yes | No (analog) |
-
-**Workflow recommendation:**
-1. Develop and debug on local simulator (free, instant)
-2. Validate at scale on SV1 (up to 34 qubits, exact)
-3. Study noise effects on DM1 (add noise models)
-4. Run on real QPU only when necessary (costly, queued)
-
-### Cost Model
-
-**QPU devices (IonQ, IQM, QuEra):**
-- Per-task fee: \$0.30 (charged each time you submit a circuit)
-- Per-shot fee: Varies by provider (see CLAUDE.md for current rates)
-- Example: 1000 shots on IonQ = \$0.30 + (1000 x \$0.01) = \$10.30
-
-**Managed simulators:**
-- Per-minute billing (minimum varies)
-- No per-shot charge
-- Example: 2-minute SV1 run = \$0.15
+```quiz
+{
+  "questions": [
+    {
+      "q": "Your algorithm is QAOA on a dense graph where almost every qubit must interact with every other. Which hardware family fits best, and why?",
+      "hint": "Dense interaction means many two-qubit gates between arbitrary pairs. Which connectivity avoids inserting SWAP chains for distant pairs?",
+      "a": "A trapped-ion machine (IonQ Aria/Forte). Its all-to-all connectivity means any pair entangles directly — no SWAP overhead — which a dense interaction graph would otherwise incur heavily on a lattice device."
+    },
+    {
+      "q": "Why develop and debug on the Local simulator before anything else?",
+      "hint": "Think about the three things real hardware is that a laptop simulator is not: metered, queued, and slow to iterate.",
+      "a": "It is free, instant, and has no queue, so you can iterate rapidly at zero cost. You reserve managed simulators and QPUs for circuits you have already validated locally."
+    },
+    {
+      "q": "What does DM1 give you that SV1 does not?",
+      "hint": "The names are the clue: state vector vs density matrix. One of those representations can express mixed (noisy) states.",
+      "a": "Noise modeling. DM1 is a density-matrix simulator, so it can apply noise channels (depolarizing, amplitude damping, etc.) and show how they degrade results. SV1 is an exact, noiseless state-vector simulator."
+    },
+    {
+      "q": "You want a CNOT between two qubits at opposite corners of a square-lattice device. What does that cost compared to the same gate on an all-to-all machine?",
+      "hint": "On a lattice the two qubits aren't adjacent, so the router must bring them together first. What operation does that, and what is its overhead?",
+      "a": "On the lattice the compiler inserts a chain of SWAP gates (each ~3 two-qubit gates) along the shortest path to make the qubits adjacent, adding depth and error. On an all-to-all machine the cost is zero — they are already connected."
+    }
+  ]
+}
+```
 
 ---
 
@@ -175,6 +215,13 @@ When choosing a device, consider:
 **Scripts:**
 - `scripts/device_status.py` — Run from terminal: `python 02-hardware/scripts/device_status.py` to check current device availability without opening a notebook
 - `scripts/cost_estimator.py` — Estimate costs: `python 02-hardware/scripts/cost_estimator.py --device ionq --shots 1000`
+
+## Where this goes next
+
+You now know what real machines are and how to choose one. The next module, **`03-algorithms`**,
+puts them to work: Deutsch–Jozsa, Grover's search, the Quantum Fourier Transform, and QAOA — the
+circuits that make all this hardware worth building. You'll develop them on the simulator ladder
+you just learned, exactly as the workflow prescribes.
 
 ---
 
