@@ -121,6 +121,16 @@ not. The progression is:
 That is it. The rest of the module builds the math machinery to make this precise. The
 intuition stays the same all the way to the end of the curriculum.
 
+Watch the spin happen. Below, qubit 0 starts as the coin lying flat — `|0>`, heads-up with
+certainty. Apply a Hadamard (`H`) and it becomes the perfectly balanced spin `|+>`: stop it
+now and the bars say heads or tails with equal odds. This is the whole story of section 4 in
+one gate — read the probabilities for yourself.
+
+```qsim
+qubits 1
+H 0
+```
+
 ### 5. Dirac notation, decoded
 
 Dirac notation is just compact NumPy. We will build a one-to-one translation table:
@@ -159,6 +169,12 @@ RY 0 theta
 ```
 
 …then you are ready for `01-foundations`.
+
+Here is the handoff. Everything in this module taught you to **describe** a qubit: to write
+its state, read off its probabilities, and find it on the sphere. `01-foundations` hands you
+the **verbs** — how to *act* on that state with gates, *combine* two qubits into one
+inseparable whole, and *read* the answer back out as a measurement. Same spun coin you met
+here, now set in motion.
 
 ---
 
