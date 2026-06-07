@@ -20,4 +20,16 @@ describe("content", () => {
     expect(summary!.length).toBeGreaterThan(10);
     expect(summary!.length).toBeLessThan(500);
   });
+
+  it("strips inline Markdown from card summaries", async () => {
+    // 01-foundations and 00-prereqs intros contain **bold**, *italic*, and a
+    // [link](url); none of those markers should leak onto the landing-page cards.
+    for (const slug of ["00-prereqs", "01-foundations"]) {
+      const summary = await getContentSummary(slug);
+      expect(summary).toBeTruthy();
+      expect(summary).not.toMatch(/\*\*/); // no bold markers
+      expect(summary).not.toMatch(/\]\(/); // no link syntax
+      expect(summary).not.toContain("`"); // no inline code ticks
+    }
+  });
 });
