@@ -1,126 +1,251 @@
 # Quantum Computing Foundations
 
-## Learning Objectives
+In the prerequisites you learned to **describe** a qubit — to spin the coin, write down where
+it leans, and read off the odds of heads or tails. That is a noun. This module is about the
+**verbs**: how to *act* on a qubit, *combine* two of them into something with no classical
+shadow, and *read* the answer back out.
 
-After completing this section, you will be able to:
-- Represent qubit states using Dirac notation and Bloch sphere geometry
-- Apply single-qubit and multi-qubit gates to transform quantum states
-- Build and run quantum circuits using the Amazon Braket SDK
-- Interpret measurement results as probability distributions
-- Create entangled states and understand their significance
+By the end you will have built, by hand, the single most important two-qubit state in all of
+quantum computing — and you will have watched, on screen, the thing Einstein called
+"spooky." Everything here runs live in your browser; no install, no AWS account, no cost.
 
-## Prerequisites
-
-- Python proficiency (functions, classes, NumPy basics)
-- Linear algebra fundamentals (vectors, matrices, complex numbers)
-- Conceptual understanding of superposition and entanglement
+> **You'll come away able to** place any single-qubit state on the Bloch sphere, drive it
+> with gates, reason about measurement as sampling, and prepare and verify entanglement on
+> the Amazon Braket SDK. **You'll want first:** the prerequisites module (Dirac notation,
+> unit vectors in $\mathbb{C}^2$, the Born rule, basic NumPy). If $\ket{\psi} = \alpha\ket{0} + \beta\ket{1}$
+> reads cleanly, you're ready.
 
 ---
 
-## Concepts
+## The qubit, in one breath
 
-### Qubits and State Representation
-
-A classical bit is either 0 or 1. A qubit exists in a superposition of both:
+A classical bit sits at 0 or 1. A qubit lives in a superposition of both:
 
 $$
-\ket{\psi} = \alpha\ket{0} + \beta\ket{1}
+\ket{\psi} = \alpha\ket{0} + \beta\ket{1}, \qquad |\alpha|^2 + |\beta|^2 = 1
 $$
 
-where $\alpha$ and $\beta$ are complex amplitudes satisfying $|\alpha|^2 + |\beta|^2 = 1$.
+The two complex numbers $\alpha$ and $\beta$ are **amplitudes** — the precise version of "which
+way the spun coin leans." As a vector, $\ket{0} = \begin{bmatrix} 1 \\ 0 \end{bmatrix}$ and
+$\ket{1} = \begin{bmatrix} 0 \\ 1 \end{bmatrix}$, so a qubit is just a unit vector in
+$\mathbb{C}^2$.
 
-**State vector representation:** A qubit state is a unit vector in a 2D complex vector space ($\mathbb{C}^2$):
-
-$$
-\ket{0} = \begin{bmatrix} 1 \\ 0 \end{bmatrix} \text{ (basis "zero")}, \qquad \ket{1} = \begin{bmatrix} 0 \\ 1 \end{bmatrix} \text{ (basis "one")}
-$$
-
-The probability of measuring $\ket{0}$ is $|\alpha|^2$ and $\ket{1}$ is $|\beta|^2$.
-
-**Bloch sphere:** Any single-qubit pure state can be visualized as a point on the unit sphere:
-
-$$
-\ket{\psi} = \cos\tfrac{\theta}{2}\ket{0} + e^{i\phi}\sin\tfrac{\theta}{2}\ket{1}
-$$
-
-- North pole ($\theta=0$): $\ket{0}$
-- South pole ($\theta=\pi$): $\ket{1}$
-- Equator: equal superposition states (e.g., $\ket{+}$ at $\phi=0$, $\ket{-}$ at $\phi=\pi$)
-
-**Global phase:** States that differ only by a global phase ($e^{i\gamma}\ket{\psi}$) are physically indistinguishable. Only relative phase between $\ket{0}$ and $\ket{1}$ components matters.
-
-### Single-Qubit Gates
-
-Quantum gates are unitary matrices that transform qubit states. Key single-qubit gates:
-
-**Pauli Gates:**
-- X gate (NOT): Flips $\ket{0} \leftrightarrow \ket{1}$. Matrix: $\begin{bmatrix} 0 & 1 \\ 1 & 0 \end{bmatrix}$
-- Y gate: Rotation about Y-axis. Matrix: $\begin{bmatrix} 0 & -i \\ i & 0 \end{bmatrix}$
-- Z gate: Phase flip on $\ket{1}$. Matrix: $\begin{bmatrix} 1 & 0 \\ 0 & -1 \end{bmatrix}$
-
-**Hadamard Gate (H):**
-Creates superposition from basis states:
-- $H\ket{0} = \tfrac{1}{\sqrt{2}}(\ket{0} + \ket{1}) = \ket{+}$
-- $H\ket{1} = \tfrac{1}{\sqrt{2}}(\ket{0} - \ket{1}) = \ket{-}$
-- Matrix: $\tfrac{1}{\sqrt{2}}\begin{bmatrix} 1 & 1 \\ 1 & -1 \end{bmatrix}$
-
-Try it live — apply a Hadamard to $\ket{0}$ and watch the amplitudes split into an equal superposition (the Bloch vector swings from the north pole to the $+x$ equator):
+Here is the spun coin made literal. Qubit 0 starts flat at $\ket{0}$; a Hadamard ($H$) sets
+it spinning into the perfectly balanced superposition $\ket{+}$. Read the amplitude bars and
+the Dirac state below — this is the whole noun in one gate:
 
 ```qsim
 qubits 1
 H 0
 ```
 
-Now sweep a continuous rotation. Drag $\theta$ and watch $R_y(\theta)\ket{0}$ trace a path between $\ket{0}$ and $\ket{1}$:
+One subtlety you will lean on constantly: an overall **global phase** $e^{i\gamma}\ket{\psi}$
+changes nothing you can measure. Only the *relative* phase between the $\ket{0}$ and $\ket{1}$
+parts is physical. Hold that thought — it is why the Bloch sphere works.
 
-```qsim
+## Measurement — what "looking" costs
+
+Before we act on a qubit, we have to be honest about what happens when we *look* at one,
+because looking is destructive. Measurement in the computational basis is **probabilistic and
+irreversible**:
+
+- The probability of outcome $\ket{x}$ is $|\braket{x}{\psi}|^2$ — the **Born rule**.
+- The act of measuring **collapses** the state onto the outcome you got. Measure $\ket{+}$,
+  see "0," and the qubit is now $\ket{0}$ — the rest of the superposition is gone for good.
+
+So a single measurement tells you almost nothing. To see the *distribution* a state encodes,
+you prepare it, measure, and repeat — each run is a **shot**. The empirical histogram creeps
+toward the true Born-rule probabilities as the shot count grows, and never quite arrives.
+That convergence is the entire reason real quantum hardware is billed per shot.
+
+Run it yourself. This is $\ket{+}$ again; fire 1 shot, then 10, 100, 1,000, 10,000 and watch
+the bars settle onto the 50/50 line the Born rule predicts:
+
+```qshots
+qubits 1
+H 0
+```
+
+That gap between "what one shot shows" and "what the state actually is" is the texture of all
+quantum experiments. Keep it in mind: every claim we make about a state is really a claim
+about a histogram.
+
+## Gates as rotations
+
+Now the verbs. A quantum **gate** is a unitary matrix — a transformation that preserves length
+(so a unit vector stays a unit vector). On a single qubit there is a far friendlier picture
+than matrices: **every gate is a rotation of the Bloch sphere.** The north pole is $\ket{0}$,
+the south pole is $\ket{1}$, the equator is maximal superposition, and a gate just turns the
+arrow.
+
+Build a state by hand and feel it. Drag $\theta$ (how far from the north pole) and $\phi$ (how
+far around) and watch the amplitudes, the probabilities, and the gate sequence that produces
+your state:
+
+```qbloch
+```
+
+The parameterization you just drove is exactly
+
+$$
+\ket{\psi} = \cos\tfrac{\theta}{2}\ket{0} + e^{i\phi}\sin\tfrac{\theta}{2}\ket{1},
+$$
+
+and the rotation gates are how you reach any point on the sphere:
+
+- $R_x(\theta)$, $R_y(\theta)$, $R_z(\theta)$ rotate by angle $\theta$ about the X, Y, Z axes.
+
+Watch one continuous rotation gate-by-gate. $R_y(\theta)$ tips the arrow off the north pole;
+drag the sphere to look around, or press play to sweep $\theta$ and watch $R_y(\theta)\ket{0}$
+trace the meridian from $\ket{0}$ to $\ket{1}$:
+
+```qscrub
 qubits 1
 RY 0 theta
 ```
 
-**Phase Gates:**
-- S gate: $\pi/2$ phase on $\ket{1}$. Matrix: $\begin{bmatrix} 1 & 0 \\ 0 & i \end{bmatrix}$
-- T gate: $\pi/4$ phase on $\ket{1}$. Matrix: $\begin{bmatrix} 1 & 0 \\ 0 & e^{i\pi/4} \end{bmatrix}$
+With the geometry in hand, the named gates are just memorable special rotations. Here is the
+reference card — but you now know what each one *does* before you read its matrix:
 
-**Rotation Gates:**
-- $R_x(\theta)$: Rotation about X-axis by angle $\theta$
-- $R_y(\theta)$: Rotation about Y-axis by angle $\theta$
-- $R_z(\theta)$: Rotation about Z-axis by angle $\theta$
+| Gate | Effect | Matrix |
+|---|---|---|
+| $X$ (NOT) | $\ket{0}\leftrightarrow\ket{1}$ — a half-turn about X | $\begin{bmatrix} 0 & 1 \\ 1 & 0 \end{bmatrix}$ |
+| $Y$ | half-turn about Y | $\begin{bmatrix} 0 & -i \\ i & 0 \end{bmatrix}$ |
+| $Z$ | phase flip on $\ket{1}$ — half-turn about Z | $\begin{bmatrix} 1 & 0 \\ 0 & -1 \end{bmatrix}$ |
+| $H$ | swaps the Z and X axes; makes $\ket{0}\to\ket{+}$ | $\tfrac{1}{\sqrt{2}}\begin{bmatrix} 1 & 1 \\ 1 & -1 \end{bmatrix}$ |
+| $S$ | quarter-turn about Z ($\pi/2$ phase on $\ket{1}$) | $\begin{bmatrix} 1 & 0 \\ 0 & i \end{bmatrix}$ |
+| $T$ | eighth-turn about Z ($\pi/4$ phase on $\ket{1}$) | $\begin{bmatrix} 1 & 0 \\ 0 & e^{i\pi/4} \end{bmatrix}$ |
 
-Any single-qubit unitary can be decomposed as $U = R_z(\alpha)\,R_y(\beta)\,R_z(\gamma)$ (up to global phase).
+The deep fact hiding here: every single-qubit gate factors as
+$U = R_z(\alpha)\,R_y(\beta)\,R_z(\gamma)$ up to global phase. Three rotations reach anywhere
+on the sphere — which is why those few gates are enough.
 
-### Multi-Qubit Gates
+## The circuit model
 
-**CNOT (Controlled-NOT):** The fundamental two-qubit gate. Flips the target qubit if and only if the control qubit is $\ket{1}$.
+Strung together, gates form a **circuit**, and the rules of the game are simple enough to state
+in three lines:
 
-- $\text{CNOT}\ket{00} = \ket{00}$
-- $\text{CNOT}\ket{01} = \ket{01}$
-- $\text{CNOT}\ket{10} = \ket{11}$
-- $\text{CNOT}\ket{11} = \ket{10}$
+1. Start every qubit in $\ket{0}$.
+2. Apply a sequence of gates.
+3. Measure some or all of the qubits.
 
-CNOT + single-qubit gates form a universal gate set (can approximate any unitary).
+Circuits read left to right in time. Gates acting on different qubits at the same step run in
+parallel, which gives two independent sizes: **depth** (how many steps, i.e. time) and
+**width** (how many qubits). The whole craft of quantum programming is doing more with less of
+both.
 
-**CZ (Controlled-Z):** Applies Z to target when control is $\ket{1}$. Symmetric — either qubit can be "control."
+In code, this is the Amazon Braket SDK, and it reads almost exactly like the three rules:
 
-**SWAP:** Exchanges the states of two qubits. Can be decomposed into three CNOTs.
+```python
+from braket.circuits import Circuit
+from braket.devices import LocalSimulator
 
-**Toffoli (CCNOT):** Three-qubit gate — flips target only when both controls are $\ket{1}$. Universal for classical reversible computation.
+# Build a circuit: a Hadamard on q0, then a CNOT controlled by q0.
+circuit = Circuit().h(0).cnot(0, 1)
 
-### Entanglement
+# Run it on the free local simulator.
+device = LocalSimulator()
+result = device.run(circuit, shots=1000).result()
 
-Entanglement is a correlation between qubits that has no classical analogue. An entangled state cannot be written as a product of individual qubit states.
+# Collect measurement statistics.
+counts = result.measurement_counts
+```
 
-**Bell States (maximally entangled two-qubit states):**
-- $\ket{\Phi^+} = \tfrac{1}{\sqrt{2}}(\ket{00} + \ket{11})$ — created by H on qubit 0, then CNOT(0,1)
-- $\ket{\Phi^-} = \tfrac{1}{\sqrt{2}}(\ket{00} - \ket{11})$
-- $\ket{\Psi^+} = \tfrac{1}{\sqrt{2}}(\ket{01} + \ket{10})$
-- $\ket{\Psi^-} = \tfrac{1}{\sqrt{2}}(\ket{01} - \ket{10})$
+Run that exact circuit in your browser — no install required. The printed vector is the four
+amplitudes of $\ket{00}, \ket{01}, \ket{10}, \ket{11}$; you should see weight only on
+$\ket{00}$ and $\ket{11}$:
 
-Measuring one qubit of a Bell pair instantly determines the other's outcome, regardless of distance. This is the basis for quantum teleportation and superdense coding.
+```runnable
+from braket.circuits import Circuit
 
-**GHZ State:** The n-qubit generalization: $\tfrac{1}{\sqrt{2}}(\ket{00\dots0} + \ket{11\dots1})$. Maximally entangled — measuring any one qubit collapses all others.
+# Entangle two qubits: a Hadamard on q0, then a CNOT controlled by q0.
+circuit = Circuit().h(0).cnot(0, 1)
 
-Your turn — build a Bell pair yourself. Write the circuit, press Check, and your state is graded instantly in your browser against the target (up to global phase):
+# Inspect the resulting state vector (amplitudes of |00>, |01>, |10>, |11>).
+print(circuit.state_vector())
+```
+
+That two-line circuit is the climax of this whole module. Let's earn it.
+
+## Two qubits, and the gates that bind them
+
+Two qubits live in a four-dimensional space with basis $\ket{00}, \ket{01}, \ket{10},
+\ket{11}$. Single-qubit gates still act on one wire at a time — but the interesting gates
+**condition one qubit on another.**
+
+The workhorse is **CNOT** (controlled-NOT): it flips the target qubit if and only if the
+control is $\ket{1}$.
+
+$$
+\text{CNOT}\ket{00}=\ket{00},\quad \text{CNOT}\ket{01}=\ket{01},\quad \text{CNOT}\ket{10}=\ket{11},\quad \text{CNOT}\ket{11}=\ket{10}
+$$
+
+CNOT together with the single-qubit gates is **universal** — that pair can approximate any
+quantum computation at all. A few cousins round out the toolkit:
+
+- **CZ** applies a $Z$ to the target when the control is $\ket{1}$; it is symmetric, so either
+  qubit can be called the control.
+- **SWAP** exchanges two qubits, and decomposes into three CNOTs.
+- **Toffoli (CCNOT)** flips its target only when *both* controls are $\ket{1}$ — enough to do
+  any classical logic reversibly.
+
+Watch CNOT do something a classical wire cannot. On its own, CNOT just copies a definite bit —
+but feed it a control that is already in superposition and the two qubits fuse. Here is the
+control after a Hadamard, the moment before the CNOT:
+
+```qsim
+qubits 2
+H 0
+```
+
+The control is half $\ket{0}$ and half $\ket{1}$ at once. So when CNOT "flips the target if the
+control is 1," it does both at once — and that is where entanglement comes from.
+
+## Entanglement
+
+Apply that CNOT. The result is the **Bell state**:
+
+$$
+\ket{\Phi^+} = \tfrac{1}{\sqrt{2}}\big(\ket{00} + \ket{11}\big).
+$$
+
+Step through the construction one gate at a time — $H$ on qubit 0, then CNOT(0,1) — and watch
+the two-qubit amplitudes go from a single spike to two:
+
+```qscrub
+qubits 2
+H 0
+CNOT 0 1
+```
+
+Look hard at $\ket{\Phi^+}$: there is **no way** to write it as (something for qubit 0) $\otimes$
+(something for qubit 1). The qubits no longer have individual states — only the pair does. That
+is the definition of **entanglement**: a correlation with no classical analogue.
+
+Here is the spooky part, made undeniable. Measure qubit 0 of a Bell pair and you instantly know
+qubit 1, every time, no matter how far apart they are. Measure the two panels below many times:
+the entangled circuit yields only `00` and `11` (perfect correlation), while a mere product of
+two superpositions — the same gates, no CNOT — scatters across all four outcomes (total
+independence):
+
+```qcorr
+{
+  "prompt": "Measure both qubits many times. In which circuit does qubit 1's outcome track qubit 0's, and in which is it independent?",
+  "entangled": "H 0\nCNOT 0 1",
+  "product": "H 0\nH 1"
+}
+```
+
+The four maximally-entangled two-qubit states — the **Bell basis** — are
+$\ket{\Phi^\pm} = \tfrac{1}{\sqrt{2}}(\ket{00}\pm\ket{11})$ and
+$\ket{\Psi^\pm} = \tfrac{1}{\sqrt{2}}(\ket{01}\pm\ket{10})$. They are the raw fuel of quantum
+teleportation and superdense coding. The pattern scales: the $n$-qubit **GHZ state**
+$\tfrac{1}{\sqrt{2}}(\ket{0\dots0} + \ket{1\dots1})$ is entangled so totally that measuring any
+one qubit collapses them all.
+
+Now you build it. Write the circuit, press Check, and your state is graded in your browser
+against $\ket{\Phi^+}$ (up to global phase). You already saw the recipe — superpose, then
+control a flip:
 
 ```qchallenge
 {
@@ -133,52 +258,40 @@ Your turn — build a Bell pair yourself. Write the circuit, press Check, and yo
 }
 ```
 
-### Measurement
+## Check yourself
 
-Quantum measurement is probabilistic and irreversible. In the computational basis:
+Five questions that tie the module together. Try each before revealing the hint or answer.
 
-- Probability of outcome $\ket{x}$: $|\langle x|\psi\rangle|^2$
-- Post-measurement state: collapses to $\ket{x}$ (Born rule)
-
-**Shot-based measurement:** On real hardware, you run the circuit many times ("shots") and collect statistics. More shots = better probability estimates, but each shot has a cost on real QPUs.
-
-**Partial measurement:** Measuring only some qubits collapses those qubits while leaving unmeasured qubits in a (potentially) updated state.
-
-### The Circuit Model
-
-Quantum computation in the circuit model:
-1. Initialize qubits in $\ket{0}$ state
-2. Apply a sequence of unitary gates
-3. Measure some or all qubits
-
-Circuits read left-to-right. Gates on different qubits at the same time-step can execute in parallel (circuit depth vs. width).
-
-**Amazon Braket SDK basics:**
-```python
-from braket.circuits import Circuit
-from braket.devices import LocalSimulator
-
-# Build a circuit
-circuit = Circuit().h(0).cnot(0, 1)
-
-# Run on local simulator
-device = LocalSimulator()
-result = device.run(circuit, shots=1000).result()
-
-# Get measurement counts
-counts = result.measurement_counts
-```
-
-**Try it live.** Edit and run this Bell-state circuit in your browser — no install required. The output is the four-amplitude state vector $\tfrac{1}{\sqrt2}(\ket{00} + \ket{11})$:
-
-```runnable
-from braket.circuits import Circuit
-
-# Entangle two qubits: a Hadamard on q0, then a CNOT controlled by q0.
-circuit = Circuit().h(0).cnot(0, 1)
-
-# Inspect the resulting state vector (amplitudes of |00>, |01>, |10>, |11>).
-print(circuit.state_vector())
+```quiz
+{
+  "questions": [
+    {
+      "q": "You prepare `|+>` and take 1,000 shots. Roughly how many `0` outcomes do you expect, and why is it never exactly 500?",
+      "hint": "The Born rule fixes the true probability at 0.5; a finite sample fluctuates around the mean by an amount that grows like the square root of the shot count, not the count itself.",
+      "a": "About 500, give or take ~16 (shot noise scales like √(Npq) ≈ √250). You only hit the exact 50/50 in the limit of infinitely many shots."
+    },
+    {
+      "q": "Which axis does `RY(θ)` rotate the Bloch vector about, and what state is `RY(π)|0>`?",
+      "hint": "The name says the axis. A π rotation is a half-turn, which sends the north pole to the opposite pole.",
+      "a": "About the Y-axis. `RY(π)|0> = |1>` (up to global phase) — a half-turn from north pole to south pole."
+    },
+    {
+      "q": "Do `|+>` and `e^{iπ/4}|+>` produce different measurement statistics?",
+      "hint": "One of these differs from the other only by an overall (global) phase. Does the Born rule's squared magnitude remember a global phase?",
+      "a": "No. A global phase is physically invisible — `|e^{iπ/4}|² = 1`, so every outcome probability is identical. Only relative phase between `|0>` and `|1>` is observable."
+    },
+    {
+      "q": "Starting from `|00>`, you apply `H` to qubit 0 then `CNOT(0,1)`. What state results, and is it entangled?",
+      "hint": "H makes qubit 0 a 50/50 superposition; CNOT then flips qubit 1 in the half of the superposition where qubit 0 is 1. Try to factor the result into (qubit 0 part) ⊗ (qubit 1 part).",
+      "a": "`(|00> + |11>)/√2`, the Bell state `|Φ+⟩`. It is entangled — there is no way to write it as a product of two single-qubit states."
+    },
+    {
+      "q": "You share a Bell pair `|Φ+⟩` with a friend across the galaxy, measure your qubit, and get `1`. What will your friend's qubit give?",
+      "hint": "`|Φ+⟩` has weight only on `|00>` and `|11>`. Given your outcome, which joint outcomes are still possible?",
+      "a": "`1`, with certainty. The outcomes are perfectly correlated — though note this transmits no usable message faster than light, since your own result was random."
+    }
+  ]
+}
 ```
 
 ---
@@ -200,6 +313,15 @@ Complete these notebooks in order:
 **Scripts to explore:**
 - `scripts/gate_library.py` — Reference showing all gate matrices and their effects
 - `scripts/state_visualization.py` — Utilities used in the notebooks for visualization
+
+## Where this goes next
+
+You can now describe a qubit, drive it with gates, measure it honestly, and entangle a pair —
+the full vocabulary of the circuit model. So far every circuit has run on a perfect simulator.
+The next module, **`02-hardware`**, leaves the ideal world: real QPUs on Amazon Braket, the
+noise that corrupts them, the managed simulators that stand in for them, and the cost of every
+shot. The Bell pair you just built is exactly the circuit hardware engineers run first to ask a
+real machine: *are you entangling at all?*
 
 ---
 
