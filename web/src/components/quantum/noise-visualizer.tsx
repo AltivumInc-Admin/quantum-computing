@@ -27,6 +27,22 @@ export function NoiseVisualizer({ source }: { source: string }) {
   const sliderId = useId();
   const channelId = useId();
 
+  // Slider max depends on channel; clamp p when switching from a higher-max channel.
+  const pMax = channel === "depolarizing" ? 0.75 : 1;
+  const pClamped = Math.min(p, pMax);
+  const valid = !program.error && program.n <= 3;
+
+  // Compute ideal + noisy distributions BEFORE any early return so the hooks
+  // always run in the same order (react-hooks/rules-of-hooks). Empty when invalid.
+  const ideal = useMemo(
+    () => (valid ? probabilities(simulate(opsFor(program, 0), program.n)) : []),
+    [program, valid]
+  );
+  const noisy = useMemo(
+    () => (valid ? noisyProbs(opsFor(program, 0), program.n, channel, pClamped) : []),
+    [program, channel, pClamped, valid]
+  );
+
   // Parse-error card
   if (program.error) {
     return (
@@ -58,23 +74,6 @@ export function NoiseVisualizer({ source }: { source: string }) {
       </div>
     );
   }
-
-  // Slider max depends on channel
-  const pMax = channel === "depolarizing" ? 0.75 : 1;
-  // Clamp p when switching from a higher-max channel
-  const pClamped = Math.min(p, pMax);
-
-  // Ideal probabilities
-  const ideal = useMemo(
-    () => probabilities(simulate(opsFor(program, 0), program.n)),
-    [program]
-  );
-
-  // Noisy probabilities
-  const noisy = useMemo(
-    () => noisyProbs(opsFor(program, 0), program.n, channel, pClamped),
-    [program, channel, pClamped]
-  );
 
   const fidelity = fidelityDist(ideal, noisy);
   const fidelityPct = Math.round(fidelity * 100);

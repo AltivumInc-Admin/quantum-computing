@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { adjacency, shortestPath, swapCost, type Topology } from "./topology";
+import { adjacency, swapCost, type Topology } from "./topology";
 
 const TOPOLOGIES: Topology[] = ["all-to-all", "line", "ring", "grid"];
 const MAX_QUBITS = 16;
@@ -281,27 +281,25 @@ export function TopologyExplorer({ source }: { source: string }) {
   const [qaOverride, setQaOverride] = useState<number | null>(null);
   const [qbOverride, setQbOverride] = useState<number | null>(null);
 
-  if (!parsed.ok) {
-    return <ErrorCard message={parsed.error} />;
+  // Compute everything in one memo BEFORE any early return, so the hooks above
+  // always run in the same order (react-hooks/rules-of-hooks). Null on parse error.
+  const view = useMemo(() => {
+    if (!parsed.ok) return null;
+    const { topology, qubits, gate } = parsed.config;
+    const gateA = qaOverride !== null ? qaOverride : gate[0];
+    const gateB = qbOverride !== null ? qbOverride : gate[1];
+    // Keep the two selects distinct by clamping if they collide.
+    const safeA = gateA === gateB ? (gateB + 1) % qubits : gateA;
+    const safeB = safeA === gateB ? (safeA + 1) % qubits : gateB;
+    const { path, swaps } = swapCost(topology, qubits, safeA, safeB);
+    return { topology, qubits, safeA, safeB, path, swaps };
+  }, [parsed, qaOverride, qbOverride]);
+
+  if (!view) {
+    return <ErrorCard message={parsed.ok ? "topology error" : parsed.error} />;
   }
 
-  const { topology, qubits, gate } = parsed.config;
-
-  const gateA = qaOverride !== null ? qaOverride : gate[0];
-  const gateB = qbOverride !== null ? qbOverride : gate[1];
-
-  // Ensure the two selects stay distinct by clamping if they collide
-  const safeA = gateA === gateB ? (gateB + 1) % qubits : gateA;
-  const safeB = safeA === gateB ? (safeA + 1) % qubits : gateB;
-
-  const result = useMemo(
-    () => swapCost(topology, qubits, safeA, safeB),
-    [topology, qubits, safeA, safeB]
-  );
-
-  const path = result.path;
-  const swaps = result.swaps;
-
+  const { topology, qubits, safeA, safeB, path, swaps } = view;
   const qubitOptions = Array.from({ length: qubits }, (_, i) => i);
 
   return (
