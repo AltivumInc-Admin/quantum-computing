@@ -70,7 +70,20 @@ export async function getContentSummary(slug: string): Promise<string | null> {
     }
   }
 
-  return summary.trim().slice(0, 300) || null;
+  return stripInlineMarkdown(summary.trim()).slice(0, 300).trim() || null;
+}
+
+// Section cards show plain-text teasers, so strip inline Markdown that would
+// otherwise render literally (e.g. `**describe**` or `[text](url)`) on the
+// landing page. Order matters: links and code first, then bold before italic.
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/!?\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) / ![alt](url) -> text
+    .replace(/`([^`]+)`/g, "$1") // `code` -> code
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // **bold** -> bold
+    .replace(/\*([^*]+)\*/g, "$1") // *italic* -> italic
+    .replace(/__([^_]+)__/g, "$1") // __bold__ -> bold
+    .replace(/(^|\s)_([^_]+)_(?=\s|$)/g, "$1$2"); // _italic_ -> italic
 }
 
 function extractTitle(markdown: string): string {
