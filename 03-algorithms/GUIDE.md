@@ -1,45 +1,35 @@
 # Quantum Algorithms
 
-## Learning Objectives
+Three modules in, you can build circuits, you know what real hardware costs, and you can read a
+measurement. Now the payoff: **where does quantum actually beat classical, and why?** The
+answer, every time, is **interference**. A quantum algorithm is choreographed interference — you
+arrange amplitudes so the wrong answers cancel and the right ones add up, then measure what's
+left. This module walks that idea from its simplest demonstration to its most practical, running
+each algorithm live in your browser.
 
-After completing this section, you will be able to:
-- Implement oracle-based algorithms (Deutsch-Jozsa, Grover's) and explain their quantum advantage
-- Build and apply the Quantum Fourier Transform (QFT)
-- Implement Quantum Phase Estimation and understand its role in chemistry and cryptography
-- Set up and run the QAOA algorithm for combinatorial optimization
-- Choose appropriate classical optimizers for variational algorithms
-
-## Prerequisites
-
-- Completed: 01-foundations (all gates, entanglement, measurement)
-- Completed: 02-hardware (device selection, simulators)
-- Linear algebra: eigenvalues, unitary operators, tensor products
+> **You'll come away able to** explain the quantum speedup of oracle algorithms (Deutsch–Jozsa,
+> Grover), build and read the Quantum Fourier Transform, understand phase estimation, and run
+> QAOA for optimization. **You'll want first:** `01-foundations` (gates, entanglement,
+> measurement) and a little linear algebra (eigenvalues, unitaries, tensor products). Everything
+> here is a self-contained simulation — no AWS needed for the page.
 
 ---
 
-## Concepts
+## The shared trick: oracles and phase kickback
 
-Before the algorithms, a quick warm-up on the resource they all exploit — entanglement. Scrub this circuit to watch a single Hadamard plus a chain of CNOTs spread entanglement across three qubits into a GHZ state $\tfrac{1}{\sqrt{2}}(\ket{000} + \ket{111})$:
+Most quantum algorithms query a black box — an **oracle** — that encodes the problem as a
+reversible gate $U_f$. The trick that makes them fast: prepare a superposition over *all* inputs
+with Hadamards, query the oracle *once* on that superposition, and let the answer ride home as a
+**phase**. A phase oracle flips the sign of the amplitudes where $f(x)=1$:
 
-```qscrub
-qubits 3
-H 0
-CNOT 0 1
-CNOT 1 2
-```
+$$
+\ket{x} \;\longmapsto\; (-1)^{f(x)}\ket{x}.
+$$
 
-### Oracle-Based Algorithms
-
-An oracle is a black-box function f(x) implemented as a quantum gate. Oracle-based algorithms demonstrate quantum speedup by querying the oracle fewer times than any classical algorithm.
-
-**Deutsch-Jozsa Algorithm:**
-Given f: {0,1}^n -> {0,1} that is either constant (same output for all inputs) or balanced (outputs 0 for half, 1 for half):
-- Classical: Need 2^(n-1) + 1 queries in the worst case
-- Quantum: Need exactly 1 query
-
-The circuit: Apply H to all qubits, query the oracle, apply H again, measure. If all qubits measure 0, f is constant. Otherwise, f is balanced.
-
-Your turn — build the very first step every oracle algorithm shares: put both input qubits into an equal superposition so the oracle is queried on all inputs at once. Press Check to grade your circuit in-browser:
+Signs are invisible to a single measurement — until you run the Hadamards again and the signs
+**interfere**, concentrating probability onto the answer. That superpose → query → interfere
+pattern is the whole game. Start it yourself: put both qubits into the equal superposition every
+oracle algorithm opens with.
 
 ```qchallenge
 {
@@ -52,93 +42,129 @@ Your turn — build the very first step every oracle algorithm shares: put both 
 }
 ```
 
-**Bernstein-Vazirani Algorithm:**
-Given f(x) = s . x (dot product mod 2) for hidden string s:
-- Classical: Need n queries to find s
-- Quantum: Need 1 query
+## Deutsch–Jozsa: one query is enough
 
-**Grover's Search Algorithm:**
-Given an oracle that marks one item out of N = 2^n:
-- Classical: $O(N)$ queries needed
-- Quantum: $O(\sqrt{N})$ queries — quadratic speedup
+The cleanest proof that interference buys speedup. You're handed $f:\{0,1\}^n\to\{0,1\}$ promised
+to be either **constant** (same output everywhere) or **balanced** (0 on half the inputs, 1 on
+the other half). Classically, you might need $2^{n-1}+1$ queries to be sure. Quantum mechanically:
+**exactly one.**
 
-Key steps (one "Grover iteration"):
-1. Apply oracle: Flip phase of the marked state
-2. Apply diffusion: Reflect about the mean amplitude
+Apply $H^{\otimes n}$, the phase oracle, then $H^{\otimes n}$ again. The amplitude that lands back
+on $\ket{0\dots0}$ is $\frac{1}{N}\sum_x (-1)^{f(x)}$ — which is $\pm 1$ for a constant function
+(every term agrees) and exactly $0$ for a balanced one (the $+$ and $-$ terms cancel). So: measure
+all-zeros ⇒ constant; measure anything else ⇒ balanced. Pick an oracle and watch the interference
+decide:
 
-Optimal number of iterations: approximately $\tfrac{\pi}{4}\sqrt{N}$
+```qdj
+{"qubits": 3}
+```
 
-### Quantum Fourier Transform (QFT)
+(Bernstein–Vazirani is the same trick aimed at a hidden bit-string $s$ where $f(x)=s\cdot x$: one
+query recovers all $n$ bits of $s$ that a classical attacker would need $n$ queries to find.)
 
-The QFT is the quantum analogue of the Discrete Fourier Transform. It maps computational basis states to the frequency domain:
+## Grover's search: amplitude amplification
+
+Deutsch–Jozsa finishes in one shot. Grover's search shows what happens when you have to *repeat*
+the interference. Given an oracle that marks one item out of $N=2^n$, classical search needs
+$O(N)$ checks; Grover needs $O(\sqrt N)$ — a quadratic speedup that underlies countless other
+algorithms.
+
+Each **Grover iteration** is two reflections: the oracle flips the sign of the marked state, then
+the **diffusion** operator reflects every amplitude about their mean. Geometrically that's a small
+rotation of the whole state toward the marked item — so the marked amplitude climbs, step by step.
+Step through it: the marked bar grows, success probability peaks near $\frac{\pi}{4}\sqrt N$
+iterations, and — crucially — if you keep going, it **over-rotates** and falls back. Knowing when
+to stop is part of the algorithm.
+
+```qgrover
+{"qubits": 3, "marked": 5}
+```
+
+## The Quantum Fourier Transform: interference reads periodicity
+
+The QFT is the quantum Discrete Fourier Transform, and it's how quantum computers *see structure*
+in a state. It maps a basis state to an even spread of phases,
 
 $$
-\text{QFT}\ket{j} = \frac{1}{\sqrt{N}} \sum_{k=0}^{N-1} e^{2\pi i jk/N} \ket{k}
+\text{QFT}\ket{j} = \frac{1}{\sqrt{N}} \sum_{k=0}^{N-1} e^{2\pi i jk/N}\ket{k},
 $$
 
-**Circuit construction:**
-- Apply H to qubit j
-- Apply controlled rotations from qubit j to all subsequent qubits
-- Repeat for each qubit
-- Reverse qubit order (SWAP)
+built from Hadamards and controlled phase rotations in only $O(n^2)$ gates — exponentially fewer
+than the classical FFT's $O(n\,2^n)$ on the amplitude vector. Its superpower is reading
+**periodicity**: feed it a state that repeats with period $r$, and constructive interference
+produces sharp spikes at multiples of $N/r$. The period falls right out. Watch a periodic comb
+become a frequency comb:
 
-The QFT circuit uses $O(n^2)$ gates for $n$ qubits — exponentially faster than the classical FFT's $O(n \cdot 2^n)$ operations on the amplitudes.
+```qft
+{"qubits": 4, "input": "period:4"}
+```
 
-**Applications:** Phase estimation, Shor's algorithm, quantum simulation, amplitude estimation.
+## Quantum Phase Estimation: reading an eigenphase
 
-### Quantum Phase Estimation (QPE)
+QPE is the QFT pointed at a different question: given a unitary $U$ with eigenvector $\ket{u}$ and
+$U\ket{u}=e^{2\pi i\phi}\ket{u}$, estimate the phase $\phi$. You put $n$ ancilla qubits in
+superposition, apply controlled-$U^{2^k}$ so each ancilla picks up a different power of the phase,
+then run the **inverse QFT** to interfere those phases into a binary readout of $\phi$.
 
-QPE extracts the eigenvalue of a unitary operator. Given:
-- A unitary $U$ with eigenvector $\ket{u}$ such that $U\ket{u} = e^{2\pi i\phi}\ket{u}$
-- QPE estimates $\phi$ to $n$ bits of precision using $n$ ancilla qubits
+The classic check: estimate the phase of a $T$ gate (which adds a phase of $e^{i\pi/4}$, i.e.
+$\phi=1/8$) and the ancillas read $0.001_2 = 1/8$. QPE is the engine of Shor's factoring algorithm
+(find the period of modular exponentiation) and of quantum chemistry (measure molecular energy
+eigenvalues) — exactly where `04-quantum-ml` and `05-quantum-chemistry` are headed.
 
-**Circuit:**
-1. Prepare ancilla qubits in |+> (Hadamard on each)
-2. Apply controlled-U^(2^k) from ancilla k to the eigenstate register
-3. Apply inverse QFT to the ancilla register
-4. Measure ancilla to get phi in binary
+## Variational algorithms and QAOA
 
-**Why it matters:**
-- Foundation of Shor's algorithm (factor integers by finding the period of modular exponentiation)
-- Directly used in quantum chemistry (energy eigenvalues of molecular Hamiltonians)
-- Core subroutine in many other algorithms
+Everything above assumes deep, exact circuits. On today's noisy hardware (recall `02-hardware`),
+the practical workhorse is **variational**: a shallow parameterized circuit whose knobs a
+*classical* optimizer tunes to minimize a cost. Quantum proposes; classical disposes; repeat.
 
-### Variational Algorithms
+**QAOA** (Quantum Approximate Optimization Algorithm) is the variational approach to combinatorial
+optimization like **MaxCut** (split a graph's vertices into two sets to cut the most edges). One
+layer alternates a **cost** unitary $e^{-i\gamma C}$ — which imprints the problem as phases — with a
+**mixer** $e^{-i\beta\sum_q X_q}$ — which spreads amplitude so good assignments can grow. The two
+angles $(\gamma,\beta)$ are what the classical optimizer searches. Drive them yourself over a
+triangle and watch the expected cut move across the landscape toward the optimum:
 
-Variational algorithms use a classical optimizer to tune parameters of a quantum circuit (ansatz) to minimize a cost function. They are the primary approach for NISQ-era quantum advantage.
+```qoptim
+{"edges": [[0, 1], [1, 2], [2, 0]]}
+```
 
-**Structure:**
-1. Choose a parameterized circuit (ansatz) with parameters theta
-2. Measure an observable to compute cost C(theta)
-3. Use a classical optimizer to update theta to minimize C
-4. Repeat until convergence
+Common optimizers for that outer loop: **COBYLA** and **Nelder–Mead** (gradient-free, robust to
+noise), **SPSA** (two evaluations per step), and **Adam** (gradient-based via the parameter-shift
+rule).
 
-**QAOA (Quantum Approximate Optimization Algorithm):**
-Designed for combinatorial optimization (MaxCut, traveling salesman, scheduling).
+## Amplitude estimation, and a check
 
-The QAOA circuit alternates between:
-- Cost unitary: e^(-i * gamma * C) where C encodes the problem
-- Mixer unitary: e^(-i * beta * B) where B = sum of X gates
+**Amplitude estimation** generalizes Grover: instead of finding a marked item, it *estimates the
+probability* of a "good" outcome, turning Grover's quadratic speedup into a quadratic speedup over
+classical Monte Carlo ($O(1/\epsilon)$ queries vs $O(1/\epsilon^2)$ samples for precision
+$\epsilon$). It's the basis of quantum approaches to option pricing and risk analysis.
 
-With p layers (depth parameter), QAOA has 2p parameters (gamma_1..p, beta_1..p).
-
-**MaxCut example:** Given a graph, partition vertices into two sets to maximize edges crossing between sets. The cost Hamiltonian encodes edge weights as ZZ interactions.
-
-**Classical Optimizers for Variational Algorithms:**
-- COBYLA: Gradient-free, good for noisy landscapes
-- SPSA: Stochastic gradient approximation, only 2 function evaluations per step
-- Adam: Gradient-based (requires parameter-shift rule for gradients), good convergence
-- Nelder-Mead: Gradient-free simplex method
-
-### Amplitude Estimation
-
-A generalization of Grover's search that estimates the probability of a good outcome without full search. Provides quadratic speedup over classical Monte Carlo methods.
-
-Given oracle A that prepares a state with amplitude sin(theta) on the "good" subspace:
-- Classical Monte Carlo: O(1/epsilon^2) samples for precision epsilon
-- Quantum Amplitude Estimation: O(1/epsilon) queries — quadratic improvement
-
-Applications: Finance (option pricing), risk analysis, counting problems.
+```quiz
+{
+  "questions": [
+    {
+      "q": "Why does Deutsch–Jozsa need only ONE oracle query where a classical algorithm may need 2^(n-1)+1?",
+      "hint": "Think about what the oracle is queried on, and what the final layer of Hadamards does to the resulting signs.",
+      "a": "The oracle is queried once on a superposition of all 2^n inputs at once. The final Hadamards make the phase-kicked amplitudes interfere: the all-zeros amplitude is (1/N)·sum_x (-1)^f(x), which is ±1 for constant f and exactly 0 for balanced f. One query plus interference decides it."
+    },
+    {
+      "q": "What does a single Grover iteration do to the state, geometrically?",
+      "hint": "It is two reflections back to back. Two reflections compose into what kind of transformation?",
+      "a": "It rotates the state vector by a fixed angle toward the marked state: the oracle reflects about the marked state, then diffusion reflects about the uniform superposition, and two reflections make a rotation. The marked amplitude grows until ~(π/4)√N iterations, then over-rotates."
+    },
+    {
+      "q": "How does the QFT expose a hidden period r in a state?",
+      "hint": "A periodic input has amplitude only on a comb of indices. Where do those terms interfere constructively in the output?",
+      "a": "The QFT of a period-r comb interferes constructively only at output indices that are multiples of N/r, producing sharp spikes there and cancellation elsewhere. Reading the spike spacing recovers the period — the core of phase estimation and Shor's algorithm."
+    },
+    {
+      "q": "In QAOA, what do the two angles γ and β control?",
+      "hint": "One angle belongs to the cost unitary, the other to the mixer.",
+      "a": "γ scales the cost unitary e^(-iγC), which imprints the optimization problem as phases; β scales the mixer RX(2β) on every qubit, which spreads amplitude between assignments. A classical optimizer tunes (γ, β) to maximize the expected cut."
+    }
+  ]
+}
+```
 
 ---
 
@@ -159,6 +185,14 @@ Applications: Finance (option pricing), risk analysis, counting problems.
 **Scripts:**
 - `scripts/oracles.py` — Reusable functions to build oracle circuits (constant, balanced, marking)
 - `scripts/variational_utils.py` — Classical optimizer wrappers (COBYLA, SPSA, Adam) with logging
+
+## Where this goes next
+
+You now have the algorithmic toolkit: oracles and amplitude amplification, the Fourier transform
+and phase estimation, and the variational loop. The next two modules specialize it. **`04-quantum-ml`**
+builds variational circuits into machine-learning models — encodings, quantum kernels, and
+variational classifiers — and **`05-quantum-chemistry`** turns phase estimation and the variational
+method onto molecules, computing ground-state energies with VQE.
 
 ---
 
