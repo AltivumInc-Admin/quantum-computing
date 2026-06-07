@@ -38,13 +38,12 @@ function gateChips(program: Program) {
 interface PanelProps {
   label: string;
   program: Program;
-  probs: number[];
   tally: number[];
   lastOutcome: number | null;
   measurements: number;
 }
 
-function Panel({ label, program, probs: _probs, tally, lastOutcome, measurements }: PanelProps) {
+function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps) {
   const total = tally.reduce((a, b) => a + b, 0);
   const LABELS = [0, 1, 2, 3].map((i) => basisLabel(i, 2));
 
@@ -173,7 +172,6 @@ export function CorrelationDemo({ source }: { source: string }) {
         <Panel
           label="Entangled"
           program={parsed.spec.entangled}
-          probs={entangledProbs}
           tally={entangledTally}
           lastOutcome={entangledLast}
           measurements={measurements}
@@ -182,7 +180,6 @@ export function CorrelationDemo({ source }: { source: string }) {
         <Panel
           label="Product"
           program={parsed.spec.product}
-          probs={productProbs}
           tally={productTally}
           lastOutcome={productLast}
           measurements={measurements}

@@ -26,7 +26,7 @@ describe("stateFromAngles", () => {
     expect(s[1][1]).toBeCloseTo(Math.SQRT1_2, 10);
   });
   it("probsFromAngles obeys cos²(θ/2), sin²(θ/2)", () => {
-    const { p0, p1 } = probsFromAngles(Math.PI / 3, 1.2);
+    const { p0, p1 } = probsFromAngles(Math.PI / 3);
     expect(p0).toBeCloseTo(Math.cos(Math.PI / 6) ** 2, 10);
     expect(p1).toBeCloseTo(Math.sin(Math.PI / 6) ** 2, 10);
     expect(p0 + p1).toBeCloseTo(1, 10);

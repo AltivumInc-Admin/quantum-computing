@@ -27,7 +27,7 @@ export function BlochBuilder() {
   const webgl = useWebGL();
 
   const state = useMemo(() => stateFromAngles(theta, phi), [theta, phi]);
-  const { p0, p1 } = useMemo(() => probsFromAngles(theta, phi), [theta, phi]);
+  const { p0, p1 } = useMemo(() => probsFromAngles(theta), [theta]);
   const show3D = !reduced && webgl;
 
   const gateSeq = `RY ${theta.toFixed(2)}  RZ ${phi.toFixed(2)}`;

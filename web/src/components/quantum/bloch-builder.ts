@@ -10,7 +10,7 @@ export function stateFromAngles(theta: number, phi: number): Complex[] {
   ];
 }
 
-export function probsFromAngles(theta: number, phi: number): { p0: number; p1: number } {
+export function probsFromAngles(theta: number): { p0: number; p1: number } {
   const c = Math.cos(theta / 2);
   const s = Math.sin(theta / 2);
   return { p0: c * c, p1: s * s };
