@@ -14,6 +14,7 @@ import { CorrelationDemo } from "./quantum/correlation-demo";
 import { CostCalculator } from "./quantum/cost-calculator";
 import { DeviceTable } from "./quantum/device-table";
 import { TopologyExplorer } from "./quantum/topology-explorer";
+import { NoiseVisualizer } from "./quantum/noise-visualizer";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 
@@ -111,6 +112,9 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
       }
       if (code && Array.isArray(className) && className.includes("language-qtopo")) {
         return <TopologyExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qnoise")) {
+        return <NoiseVisualizer source={hastText(code as unknown as HastTextNode)} />;
       }
       // Every other fence becomes a CodeBlock: the highlighted <code> children are
       // preserved (syntax colors intact) and a copy button + language chip + wrap
