@@ -15,6 +15,10 @@ import { CostCalculator } from "./quantum/cost-calculator";
 import { DeviceTable } from "./quantum/device-table";
 import { TopologyExplorer } from "./quantum/topology-explorer";
 import { NoiseVisualizer } from "./quantum/noise-visualizer";
+import { GroverVisualizer } from "./quantum/grover-visualizer";
+import { QftVisualizer } from "./quantum/qft-visualizer";
+import { DjDemo } from "./quantum/dj-demo";
+import { QaoaExplorer } from "./quantum/qaoa-explorer";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 
@@ -115,6 +119,18 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
       }
       if (code && Array.isArray(className) && className.includes("language-qnoise")) {
         return <NoiseVisualizer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qgrover")) {
+        return <GroverVisualizer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qft")) {
+        return <QftVisualizer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qdj")) {
+        return <DjDemo source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qoptim")) {
+        return <QaoaExplorer source={hastText(code as unknown as HastTextNode)} />;
       }
       // Every other fence becomes a CodeBlock: the highlighted <code> children are
       // preserved (syntax colors intact) and a copy button + language chip + wrap

@@ -90,6 +90,26 @@ describe("markdown fence routing", () => {
     expect(screen.getByText(/^noise$/i)).toBeInTheDocument();
   });
 
+  it("routes a qgrover fence to the Grover widget", () => {
+    renderFence("qgrover", JSON.stringify({ qubits: 3, marked: 5 }));
+    expect(screen.getByText(/grover/i)).toBeInTheDocument();
+  });
+
+  it("routes a qft fence to the Fourier widget", () => {
+    renderFence("qft", JSON.stringify({ qubits: 4, input: "period:4" }));
+    expect(screen.getByText(/fourier/i)).toBeInTheDocument();
+  });
+
+  it("routes a qdj fence to the Deutsch-Jozsa widget", () => {
+    renderFence("qdj", JSON.stringify({ qubits: 3 }));
+    expect(screen.getByText(/deutsch/i)).toBeInTheDocument();
+  });
+
+  it("routes a qoptim fence to the QAOA widget", () => {
+    renderFence("qoptim", JSON.stringify({ edges: [[0, 1], [1, 2], [2, 0]] }));
+    expect(screen.getByText(/qaoa/i)).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();
