@@ -70,6 +70,26 @@ describe("markdown fence routing", () => {
     expect(screen.getByText(/^correlation$/i)).toBeInTheDocument();
   });
 
+  it("routes a qcost fence to the cost calculator", () => {
+    renderFence("qcost", "");
+    expect(screen.getByText(/cost calculator/i)).toBeInTheDocument();
+  });
+
+  it("routes a qdevices fence to the device table", () => {
+    renderFence("qdevices", "");
+    expect(screen.getByText("Aria")).toBeInTheDocument();
+  });
+
+  it("routes a qtopo fence to the connectivity explorer", () => {
+    renderFence("qtopo", JSON.stringify({ topology: "line", qubits: 5, gate: [0, 4] }));
+    expect(screen.getByText(/SWAP/i)).toBeInTheDocument();
+  });
+
+  it("routes a qnoise fence to the noise visualizer", () => {
+    renderFence("qnoise", "qubits 1\nH 0");
+    expect(screen.getByText(/^noise$/i)).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();
