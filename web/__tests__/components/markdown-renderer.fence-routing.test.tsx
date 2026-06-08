@@ -170,6 +170,11 @@ describe("markdown fence routing", () => {
     expect(screen.getByText("Live job metrics")).toBeInTheDocument();
   });
 
+  it("routes a qcard fence to the spaced-repetition review widget", () => {
+    renderFence("qcard", JSON.stringify({ id: "c1", prompt: "p", answer: "a" }));
+    expect(screen.getByText("Recall")).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();

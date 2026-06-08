@@ -90,6 +90,10 @@ You need a working memory of five things:
   which is why every quantum gate is unitary.
 - **Tensor product** `⊗` — how you build multi-qubit states out of single-qubit ones.
 
+```qcard
+{"id":"prereq-unitary-1","prompt":"What condition must a matrix `U` satisfy to be unitary, and why does every quantum gate have to be one?","answer":"It must satisfy `U† U = I` (the conjugate transpose times the matrix equals the identity). Unitary matrices preserve norm, and since quantum states always have norm 1, every gate must be unitary to keep that true."}
+```
+
 You do NOT need eigenvalues, determinants, or rank for this module. They show up later
 in `03-algorithms` and we will introduce them there.
 
@@ -118,6 +122,10 @@ not. The progression is:
 3. The "direction it is leaning" is captured by two complex numbers `(alpha, beta)`.
 4. The probability of seeing heads when you stop the spin is `|alpha|^2`.
 
+```qcard
+{"id":"prereq-born-rule-1","prompt":"For a qubit state with amplitudes `(alpha, beta)`, what is the probability of measuring heads (the `|0>` outcome)?","answer":"It is `|alpha|^2`, the squared magnitude of the first amplitude."}
+```
+
 That is it. The rest of the module builds the math machinery to make this precise. The
 intuition stays the same all the way to the end of the curriculum.
 
@@ -145,6 +153,10 @@ Dirac notation is just compact NumPy. We will build a one-to-one translation tab
 | `|a> ⊗ |b>` | `np.kron(a, b)` | Tensor product (a longer vector) |
 | `U|psi>` | `U @ psi` | Apply a gate |
 
+```qcard
+{"id":"prereq-inner-product-1","prompt":"In Dirac-to-NumPy translation, how do you write the inner product `<a|b>`, and what kind of object does it produce?","answer":"Write it as `a.conj() @ b`, which produces a single complex number."}
+```
+
 By the end of this notebook you will read `<0|H|+>` and immediately reach for
 `zero.conj() @ H @ plus` without thinking.
 
@@ -160,6 +172,10 @@ This notebook is where intuition consolidates. If you walk away believing that
 - the south pole is `|1>`
 - the equator is "maximum superposition"
 - rotations on the sphere are exactly what gates do
+
+```qcard
+{"id":"prereq-bloch-poles-1","prompt":"On the Bloch sphere, which single-qubit states sit at the north pole, the south pole, and the equator?","answer":"The north pole is `|0>`, the south pole is `|1>`, and the equator represents maximum superposition."}
+```
 
 Drag $\theta$ below and watch the Bloch vector swing from the north pole ($\ket{0}$) toward the equator — this is exactly what $R_y(\theta)$ does. Drag the sphere itself to rotate your view, or press play to sweep the rotation:
 

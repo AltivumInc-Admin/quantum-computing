@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
+import { ReviewNavBadge } from "./review-nav-badge";
 
 export function Nav() {
   return (
@@ -19,7 +20,10 @@ export function Nav() {
             Quantum Workspace
           </span>
         </Link>
-        <ThemeToggle />
+        <div className="flex items-center gap-1.5">
+          <ReviewNavBadge />
+          <ThemeToggle />
+        </div>
       </nav>
     </header>
   );

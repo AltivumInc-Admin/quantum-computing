@@ -24,6 +24,10 @@ After completing this section, you will be able to:
 
 The decision is not "hybrid jobs are better." A single circuit you are debugging interactively has no business inside a job — the container startup alone is pure overhead. The break-even is about *iteration*. A standalone task is fire-and-forget: you submit it and it joins the back of the device's general queue, behind everyone else on Earth. For one circuit, fine. For a five-hundred-iteration optimization where each step depends on the last, that queue wait is paid *five hundred times over*, and your classical optimizer sits idle between every one.
 
+```qcard
+{"id":"hybrid-break-even-iteration","prompt":"What is the key factor that determines whether a Braket Hybrid Job beats a standalone task on wall-clock time?","answer":"Iteration. In a standalone task each iteration rejoins the back of the device's general queue, so a high-iteration loop pays that queue wait once per step; a Hybrid Job gives priority access so iterations run back-to-back. High queue wait plus many iterations favors the job; a few quick iterations favors standalone."}
+```
+
 A Hybrid Job changes the economics. Braket spins up a managed classical instance, runs your script there, and — crucially — the quantum tasks it submits get **priority access**: they jump to the front of the device queue and run back-to-back. You trade a per-hour instance charge for the elimination of all that repeated queueing. Move the sliders below to feel the trade — where the queue wait is real and the iteration count is high, the job wins on wall-clock by a landslide; for a handful of quick iterations, the standalone path is cheaper and simpler.
 
 ```qjob
@@ -54,11 +58,19 @@ When you call `AwsQuantumJob.create(...)`, Braket assembles a self-contained exe
 
 You provide an algorithm script (the entry point), optional hyperparameters, and input data. Braket provides the container, the SDK, priority QPU access, and the metrics pipeline. While your script runs, the quantum tasks it submits carry a job token that marks them as priority work — without it, each iteration might wait minutes or hours in the general queue; with it, iterations complete one after another. When the script finishes, results land in S3, metrics and logs in CloudWatch, and the container is torn down so you stop paying for it.
 
+```qcard
+{"id":"hybrid-priority-job-token","prompt":"Inside a Hybrid Job, what gives the quantum tasks priority access to the device instead of waiting in the general queue?","answer":"A job token. While your script runs, every quantum task it submits carries a job token that marks it as priority work, so iterations jump to the front of the device queue and complete one after another."}
+```
+
 ## Compile Once, Run a Thousand Times
 
 There is a second, subtler tax on variational algorithms. On hardware that must transpile to native gates — superconducting QPUs especially — every circuit you submit is compiled before it runs, and compilation can dominate the per-iteration time. But a variational loop submits the *same circuit structure* every iteration; only the rotation angles change. Recompiling it each time is wasted work.
 
 **Parametric compilation** fixes this. You declare the angles as free parameters, and Braket compiles the circuit once, then reuses the compiled program across iterations, substituting new parameter values each run:
+
+```qcard
+{"id":"hybrid-parametric-compilation","prompt":"How does parametric compilation accelerate a variational loop that submits the same circuit structure each iteration?","answer":"You declare the rotation angles as free parameters (`FreeParameter`), so Braket compiles the circuit once and then reuses the compiled program across iterations, substituting new parameter values each run. The compilation cost is paid once instead of per iteration."}
+```
 
 ```python
 from braket.circuits import Circuit, FreeParameter
@@ -101,6 +113,10 @@ That metrics stream is what turns a job from a black box into something you can 
 ## Surviving Failure
 
 A job that runs for hours is a job that can fail for hours' worth of reasons: a spot instance reclaimed, a transient device error, a timeout. Without protection, a failure at iteration 480 of 500 throws away every completed step — you restart from zero. **Checkpointing** is the cure. Your script periodically calls `save_job_checkpoint()` to persist its optimizer state; on restart, `load_job_checkpoint()` resumes from the last saved point, and only the work since that checkpoint is redone. The trade-off is granularity: checkpoint too rarely and a failure still costs you a lot; checkpoint every step and you add I/O overhead. Move the failure point and the checkpoint interval to see how much compute each strategy salvages:
+
+```qcard
+{"id":"hybrid-checkpointing","prompt":"How does checkpointing protect a long-running Hybrid Job from losing all progress when it fails mid-run?","answer":"The script periodically calls `save_job_checkpoint()` to persist its optimizer state; on restart, `load_job_checkpoint()` resumes from the last saved point, so only the work done since that checkpoint is redone rather than the entire run."}
+```
 
 ```qcheckpoint
 { "iterations": 40, "failAt": 27, "every": 10 }

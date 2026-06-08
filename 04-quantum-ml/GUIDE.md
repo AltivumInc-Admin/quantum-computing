@@ -20,6 +20,10 @@ plateaus. Every idea below runs live in your browser.
 A quantum computer can only learn from data you've loaded into a quantum state, and **how you load
 it fixes the feature space the model ever gets to see.** The main strategies:
 
+```qcard
+{"id":"qml-encoding-determines-feature-space-1","prompt":"In QML, what does the choice of data encoding fix before any training happens?","answer":"It fixes the feature space (the quantum feature map / geometry) the model ever gets to see, so a model can only separate what the encoding makes separable. Encoding is a modeling choice, not a formality."}
+```
+
 - **Basis encoding** — map an integer to `|x⟩`. Simple, but one qubit per bit and no continuous
   features.
 - **Angle encoding** — map each feature to a rotation: `|φ(x)⟩ = ⊗ᵢ RY(xᵢ)|0⟩`. One qubit per
@@ -52,6 +56,10 @@ analogy to a neural net is exact —
 - parameterized unitaries ↔ hidden layers,
 - measurement (e.g. $\langle Z_0\rangle$) ↔ output.
 
+```qcard
+{"id":"qml-pqc-is-neural-net-1","prompt":"In the PQC-as-neural-network analogy, what plays the role of the hidden layers?","answer":"The parameterized (trainable) unitary layers `U(theta)`. Data encoding maps to the input layer and the measurement (e.g. expectation of `Z_0`) maps to the output."}
+```
+
 The design knobs are the same kind you know: depth (number of layers), the entangling pattern
 (linear / circular / all-to-all), the rotation gates, and the measurement. And just like a neural
 net, you get gradients — exactly, via the **parameter-shift rule**: for a gate
@@ -60,6 +68,10 @@ $$
 \frac{\partial f}{\partial \theta} = \tfrac{1}{2}\big[f(\theta+\tfrac{\pi}{2}) - f(\theta-\tfrac{\pi}{2})\big],
 $$
 an exact derivative from two circuit evaluations — no finite differences.
+
+```qcard
+{"id":"qml-parameter-shift-rule-1","prompt":"How many circuit evaluations does the parameter-shift rule need to get the exact gradient of a gate angle?","answer":"Two: it evaluates `f(theta + pi/2)` and `f(theta - pi/2)`, takes half their difference, and gets an exact derivative with no finite-difference error."}
+```
 
 ## Two ways to learn
 
@@ -110,6 +122,10 @@ See it happen. The plot below samples random circuits and tracks the gradient va
 qubit count. The **global** cost (measuring all qubits) collapses exponentially; the **local** cost
 (measuring one qubit) stays in a band at shallow depth — the single most important mitigation.
 Then raise the depth slider and watch even the local cost eventually flatten (Cerezo et al.):
+
+```qcard
+{"id":"qml-barren-plateau-1","prompt":"In a barren plateau, how does the variance of the cost gradient scale with qubit count, and what is the single most important mitigation?","answer":"For random, expressive PQCs the gradient variance vanishes exponentially, roughly as `2^-n`, leaving a flat landscape. The single most important mitigation is using a local cost function (measuring one qubit instead of all)."}
+```
 
 ```qbarren
 {"depth": 2, "samples": 400}
