@@ -8,9 +8,11 @@ Parameters:
   ModelId:
     Type: String
     Description: >
-      Bedrock Claude model or cross-region inference-profile id, e.g.
-      us.anthropic.claude-... — get the current one with
-      `aws bedrock list-inference-profiles`. Request model access first.
+      Bedrock model id to invoke. For cost attribution, pass the APPLICATION
+      inference-profile ARN (arn:aws:bedrock:REGION:ACCT:application-inference-profile/...)
+      so its cost-allocation tags flow to Cost Explorer / CUR. Create it from the
+      system profile with `aws bedrock create-inference-profile`. A plain
+      us.anthropic.claude-... id also works but is not cost-tagged.
   AllowedOrigin:
     Type: String
     Default: https://quantum.altivum.ai
@@ -26,6 +28,14 @@ Resources:
       CodeUri: ./
       MemorySize: 512
       Timeout: 60
+      # Cost-attribution tags. The dominant cost (Bedrock inference) is attributed
+      # via the application inference profile passed as ModelId; these tag the
+      # Lambda's own compute. Keep the keys in sync with that profile's tags and
+      # activate them as cost-allocation tags in Billing.
+      Tags:
+        Project: quantum
+        Feature: ask-tutor
+        CostCategory: genai
       Environment:
         Variables:
           TUTOR_MODEL_ID: !Ref ModelId
