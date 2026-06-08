@@ -1,5 +1,7 @@
 # Production Hybrid Quantum-Classical Jobs
 
+Everything in this curriculum so far has run from a notebook on your laptop: build a circuit, submit it, wait, read the result. That is exactly how you should learn — and exactly how you should not run a real variational algorithm. A VQE that scans a molecule's bond lengths submits thousands of circuits, each waiting in a shared device queue, each iteration blocking on the last. Run that from a notebook and you will spend a weekend babysitting it. This final module is about handing that loop to AWS: packaging the VQE you built in module 05 as a managed **Hybrid Job** that gets priority access to the hardware, compiles once, checkpoints itself, streams its own metrics, and tears itself down when it is done.
+
 ## Learning Objectives
 
 After completing this section, you will be able to:
@@ -12,36 +14,27 @@ After completing this section, you will be able to:
 
 ## Prerequisites
 
-- Completed: 00 through 04 (all previous sections)
+- Completed: 00 through 05 (all previous sections)
 - AWS credentials with Braket and IAM permissions (run `make deploy-infra`)
 - Understanding of variational algorithms (VQE, QAOA, QML training loops)
 
 ---
 
-## Concepts
+## When a Job Earns Its Keep
 
-### When to Use Hybrid Jobs
+The decision is not "hybrid jobs are better." A single circuit you are debugging interactively has no business inside a job — the container startup alone is pure overhead. The break-even is about *iteration*. A standalone task is fire-and-forget: you submit it and it joins the back of the device's general queue, behind everyone else on Earth. For one circuit, fine. For a five-hundred-iteration optimization where each step depends on the last, that queue wait is paid *five hundred times over*, and your classical optimizer sits idle between every one.
 
-**Use Hybrid Jobs when:**
-- Your algorithm requires iterative quantum-classical communication (VQE, QAOA, QML training)
-- You need priority QPU access (job tasks jump the queue)
-- You want parametric compilation (compile once, vary parameters)
-- The computation runs for more than a few minutes
-- You need checkpointing, metrics, or reproducible environments
+A Hybrid Job changes the economics. Braket spins up a managed classical instance, runs your script there, and — crucially — the quantum tasks it submits get **priority access**: they jump to the front of the device queue and run back-to-back. You trade a per-hour instance charge for the elimination of all that repeated queueing. Move the sliders below to feel the trade — where the queue wait is real and the iteration count is high, the job wins on wall-clock by a landslide; for a handful of quick iterations, the standalone path is cheaper and simpler.
 
-**Use standalone quantum tasks when:**
-- You're running a single circuit (no iteration)
-- You're exploring/debugging interactively
-- You don't need priority access
+```qjob
+{ "iterations": 60, "shots": 1000, "provider": "IonQ", "instance": "ml.m5.large", "queueWaitSec": 45, "iterSec": 6 }
+```
 
-### Hybrid Job Architecture
+**Use a Hybrid Job when** your algorithm iterates between quantum and classical steps (VQE, QAOA, QML training), needs priority access, benefits from parametric compilation, runs longer than a few minutes, or wants checkpointing and metrics. **Use standalone tasks when** you are running a single circuit, exploring interactively, or genuinely do not need priority.
 
-A Braket Hybrid Job runs in a managed container on EC2:
+## Inside a Hybrid Job
 
-1. **You provide:** An algorithm script (entry point), optional hyperparameters, input data
-2. **Braket provides:** Container environment, SDK, QPU priority access, metrics pipeline
-3. **During execution:** Your script submits quantum tasks that get priority QPU access
-4. **After completion:** Results stored in S3, metrics in CloudWatch, logs in CloudWatch Logs
+When you call `AwsQuantumJob.create(...)`, Braket assembles a self-contained execution environment around your code:
 
 ```
 +-------------------+        +-------------------+
@@ -59,17 +52,13 @@ A Braket Hybrid Job runs in a managed container on EC2:
 +-------------------+
 ```
 
-### Priority QPU Access
+You provide an algorithm script (the entry point), optional hyperparameters, and input data. Braket provides the container, the SDK, priority QPU access, and the metrics pipeline. While your script runs, the quantum tasks it submits carry a job token that marks them as priority work — without it, each iteration might wait minutes or hours in the general queue; with it, iterations complete one after another. When the script finishes, results land in S3, metrics and logs in CloudWatch, and the container is torn down so you stop paying for it.
 
-Tasks submitted from within a Hybrid Job get priority over tasks submitted directly:
-- Your job's tasks go to the front of the device queue
-- This is critical for iterative algorithms where latency between iterations matters
-- Without priority, each iteration might wait minutes/hours in the general queue
-- With priority, iterations complete back-to-back
+## Compile Once, Run a Thousand Times
 
-### Parametric Compilation
+There is a second, subtler tax on variational algorithms. On hardware that must transpile to native gates — superconducting QPUs especially — every circuit you submit is compiled before it runs, and compilation can dominate the per-iteration time. But a variational loop submits the *same circuit structure* every iteration; only the rotation angles change. Recompiling it each time is wasted work.
 
-For variational algorithms, the circuit structure stays the same — only parameters change:
+**Parametric compilation** fixes this. You declare the angles as free parameters, and Braket compiles the circuit once, then reuses the compiled program across iterations, substituting new parameter values each run:
 
 ```python
 from braket.circuits import Circuit, FreeParameter
@@ -80,13 +69,17 @@ circuit = Circuit().rx(0, theta).cnot(0, 1)
 # First run: compiles and executes
 result1 = device.run(circuit, shots=1000, inputs={"theta": 0.5})
 
-# Subsequent runs: skips compilation, only updates parameter
+# Subsequent runs: skips compilation, only updates the parameter
 result2 = device.run(circuit, shots=1000, inputs={"theta": 0.7})
 ```
 
-Parametric compilation saves significant time on hardware that requires transpilation (IQM, Rigetti). The circuit is compiled to native gates once, then only parameter values are updated.
+The compilation cost is paid once instead of per iteration — for a long optimization, the savings compound dramatically. Drag the iteration count up and watch the gap widen:
 
-This is the inner loop of every hybrid job: the same parameterized circuit, a new $\theta$ each iteration, chosen by a classical optimizer. Drag $\theta$ to play the optimizer's role and scrub to watch the two-qubit variational state respond:
+```qparam
+{ "iterations": 50, "compileSec": 8, "runSec": 2 }
+```
+
+This same parameterized circuit is the literal inner loop of every hybrid job: one fixed structure, a fresh $\theta$ each step chosen by the classical optimizer. Play the optimizer's role — drag $\theta$ and scrub to watch the two-qubit variational state respond:
 
 ```qscrub
 qubits 2
@@ -95,56 +88,41 @@ RY 1 theta
 CNOT 0 1
 ```
 
-### Job Lifecycle
+## The Job Lifecycle and Its Metrics
 
-1. **Create:** `AwsQuantumJob.create(...)` — defines script, device, hyperparameters
-2. **Queued:** Job waits for the specified device to become available
-3. **Running:** Container spins up, algorithm executes, quantum tasks get priority
-4. **Metrics:** Your script logs metrics via `log_metric()` — visible in near-real-time
-5. **Checkpointing:** Save intermediate state with `save_job_checkpoint()`
-6. **Completion:** Results saved to S3, container terminated
-7. **Retrieval:** Download results and artifacts
+A job moves through a fixed lifecycle: you **create** it, it **queues** for the device, the container spins up and **runs** your algorithm with priority quantum access, your script **logs metrics** as it goes, optionally **checkpoints** its state, and on **completion** writes results to S3 for **retrieval**. Three channels carry information in and out. *Hyperparameters* are key-value knobs (learning rate, layer count, shot count) passed into your script. *Input data* — training sets, molecular geometries, graphs — is staged from S3 into the container at startup. *Output artifacts and metrics* flow back out: files to S3, and numeric metrics streamed live to CloudWatch via `log_metric`.
 
-### Hyperparameters, Inputs, and Outputs
+That metrics stream is what turns a job from a black box into something you can watch. Logging the energy each VQE iteration gives you a live convergence curve — the same descent you drove by hand in module 05, now reporting itself from inside a running job. This is exactly what you would see in CloudWatch as the optimization homes in on the ground state; the dashed line is a `stopping_condition` you might set to halt early once converged:
 
-**Hyperparameters:** Key-value pairs passed to your algorithm (e.g., learning_rate, n_layers, n_shots). Accessed via `load_job_checkpoint()` or environment variables.
+```qmetrics
+{ "R": 0.74, "threshold": -1.13 }
+```
 
-**Input data:** S3 paths to training data, molecular geometries, or graph structures. Automatically downloaded to the container at runtime.
+## Surviving Failure
 
-**Output artifacts:** Files your script writes to the output directory. Automatically uploaded to S3 after completion.
+A job that runs for hours is a job that can fail for hours' worth of reasons: a spot instance reclaimed, a transient device error, a timeout. Without protection, a failure at iteration 480 of 500 throws away every completed step — you restart from zero. **Checkpointing** is the cure. Your script periodically calls `save_job_checkpoint()` to persist its optimizer state; on restart, `load_job_checkpoint()` resumes from the last saved point, and only the work since that checkpoint is redone. The trade-off is granularity: checkpoint too rarely and a failure still costs you a lot; checkpoint every step and you add I/O overhead. Move the failure point and the checkpoint interval to see how much compute each strategy salvages:
 
-**Metrics:** Numeric values logged during execution (loss, energy, fidelity). Stream to CloudWatch for real-time monitoring.
+```qcheckpoint
+{ "iterations": 40, "failAt": 27, "every": 10 }
+```
 
-### Custom Containers
+## Bringing Your Own Environment
 
-The default Braket container includes the SDK and common packages. For specialized dependencies (custom chemistry libraries, large ML frameworks), build a custom container:
+The default Braket container ships the SDK and common packages, but real workloads have real dependencies — the chemistry stack from module 05 (OpenFermion, PySCF), a heavy ML framework, a pinned library version. For those you build a **custom container**: start from the Braket base image, add your dependencies, build and push to Amazon ECR, and pass the image URI to `AwsQuantumJob.create(image_uri=...)`. The `containers/` directory here has a working `Dockerfile` and a `build_and_push.sh` to do exactly that. Tasks submitted from inside your container still carry the job token, so they keep priority access and job-rate billing rather than being charged as standalone tasks.
 
-1. Create Dockerfile based on Braket base image
-2. Add your dependencies
-3. Build and push to Amazon ECR
-4. Reference the image URI in `AwsQuantumJob.create(image_uri=...)`
+## Keeping the Bill in Check
 
-### Cost Management
+A Hybrid Job's cost is two streams added together: the classical **instance** (billed per hour for as long as the container runs) and the **quantum** tasks (the same per-task and per-shot rates as standalone — a job gives you priority, not a discount). The instance is the new variable to manage:
 
-**Instance selection:**
-- `ml.m5.large`: Default, sufficient for most variational algorithms
-- `ml.m5.xlarge`: More memory for larger problems
-- `ml.p3.2xlarge`: GPU for classical ML components
+- `ml.m5.large` — the default, fine for most variational algorithms
+- `ml.m5.xlarge` — more memory for larger problems
+- `ml.p3.2xlarge` / `ml.g4dn.xlarge` — GPU, for classical ML components or CUDA-Q simulation
 
-**Cost controls:**
-- Set `max_runtime` to cap job duration
-- Use `stopping_condition` to halt based on metrics
-- Monitor with CloudWatch alarms
-- Set AWS Budget alerts (see infra/ templates)
+Control spend with `max_runtime` to cap duration, a `stopping_condition` to halt on a metric (the threshold you saw in the dashboard above), CloudWatch alarms, and AWS Budget alerts (templates in `infra/`). As a rule of thumb the instance runs **$0.10–$3.00/hour** depending on type, and the quantum charges are unchanged from standalone — so the cheapest job is the one that converges fast and shuts down promptly.
 
-**Approximate costs:**
-- EC2 instance: \$0.10-\$3.00/hour depending on type
-- QPU charges: Same per-task and per-shot rates as standalone
-- Total: Job instance cost + quantum hardware cost
+## PennyLane and CUDA-Q
 
-### PennyLane with Hybrid Jobs
-
-PennyLane integrates naturally with Hybrid Jobs:
+PennyLane drops straight into a Hybrid Job — point its device at the job's QPU and let its optimizers drive the loop, logging each step:
 
 ```python
 import pennylane as qml
@@ -165,13 +143,7 @@ for step in range(100):
 save_job_result({"optimal_params": params.tolist(), "final_cost": float(cost)})
 ```
 
-### CUDA-Q Integration
-
-For GPU-accelerated quantum simulation within Hybrid Jobs:
-- CUDA-Q provides GPU-based state vector and tensor network simulation
-- Dramatically faster for circuits > 20 qubits on simulator
-- Use `ml.p3.2xlarge` or `ml.g4dn.xlarge` instances
-- Available as a Braket-provided container image
+For circuits beyond ~20 qubits on a simulator, **CUDA-Q** provides GPU-accelerated state-vector and tensor-network simulation — dramatically faster on a `ml.p3.2xlarge` or `ml.g4dn.xlarge`, and available as a Braket-provided container image.
 
 ---
 
@@ -208,6 +180,7 @@ For GPU-accelerated quantum simulation within Hybrid Jobs:
 - [Working with Amazon Braket Hybrid Jobs](https://docs.aws.amazon.com/braket/latest/developerguide/braket-jobs.html) — Complete Hybrid Jobs guide
 - [Key concepts for Hybrid Jobs](https://docs.aws.amazon.com/braket/latest/developerguide/braket-jobs-concepts.html) — Inputs, outputs, metrics, checkpoints
 - [Create a Hybrid Job](https://docs.aws.amazon.com/braket/latest/developerguide/braket-jobs-first.html) — Step-by-step creation walkthrough
+- [Using parametric compilation to speed up Hybrid Jobs](https://docs.aws.amazon.com/braket/latest/developerguide/braket-jobs-parametric-compilation.html) — Compile-once-reuse for FreeParameter circuits
 - [Custom containers for Hybrid Jobs](https://docs.aws.amazon.com/braket/latest/developerguide/running-hybrid-jobs-in-own-container.html) — Building and using custom Docker images
 - [Using PennyLane with Braket](https://docs.aws.amazon.com/braket/latest/developerguide/hybrid.html) — PennyLane integration guide
 - [Using CUDA-Q with Braket](https://docs.aws.amazon.com/braket/latest/developerguide/braket-using-cuda-q.html) — GPU-accelerated simulation setup
@@ -225,3 +198,7 @@ For GPU-accelerated quantum simulation within Hybrid Jobs:
 - [Optimizing parametric circuits for NISQ devices (Mitarai et al., 2018)](https://arxiv.org/abs/1803.00745) — Theory behind parametric compilation benefits
 - [Scalable Quantum Simulation of Molecular Energies (O'Malley et al., 2016)](https://arxiv.org/abs/1512.06860) — Early demonstration of hybrid quantum-classical chemistry
 - [PennyLane: Automatic differentiation of hybrid quantum-classical computations](https://arxiv.org/abs/1811.04968) — PennyLane framework paper
+
+---
+
+You have reached the end of the path: from a single qubit in `00-prereqs` to a fault-tolerant, cost-controlled, production VQE running itself on managed infrastructure. You can now build a circuit, choose the right hardware, run the canonical algorithms, train quantum models, fold a molecule onto qubits, and ship the whole thing as a job that scales. The frontier from here is no longer learning the tools — it is pointing them at a problem worth solving.
