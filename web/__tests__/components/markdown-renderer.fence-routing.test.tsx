@@ -110,6 +110,26 @@ describe("markdown fence routing", () => {
     expect(screen.getByText(/qaoa/i)).toBeInTheDocument();
   });
 
+  it("routes a qencode fence to the Encoding widget", () => {
+    renderFence("qencode", JSON.stringify({ x: [0.6, 0.9], encoding: "angle" }));
+    expect(screen.getByText(/encoding/i)).toBeInTheDocument();
+  });
+
+  it("routes a qkernel fence to the Quantum kernel widget", () => {
+    renderFence("qkernel", JSON.stringify({ dataset: "circles", map: "iqp" }));
+    expect(screen.getByText(/quantum kernel/i)).toBeInTheDocument();
+  });
+
+  it("routes a qbarren fence to the Barren plateaus widget", () => {
+    renderFence("qbarren", JSON.stringify({ depth: 2, samples: 80 }));
+    expect(screen.getByText(/^barren plateaus$/i)).toBeInTheDocument();
+  });
+
+  it("routes a qvqc fence to the VQC widget", () => {
+    renderFence("qvqc", JSON.stringify({ dataset: "blobs" }));
+    expect(screen.getByText(/vqc/i)).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();

@@ -19,6 +19,10 @@ import { GroverVisualizer } from "./quantum/grover-visualizer";
 import { QftVisualizer } from "./quantum/qft-visualizer";
 import { DjDemo } from "./quantum/dj-demo";
 import { QaoaExplorer } from "./quantum/qaoa-explorer";
+import { EncodingExplorer } from "./quantum/encoding-explorer";
+import { KernelExplorer } from "./quantum/kernel-explorer";
+import { BarrenExplorer } from "./quantum/barren-explorer";
+import { VqcTrainer } from "./quantum/vqc-trainer";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 
@@ -131,6 +135,18 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
       }
       if (code && Array.isArray(className) && className.includes("language-qoptim")) {
         return <QaoaExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qencode")) {
+        return <EncodingExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qkernel")) {
+        return <KernelExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qbarren")) {
+        return <BarrenExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qvqc")) {
+        return <VqcTrainer source={hastText(code as unknown as HastTextNode)} />;
       }
       // Every other fence becomes a CodeBlock: the highlighted <code> children are
       // preserved (syntax colors intact) and a copy button + language chip + wrap

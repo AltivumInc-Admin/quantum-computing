@@ -1,0 +1,20 @@
+/**
+ * @jest-environment jsdom
+ */
+import "@testing-library/jest-dom";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { VqcTrainer } from "@/components/quantum/vqc-trainer";
+
+describe("VqcTrainer", () => {
+  it("renders the VQC header and a Train button", () => {
+    render(<VqcTrainer source={JSON.stringify({ dataset: "blobs" })} />);
+    expect(screen.getByText(/vqc/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /train/i })).toBeInTheDocument();
+  });
+  it("training updates the step/accuracy readout", () => {
+    render(<VqcTrainer source={""} />);
+    fireEvent.click(screen.getByRole("button", { name: /train/i }));
+    // after clicking Train, the step or accuracy readout reflects progress
+    expect(screen.getByText(/accuracy|step|loss/i)).toBeInTheDocument();
+  });
+});
