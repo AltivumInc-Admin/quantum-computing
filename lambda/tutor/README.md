@@ -77,4 +77,46 @@ curl -N -X POST "<FunctionUrl>" \
   `Resource` to the specific model/inference-profile ARN for production. Switch to
   `AWS_IAM` + signed requests if you need to lock it down further.
 - **Teardown:** `sam delete` (SAM) or `aws lambda delete-function-url-config` +
-  `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`.
+  `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`. Also
+  delete the application inference profile (below).
+
+## Cost attribution (gen-AI vs free modules)
+
+The lessons stay free; the gen-AI tutor is tagged so its spend is attributable and
+ready to monetize. All tutor resources carry `Project=quantum`, `Feature=ask-tutor`,
+`CostCategory=genai`.
+
+The dominant cost is **Bedrock inference**, which is attributed via an **application
+inference profile** (AIP) — a tagged wrapper around the model. The Lambda invokes the
+AIP ARN (passed as `ModelId`) instead of the raw model id, so the AIP's tags land on
+every billing record. Current AIP (us-east-2):
+
+```
+quantum-ask-tutor  ->  arn:aws:bedrock:us-east-2:205930636302:application-inference-profile/q050egz0q4mb
+   wraps system profile  us.anthropic.claude-haiku-4-5-20251001-v1:0   (tags: Project/Feature/CostCategory)
+```
+
+Recreate it if needed:
+
+```bash
+aws bedrock create-inference-profile --region us-east-2 \
+  --inference-profile-name quantum-ask-tutor \
+  --description "Cost attribution for the quantum portal gen-AI lesson tutor" \
+  --model-source copyFrom=arn:aws:bedrock:us-east-2:205930636302:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --tags '[{"key":"Project","value":"quantum"},{"key":"Feature","value":"ask-tutor"},{"key":"CostCategory","value":"genai"}]'
+# then redeploy with ModelId=<the returned application-inference-profile ARN>
+```
+
+**Activation (must run in the MANAGEMENT / payer account):** user-defined tags only
+appear in Cost Explorer after activation, and this account is a linked member, so the
+payer account must activate them — Billing & Cost Management console -> Cost allocation
+tags -> activate `Project`, `Feature`, `CostCategory`; or from the management account:
+
+```bash
+aws ce update-cost-allocation-tags-status --region us-east-1 \
+  --cost-allocation-tags-status TagKey=Project,Status=Active TagKey=Feature,Status=Active TagKey=CostCategory,Status=Active
+```
+
+Activation is **not retroactive** (only spend after activation is tagged) and tags take
+up to ~24h to appear. Then filter/group by these tags in Cost Explorer or CUR 2.0.
+Teardown also: `aws bedrock delete-inference-profile --inference-profile-identifier <AIP-ARN> --region us-east-2`.
