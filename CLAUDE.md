@@ -61,6 +61,7 @@ Managed via pyproject.toml. Key packages:
 - Fonts: Plus Jakarta Sans (body) + Instrument Serif (display) via `next/font/google`
 - Dark mode: `next-themes` with `@variant dark (&:where(.dark, .dark *));` in globals.css
 - Deployment: AWS Amplify (auto-deploys from git push, `amplify.yml` at repo root)
+- Optional lesson tutor ("Ask the margin"): a streaming Bedrock Lambda in `lambda/tutor/` (deploy separately; see its README). The `<AskTutor />` affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set in Amplify env, so the static site is unaffected when it is absent.
 
 ### Key Patterns
 - `@theme inline` values compile statically — they cannot be overridden at runtime via CSS classes. Use standard Tailwind `dark:` utilities for theme-dependent values.
@@ -70,6 +71,6 @@ Managed via pyproject.toml. Key packages:
 
 ### Commands
 - `npm run dev` — Start dev server (port 3000)
-- `npm test` — Run Jest test suite (432 tests)
+- `npm test` — Run Jest test suite (443 tests)
 - `npm run build` — Static export (12 pages)
 - `npm run lint` — ESLint check
