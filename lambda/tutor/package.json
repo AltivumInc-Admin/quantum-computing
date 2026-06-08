@@ -1,0 +1,11 @@
+{
+  "name": "quantum-tutor",
+  "version": "1.0.0",
+  "description": "Streaming Bedrock-backed lesson tutor for the quantum curriculum (Ask the margin)",
+  "type": "module",
+  "private": true,
+  "main": "index.mjs",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0"
+  }
+}

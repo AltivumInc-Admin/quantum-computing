@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Ask the margin — a response-streaming, Bedrock-backed lesson tutor for the
+  quantum curriculum. A single stateless Lambda behind a Function URL.
+
+Parameters:
+  ModelId:
+    Type: String
+    Description: >
+      Bedrock Claude model or cross-region inference-profile id, e.g.
+      us.anthropic.claude-... — get the current one with
+      `aws bedrock list-inference-profiles`. Request model access first.
+  AllowedOrigin:
+    Type: String
+    Default: https://quantum.altivum.ai
+    Description: Origin allowed to call the Function URL (your site).
+
+Resources:
+  TutorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-tutor
+      Runtime: nodejs20.x
+      Handler: index.handler
+      CodeUri: ./
+      MemorySize: 512
+      Timeout: 60
+      Environment:
+        Variables:
+          TUTOR_MODEL_ID: !Ref ModelId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModelWithResponseStream
+              # Tighten to the specific model/inference-profile ARN in production.
+              Resource: "*"
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: RESPONSE_STREAM
+        Cors:
+          AllowOrigins:
+            - !Ref AllowedOrigin
+          AllowMethods:
+            - POST
+          AllowHeaders:
+            - content-type
+
+Outputs:
+  TutorUrl:
+    Description: Set this as NEXT_PUBLIC_TUTOR_URL in Amplify.
+    Value: !GetAtt TutorFunctionUrl.FunctionUrl
