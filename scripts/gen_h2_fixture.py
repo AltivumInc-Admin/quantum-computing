@@ -23,16 +23,19 @@ Usage:
     .venv/bin/python scripts/gen_h2_fixture.py
 Writes web/src/components/quantum/__fixtures__/h2_dissociation.json.
 """
+
 from __future__ import annotations
 
 import json
 import warnings
 from pathlib import Path
 
-warnings.filterwarnings("ignore")
-
 import numpy as np
 import pennylane as qml
+
+# PennyLane / nbformat emit import- and call-time deprecation noise on stderr;
+# this is a one-off data generator, so silence it for clean output.
+warnings.filterwarnings("ignore")
 
 ANG2BOHR = 1.8897259886
 HF_INDEX = int("1100", 2)  # H2 Hartree-Fock determinant in JW occupation order
