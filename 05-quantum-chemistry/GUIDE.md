@@ -1,5 +1,7 @@
 # Quantum Chemistry & Biochemistry
 
+Every drug that works, every catalyst that speeds a reaction, every battery that holds a charge comes down to one calculation no classical computer can do exactly: where do the electrons go? Solve that and you can predict chemistry before you ever touch a beaker. This is the application people point to when they say quantum computers will change the world — and it is the one place where a real molecule, hydrogen, collapses neatly onto a single qubit you can watch find its own ground state.
+
 ## Learning Objectives
 
 After completing this section, you will be able to:
@@ -18,96 +20,107 @@ After completing this section, you will be able to:
 
 ---
 
-## Concepts
+## The Molecule Problem
 
-### The Electronic Structure Problem
+Pin the nuclei of a molecule in place and one question decides everything that follows: what is the lowest energy the electrons can settle into, and what does that state look like? That ground-state energy is the molecule's stability. Track how it changes as you stretch a bond and you have a reaction. Compare it between a drug and its target and you have binding affinity. All of chemistry is, at bottom, a search for the bottom of an energy well.
 
-The central problem in computational chemistry: given a molecular geometry (nuclear positions), find the ground state energy and wavefunction of the electrons.
+The trouble is that the electrons refuse to be treated one at a time. They repel each other, so each electron's position depends on every other's — and the honest description of that dance is a wavefunction that lives in a space of dimension $2^n$ for $n$ spin-orbitals. Twenty orbitals is already a million-dimensional vector; a hundred is more numbers than there are atoms in the Earth.
 
-**Why it's hard classically:**
-- The exact wavefunction lives in an exponentially large space (2^n for n spin-orbitals)
-- Classical methods (DFT, CCSD(T)) use approximations that break down for strongly correlated systems
-- Catalysis, drug binding, materials properties often involve strong correlation
+Classical chemistry survives by approximating. Density functional theory and coupled cluster are extraordinary engineering, and for most molecules they are close enough. But they lean on the assumption that electrons are only weakly correlated — and that assumption shatters exactly where the interesting chemistry lives: bond-breaking transition states, transition-metal catalysts, the stretched bonds of an enzyme mid-reaction. These are *strongly correlated*, and there the approximations quietly fail.
 
-**Why quantum computers help:**
-- Quantum systems naturally represent exponential spaces
-- A quantum state of n qubits can encode a wavefunction of n spin-orbitals
-- Polynomial quantum resources for problems requiring exponential classical resources
+A quantum computer offers a different bargain. A register of $n$ qubits *is* a $2^n$-dimensional state — the exponential space is not something it has to store, it is something it natively is. Encode a wavefunction of $n$ spin-orbitals into $n$ qubits and the representation cost stops being the problem. What remains is a much narrower question: how do we write a molecule down as something a quantum computer can hold, and how do we coax it toward its ground state?
 
-### Second Quantization
+## From Electrons to Operators
 
-Instead of tracking each electron's position, second quantization uses creation ($a_p^\dagger$) and annihilation ($a_p$) operators for each spin-orbital $p$:
+Tracking electrons by position is hopeless and, worse, redundant — electrons are identical, so labelling "electron 1 here, electron 2 there" double-counts reality. Second quantization throws the labels away and tracks *occupation* instead: for each spin-orbital, is there an electron in it or not?
 
-- $a_p^\dagger\ket{0} = \ket{1_p}$ (create an electron in orbital p)
-- $a_p\ket{1_p} = \ket{0}$ (remove an electron from orbital p)
-- Anticommutation: $\{a_p, a_q^\dagger\} = \delta_{pq}$
+The bookkeeping is done by two operators per orbital $p$ — a creation operator $a_p^\dagger$ that drops an electron into orbital $p$, and an annihilation operator $a_p$ that removes one:
 
-The molecular Hamiltonian in second quantization:
+- $a_p^\dagger\ket{0} = \ket{1_p}$ — create an electron in orbital $p$
+- $a_p\ket{1_p} = \ket{0}$ — remove it
+- $\{a_p, a_q^\dagger\} = \delta_{pq}$ — the anticommutation relation that encodes the Pauli exclusion principle
+
+In this language the entire molecular Hamiltonian — kinetic energy, electron-nucleus attraction, electron-electron repulsion — folds into one compact expression:
 
 $$
 H = \sum_{pq} h_{pq}\, a_p^\dagger a_q + \frac{1}{2} \sum_{pqrs} h_{pqrs}\, a_p^\dagger a_q^\dagger a_s a_r
 $$
 
-where $h_{pq}$ (one-electron integrals) and $h_{pqrs}$ (two-electron integrals) are computed classically from the basis set and molecular geometry.
+The numbers $h_{pq}$ (one-electron integrals) and $h_{pqrs}$ (two-electron integrals) are pure geometry and basis set — a classical computer grinds them out once from the nuclear positions. What is left is an operator built entirely from $a^\dagger$ and $a$. The only thing standing between this and a quantum circuit is that qubits do not speak fermion.
 
-### Fermion-to-Qubit Mappings
+## Fermions Become Qubits
 
-Quantum computers use qubits, not fermions. We need a mapping that preserves the fermionic anticommutation relations.
+Qubits and fermions disagree on one crucial point. Swap two electrons and the wavefunction must flip sign — that antisymmetry is what keeps two electrons out of the same state. Qubits have no such rule; flipping qubit 3 is a purely local act that ignores qubits 0 through 2. A fermion-to-qubit mapping exists to smuggle the missing minus signs back in.
 
-**Jordan-Wigner Transformation:**
-- Maps occupation of orbital $p$ to qubit $p$: $\ket{0}$ = unoccupied, $\ket{1}$ = occupied
-- a_p^dagger -> (X_p - iY_p)/2 * Z_{p-1} * Z_{p-2} * ... * Z_0
-- The Z-string encodes fermionic antisymmetry (parity of all lower orbitals)
-- Pro: Intuitive mapping. Con: Non-local — operators on orbital p involve all lower qubits.
+The **Jordan-Wigner transformation** is the most direct one. Occupation of orbital $p$ becomes the state of qubit $p$: $\ket{0}$ empty, $\ket{1}$ occupied. But a creation operator cannot be a bare local flip — it has to carry a *Z-string* trailing across every lower-index qubit:
 
-**Bravyi-Kitaev Transformation:**
-- Encodes both occupation and parity information in each qubit
-- Results in O(log n) weight operators instead of O(n)
-- More efficient for certain circuits but less intuitive
+$$
+a_p^\dagger = \frac{X_p - i Y_p}{2}\; Z_{p-1} Z_{p-2} \cdots Z_0
+$$
 
-**Parity Mapping:**
-- Qubit p stores the parity of orbitals 0 through p
-- Can reduce qubit count by 2 using symmetry (total electron number, spin)
+That chain of $Z$ operators is the antisymmetry made concrete: it reads the parity of every orbital below $p$ and stamps the right sign on the operation. Toggle the occupation below and watch the string light up:
 
-**Practical choice:** Jordan-Wigner is standard for small molecules. Bravyi-Kitaev can reduce circuit depth for larger systems.
+```qjw
+{ "modes": 4, "electrons": 2, "mode": 0, "dagger": true }
+```
 
-### Variational Quantum Eigensolver (VQE)
+The mapping is exact but it has a cost: an operator on orbital $p$ now touches every qubit beneath it, so its Pauli weight grows with the system. The **Bravyi-Kitaev transformation** is a cleverer ledger that stores occupation and parity together, trading the linear $Z$-string for operators of weight $O(\log n)$ — less intuitive, but cheaper for large molecules. **Parity mapping** stores cumulative parity directly and, because it makes two symmetries (total electron number and spin) explicit, lets you delete two qubits outright. For the small molecules in this section, Jordan-Wigner is the natural starting point; the others are optimizations you reach for when qubit count bites.
 
-VQE is the primary algorithm for quantum chemistry on NISQ devices:
+## The Molecule as a Matrix
 
-1. **Prepare trial state:** Apply parameterized ansatz U(theta)|0>
-2. **Measure energy:** Compute <H> = sum_i c_i * <P_i> where P_i are Pauli terms in the qubit Hamiltonian
-3. **Optimize:** Use a classical optimizer to minimize <H> by adjusting theta
-4. **Converge:** The minimum of <H> approximates the ground state energy (variational principle guarantees E_VQE >= E_exact)
+Run hydrogen through this pipeline in the minimal STO-3G basis and something concrete falls out: two H atoms, four spin-orbitals, four qubits, and a Hamiltonian that is a weighted sum of fifteen Pauli strings. No approximation has been made — this is the exact electronic structure problem for H2, rewritten as something a four-qubit device could measure. The coefficients are physics: stretch the bond and they shift.
 
-**The variational principle:** For any trial state |psi(theta)>:
-<psi(theta)|H|psi(theta)> >= E_ground
+```qham
+{ "R": 0.74, "tapered": false }
+```
 
-This means VQE always gives an upper bound — we can only improve by finding better parameters.
+Now the payoff. Those four qubits carry redundancy — the symmetries that parity mapping exposes mean the real problem is far smaller than it looks. Tapering away the conserved quantities collapses the four-qubit, fifteen-term operator down to a **single qubit** with just three terms:
 
-**Measuring the Hamiltonian:**
-The qubit Hamiltonian is a sum of Pauli strings (e.g., ZZII, XYZI, IIXX). Each term requires separate measurement in its eigenbasis. Grouping commuting terms reduces the number of distinct measurements needed.
+$$
+H_{\text{H}_2} \approx -0.33\, I + 0.79\, Z + 0.18\, X
+$$
 
-### Ansatz Design
+That is the entire ground-state problem for a hydrogen molecule, living on one qubit. Flip the taper toggle above and watch fifteen terms fold into three. The lesson generalizes: the naive qubit count is almost never the real one, and choosing the right symmetries and active orbitals is the difference between a calculation that fits on today's hardware and one that does not.
 
-The ansatz (trial wavefunction circuit) determines VQE's quality:
+## Minimizing the Energy
 
-**Unitary Coupled Cluster (UCC):**
-- Inspired by classical coupled cluster theory
-- UCCSD includes single and double excitations:
-  U(theta) = exp(T - T^dagger) where T = T_1 + T_2
-  T_1 = sum_{ia} t_ia * a_a^dagger * a_i (singles)
-  T_2 = sum_{ijab} t_ijab * a_a^dagger * a_b^dagger * a_j * a_i (doubles)
-- Chemically motivated — captures the right physics
-- Con: Deep circuits (many CNOT gates), expensive on noisy hardware
+We have the molecule as an operator. Finding its ground state means finding the lowest eigenvalue of $H$ — and for anything bigger than a toy, diagonalizing $H$ is exactly the exponential wall we were trying to avoid. The **Variational Quantum Eigensolver** sidesteps it with a single, deep idea from physics: the variational principle. For *any* trial state $\ket{\psi(\theta)}$,
 
-**Hardware-Efficient Ansatz (HEA):**
-- Layers of single-qubit rotations + entangling gates (CNOTs)
-- Not chemically motivated — just explores the Hilbert space
-- Pro: Short circuits, works on any hardware topology
-- Con: Barren plateaus, may not converge to the right answer
+$$
+\expval{\psi(\theta)|H|\psi(\theta)} \ge E_{\text{ground}}
+$$
 
-A single hardware-efficient layer is just a rotation followed by an entangler. Drag $\theta$ to sweep the variational parameter and scrub to watch the two-qubit state evolve — VQE's classical optimizer searches exactly this landscape for the energy minimum:
+The expected energy of any state you can prepare is an upper bound on the true ground energy. You can never measure below the floor — you can only get closer to it. So VQE turns ground-state finding into optimization: prepare a parameterized state on the quantum computer, measure $\expval{H}$, hand the number to a classical optimizer, adjust $\theta$, repeat. The quantum device does the part it is good at (holding and measuring an exponential state); the classical optimizer does the part it is good at (nudging a few knobs downhill).
+
+For tapered H2 the whole landscape fits in one picture. The ansatz is a single rotation $R_Y(\theta)\ket{0}$, the energy is $E(\theta) = c_0 + c_z\cos\theta + c_x\sin\theta$, and the variational floor sits exactly at the minimum of that curve. Drag $\theta$ and try to push the energy below the line — you cannot. Then let the optimizer find the bottom:
+
+```qvqe
+{ "R": 0.74 }
+```
+
+There is something special about this case worth saying plainly: because a single qubit's ansatz can reach *every* state of that qubit, VQE here is not approximate — it lands exactly on the true ground energy, $-1.137$ Hartree. For larger molecules the ansatz can only cover part of the space, and the gap between the floor and what your circuit can reach becomes the central challenge of the field.
+
+## Drawing a Chemical Bond
+
+One geometry gives one energy. Sweep the geometry and you get chemistry. Move the two hydrogen atoms apart, re-solve at each separation, and the string of ground energies traces the molecule's **potential energy surface** — the curve whose minimum is the equilibrium bond length and whose depth is the energy that holds the molecule together.
+
+```qpes
+{ "mark": 0.74 }
+```
+
+The minimum sits near $0.74$ Angstrom at $-1.137$ Hartree, and the well is about $0.20$ Hartree deep — that is the bond. But the most instructive feature is the gap between the two curves. Hartree-Fock, the workhorse mean-field method, hugs the exact curve near equilibrium where electrons are weakly correlated. Pull the bond apart and it peels away, rising far above the truth: restricted Hartree-Fock simply cannot describe two atoms drifting toward independent radicals. That widening gap is the **correlation energy**, and it is the precise quantitative statement of why strongly correlated chemistry needs more than mean-field — the exact regime where quantum computers are meant to earn their keep.
+
+## Designing the Ansatz
+
+VQE is only as good as the states its ansatz can reach. The trial circuit $U(\theta)$ is the whole ballgame, and there are two philosophies for building it.
+
+**Unitary Coupled Cluster (UCC)** borrows the structure of classical coupled cluster, the gold standard of quantum chemistry. UCCSD builds excitations on top of the Hartree-Fock state:
+
+$$U(\theta) = e^{T - T^\dagger}, \quad T = T_1 + T_2$$
+
+where $T_1$ promotes one electron at a time (singles) and $T_2$ promotes pairs (doubles). It is chemically motivated — every parameter corresponds to a physical excitation — so it converges to the right answer. The cost is depth: each excitation is a string of CNOTs, and on noisy hardware that depth is expensive.
+
+**Hardware-Efficient Ansatz (HEA)** abandons chemical meaning for shallowness: just layers of single-qubit rotations and the entangling gates your device happens to support. A single layer is one rotation followed by one entangler. Drag $\theta$ to sweep the parameter and scrub to watch the two-qubit state evolve — this is the elementary motif VQE's optimizer searches:
 
 ```qscrub
 qubits 2
@@ -115,40 +128,23 @@ RY 0 theta
 CNOT 0 1
 ```
 
-**ADAPT-VQE:**
-- Grows the ansatz adaptively by selecting operators with the largest gradient
-- Starts with empty circuit, adds one operator at a time
-- Finds compact, problem-specific ansatze
-- More circuit evaluations during optimization but shorter final circuits
+HEA runs on any topology and stays shallow, but it pays for it: it can wander into regions with no chemical relevance, and stacking layers invites the barren plateaus from the previous module. **ADAPT-VQE** splits the difference — it grows the ansatz one operator at a time, each round adding whichever excitation has the steepest energy gradient. It spends more measurements during optimization but ends with a compact, problem-specific circuit. The choice among them is the recurring NISQ trade-off: accuracy against depth against trainability.
 
-### Basis Sets and Active Space
+## Scaling Up: Basis Sets and Active Space
 
-**Basis sets:** Approximate atomic orbitals with Gaussian functions
-- STO-3G: Minimal basis (1 function per orbital). Quick but inaccurate.
-- 6-31G: Split-valence. Better for properties.
-- cc-pVDZ, cc-pVTZ: Correlation-consistent. Systematic improvement.
+Two knobs decide how big the problem gets. The **basis set** is how finely you approximate each atomic orbital with Gaussian functions: STO-3G is minimal and fast but crude (it is what produced the H2 curve above, and why that curve is qualitatively right but quantitatively loose); 6-31G splits the valence shell; cc-pVDZ and cc-pVTZ climb a systematic ladder toward the basis-set limit. Richer basis means more orbitals — and more orbitals means more qubits.
 
-Larger basis = more orbitals = more qubits needed.
+The **active space** is how you cope when the full count is hopeless. You cannot put all eighty spin-orbitals of a medium molecule on a quantum computer, but you do not have to. Run a cheap classical Hartree-Fock to get the molecular orbitals, keep only the handful near the Fermi level where the action is, freeze the rest into an averaged background, and hand just that active window to VQE. A molecule with 20 electrons in 40 orbitals nominally needs 80 qubits; an active space of 4 electrons in 4 orbitals needs 8 — tractable today. It is the same move as the symmetry tapering that shrank H2 to one qubit, applied with chemical judgment: spend your scarce qubits only where correlation actually matters.
 
-**Active space selection:**
-For a molecule with many electrons, we can't put all orbitals on the quantum computer. Active space methods:
-1. Run a classical calculation (Hartree-Fock) to get molecular orbitals
-2. Select a subset of orbitals near the Fermi level (the "active space")
-3. Treat active space with VQE, frozen core with classical approximation
+## Where This Matters
 
-Example: For a molecule with 20 electrons in 40 orbitals:
-- Full: 80 qubits (40 spatial orbitals x 2 spin)
-- Active space (4 electrons, 4 orbitals): 8 qubits — tractable on current hardware
+The molecules quantum computers can treat accurately today — H2, LiH, BeH2, water — are small. The value is not in those answers, which classical methods already nail, but in proving out methods that will scale as hardware grows:
 
-### Applications to Drug Discovery and Biochemistry
+- **Drug binding.** How tightly a candidate molecule grips a protein pocket is a difference of large energies, and the binding interface is often strongly correlated — exactly where mean-field errors of a few kcal/mol decide whether a drug works.
+- **Reaction mechanisms.** Mapping energy along a reaction coordinate means resolving transition states, which carry strong multireference character. Get the barrier height wrong and you mispredict the rate by orders of magnitude.
+- **Materials by design.** Catalysts, battery electrolytes, and candidate superconductors are correlated-electron problems where first-principles accuracy would replace decades of trial and error.
 
-**Molecular binding energies:** Calculate how strongly a drug candidate binds to a protein pocket. Requires accurate treatment of electron correlation at the binding interface.
-
-**Reaction mechanisms:** Map energy along a reaction coordinate. Transition states often have strong multireference character — exactly where quantum computers can help.
-
-**Materials design:** Predict properties of novel catalysts, battery materials, superconductors from first principles.
-
-**Current limitations:** Today's quantum computers can handle molecules with ~10-20 qubits accurately. This covers small molecules (H2, LiH, BeH2, H2O) but not drug-sized molecules. The value is in developing methods that will scale to useful size as hardware improves.
+The throughline of this entire module is the one move we made with hydrogen: a molecule is an operator, the operator is a matrix, and the matrix has a lowest eigenvalue you can chase by minimizing an expectation value. Everything else — better mappings, better ansatze, active spaces — is engineering in service of pushing that one idea up to molecules that matter.
 
 ---
 
@@ -199,3 +195,7 @@ Example: For a molecule with 20 electrons in 40 orbitals:
 - [Quantum chemistry in the age of quantum computing (Cao et al., 2019)](https://arxiv.org/abs/1812.09976) — Broad review connecting chemistry to quantum algorithms
 - [OpenFermion: The Electronic Structure Package for Quantum Computers](https://arxiv.org/abs/1710.07629) — OpenFermion paper and tutorial
 - [Molecular Simulations with Quantum Computers: A book by Szabo and Ostlund](https://store.doverpublications.com/0486691861.html) — Classical reference for the quantum chemistry background
+
+---
+
+The next module, **`06-hybrid-jobs`**, takes the VQE workflow you just built — prepare, measure, optimize, repeat — and packages it as a managed, production-grade hybrid quantum-classical job that scans geometries in parallel and checkpoints long sweeps.

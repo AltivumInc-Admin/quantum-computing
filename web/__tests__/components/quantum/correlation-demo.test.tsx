@@ -17,7 +17,10 @@ describe("CorrelationDemo", () => {
     render(<CorrelationDemo source={SOURCE} />);
     const btn = screen.getByRole("button", { name: "Measure" });
     for (let i = 0; i < 5; i++) fireEvent.click(btn);
-    expect(screen.getByText(/\b5\b/)).toBeInTheDocument();
+    // Assert the running total specifically. A bare /\b5\b/ was flaky: when all
+    // five entangled shots land on one outcome, that outcome's per-bar count also
+    // reads "5", so the matcher found multiple elements.
+    expect(screen.getByText("5 measurements")).toBeInTheDocument();
   });
   it("renders an error card for malformed JSON", () => {
     render(<CorrelationDemo source={"{ not json"} />);

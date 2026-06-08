@@ -72,12 +72,12 @@ The curriculum is **strictly numbered and cumulative.** Each module's GUIDE name
 
 ```mermaid
 flowchart LR
-    P["00 · prereqs<br/><i>NumPy, no AWS</i>"] --> F["00 · foundations<br/><i>gates, Braket SDK</i>"]
-    F --> H["01 · hardware<br/><i>QPUs, cost</i>"]
-    H --> A["02 · algorithms<br/><i>Grover, QFT, QAOA</i>"]
-    A --> ML["03 · quantum-ml<br/><i>VQC, kernels</i>"]
-    A --> CH["04 · quantum-chemistry<br/><i>VQE, OpenFermion</i>"]
-    ML --> J["05 · hybrid-jobs<br/><i>production</i>"]
+    P["00 · prereqs<br/><i>NumPy, no AWS</i>"] --> F["01 · foundations<br/><i>gates, Braket SDK</i>"]
+    F --> H["02 · hardware<br/><i>QPUs, cost</i>"]
+    H --> A["03 · algorithms<br/><i>Grover, QFT, QAOA</i>"]
+    A --> ML["04 · quantum-ml<br/><i>VQC, kernels</i>"]
+    A --> CH["05 · quantum-chemistry<br/><i>VQE, OpenFermion</i>"]
+    ML --> J["06 · hybrid-jobs<br/><i>production</i>"]
     CH --> J
 
     classDef free fill:#0d3b3e,stroke:#22c3c9,color:#e6fbfc;
@@ -91,12 +91,12 @@ flowchart LR
 | # | Module | Notebooks | In-browser | Focus |
 |---|--------|:---------:|:----------:|-------|
 | **00** | **Prerequisites: From Zero to Ready-for-Quantum** | 6 | **6/6** | NumPy linear algebra, probability & the Born rule, Dirac notation, the Bloch sphere — **no AWS** |
-| **00** | **Quantum Computing Foundations** | 5 | **5/5** | Qubits, the full single/multi-qubit gate set, entanglement (Bell/GHZ), measurement, the Braket circuit model |
-| **01** | **Quantum Hardware on Amazon Braket** | 6 | 0/6 | IonQ / IQM / QuEra QPUs, SV1 / DM1 / TN1 managed simulators, noise, device selection & cost estimation |
-| **02** | **Quantum Algorithms** | 6 | **3/6** | Deutsch-Jozsa, Grover, QFT, Quantum Phase Estimation, QAOA (MaxCut), amplitude estimation |
-| **03** | **Quantum Machine Learning** | 7 | 0/7 | Data encodings, variational classifiers, quantum kernels, barren plateaus, PennyLane + Braket |
-| **04** | **Quantum Chemistry & Biochemistry** | 8 | 0/8 | Molecular Hamiltonians, fermion→qubit mappings, VQE/SSVQE, ansatz design, active spaces |
-| **05** | **Production Hybrid Quantum-Classical Jobs** | 7 | 0/7 | Braket Hybrid Jobs, parametric compilation, checkpointing, custom containers, monitoring & cost controls |
+| **01** | **Quantum Computing Foundations** | 5 | **5/5** | Qubits, the full single/multi-qubit gate set, entanglement (Bell/GHZ), measurement, the Braket circuit model |
+| **02** | **Quantum Hardware on Amazon Braket** | 6 | 0/6 | IonQ / IQM / QuEra QPUs, SV1 / DM1 / TN1 managed simulators, noise, device selection & cost estimation |
+| **03** | **Quantum Algorithms** | 6 | **3/6** | Deutsch-Jozsa, Grover, QFT, Quantum Phase Estimation, QAOA (MaxCut), amplitude estimation |
+| **04** | **Quantum Machine Learning** | 7 | 0/7 | Data encodings, variational classifiers, quantum kernels, barren plateaus, PennyLane + Braket |
+| **05** | **Quantum Chemistry & Biochemistry** | 8 | 0/8 | Molecular Hamiltonians, fermion→qubit mappings, VQE/SSVQE, ansatz design, active spaces |
+| **06** | **Production Hybrid Quantum-Classical Jobs** | 7 | 0/7 | Braket Hybrid Jobs, parametric compilation, checkpointing, custom containers, monitoring & cost controls |
 | | **Total** | **45** | **14** | |
 
 Each module's `GUIDE.md` follows the same shape: **Learning Objectives → Prerequisites → Concepts → Hands-On Exercises (numbered notebooks, each with a Scripts subsection) → References.** Reusable helper scripts (`scripts/`) keep shared logic out of the lessons. `00-prereqs` is the exception — it adds a Setup section and a Self-Assessment, and ends with a **10-question placement quiz** (rendered interactively in the portal): pass ≥ 7 unaided and skip straight to `01-foundations`.

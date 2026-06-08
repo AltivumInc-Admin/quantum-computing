@@ -130,6 +130,26 @@ describe("markdown fence routing", () => {
     expect(screen.getByText(/vqc/i)).toBeInTheDocument();
   });
 
+  it("routes a qjw fence to the Jordan-Wigner widget", () => {
+    renderFence("qjw", JSON.stringify({ modes: 4, electrons: 2 }));
+    expect(screen.getByText("Jordan-Wigner mapping")).toBeInTheDocument();
+  });
+
+  it("routes a qham fence to the Hamiltonian widget", () => {
+    renderFence("qham", JSON.stringify({ R: 0.75 }));
+    expect(screen.getByText("H2 Hamiltonian")).toBeInTheDocument();
+  });
+
+  it("routes a qvqe fence to the VQE widget", () => {
+    renderFence("qvqe", JSON.stringify({ R: 0.75 }));
+    expect(screen.getByText("VQE energy landscape")).toBeInTheDocument();
+  });
+
+  it("routes a qpes fence to the energy-surface widget", () => {
+    renderFence("qpes", JSON.stringify({ mark: 0.75 }));
+    expect(screen.getByText("Potential energy surface")).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();
