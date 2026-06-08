@@ -150,6 +150,26 @@ describe("markdown fence routing", () => {
     expect(screen.getByText("Potential energy surface")).toBeInTheDocument();
   });
 
+  it("routes a qjob fence to the standalone-vs-hybrid widget", () => {
+    renderFence("qjob", JSON.stringify({ iterations: 60 }));
+    expect(screen.getByText("Standalone vs Hybrid Job")).toBeInTheDocument();
+  });
+
+  it("routes a qparam fence to the parametric-compilation widget", () => {
+    renderFence("qparam", JSON.stringify({ iterations: 50 }));
+    expect(screen.getByText("Parametric compilation")).toBeInTheDocument();
+  });
+
+  it("routes a qcheckpoint fence to the checkpointing widget", () => {
+    renderFence("qcheckpoint", JSON.stringify({ iterations: 40, failAt: 27 }));
+    expect(screen.getByText("Checkpointing")).toBeInTheDocument();
+  });
+
+  it("routes a qmetrics fence to the live-metrics widget", () => {
+    renderFence("qmetrics", JSON.stringify({ R: 0.74 }));
+    expect(screen.getByText("Live job metrics")).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();

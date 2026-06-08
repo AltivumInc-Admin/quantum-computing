@@ -27,6 +27,10 @@ import { JwExplorer } from "./quantum/jw-explorer";
 import { HamiltonianExplorer } from "./quantum/hamiltonian-explorer";
 import { VqeExplorer } from "./quantum/vqe-explorer";
 import { PesExplorer } from "./quantum/pes-explorer";
+import { JobExplorer } from "./quantum/job-explorer";
+import { ParamCompileExplorer } from "./quantum/param-compile-explorer";
+import { CheckpointExplorer } from "./quantum/checkpoint-explorer";
+import { MetricsExplorer } from "./quantum/metrics-explorer";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 
@@ -163,6 +167,18 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
       }
       if (code && Array.isArray(className) && className.includes("language-qpes")) {
         return <PesExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qjob")) {
+        return <JobExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qparam")) {
+        return <ParamCompileExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qcheckpoint")) {
+        return <CheckpointExplorer source={hastText(code as unknown as HastTextNode)} />;
+      }
+      if (code && Array.isArray(className) && className.includes("language-qmetrics")) {
+        return <MetricsExplorer source={hastText(code as unknown as HastTextNode)} />;
       }
       // Every other fence becomes a CodeBlock: the highlighted <code> children are
       // preserved (syntax colors intact) and a copy button + language chip + wrap
