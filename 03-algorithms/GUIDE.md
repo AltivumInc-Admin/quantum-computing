@@ -7,6 +7,10 @@ arrange amplitudes so the wrong answers cancel and the right ones add up, then m
 left. This module walks that idea from its simplest demonstration to its most practical, running
 each algorithm live in your browser.
 
+```qcard
+{"id":"algo-interference-core","prompt":"According to this module, what single mechanism explains every case where a quantum algorithm beats a classical one?","answer":"Interference: a quantum algorithm arranges amplitudes so the wrong answers cancel and the right ones add up, then measures what's left."}
+```
+
 > **You'll come away able to** explain the quantum speedup of oracle algorithms (Deutsch–Jozsa,
 > Grover), build and read the Quantum Fourier Transform, understand phase estimation, and run
 > QAOA for optimization. **You'll want first:** `01-foundations` (gates, entanglement,
@@ -30,6 +34,10 @@ Signs are invisible to a single measurement — until you run the Hadamards agai
 **interfere**, concentrating probability onto the answer. That superpose → query → interfere
 pattern is the whole game. Start it yourself: put both qubits into the equal superposition every
 oracle algorithm opens with.
+
+```qcard
+{"id":"algo-phase-kickback-pattern","prompt":"What is the three-step pattern shared by oracle algorithms, and what does the phase oracle do to an input?","answer":"Superpose over all inputs with Hadamards, query the oracle once, then interfere by running the Hadamards again. A phase oracle maps `|x>` to `(-1)^f(x)|x>`, flipping the sign where `f(x)=1`."}
+```
 
 ```qchallenge
 {
@@ -75,6 +83,10 @@ rotation of the whole state toward the marked item — so the marked amplitude c
 Step through it: the marked bar grows, success probability peaks near $\frac{\pi}{4}\sqrt N$
 iterations, and — crucially — if you keep going, it **over-rotates** and falls back. Knowing when
 to stop is part of the algorithm.
+
+```qcard
+{"id":"algo-grover-rotation","prompt":"Geometrically, what does one Grover iteration do, and what happens if you run too many iterations?","answer":"It composes two reflections (oracle then diffusion) into a small rotation of the state toward the marked item. Success probability peaks near `(pi/4)*sqrt(N)` iterations; past that it over-rotates and falls back, so knowing when to stop matters."}
+```
 
 ```qgrover
 {"qubits": 3, "marked": 5}
@@ -123,6 +135,10 @@ layer alternates a **cost** unitary $e^{-i\gamma C}$ — which imprints the prob
 **mixer** $e^{-i\beta\sum_q X_q}$ — which spreads amplitude so good assignments can grow. The two
 angles $(\gamma,\beta)$ are what the classical optimizer searches. Drive them yourself over a
 triangle and watch the expected cut move across the landscape toward the optimum:
+
+```qcard
+{"id":"algo-qaoa-angles","prompt":"In one QAOA layer, what do the cost unitary and the mixer each do, and which part is classical?","answer":"The cost unitary `e^(-i*gamma*C)` imprints the problem as phases; the mixer `e^(-i*beta*sum X_q)` spreads amplitude so good assignments can grow. A classical optimizer searches over the angles `(gamma, beta)`."}
+```
 
 ```qoptim
 {"edges": [[0, 1], [1, 2], [2, 0]]}

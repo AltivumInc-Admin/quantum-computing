@@ -30,9 +30,17 @@ Classical chemistry survives by approximating. Density functional theory and cou
 
 A quantum computer offers a different bargain. A register of $n$ qubits *is* a $2^n$-dimensional state — the exponential space is not something it has to store, it is something it natively is. Encode a wavefunction of $n$ spin-orbitals into $n$ qubits and the representation cost stops being the problem. What remains is a much narrower question: how do we write a molecule down as something a quantum computer can hold, and how do we coax it toward its ground state?
 
+```qcard
+{"id":"chem-qubit-native-space","prompt":"Why is representing a molecular wavefunction cheaper on a quantum computer than on a classical one?","answer":"A register of `n` qubits *is* a `2^n`-dimensional state, so the exponentially large space is something the device natively is rather than something it has to store. Encoding `n` spin-orbitals into `n` qubits removes the representation-cost problem."}
+```
+
 ## From Electrons to Operators
 
 Tracking electrons by position is hopeless and, worse, redundant — electrons are identical, so labelling "electron 1 here, electron 2 there" double-counts reality. Second quantization throws the labels away and tracks *occupation* instead: for each spin-orbital, is there an electron in it or not?
+
+```qcard
+{"id":"chem-second-quantization-occupation","prompt":"What does second quantization track instead of electron positions, and why?","answer":"It tracks *occupation* — for each spin-orbital, whether an electron is in it or not. Positions are abandoned because electrons are identical, so labelling them double-counts reality."}
+```
 
 The bookkeeping is done by two operators per orbital $p$ — a creation operator $a_p^\dagger$ that drops an electron into orbital $p$, and an annihilation operator $a_p$ that removes one:
 
@@ -59,6 +67,10 @@ a_p^\dagger = \frac{X_p - i Y_p}{2}\; Z_{p-1} Z_{p-2} \cdots Z_0
 $$
 
 That chain of $Z$ operators is the antisymmetry made concrete: it reads the parity of every orbital below $p$ and stamps the right sign on the operation. Toggle the occupation below and watch the string light up:
+
+```qcard
+{"id":"chem-jw-z-string","prompt":"In the Jordan-Wigner transformation, what is the role of the trailing Z-string on a creation operator?","answer":"The chain of `Z` operators is fermionic antisymmetry made concrete: it reads the parity of every orbital below `p` and stamps the correct sign on the operation. Its cost is that an operator now touches every qubit beneath it, so Pauli weight grows with the system."}
+```
 
 ```qjw
 { "modes": 4, "electrons": 2, "mode": 0, "dagger": true }
@@ -91,6 +103,10 @@ $$
 $$
 
 The expected energy of any state you can prepare is an upper bound on the true ground energy. You can never measure below the floor — you can only get closer to it. So VQE turns ground-state finding into optimization: prepare a parameterized state on the quantum computer, measure $\expval{H}$, hand the number to a classical optimizer, adjust $\theta$, repeat. The quantum device does the part it is good at (holding and measuring an exponential state); the classical optimizer does the part it is good at (nudging a few knobs downhill).
+
+```qcard
+{"id":"chem-vqe-variational-bound","prompt":"What variational-principle fact lets VQE turn ground-state finding into a minimization problem?","answer":"For any trial state, the expected energy `<psi|H|psi>` is an upper bound on the true ground energy `E_ground` — you can never measure below the floor, only approach it. So VQE prepares a parameterized state, measures `<H>`, and lets a classical optimizer push that bound down."}
+```
 
 For tapered H2 the whole landscape fits in one picture. The ansatz is a single rotation $R_Y(\theta)\ket{0}$, the energy is $E(\theta) = c_0 + c_z\cos\theta + c_x\sin\theta$, and the variational floor sits exactly at the minimum of that curve. Drag $\theta$ and try to push the energy below the line — you cannot. Then let the optimizer find the bottom:
 

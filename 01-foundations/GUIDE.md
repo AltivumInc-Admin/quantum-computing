@@ -43,6 +43,10 @@ One subtlety you will lean on constantly: an overall **global phase** $e^{i\gamm
 changes nothing you can measure. Only the *relative* phase between the $\ket{0}$ and $\ket{1}$
 parts is physical. Hold that thought — it is why the Bloch sphere works.
 
+```qcard
+{"id":"found-global-phase-1","prompt":"Do a state and the same state multiplied by an overall phase factor (a global phase) produce any difference you can measure?","answer":"No. A global phase like `e^(iγ)` is physically invisible; only the relative phase between the `|0>` and `|1>` parts is observable."}
+```
+
 ## Measurement — what "looking" costs
 
 Before we act on a qubit, we have to be honest about what happens when we *look* at one,
@@ -57,6 +61,10 @@ So a single measurement tells you almost nothing. To see the *distribution* a st
 you prepare it, measure, and repeat — each run is a **shot**. The empirical histogram creeps
 toward the true Born-rule probabilities as the shot count grows, and never quite arrives.
 That convergence is the entire reason real quantum hardware is billed per shot.
+
+```qcard
+{"id":"found-shots-1","prompt":"Why does the empirical measurement histogram of a state never exactly match the Born-rule probabilities for any finite number of shots?","answer":"Each shot is a random sample, so the histogram only creeps toward the true probabilities as the shot count grows and never quite arrives; you'd reach them only in the limit of infinitely many shots."}
+```
 
 Run it yourself. This is $\ket{+}$ again; fire 1 shot, then 10, 100, 1,000, 10,000 and watch
 the bars settle onto the 50/50 line the Born rule predicts:
@@ -77,6 +85,10 @@ Now the verbs. A quantum **gate** is a unitary matrix — a transformation that 
 than matrices: **every gate is a rotation of the Bloch sphere.** The north pole is $\ket{0}$,
 the south pole is $\ket{1}$, the equator is maximal superposition, and a gate just turns the
 arrow.
+
+```qcard
+{"id":"found-gate-rotation-1","prompt":"What is the geometric picture for any single-qubit quantum gate acting on the Bloch sphere?","answer":"Every single-qubit gate is a rotation of the Bloch sphere; it just turns the arrow (a unitary preserves length, so a unit vector stays a unit vector)."}
+```
 
 Build a state by hand and feel it. Drag $\theta$ (how far from the north pole) and $\phi$ (how
 far around) and watch the amplitudes, the probabilities, and the gate sequence that produces
@@ -221,6 +233,10 @@ CNOT 0 1
 Look hard at $\ket{\Phi^+}$: there is **no way** to write it as (something for qubit 0) $\otimes$
 (something for qubit 1). The qubits no longer have individual states — only the pair does. That
 is the definition of **entanglement**: a correlation with no classical analogue.
+
+```qcard
+{"id":"found-entanglement-1","prompt":"What makes the Bell state `|Φ+⟩ = (|00⟩ + |11⟩)/√2` entangled rather than a product of two single-qubit states?","answer":"There is no way to write it as (something for qubit 0) tensor (something for qubit 1); the qubits have no individual states, only the pair does. That correlation with no classical analogue is entanglement."}
+```
 
 Here is the spooky part, made undeniable. Measure qubit 0 of a Bell pair and you instantly know
 qubit 1, every time, no matter how far apart they are. Measure the two panels below many times:

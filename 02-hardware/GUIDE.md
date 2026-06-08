@@ -62,6 +62,10 @@ This is *the* reason quantum computing is hard, and why so much of the field is 
 mitigation and, eventually, error correction. Every circuit you run on real hardware is a race
 against this decay.
 
+```qcard
+{"id":"hw-nisq-noise-1","prompt":"In the NISQ era, what happens to a circuit's ideal probability peaks as the circuit gets deeper, and why?","answer":"They smear out toward flat random noise. Real gates are slightly wrong, qubits leak their state to the environment (decoherence), and measurement can misread, so errors accumulate and grow worse the deeper the circuit runs."}
+```
+
 ## Connectivity — the wiring constraint
 
 The second tax is geometric. A two-qubit gate needs the two qubits to be physically adjacent. If
@@ -73,6 +77,10 @@ more noise.
 Drag the endpoints below on a 3×3 grid (IQM-style nearest-neighbor lattice) and watch the SWAP
 chain the router has to insert. Then imagine the same gate on a trapped-ion machine, where every
 qubit is already connected to every other: **zero** SWAPs.
+
+```qcard
+{"id":"hw-swap-tax-1","prompt":"On a nearest-neighbor (lattice) device, what must the compiler do to run a two-qubit gate between non-adjacent qubits, and what does it cost?","answer":"It inserts a chain of `SWAP` gates along the shortest path to bring the two qubits together. Each `SWAP` costs roughly three more two-qubit gates, adding circuit depth and noise. On an all-to-all machine this cost is zero."}
+```
 
 ```qtopo
 {"topology": "grid", "qubits": 9, "gate": [0, 8]}
@@ -126,6 +134,10 @@ simulators, each a defense against wasting time and money on real hardware:
 - **TN1** (tensor network, up to ~50 qubits, $0.275/min) — efficient for large but lightly
   entangled circuits.
 
+```qcard
+{"id":"hw-dm1-noise-sim-1","prompt":"Which managed Braket simulator can model noise, and why can it when SV1 cannot?","answer":"`DM1`, the density-matrix simulator. A density matrix can represent mixed (noisy) states, so DM1 can apply noise channels like depolarizing and amplitude damping. `SV1` is an exact, noiseless state-vector simulator."}
+```
+
 The Bell pair you debug locally costs nothing and returns instantly:
 
 ```qsim
@@ -142,6 +154,10 @@ run on a QPU only when the algorithm is proven.** Skipping rungs is how you burn
 That last rung is metered, and the model has two shapes. QPUs charge **per task** (a flat fee each
 time you submit a circuit, $0.30) plus **per shot** (each repetition; e.g. $0.01 on IonQ). Managed
 simulators charge **per minute** of compute. The local simulator is free.
+
+```qcard
+{"id":"hw-cost-model-1","prompt":"How do QPUs charge for running a circuit on Amazon Braket, versus managed simulators?","answer":"QPUs charge per task (a flat fee each time you submit a circuit, e.g. $0.30) plus per shot (each repetition, e.g. $0.01 on IonQ). Managed simulators instead charge per minute of compute."}
+```
 
 The arithmetic matters: 1,000 shots on IonQ is $0.30 + 1{,}000 \times \$0.01 = \$10.30$ — per
 task. Submit a 100-point parameter sweep and that's over a thousand dollars. Estimate before you

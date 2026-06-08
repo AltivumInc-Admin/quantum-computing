@@ -1,0 +1,102 @@
+import {
+  newCard,
+  schedule,
+  isDue,
+  epochDay,
+  nextIntervalDays,
+  MAX_DIFFICULTY,
+  MIN_DIFFICULTY,
+  MAX_INTERVAL,
+  type CardState,
+  type Rating,
+} from "@/lib/review-schedule";
+
+const T0 = 0; // epoch-day zero; the scheduler is clock-injected so this is arbitrary
+
+describe("review-schedule", () => {
+  it("epochDay floors milliseconds to whole days", () => {
+    expect(epochDay(0)).toBe(0);
+    expect(epochDay(86_400_000 - 1)).toBe(0);
+    expect(epochDay(86_400_000)).toBe(1);
+    expect(epochDay(3 * 86_400_000 + 5)).toBe(3);
+  });
+
+  it("a new card is due immediately and unreviewed", () => {
+    const c = newCard(T0);
+    expect(c.reps).toBe(0);
+    expect(c.lapses).toBe(0);
+    expect(isDue(c, T0)).toBe(true);
+  });
+
+  it("successive Good reviews produce strictly increasing intervals", () => {
+    let c = newCard(T0);
+    const intervals: number[] = [];
+    let today = T0;
+    for (let i = 0; i < 4; i++) {
+      c = schedule(c, "good", today);
+      intervals.push(nextIntervalDays(c));
+      today = c.dueEpochDay; // review exactly when due
+    }
+    for (let i = 1; i < intervals.length; i++) {
+      expect(intervals[i]).toBeGreaterThan(intervals[i - 1]);
+    }
+  });
+
+  it("Again resets the interval to one day and increments lapses", () => {
+    let c = newCard(T0);
+    c = schedule(c, "good", T0);
+    c = schedule(c, "good", c.dueEpochDay); // mature the card
+    const beforeLapses = c.lapses;
+    const failed = schedule(c, "again", c.dueEpochDay);
+    expect(nextIntervalDays(failed)).toBe(1);
+    expect(failed.reps).toBe(0);
+    expect(failed.lapses).toBe(beforeLapses + 1);
+  });
+
+  it("Easy graduates faster than Good, which is faster than Hard", () => {
+    const fresh = (): CardState => newCard(T0);
+    const hard = schedule(fresh(), "hard", T0);
+    const good = schedule(fresh(), "good", T0);
+    const easy = schedule(fresh(), "easy", T0);
+    expect(nextIntervalDays(easy)).toBeGreaterThanOrEqual(nextIntervalDays(good));
+    expect(nextIntervalDays(good)).toBeGreaterThanOrEqual(nextIntervalDays(hard));
+  });
+
+  it("difficulty stays within bounds under repeated extreme grades", () => {
+    let hardCard = newCard(T0);
+    let easyCard = newCard(T0);
+    let today = T0;
+    for (let i = 0; i < 25; i++) {
+      hardCard = schedule(hardCard, "again", today);
+      easyCard = schedule(easyCard, "easy", today);
+      today += 1;
+    }
+    expect(hardCard.difficulty).toBe(MAX_DIFFICULTY);
+    expect(easyCard.difficulty).toBe(MIN_DIFFICULTY);
+  });
+
+  it("intervals never exceed the maximum", () => {
+    let c = newCard(T0);
+    let today = T0;
+    for (let i = 0; i < 40; i++) {
+      c = schedule(c, "easy", today);
+      today = c.dueEpochDay;
+      expect(nextIntervalDays(c)).toBeLessThanOrEqual(MAX_INTERVAL);
+    }
+  });
+
+  it("isDue is false before the due day and true on/after it", () => {
+    const c = schedule(newCard(T0), "good", T0);
+    expect(isDue(c, c.dueEpochDay - 1)).toBe(false);
+    expect(isDue(c, c.dueEpochDay)).toBe(true);
+    expect(isDue(c, c.dueEpochDay + 5)).toBe(true);
+  });
+
+  it("is a pure function of its inputs", () => {
+    const c = newCard(T0);
+    const ratings: Rating[] = ["again", "hard", "good", "easy"];
+    for (const r of ratings) {
+      expect(schedule(c, r, T0)).toEqual(schedule(c, r, T0));
+    }
+  });
+});
