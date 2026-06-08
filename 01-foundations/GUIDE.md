@@ -86,6 +86,13 @@ than matrices: **every gate is a rotation of the Bloch sphere.** The north pole 
 the south pole is $\ket{1}$, the equator is maximal superposition, and a gate just turns the
 arrow.
 
+Scroll through one rotation and watch it happen — the arrow leaves the north pole, sweeps
+through the equator, and lands on the south pole:
+
+```qscrolly
+{"beats":[{"caption":"Start at the north pole: the ground state, |0>. All of the amplitude sits on |0>.","theta":0},{"caption":"A rotation tips the arrow toward the equator — the qubit is now an equal superposition of |0> and |1>.","theta":1.5707963267948966},{"caption":"Push the rotation further and the arrow swings past the equator: |1> grows as |0> fades.","theta":2.0943951023931953},{"caption":"At the south pole the half-turn is complete — a single gate has carried |0> all the way to |1>.","theta":3.141592653589793}]}
+```
+
 ```qcard
 {"id":"found-gate-rotation-1","prompt":"What is the geometric picture for any single-qubit quantum gate acting on the Bloch sphere?","answer":"Every single-qubit gate is a rotation of the Bloch sphere; it just turns the arrow (a unitary preserves length, so a unit vector stays a unit vector)."}
 ```

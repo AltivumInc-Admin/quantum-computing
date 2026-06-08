@@ -175,6 +175,15 @@ describe("markdown fence routing", () => {
     expect(screen.getByText("Recall")).toBeInTheDocument();
   });
 
+  it("routes a qscrolly fence to the scroll-driven explorable", () => {
+    renderFence(
+      "qscrolly",
+      JSON.stringify({ beats: [{ caption: "start", theta: 0 }, { caption: "end", theta: 3.14 }] })
+    );
+    // jsdom has no WebGL, so the static fallback renders.
+    expect(screen.getByText("Walkthrough")).toBeInTheDocument();
+  });
+
   it("does not route an unknown language to any widget (falls back to a code block)", () => {
     renderFence("python", "print('hi')");
     expect(screen.queryByText(/build a state/i)).toBeNull();

@@ -70,6 +70,6 @@ Managed via pyproject.toml. Key packages:
 
 ### Commands
 - `npm run dev` — Start dev server (port 3000)
-- `npm test` — Run Jest test suite (418 tests)
+- `npm test` — Run Jest test suite (432 tests)
 - `npm run build` — Static export (12 pages)
 - `npm run lint` — ESLint check
