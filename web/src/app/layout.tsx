@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Instrument_Serif } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Nav } from "@/components/nav";
+import { AskTutor } from "@/components/ask-tutor";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main id="main" tabIndex={-1} className="outline-none">
             {children}
           </main>
+          <AskTutor />
         </ThemeProvider>
       </body>
     </html>
