@@ -77,16 +77,52 @@ export function Sidebar() {
     toggleRef.current?.focus();
   };
 
-  // While the mobile drawer is open, move focus into it, close on Escape, and
-  // return focus to the toggle — standard dialog keyboard behavior.
+  // While the mobile drawer is open, behave like a modal dialog: move focus into
+  // it, trap Tab within it, mark the rest of the page inert (so AT and pointer/Tab
+  // can't reach the background — making the aria-modal claim truthful), lock body
+  // scroll, close on Escape, and return focus to the toggle on close.
   useEffect(() => {
     if (!open) return;
-    asideRef.current?.focus();
+    const aside = asideRef.current;
+    aside?.focus();
+
+    const header = document.getElementById("site-header");
+    const content = document.getElementById("lesson-content");
+    header?.setAttribute("inert", "");
+    content?.setAttribute("inert", "");
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") {
+        close();
+        return;
+      }
+      if (e.key !== "Tab" || !aside) return;
+      const focusables = aside.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const activeEl = document.activeElement;
+      if (e.shiftKey && (activeEl === first || activeEl === aside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeEl === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      header?.removeAttribute("inert");
+      content?.removeAttribute("inert");
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open]);
 
   return (

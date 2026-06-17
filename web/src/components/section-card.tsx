@@ -18,6 +18,7 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
   return (
     <TransitionLink
       href={`/learn/${slug}`}
+      aria-label={`${title}, section ${String(index).padStart(2, "0")}`}
       style={{ "--hue": hue } as React.CSSProperties}
       className="group relative block rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) backdrop-blur-md overflow-hidden interactive focus-ring shadow-(--shadow-resting) hover:-translate-y-1.5 hover:shadow-(--shadow-raised) hover:border-gray-300/80 dark:hover:border-white/[0.12] transition-all duration-300"
     >
@@ -31,10 +32,16 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
 
       <div className="relative p-6 -mt-6">
         <div className="flex items-start justify-between gap-3 mb-3">
-          <span className="section-badge shrink-0 w-10 h-10 rounded-chip font-bold flex items-center justify-center text-base">
+          <span
+            aria-hidden="true"
+            className="section-badge shrink-0 w-10 h-10 rounded-chip font-bold flex items-center justify-center text-base"
+          >
             {String(index).padStart(2, "0")}
           </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums mt-1">
+          <span
+            aria-hidden="true"
+            className="text-xs text-gray-400 dark:text-gray-500 tabular-nums mt-1"
+          >
             {notebookCount} {notebookCount === 1 ? "notebook" : "notebooks"}
           </span>
         </div>
@@ -49,7 +56,10 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
 
         {/* Divider + Arrow indicator */}
         <div className="h-px bg-gradient-to-r from-gray-200/50 dark:from-gray-700/30 to-transparent mt-4 mb-4" />
-        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400 dark:text-gray-500 group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
+        <div
+          aria-hidden="true"
+          className="flex items-center gap-1.5 text-xs font-medium text-gray-400 dark:text-gray-500 group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200"
+        >
           <span>Explore section</span>
           <svg className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

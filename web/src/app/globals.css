@@ -3,6 +3,7 @@
 @import "katex/dist/katex.min.css";
 @plugin "@tailwindcss/typography";
 @variant dark (&:where(.dark, .dark *));
+@custom-variant can-hover (@media (hover: hover));
 
 @theme inline {
   --color-accent: oklch(0.72 0.15 192);
@@ -176,10 +177,12 @@
   /* Inline code reads as a tinted brand chip; fenced blocks keep github-dark
      via .prose pre code below. */
   .prose :not(pre) > code {
-    @apply text-accent dark:text-accent-light font-medium;
-    background: oklch(0.72 0.15 192 / 0.1);
+    @apply font-medium;
     padding: 0.1em 0.4em;
     border-radius: var(--radius-chip);
+    /* color + background are set unlayered at the bottom of this file so they
+       win over @tailwindcss/typography's later-layer `.prose :where(code)`
+       color rule (a @layer components rule loses to it). */
   }
 
   /* @tailwindcss/typography wraps inline code in literal backticks; drop them
@@ -428,4 +431,17 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+
+/* Inline-code chip color follows the section --hue. These are intentionally
+   UNLAYERED: a rule inside @layer components loses to @tailwindcss/typography's
+   later-layer `.prose :where(code)` color rule regardless of specificity, so the
+   hue tint only takes effect from here, outside the layer system. */
+.prose :not(pre) > code {
+  color: oklch(0.5 0.16 var(--hue, 192));
+  background-color: oklch(0.72 0.15 var(--hue, 192) / 0.1);
+}
+
+.dark .prose :not(pre) > code {
+  color: oklch(0.82 0.13 var(--hue, 192));
 }

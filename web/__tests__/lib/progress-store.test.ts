@@ -54,4 +54,24 @@ describe("progress-store", () => {
   it("exposes the same event channel the Challenge component uses", () => {
     expect(PROGRESS_EVENT_NAME).toBe("qc-progress");
   });
+
+  it("ignores cross-tab storage writes to unrelated keys", () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribe(listener);
+    window.dispatchEvent(new StorageEvent("storage", { key: "theme" }));
+    window.dispatchEvent(new StorageEvent("storage", { key: "pyodide-cache" }));
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("reacts to cross-tab storage writes to its own keys and to a full clear", () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribe(listener);
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "qc:section:01-foundations" })
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: null })); // localStorage.clear()
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
 });
