@@ -117,3 +117,54 @@
 
 ### 5. Progress tracking
 - [x] **[Performance]** Unscoped cross-tab `storage` listener recomputes on every unrelated localStorage write — `subscribe` passes the callback straight to `addEventListener("storage", ...)`, so theme/review/pyodide-cache writes in another tab all re-run `completedCount`/`isSectionComplete`. Filter on `e.key` (`null` or starts with `qc:`). Impact: Low. Effort: Low. (`web/src/lib/progress-store.ts:53-61`) — added 2026-06-17
+
+> Category B note: the adversarial-verification stage was throttled by a sustained
+> server-side rate limit. The 82 reviewer findings were recovered from the run
+> transcripts; the **CORRECTNESS** items below were re-verified by reading the cited
+> code directly (marked ✓verified), the rest are reviewer-surfaced with file:line
+> evidence (marked ~reviewer) pending a clean verification pass.
+
+### 6. Foundations explorables
+- [x] **[Correctness]** ✓verified — **BlochDial silently drops the Y axis**: it computes `{x,y,z}` but plots only `px=c+r·x, py=c−r·z`, so `|i⟩`/`|−i⟩` collapse to the origin (look maximally-mixed) on the no-WebGL / reduced-motion fallback. Encode `y` (equatorial projection or tip marker). Impact: High. Effort: Medium. (`web/src/components/quantum/bloch-dial.tsx:9,13-14,23`) — added 2026-06-17
+- [ ] **[Performance]** ~reviewer — **3D Bloch sphere runs a 60fps frameloop forever** (default `frameloop="always"`) even after the lerp settles and nobody is interacting. Switch to `frameloop="demand"` + `invalidate()` while moving. Impact: High. Effort: Medium. (`web/src/components/quantum/bloch-sphere-3d.tsx:49-58,148`) — added 2026-06-17
+- [ ] **[UX]** ~reviewer — **3D Bloch `dynamic()` has no `loading` fallback** → blank gap + 132→180px layout shift on first paint. Reserve a fixed-size box / loading placeholder. Impact: High. Effort: Medium. (`bloch-builder-widget.tsx:12`, `wavefunction-scrubber.tsx:21`, `scrolly-section.tsx:29`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — **Slider-driven P(0)/P(1) + Dirac results never announced to screen readers** (no `aria-live`). Part of the cross-cutting live-region gap below. Impact: High. Effort: Low. (`bloch-builder-widget.tsx:55-79`, `circuit-lab.tsx:67-90`, `wavefunction-scrubber.tsx:124-148`) — added 2026-06-17
+- [ ] **[Consistency & reuse]** ~reviewer — Gate-chip label markup and the Dirac+dual-copy readout block are triplicated across circuit-lab/correlation-demo/wavefunction-scrubber; the probability-bar row is repeated across the circuit family. Extract shared components. Impact: Medium. Effort: Medium. (`circuit-lab.tsx`, `correlation-demo.tsx`, `wavefunction-scrubber.tsx`) — added 2026-06-17
+- [ ] **[Performance]** ~reviewer — `useWebGL` allocates a throwaway canvas + GL context every render (it's the `useSyncExternalStore` getSnapshot). Memoize detection at module scope. Impact: Low. Effort: Low. (`use-display-caps.ts:20-36`) — added 2026-06-17
+- [ ] **[Consistency & reuse]** ~reviewer — Two Born-rule samplers (`shots.ts sampleCounts` vs `correlation.ts sampleOutcome`) for one basis-state draw. Consolidate. Impact: Low. Effort: Low. (`shots.ts:5-20`, `correlation.ts:25-31`) — added 2026-06-17
+
+### 7. Hardware explorables
+- [x] **[Correctness]** ✓verified — **Noise widget mislabels a classical distribution overlap as "fidelity"**: `fidelityDist` is `(Σ√(pᵢqᵢ))²` over diagonal populations only, so a pure-dephasing channel reports 100% "fidelity" while true state fidelity drops. Rename to "classical fidelity / agreement" or compute true `F(ρ,σ)` from the `rho` already built. Impact: High. Effort: Low. (`web/src/components/quantum/noise.ts:121-128`, `noise-visualizer.tsx:78-95`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — **Interactive readouts update silently** (SWAP count, fidelity %, total cost) — no `aria-live`. Cross-cutting (below). Impact: High. Effort: Low. (`topology-explorer.tsx:333-341`, `noise-visualizer.tsx:94-96`, `cost-calculator.tsx:176-178`) — added 2026-06-17
+- [ ] **[Correctness]** ~reviewer — Topology explorer claims "depth +N" for N routing SWAPs, understating true added depth (each SWAP = 3 CNOTs and they may not parallelize). Impact: Medium. Effort: Low. (`topology-explorer.tsx`, `topology.ts`) — added 2026-06-17
+- [ ] **[Consistency & reuse]** ~reviewer — Device cost strings duplicate and drift from `cost.ts` (the declared single source of truth); `noise.ts` re-derives gate dispatch already in `math.ts applyOp`. Impact: Medium. Effort: Medium. (`device-table.tsx`/`devices.ts` vs `cost.ts`; `noise.ts`) — added 2026-06-17
+- [ ] **[Performance]** ~reviewer — Noise slider re-runs the full density-matrix Kraus simulation synchronously on every drag tick (no debounce/async). Impact: Medium. Effort: Low. (`noise-visualizer.tsx:173`, `noise.ts`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — Device-table sort buttons have no visible focus indicator and expose no action affordance to AT (Unicode arrow glyphs only). Impact: Medium. Effort: Low. (`device-table.tsx`) — added 2026-06-17
+
+### 8. Algorithms explorables
+- [x] **[Correctness]** ✓verified — **QFT visualizer asserts a false "spikes every N/r" claim for periods that don't divide N**: `spacing=N/value` is accepted without a divisibility check, so period 3 / N 8 prints "spikes every N/r = 2.6666666666666665" and `idx % spacing` (fractional) highlights only bin 0. Reject non-dividing periods or gate the note/highlight on integer `spacing` and format it. Impact: High. Effort: Low. (`web/src/components/quantum/qft-visualizer.tsx:64-66,150-156`, `qft.ts:29-37`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — Deutsch-Jozsa probability bars animate width with no `prefers-reduced-motion` guard. Impact: Medium. Effort: Low. (`dj-demo.tsx`) — added 2026-06-17
+- [ ] **[UI]** ~reviewer — DJ bars never reach 100% (fixed-gap track layout); ErrorCard + parse discriminator and the label|bar|percent row are duplicated/divergent across all four algorithm widgets. Impact: Medium. Effort: Medium. (`dj-demo.tsx`, `grover-visualizer.tsx`, `qft-visualizer.tsx`, `qaoa-explorer.tsx`) — added 2026-06-17
+- [ ] **[Performance]** ~reviewer — QAOA recomputes graph-only maxCut and simulates the full state vector twice per gamma/beta slider tick. Memoize the graph-invariant parts. Impact: Medium. Effort: Low. (`qaoa-explorer.tsx`, `qaoa.ts`) — added 2026-06-17
+- [ ] Note: core math of `qft.ts` / `deutsch-jozsa.ts` / `qaoa.ts` verified correct inline; the known QAOA bar bit-reversal (from /eval) remains the catalogued label defect.
+
+### 9. Quantum ML explorables
+- [x] **[Correctness]** ✓verified — **Encoding explorer shows physically wrong Bloch dials for the IQP feature map**: only `amplitude` is special-cased, so `iqp` reuses product-state `singleQubitRy(x0)/(x1)` dials — but `iqpState` is *entangled*, so the true single-qubit reduced states are mixed (shorter vectors), not those pure RY qubits. Render reduced states via partial trace (or drop the dials for IQP). Impact: High. Effort: Medium. (`web/src/components/quantum/encoding-explorer.tsx:76-81,127-143`, `encoding.ts:26-38`) — added 2026-06-17
+- [ ] **[Performance]** ✓verified — Kernel decision boundary rebuilds all 60 training feature states inside each of 1296 grid cells (~81k redundant constructions/recompute). Precompute `trainStates` once + a `kernelScoreS` variant. Impact: Medium. Effort: Low. (`kernel.ts:29-34`, `kernel-explorer.tsx:135-146`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — `VqcTrainer` training result (step/loss/accuracy) is silent to AT; kernel/barren don't announce recomputed accuracy/variance. Cross-cutting (below). Impact: High. Effort: Low. (`vqc-trainer.tsx:287-292`) — added 2026-06-17
+- [ ] **[Consistency & reuse]** ~reviewer — `mulberry32` RNG + `gauss` helper copy-pasted across `barren.ts`/`kernel.ts`/`vqc.ts` (also noted in /eval); accuracy fn duplicated across .ts/.tsx; `Pt` vs `Point` defined twice. Extract a shared `rng.ts`. Impact: Medium. Effort: Low. (`barren.ts`, `kernel.ts`, `vqc.ts`) — added 2026-06-17
+- [ ] **[UX]** ~reviewer — Train/kernel recompute (40-step burst / 1296-cell grid) gives no busy/pressed feedback or debounce. Impact: Medium. Effort: Medium. (`vqc-trainer.tsx`, `kernel-explorer.tsx`) — added 2026-06-17
+- [ ] **[Performance]** ~reviewer — `VqcTrainer` recomputes full-dataset loss+accuracy un-memoized each render. Impact: Low. Effort: Low. (`vqc-trainer.tsx:224-225`) — added 2026-06-17
+
+### 10. Quantum chemistry explorables
+- [ ] **[Accessibility]** ~reviewer — **PES scrubber announces only bond length** (`aria-valuetext`), hiding the FCI/HF/correlation-gap readout — the lesson's whole payload — from screen readers. Extend `aria-valuetext` to embed the energies (the VQE slider already does this). Impact: High. Effort: Low. (`pes-explorer.tsx:371,379-394`) — added 2026-06-17
+- [ ] **[UI]** ~reviewer — VQE plot has no axis labels or tick scale (energy/theta unanchored); Optimize 32ms ticks collide with the 150ms CSS marker transition (rubber-banding); left column doesn't collapse on narrow viewports. Impact: Medium. Effort: Medium. (`vqe-explorer.tsx`) — added 2026-06-17
+- [ ] **[Consistency & reuse]** ~reviewer — PES reimplements interpolation + analytic ground-energy already in `chemistry.ts`; bond-length lerp triplicated; ErrorCard + parse preamble copy-pasted across all four chemistry widgets; VQE hand-rolls an X-Z Bloch indicator instead of reusing BlochDial. Impact: Medium. Effort: Medium. (`pes-explorer.tsx`, `vqe-explorer.tsx`, `chemistry.ts`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — Low-contrast qubit/identity labels in JW and Hamiltonian cells fall below WCAG AA; JW Pauli `X/Y` glyph overflows its fixed mono cell. Impact: Medium. Effort: Low. (`jw-explorer.tsx`, `hamiltonian-explorer.tsx`) — added 2026-06-17
+
+### 11. Hybrid-jobs explorables
+- [ ] **[Correctness/UI]** ~reviewer — Metrics-explorer y-axis is seeded from the user threshold, distorting the genuine VQE convergence curve. Impact: Low. Effort: Low. (`metrics-explorer.tsx`) — added 2026-06-17
+- [ ] Note: features 11 (4 widgets) and 12 (shared engine) reviewers were mostly rate-limited out; only 1 finding recovered. A clean re-run would deepen coverage here.
+
+### Cross-cutting (Category B): missing live regions
+- [ ] **[Accessibility]** **Interactive explorable readouts recompute silently** — independently flagged across features 6, 7, 9, 10 (Bloch/circuit probs, SWAP count, fidelity, total cost, VQC step/loss/acc, PES energies). The codebase already uses `role="status"` elsewhere (review dashboard), so the pattern exists. Wrap each widget's result block in `aria-live="polite" aria-atomic="true"` (or extend the slider `aria-valuetext`). High leverage: one consistent fix restores the teaching payload for screen-reader users across ~10 widgets. Impact: High. Effort: Medium. — added 2026-06-17

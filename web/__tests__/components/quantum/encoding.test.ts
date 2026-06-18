@@ -1,4 +1,5 @@
-import { angleState, amplitudeState, iqpState, fidelity } from "@/components/quantum/encoding";
+import { angleState, amplitudeState, iqpState, fidelity, reducedBloch } from "@/components/quantum/encoding";
+import { blochVector } from "@/components/quantum/math";
 
 describe("encoding", () => {
   it("angleState(pi,0): qubit 0 -> |1> (amplitude on |10>, index 2)", () => {
@@ -24,5 +25,23 @@ describe("encoding", () => {
   it("iqpState has norm 1", () => {
     const s = iqpState(0.7, 1.1);
     expect(s.reduce((acc, c) => acc + c[0] * c[0] + c[1] * c[1], 0)).toBeCloseTo(1, 9);
+  });
+
+  it("reducedBloch on a product (angle) state equals the pure single-qubit Bloch vector (|r|=1)", () => {
+    const s = angleState(0.7, 1.2); // product: RY(0.7) (X) RY(1.2)
+    const pure0 = blochVector([[Math.cos(0.35), 0], [Math.sin(0.35), 0]]); // RY(0.7)|0>
+    const r0 = reducedBloch(s, 0);
+    expect(r0.x).toBeCloseTo(pure0.x, 8);
+    expect(r0.y).toBeCloseTo(pure0.y, 8);
+    expect(r0.z).toBeCloseTo(pure0.z, 8);
+    expect(Math.hypot(r0.x, r0.y, r0.z)).toBeCloseTo(1, 8); // pure reduced state
+  });
+
+  it("reducedBloch on an entangled IQP state is mixed (|r| < 1) — the bug that drew product dials", () => {
+    const s = iqpState(0.6, 0.9);
+    const r0 = reducedBloch(s, 0);
+    const r1 = reducedBloch(s, 1);
+    expect(Math.hypot(r0.x, r0.y, r0.z)).toBeLessThan(1);
+    expect(Math.hypot(r1.x, r1.y, r1.z)).toBeLessThan(1);
   });
 });

@@ -4,7 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { basisLabel, cAbs2, type Complex } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
-import { angleState, amplitudeState, iqpState } from "./encoding";
+import { angleState, amplitudeState, iqpState, reducedBloch } from "./encoding";
 
 /**
  * Inline data-encoding explorer rendered from a ```qencode fenced block. Parses a
@@ -69,18 +69,6 @@ const PI = Math.PI;
 const clamp = (v: number) => Math.max(-PI, Math.min(PI, v));
 
 // ---------------------------------------------------------------------------
-// Reduced single-qubit states (for Bloch dials in the angle encoding)
-// ---------------------------------------------------------------------------
-
-/** Single-qubit pure state RY(theta)|0>, used to render the per-qubit Bloch dial. */
-function singleQubitRy(theta: number): Complex[] {
-  return [
-    [Math.cos(theta / 2), 0],
-    [Math.sin(theta / 2), 0],
-  ];
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -132,11 +120,11 @@ export function EncodingExplorer({ source }: { source: string }) {
           ) : (
             <div className="flex gap-3">
               <div className="flex flex-col items-center gap-1">
-                <BlochDial state={singleQubitRy(x0)} />
+                <BlochDial vector={reducedBloch(state, 0)} />
                 <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">q0</span>
               </div>
               <div className="flex flex-col items-center gap-1">
-                <BlochDial state={singleQubitRy(x1)} />
+                <BlochDial vector={reducedBloch(state, 1)} />
                 <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">q1</span>
               </div>
             </div>

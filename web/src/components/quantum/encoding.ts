@@ -1,4 +1,4 @@
-import { type Complex, cMul, cConj, H, ry, rz, applyGate1, applyCNOT, zeroState } from "./math";
+import { type Complex, cAdd, cMul, cConj, H, ry, rz, applyGate1, applyCNOT, zeroState } from "./math";
 
 /** Angle encoding: RY(x0) on q0, RY(x1) on q1, applied to |00>. */
 export function angleState(x0: number, x1: number): Complex[] {
@@ -46,4 +46,26 @@ export function fidelity(a: Complex[], b: Complex[]): number {
     im += c[1];
   }
   return re * re + im * im;
+}
+
+/**
+ * Bloch vector (math.ts convention: the off-diagonal term is rho[1][0]) of the
+ * single-qubit REDUCED state of a 2-qubit pure state, via partial trace over the
+ * other qubit. For a product state (angle encoding) this equals the pure
+ * single-qubit Bloch vector; for an entangled state (IQP) it is mixed — its
+ * length is < 1 — so the dial correctly shows a short vector inside the sphere
+ * rather than a misleading pure product-state vector.
+ */
+export function reducedBloch(state: Complex[], qubit: 0 | 1): { x: number; y: number; z: number } {
+  // Big-endian 2-qubit: index = 2*q0 + q1. rho_A[a][b] = sum_t psi[idx(a,t)] conj(psi[idx(b,t)]).
+  const idx = qubit === 0 ? (a: number, t: number) => 2 * a + t : (a: number, t: number) => 2 * t + a;
+  let r00: Complex = [0, 0];
+  let r10: Complex = [0, 0];
+  let r11: Complex = [0, 0];
+  for (let t = 0; t < 2; t++) {
+    r00 = cAdd(r00, cMul(state[idx(0, t)], cConj(state[idx(0, t)])));
+    r10 = cAdd(r10, cMul(state[idx(1, t)], cConj(state[idx(0, t)])));
+    r11 = cAdd(r11, cMul(state[idx(1, t)], cConj(state[idx(1, t)])));
+  }
+  return { x: 2 * r10[0], y: 2 * r10[1], z: r00[0] - r11[0] };
 }

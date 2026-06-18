@@ -1,17 +1,40 @@
 import { blochVector, type Complex } from "./math";
 
+const ZERO_STATE: Complex[] = [
+  [1, 0],
+  [0, 0],
+];
+const clampUnit = (v: number) => Math.max(-1, Math.min(1, v));
+
 /**
  * A compact 2D Bloch readout: the single-qubit state projected onto the
  * X (right = |+>) / Z (up = |0>) plane. Used by CircuitLab and as the
  * reduced-motion / no-WebGL fallback for the 3D Bloch sphere.
+ *
+ * The out-of-plane Y component (|i> = S|+>, |-i>) is encoded as marker depth —
+ * the tip grows + brightens toward the viewer (y > 0) and shrinks + dims away
+ * (y < 0) — so equatorial-phase states no longer collapse onto the origin and
+ * render identically. Accepts either a pure state vector or a precomputed Bloch
+ * vector (the latter for mixed reduced states, whose tip sits inside the sphere).
  */
-export function BlochDial({ state }: { state: Complex[] }) {
-  const { x, y, z } = blochVector(state);
+export function BlochDial({
+  state,
+  vector,
+}: {
+  state?: Complex[];
+  vector?: { x: number; y: number; z: number };
+}) {
+  const { x, y, z } = vector ?? blochVector(state ?? ZERO_STATE);
   const size = 132;
   const c = size / 2;
   const r = 52;
   const px = c + r * x;
   const py = c - r * z;
+  // Depth cue for the discarded Y axis: radius/opacity scale with y so |i> (y=+1)
+  // and |-i> (y=-1) are visibly distinct from each other and from a null/origin tip.
+  const yc = clampUnit(y);
+  const markerR = 4 * (1 + 0.45 * yc);
+  const markerOpacity = 0.55 + 0.45 * ((yc + 1) / 2);
   const axis = "currentColor";
   return (
     <svg
@@ -27,7 +50,7 @@ export function BlochDial({ state }: { state: Complex[] }) {
       <line x1={c - r} y1={c} x2={c + r} y2={c} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
       {/* state vector */}
       <line x1={c} y1={c} x2={px} y2={py} stroke={axis} strokeWidth={2} strokeLinecap="round" />
-      <circle cx={px} cy={py} r={4} fill={axis} />
+      <circle cx={px} cy={py} r={markerR} fill={axis} opacity={markerOpacity} />
       <circle cx={c} cy={c} r={2.5} className="fill-gray-400 dark:fill-gray-500" />
       <text x={c} y={c - r - 4} textAnchor="middle" className="fill-gray-400 text-[9px] font-mono">|0⟩</text>
       <text x={c} y={c + r + 11} textAnchor="middle" className="fill-gray-400 text-[9px] font-mono">|1⟩</text>
