@@ -1,8 +1,18 @@
 """Tests for lib/chemistry/ansatz.py — local simulator only."""
 
 import numpy as np
+import pytest
 
 from lib.chemistry.ansatz import hardware_efficient_ansatz, uccsd_singles_circuit
+
+
+def test_uccsd_singles_rejects_wrong_param_length():
+    # H2: 2 occupied x 2 virtual = 4 excitations. Too few would silently truncate
+    # (a different operator); too many would silently ignore the extras.
+    with pytest.raises(ValueError, match="expected 4 excitation params"):
+        uccsd_singles_circuit(4, 2, np.zeros(3))
+    with pytest.raises(ValueError, match="expected 4 excitation params"):
+        uccsd_singles_circuit(4, 2, np.zeros(5))
 
 
 # ---------------------------------------------------------------------------

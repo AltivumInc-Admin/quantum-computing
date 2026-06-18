@@ -4,8 +4,22 @@ from collections import Counter
 
 
 def parse_counts(result) -> Counter:
-    """Extract measurement counts from a Braket result object."""
+    """Extract measurement counts from a Braket result object.
+
+    Bitstrings are built by COLUMN POSITION: column j of each measurement row is
+    treated as qubit j. That equals the qubit index only when the measured qubits
+    are the contiguous range 0..n-1, in order. If the result exposes a different
+    ``measured_qubits`` ordering, this positional assumption would silently
+    mislabel every outcome, so we validate it and raise instead.
+    """
     measurements = result.measurements
+    n = len(measurements[0]) if len(measurements) else 0
+    measured = getattr(result, "measured_qubits", None)
+    if measured is not None and list(measured) != list(range(n)):
+        raise ValueError(
+            f"parse_counts requires measured_qubits == 0..{n - 1} in order; "
+            f"got {list(measured)}. Reorder the measurement columns by measured_qubits first."
+        )
     bitstrings = ["".join(str(bit) for bit in row) for row in measurements]
     return Counter(bitstrings)
 

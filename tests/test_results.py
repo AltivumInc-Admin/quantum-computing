@@ -1,6 +1,9 @@
 """Tests for lib/utils/results.py."""
 
 from collections import Counter
+
+import pytest
+
 from lib.utils.results import parse_counts, top_results, expectation_from_counts
 
 
@@ -9,6 +12,23 @@ def test_parse_counts_basic(mock_result_factory):
     counts = parse_counts(result)
     assert counts["00"] == 3
     assert counts["11"] == 1
+
+
+def test_parse_counts_pins_column_order(mock_result_factory):
+    # Asymmetric rows: column 0 is qubit 0 (big-endian). A column reversal would
+    # turn these into "10"; pin the convention so a regression is caught.
+    result = mock_result_factory([[0, 1], [0, 1]])
+    counts = parse_counts(result)
+    assert counts["01"] == 2
+    assert "10" not in counts
+
+
+def test_parse_counts_rejects_noncontiguous_measured_qubits(mock_result_factory):
+    # If the device measured qubits in a different order, positional joining would
+    # silently mislabel outcomes — parse_counts must reject it rather than guess.
+    result = mock_result_factory([[0, 1]], measured_qubits=[1, 0])
+    with pytest.raises(ValueError, match="measured_qubits"):
+        parse_counts(result)
 
 
 def test_top_results_ordering():
