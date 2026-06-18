@@ -95,6 +95,12 @@ describe("Quiz", () => {
     expect(screen.getByText(/quiz parse error/i)).toBeInTheDocument();
   });
 
+  it("shows a parse error for a non-string hint instead of crashing the render", () => {
+    render(<Quiz source={JSON.stringify({ questions: [{ q: "x", a: "y", hint: 5 }] })} />);
+    expect(screen.getByText(/quiz parse error/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show all answers/i })).not.toBeInTheDocument();
+  });
+
   it("treats an empty question set as malformed rather than rendering empty chrome", () => {
     render(<Quiz source={JSON.stringify({ questions: [] })} />);
     expect(screen.getByText(/quiz parse error/i)).toBeInTheDocument();

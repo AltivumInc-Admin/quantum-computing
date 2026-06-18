@@ -21,6 +21,17 @@ describe("review-schedule", () => {
     expect(epochDay(3 * 86_400_000 + 5)).toBe(3);
   });
 
+  it("a passing review never shortens the interval (SM-2 monotonicity)", () => {
+    // "Easy" first review graduates to stability 4; a passing "hard" graduating
+    // step (3) must not regress below it.
+    const afterEasy = schedule(newCard(T0), "easy", T0);
+    expect(afterEasy.stability).toBe(4);
+    for (const r of ["hard", "good", "easy"] as Rating[]) {
+      const next = schedule(afterEasy, r, afterEasy.dueEpochDay);
+      expect(next.stability).toBeGreaterThanOrEqual(afterEasy.stability);
+    }
+  });
+
   it("a new card is due immediately and unreviewed", () => {
     const c = newCard(T0);
     expect(c.reps).toBe(0);

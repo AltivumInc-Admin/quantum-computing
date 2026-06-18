@@ -17,6 +17,7 @@ import {
   schedule,
   isDue,
   epochDay,
+  isValidCardState,
 } from "./review-schedule";
 import { PROGRESS_EVENT_NAME, subscribe } from "./progress-store";
 
@@ -56,8 +57,12 @@ export function getCardContent(id: string): CardContent | null {
 
 export function getCardState(id: string): CardState | null {
   const raw = getCardStateRaw(id);
+  if (!raw) return null;
   try {
-    return raw ? (JSON.parse(raw) as CardState) : null;
+    const parsed: unknown = JSON.parse(raw);
+    // Discard a corrupt-but-valid-JSON record ({}, truncated, old schema) so the
+    // caller falls back to newCard() instead of building on NaN fields.
+    return isValidCardState(parsed) ? parsed : null;
   } catch {
     return null;
   }

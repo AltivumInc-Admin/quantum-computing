@@ -27,7 +27,17 @@ function CheckIcon() {
   );
 }
 
-function fallbackCopy(text: string) {
+function FailIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+// Returns true only if the copy actually succeeded, so the caller never claims
+// success on a silent failure (execCommand returning false, or throwing).
+function fallbackCopy(text: string): boolean {
   try {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -36,10 +46,11 @@ function fallbackCopy(text: string) {
     document.body.appendChild(ta);
     ta.focus();
     ta.select();
-    document.execCommand("copy");
+    const ok = document.execCommand("copy");
     document.body.removeChild(ta);
+    return ok;
   } catch {
-    /* nothing more we can do; never throw from a copy click */
+    return false;
   }
 }
 
@@ -52,35 +63,45 @@ export function CopyButton({
   label?: string;
   className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const copy = async () => {
     const text = getText();
+    let ok = false;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
+        ok = true;
       } else {
-        fallbackCopy(text);
+        ok = fallbackCopy(text);
       }
     } catch {
-      fallbackCopy(text);
+      // Async clipboard rejected (permissions, insecure context) — try the
+      // synchronous fallback and trust ONLY its real result.
+      ok = fallbackCopy(text);
     }
-    setCopied(true);
+    setStatus(ok ? "copied" : "failed");
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), 1500);
+    timer.current = setTimeout(() => setStatus("idle"), 1500);
   };
 
+  const copied = status === "copied";
+  const failed = status === "failed";
   return (
     <button
       type="button"
       onClick={copy}
-      aria-label={copied ? "Copied" : label}
-      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-gray-400 hover:bg-accent/10 hover:text-accent dark:hover:text-accent-light interactive focus-ring ${className}`}
+      aria-label={copied ? "Copied" : failed ? "Copy failed" : label}
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control interactive focus-ring ${
+        failed
+          ? "text-warm-dark dark:text-warm-light"
+          : "text-gray-400 hover:bg-accent/10 hover:text-accent dark:hover:text-accent-light"
+      } ${className}`}
     >
-      {copied ? <CheckIcon /> : <ClipboardIcon />}
+      {copied ? <CheckIcon /> : failed ? <FailIcon /> : <ClipboardIcon />}
       <span className="sr-only" role="status" aria-live="polite">
-        {copied ? "Copied" : ""}
+        {copied ? "Copied" : failed ? "Copy failed" : ""}
       </span>
     </button>
   );
