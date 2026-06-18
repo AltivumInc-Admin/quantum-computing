@@ -36,4 +36,20 @@ describe("gradeTs", () => {
   it("reports a parse error in the learner's circuit", () => {
     expect(gradeTs("FOO 0", bell).status).toBe("error");
   });
+
+  it("rejects a challenge whose target uses a slider theta (would grade against the identity)", () => {
+    const spec = parseChallenge(
+      JSON.stringify({ prompt: "p", qubits: 1, target: { program: "RY 0 theta" } })
+    ).spec!;
+    const r = gradeTs("H 0", spec);
+    expect(r.status).toBe("error");
+    expect(r.message).toMatch(/concrete|theta/i);
+  });
+
+  it("rejects a challenge whose target circuit is malformed instead of silently grading wrong", () => {
+    const spec = parseChallenge(
+      JSON.stringify({ prompt: "p", qubits: 1, target: { program: "FOO 0" } })
+    ).spec!;
+    expect(gradeTs("H 0", spec).status).toBe("error");
+  });
 });

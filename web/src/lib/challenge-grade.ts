@@ -34,6 +34,15 @@ export function gradeTs(learnerSource: string, spec: ChallengeSpec): GradeResult
   }
 
   const target = parseProgram(spec.target.program);
+  // The reference circuit must be valid and fully concrete: a parse error or a
+  // slider-bound `theta` would otherwise be graded against the wrong state
+  // (opsFor passes theta=0, collapsing a bound rotation to the identity).
+  if (target.error) {
+    return { status: "error", message: `This challenge's target circuit is invalid: ${target.error}` };
+  }
+  if (target.hasTheta) {
+    return { status: "error", message: "This challenge's target circuit must be concrete (no slider theta)." };
+  }
   const n = Math.max(spec.qubits ?? 0, target.n, learner.n, 1);
   const targetState = simulate(opsFor(target, 0), n);
   const learnerState = simulate(opsFor(learner, 0), n);

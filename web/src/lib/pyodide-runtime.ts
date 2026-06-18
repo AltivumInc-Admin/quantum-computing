@@ -61,6 +61,12 @@ export async function getPyodide(): Promise<Pyodide> {
     );
     return py;
   })();
+  // If the boot rejects (CDN blip loading pyodide.js, qcsim wheel 404, etc.),
+  // clear the cache so the next call re-boots instead of returning the same
+  // rejected promise forever and permanently bricking every runnable cell.
+  pyodidePromise.catch(() => {
+    pyodidePromise = null;
+  });
   return pyodidePromise;
 }
 

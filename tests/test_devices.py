@@ -27,6 +27,19 @@ def test_run_circuit_aws_requires_s3():
         run_circuit(circuit, device_name="sv1", shots=10)
 
 
+def test_run_circuit_rejects_nonpositive_shots_on_billable_device():
+    # Cost-awareness gate fails fast (before any AwsDevice construction / network).
+    circuit = Circuit().h(0)
+    with pytest.raises(ValueError, match="shots must be in 1.."):
+        run_circuit(circuit, device_name="sv1", shots=0, s3_location=("b", "p"))
+
+
+def test_run_circuit_rejects_excessive_shots_on_billable_device():
+    circuit = Circuit().h(0)
+    with pytest.raises(ValueError, match="shots must be in 1.."):
+        run_circuit(circuit, device_name="ionq_aria", shots=10_000_000, s3_location=("b", "p"))
+
+
 def test_device_arns_are_valid_format():
     for name, arn in DEVICE_ARNS.items():
         assert arn.startswith("arn:aws:braket:"), f"Invalid ARN for {name}"

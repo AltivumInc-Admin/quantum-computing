@@ -16,6 +16,12 @@ def estimate_cost(provider: str, shots: int = 1000, estimated_minutes: float = 1
     """Estimate the cost of running a quantum task."""
     if provider not in PRICING:
         raise ValueError(f"Unknown provider: {provider}. Known: {list(PRICING.keys())}")
+    # Cost is a gate before real spend — a negative input must fail loudly rather
+    # than produce a nonsensical negative "cost" that silently passes the gate.
+    if shots < 0:
+        raise ValueError(f"shots must be non-negative (got {shots})")
+    if estimated_minutes < 0:
+        raise ValueError(f"estimated_minutes must be non-negative (got {estimated_minutes})")
     pricing = PRICING[provider]
     if "per_shot" in pricing:
         return pricing["per_task"] + pricing["per_shot"] * shots

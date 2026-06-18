@@ -41,6 +41,16 @@ class TestEstimateCost:
         with pytest.raises(ValueError, match="Unknown provider"):
             estimate_cost("FakeQuantumCo", shots=100)
 
+    def test_negative_shots_raises(self):
+        # A negative input must fail loudly, not produce a negative "cost" that
+        # silently passes a cost-awareness gate.
+        with pytest.raises(ValueError, match="shots must be non-negative"):
+            estimate_cost("IonQ", shots=-100)
+
+    def test_negative_minutes_raises(self):
+        with pytest.raises(ValueError, match="estimated_minutes must be non-negative"):
+            estimate_cost("SV1", estimated_minutes=-5)
+
     def test_zero_shots_qpu(self):
         cost = estimate_cost("IonQ", shots=0)
         assert cost == 0.30
