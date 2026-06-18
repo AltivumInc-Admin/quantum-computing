@@ -178,3 +178,59 @@
 
 ### Cross-cutting (Category B): missing live regions
 - [x] **[Accessibility]** DONE 2026-06-17 — **Interactive explorable readouts now announce via live regions.** Added `role="status" aria-live="polite"` to the result block of bloch-builder, circuit-lab, wavefunction-scrubber, noise (fidelity), vqc-trainer (step/loss/acc), cost-calculator (total), and topology (SWAP count); PES extends the slider `aria-valuetext` to read FCI/HF/gap. 8 widgets, 2 regression tests. Impact: High. Effort: Medium.
+
+## Category C — features 13-33 (analyzed 2026-06-17, big multi-agent run)
+
+> 85 reviewer findings recovered from a rate-limited run (verify stage throttled).
+> Items below are tagged ✓verified (re-read in code: 4 inline + `estimate_cost` by
+> the workflow) or ~reviewer (file:line evidence, pending a clean verification pass).
+> Long tail of Medium/Low items lives in the run transcripts.
+
+### 13-14. In-browser execution runtime
+- [ ] **[Resilience]** ✓verified — **No execution timeout**: `runSerialized` awaits `runPythonAsync` with no timeout/abort on a shared module-global queue, so a learner's `while True: pass` hangs the tab AND wedges every subsequent run/grade (the reject-guard only handles errors, not hangs). Wrap in `Promise.race` with a ~10-15s timeout. Impact: High. Effort: Medium. (`web/src/lib/pyodide-runtime.ts:70,84-95`) — added 2026-06-17
+- [ ] **[Resilience]** ✓verified — **A failed Pyodide boot is cached forever**: `getPyodide` assigns `pyodidePromise` before the async boot and returns it unconditionally, so one CDN/wheel failure bricks every runnable cell with no retry. Null the cache on rejection. Impact: High. Effort: Low. (`web/src/lib/pyodide-runtime.ts:46-64`) — added 2026-06-17
+- [ ] **[Correctness]** ~reviewer — stderr is mislabeled as successful stdout in the runnable editor; the stdout/stderr sink is never detached after a run, leaking async output into the next run. Impact: Medium. Effort: Medium. (`runnable-editor.tsx`, `pyodide-runtime.ts:84-95`) — added 2026-06-17
+- [ ] **[Performance/Consistency]** ~reviewer — every runnable fence eagerly mounts its own Monaco editor on hydration (no viewport gating); qcsim bootstrap is triplicated across 3 authored copies; Pyodide version pinned independently in TS runtime + JupyterLite kernel (driftable). Impact: Medium. Effort: Medium. (`runnable-editor.tsx`, `pyodide-runtime.ts:12`, `jupyterlite-build/`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — run success/error conveyed only by an aria-hidden color dot; disabled "Run in browser" button unreachable by keyboard/SR. Impact: Medium. Effort: Low. (`runnable-editor.tsx`, `notebook-link.tsx`) — added 2026-06-17
+
+### 15. Code challenge auto-grader
+- [ ] **[Correctness]** ✓verified — **Slider-bound `theta` in a target program grades against the wrong state**: both graders build the reference via `opsFor(target, 0)`, so a `theta` rotation in the author's `target.program` collapses to RY(0)=identity. Reject reference programs with `hasTheta === true`. Impact: High. Effort: Low. (`challenge-grade.ts:38`, `pyodide-grader.ts:53`, `qsim-dsl.ts:71-73,102`) — added 2026-06-17
+- [ ] **[Security/Resilience]** ~reviewer — author-supplied `spec.qubits` flows unclamped into `1<<n` allocation in the live Tier-A path (no MAX_QUBITS clamp); reference-program parse errors are swallowed in both graders (silent wrong grading). Impact: High. Effort: Low. (`challenge-grade.ts:37`, `challenge-schema.ts:55`, `challenge-grade.ts:36-39`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — the verdict `role="status"` region is conditionally mounted, so SR misses the announcement; add `aria-live` always-present. Impact: High. Effort: Low. (`challenge.tsx:168-175`) — added 2026-06-17
+- [ ] **[Security/Tests]** ~reviewer — Tier-B `gradePy` concatenates raw learner Python into the grading program with no namespacing; trusts the Pyodide JSON as a valid state vector (NaN/empty degrade silently); no test exercises the real gradePy path; Pyodide CDN script injected with no SRI. Impact: Medium. Effort: Medium. (`pyodide-grader.ts`) — added 2026-06-17
+
+### 16. Spaced-repetition review
+- [ ] **[Resilience]** ~reviewer — **Corrupt-but-valid-JSON card state poisons the schedule with NaN** / silently vanishes: guards only catch `JSON.parse` throwing, not a semantically-broken record (`{}`, truncated, old schema). Add a structural validator (all numeric fields `Number.isFinite`). Impact: High. Effort: Low. (`review-store.ts:57-64,86`) — added 2026-06-17
+- [ ] **[Correctness]** ~reviewer — graduating step shrinks the interval on a successful "Hard" review (after "Easy"), contradicting SM-2 monotonicity. Impact: Medium. Effort: Low. (`review-schedule.ts`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — "Show answer" disclosure has no `aria-expanded`/`aria-controls` and never moves focus to the revealed answer; nav-badge due-count + dashboard "N due" recompute silently (no aria-live); grade buttons are an unlabeled group and grading throws focus away. Impact: High. Effort: Low. (`review-card.tsx:149-170`, `review-nav-badge.tsx`, `review-dashboard.tsx`) — added 2026-06-17
+- [ ] **[Performance]** ~reviewer — nav badge runs a full localStorage scan + JSON.parse of every card on every root render; `review-card.tsx` hand-rolls its own store subscription (bypassing shared `subscribe()`). Impact: Medium. Effort: Medium. (`review-nav-badge.tsx`, `review-card.tsx`) — added 2026-06-17
+
+### 17-18. Quizzes & content rendering
+- [ ] **[Correctness]** ~reviewer — quiz text renders LaTeX/Dirac notation as literal characters (math silently broken inside quiz prompts/options); the optional `hint` field bypasses type validation and can crash render. Impact: Medium. Effort: Medium. (`quiz.tsx`) — added 2026-06-17
+- [ ] **[Resilience]** ~reviewer — CopyButton reports "Copied" even when both clipboard paths silently fail. Impact: Medium. Effort: Low. (`copy-button.tsx`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — revealed quiz answer/hint never announced; disclosure buttons expose `aria-controls` only while open; code-block controls overlap the first code line on touch. Impact: Medium. Effort: Low. (`quiz.tsx`, `code-block.tsx`) — added 2026-06-17
+- [ ] **[Consistency]** ~reviewer — `renderInline` inline-markdown formatter byte-duplicated between `quiz.tsx` and `review-card.tsx`. Impact: Low. Effort: Low. — added 2026-06-17
+
+### 19-20. AI tutor (Ask the margin) + corpus
+- [ ] **[Ops]** ~reviewer — **Handler returns HTTP 200 on every Bedrock failure**, so the Lambda Errors metric never fires and no alarm can be built on it; mid-stream failures render as the answer (client never enters its error state). Emit a structured error sentinel + log a metric. Impact: High. Effort: Medium. (`lambda/tutor/index.mjs:53-88`) — added 2026-06-17
+- [ ] **[Resilience]** ~reviewer — no client timeout/abort: a stalled stream hangs the UI forever and Close cannot cancel it (no AbortController). Impact: High. Effort: Medium. (`ask-tutor.tsx:70-82,121`) — added 2026-06-17
+- [ ] **[Correctness]** ~reviewer — **corpus build silently truncates 3 of 7 lessons mid-document** at `SECTION_CHAR_CAP=12000` while still advertising all their headings (corpus.json shows 01-foundations/05/06 at exactly 12000 chars). Warn/fail + truncate on a section boundary. Impact: Medium. Effort: Low. (`build_tutor_corpus.mjs:31`, `tutor.ts:40`) — added 2026-06-17
+- [ ] **[Accessibility]** ~reviewer — streamed answer renders in a plain `<p>` with no aria-live; the modal slide-over has no focus trap and never restores focus to the trigger on close. Impact: High. Effort: Medium. (`ask-tutor.tsx:105-110,131-134`) — added 2026-06-17
+- [ ] **[Tests/Ops]** ~reviewer — the Lambda handler/parseBody/corpus builder have zero tests (only the mirrored web copy is covered); no Lambda log-retention is set; deploy has no corpus-freshness/model-id gate. Impact: Medium. Effort: Medium. (`lambda/tutor/`, `scripts/build_tutor_corpus.mjs`) — added 2026-06-17
+- [ ] Note: the eval-catalogued tutor faucet (AuthType NONE + wildcard IAM + no concurrency cap) remains the top tutor item; the "answer only from lesson" prompt is UX not a security boundary.
+
+### 21, 24, 25. Python library: circuits + hardware + utils
+- [ ] **[Security/Correctness]** ✓verified — **`run_circuit` dispatches to real QPUs with no shots cap or cost guard**, violating CLAUDE.md's cost-awareness rule; validate `shots` and surface `estimate_cost` before `device.run`. Impact: High. Effort: Low. (`lib/hardware/devices.py:37-54`) — added 2026-06-17
+- [ ] **[Correctness]** ✓verified — `estimate_cost` returns negative costs for negative shots/minutes (no input validation), feeding bad numbers into the cost-warning string. Raise on negative inputs. Impact: Low. Effort: Low. (`lib/utils/cost.py:15-24`) — added 2026-06-17
+- [ ] **[Architecture]** ~reviewer — device identity keyed two incompatible ways: `hardware` uses short names (`ionq_aria`), `cost` uses provider names (`IonQ`) — the two halves a learner chains don't compose. Unify to one registry. Impact: High. Effort: Medium. (`lib/hardware/devices.py:8-16`, `lib/utils/cost.py:3-12`) — added 2026-06-17
+- [ ] **[Correctness/Tests]** ~reviewer — `parse_counts` assumes bitstring column position equals qubit index (mislabels non-square cases) and is only tested against a mock whose dtype diverges from real Braket; GHZ test only checks intra-shot agreement, never that both `|0..0>` and `|1..1>` appear; public API is half-typed. Impact: Medium. Effort: Medium. (`lib/utils/results.py`, `lib/circuits/common.py`) — added 2026-06-17
+
+### 22-23. Python library: chemistry + QML
+- [ ] **[Performance]** ~reviewer — `quantum_kernel` constructs a fresh `LocalSimulator` on every call across an O(N²) Gram matrix; `train_vqc` evaluates every training circuit twice per epoch (loss + accuracy). Reuse one device; fold the passes. Impact: Medium. Effort: Low. (`lib/ml/classifiers.py`, `lib/ml/training.py`) — added 2026-06-17
+- [ ] **[Correctness/API]** ~reviewer — `uccsd_singles_circuit` silently truncates excitations when `params` is too short; three parameterized-circuit builders use three incompatible `params` conventions; two sibling "rotation+CNOT-layer" builders disagree on entangling topology (linear vs circular); only `amplitude_encoding` fail-fasts (others silently degrade). Impact: Medium. Effort: Medium. (`lib/chemistry/ansatz.py`, `lib/ml/feature_maps.py`, `lib/ml/classifiers.py`) — added 2026-06-17
+
+### 26. qcsim browser simulator
+- [ ] Reviewers were rate-limited out for this cluster; the eval-catalogued parity-coverage gap (rx/rz/y/z/s/t/swap/cphaseshift/ccnot not numerically compared vs real Braket) remains the known item. Clean re-run pending.
+
+### 27-28, 29-33. Curriculum + Build/infra/ops
+- [ ] Reviewers were rate-limited out for these clusters. The eval-catalogued items stand: 34/45 stub notebooks + 3 stubs shipping a green Run badge (29); zero Amplify security headers (31); undeployable nested CFN — no `package` step (32); `qaoa_maxcut_job.py` broad-except→LocalSimulator + finalizes on a different device (28). Clean re-run pending.
