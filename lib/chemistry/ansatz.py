@@ -38,10 +38,14 @@ def uccsd_singles_circuit(n_qubits: int, n_electrons: int, params: np.ndarray) -
     Args:
         n_qubits: Number of qubits (= number of spin-orbitals).
         n_electrons: Number of electrons.
-        params: Array of excitation amplitudes.
+        params: Excitation amplitudes; length MUST equal
+            n_electrons * (n_qubits - n_electrons).
 
     Returns:
         Circuit implementing single excitations.
+
+    Raises:
+        ValueError: if len(params) does not match the number of excitations.
     """
     circuit = Circuit()
 
@@ -49,20 +53,27 @@ def uccsd_singles_circuit(n_qubits: int, n_electrons: int, params: np.ndarray) -
     for i in range(n_electrons):
         circuit.x(i)
 
-    # Single excitations: excite from occupied to virtual
-    param_idx = 0
+    # Single excitations: excite from occupied to virtual.
     occupied = list(range(n_electrons))
     virtual = list(range(n_electrons, n_qubits))
+    n_excitations = len(occupied) * len(virtual)
+    # Validate up front. Silently truncating (too few params) or ignoring extras
+    # (too many) builds a DIFFERENT operator than the caller asked for — fail loud.
+    if len(params) != n_excitations:
+        raise ValueError(
+            f"expected {n_excitations} excitation params "
+            f"({n_electrons} occupied x {n_qubits - n_electrons} virtual), got {len(params)}"
+        )
 
+    param_idx = 0
     for occ in occupied:
         for virt in virtual:
-            if param_idx < len(params):
-                theta = params[param_idx]
-                # Givens rotation implementing the excitation
-                circuit.ry(virt, theta / 2)
-                circuit.cnot(occ, virt)
-                circuit.ry(virt, -theta / 2)
-                circuit.cnot(occ, virt)
-                param_idx += 1
+            theta = params[param_idx]
+            # Givens rotation implementing the excitation
+            circuit.ry(virt, theta / 2)
+            circuit.cnot(occ, virt)
+            circuit.ry(virt, -theta / 2)
+            circuit.cnot(occ, virt)
+            param_idx += 1
 
     return circuit

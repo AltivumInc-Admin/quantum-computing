@@ -28,16 +28,20 @@ def sample_ghz_circuit():
 class MockResult:
     """Mock Braket result for testing without AWS."""
 
-    def __init__(self, measurements):
+    def __init__(self, measurements, measured_qubits=None):
         self.measurements = measurements
+        # Only set the attribute when provided, so parse_counts' getattr default
+        # path (no measured_qubits exposed) stays exercised by existing tests.
+        if measured_qubits is not None:
+            self.measured_qubits = measured_qubits
 
 
 @pytest.fixture
 def mock_result_factory():
     """Factory fixture for creating mock Braket results."""
 
-    def _create(measurements):
-        return MockResult(measurements)
+    def _create(measurements, measured_qubits=None):
+        return MockResult(measurements, measured_qubits)
 
     return _create
 
