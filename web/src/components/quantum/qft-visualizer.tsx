@@ -64,6 +64,12 @@ function parseConfig(source: string): ParseResult {
   if (period < 1 || period > N) {
     return { error: `period must be in 1..${N} (got ${period})` };
   }
+  // The DFT of a comb is itself a clean comb only when the period divides N;
+  // otherwise the "spikes every N/r" claim and the spike highlighter (idx % N/r)
+  // are false. Require divisibility so the displayed teaching note stays correct.
+  if (N % period !== 0) {
+    return { error: `period must divide N=${N} for a clean spectrum (got ${period})` };
+  }
   return { config: { n, kind: "period", value: period } };
 }
 

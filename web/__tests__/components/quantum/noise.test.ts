@@ -1,5 +1,6 @@
-import { noisyProbs, fidelityDist } from "@/components/quantum/noise";
+import { noisyProbs, fidelityDist, noisyRho, stateFidelity } from "@/components/quantum/noise";
 import { parseProgram, opsFor } from "@/components/quantum/qsim-dsl";
+import { simulate } from "@/components/quantum/math";
 
 function ops(src: string) {
   const p = parseProgram(src);
@@ -41,5 +42,23 @@ describe("noise engine", () => {
   });
   it("fidelityDist is 1 for identical distributions", () => {
     expect(fidelityDist([0.5, 0.5], [0.5, 0.5])).toBeCloseTo(1, 8);
+  });
+
+  it("stateFidelity is 1 with no noise and ~0 when amplitude damping relaxes |1> to |0>", () => {
+    const { ops: o, n } = ops("qubits 1\nX 0"); // |1>
+    const psi = simulate(o, n);
+    expect(stateFidelity(psi, noisyRho(o, n, "amplitude-damping", 0))).toBeCloseTo(1, 8);
+    expect(stateFidelity(psi, noisyRho(o, n, "amplitude-damping", 1))).toBeLessThan(0.01);
+  });
+
+  it("stateFidelity sees coherence loss the diagonal misses: |+> under p=0.75 depolarizing has true F=0.5 while distribution overlap reads 1", () => {
+    const { ops: o, n } = ops("qubits 1\nH 0"); // |+>
+    const psi = simulate(o, n);
+    const rho = noisyRho(o, n, "depolarizing", 0.75); // -> maximally mixed I/2
+    const diag = rho.map((row, i) => row[i][0]);
+    // measurement probabilities are still 0.5/0.5, so the classical overlap is 1...
+    expect(fidelityDist([0.5, 0.5], diag)).toBeCloseTo(1, 6);
+    // ...but the TRUE state fidelity has dropped to 0.5 (the bug the fix addresses).
+    expect(stateFidelity(psi, rho)).toBeCloseTo(0.5, 6);
   });
 });

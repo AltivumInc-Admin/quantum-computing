@@ -105,7 +105,8 @@ function opMatrix(op: Op, n: number): { U: CMatrix; qubits: number[] } {
   return { U: expandSingle(gate, op.target, n), qubits: [op.target] };
 }
 
-export function noisyProbs(ops: Op[], n: number, channel: ChannelName, p: number): number[] {
+/** Full noisy density matrix after the Kraus-channel run (n <= 3 qubits). */
+export function noisyRho(ops: Op[], n: number, channel: ChannelName, p: number): CMatrix {
   if (n > 3) throw new Error("qnoise supports up to 3 qubits");
   const d = 1 << n;
   let rho = zeros(d);
@@ -118,9 +119,35 @@ export function noisyProbs(ops: Op[], n: number, channel: ChannelName, p: number
       for (const q of qubits) rho = applyChannel1(rho, kraus, q, n);
     }
   }
-  return rho.map((row, i) => row[i][0]);
+  return rho;
 }
 
+/** Diagonal of the noisy density matrix = measurement probabilities. */
+export function noisyProbs(ops: Op[], n: number, channel: ChannelName, p: number): number[] {
+  return noisyRho(ops, n, channel, p).map((row, i) => row[i][0]);
+}
+
+/**
+ * True quantum state fidelity F = <psi|rho|psi> of a noisy density matrix against
+ * the ideal PURE state |psi>. Unlike a classical distribution overlap of the
+ * diagonals, this sees coherences, so amplitude-damping / depolarizing correctly
+ * drag it below 1 even where the measurement probabilities barely move. Clamped
+ * to [0,1] against tiny numerical excursions; F is real because rho is Hermitian.
+ */
+export function stateFidelity(psi: Complex[], rho: CMatrix): number {
+  const d = psi.length;
+  let re = 0;
+  for (let i = 0; i < d; i++) {
+    for (let j = 0; j < d; j++) {
+      // conj(psi_i) * rho_ij * psi_j, accumulate the real part.
+      const t = cMul(cConj(psi[i]), cMul(rho[i][j], psi[j]));
+      re += t[0];
+    }
+  }
+  return Math.max(0, Math.min(1, re));
+}
+
+/** Classical distribution overlap (squared Bhattacharyya) of two prob vectors. */
 export function fidelityDist(ideal: number[], noisy: number[]): number {
   let s = 0;
   for (let i = 0; i < ideal.length; i++) s += Math.sqrt(Math.max(0, ideal[i]) * Math.max(0, noisy[i]));

@@ -3,7 +3,7 @@
 import { useId, useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
-import { noisyProbs, fidelityDist, type ChannelName } from "./noise";
+import { noisyRho, stateFidelity, type ChannelName } from "./noise";
 
 /**
  * Inline noise-visualizer widget rendered from a ```qnoise fenced block in a
@@ -34,14 +34,16 @@ export function NoiseVisualizer({ source }: { source: string }) {
 
   // Compute ideal + noisy distributions BEFORE any early return so the hooks
   // always run in the same order (react-hooks/rules-of-hooks). Empty when invalid.
-  const ideal = useMemo(
-    () => (valid ? probabilities(simulate(opsFor(program, 0), program.n)) : []),
+  const idealState = useMemo(
+    () => (valid ? simulate(opsFor(program, 0), program.n) : []),
     [program, valid]
   );
-  const noisy = useMemo(
-    () => (valid ? noisyProbs(opsFor(program, 0), program.n, channel, pClamped) : []),
+  const ideal = useMemo(() => probabilities(idealState), [idealState]);
+  const rho = useMemo(
+    () => (valid ? noisyRho(opsFor(program, 0), program.n, channel, pClamped) : []),
     [program, channel, pClamped, valid]
   );
+  const noisy = useMemo(() => rho.map((row, i) => row[i][0]), [rho]);
 
   // Parse-error card
   if (program.error) {
@@ -75,7 +77,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
     );
   }
 
-  const fidelity = fidelityDist(ideal, noisy);
+  const fidelity = stateFidelity(idealState, rho);
   const fidelityPct = Math.round(fidelity * 100);
 
   function handleChannelChange(next: ChannelName) {

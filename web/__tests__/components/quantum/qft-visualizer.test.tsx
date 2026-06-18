@@ -14,4 +14,14 @@ describe("QftVisualizer", () => {
     render(<QftVisualizer source={JSON.stringify({ qubits: 6 })} />);
     expect(screen.getByText(/error/i)).toBeInTheDocument();
   });
+  it("rejects a period that does not divide N (the false 'spikes every N/r' case)", () => {
+    // N = 2^3 = 8; period 3 does not divide 8.
+    render(<QftVisualizer source={JSON.stringify({ qubits: 3, input: "period:3" })} />);
+    expect(screen.getByText(/period must divide/i)).toBeInTheDocument();
+  });
+  it("accepts a period that divides N", () => {
+    render(<QftVisualizer source={JSON.stringify({ qubits: 3, input: "period:4" })} />);
+    expect(screen.queryByText(/must divide/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/fourier/i)).toBeInTheDocument();
+  });
 });
