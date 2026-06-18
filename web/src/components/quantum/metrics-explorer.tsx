@@ -118,8 +118,11 @@ export function MetricsExplorer({ source }: { source: string }) {
     const { c0, cz, cx } = h2OneQubit(parsed.R, H.points);
     const H_ = oneQubitHamiltonian(c0, cz, cx);
     const { history } = vqeGradientDescent(H_, [START_THETA], LR, STEPS);
-    let eMin = parsed.threshold;
-    let eMax = parsed.threshold;
+    // Seed the y-extent from the DATA, not the user threshold — an out-of-band
+    // threshold must not squeeze the real convergence curve. The threshold LINE
+    // is kept on-canvas by clamping it to the plot band (see thresholdY below).
+    let eMin = history[0];
+    let eMax = history[0];
     for (const e of history) {
       if (e < eMin) eMin = e;
       if (e > eMax) eMax = e;
@@ -198,7 +201,9 @@ export function MetricsExplorer({ source }: { source: string }) {
 
   const lastIndex = visible.length > 0 ? visible.length - 1 : 0;
   const lastEnergy = visible.length > 0 ? visible[lastIndex] : history[0];
-  const thresholdY = sy(threshold);
+  // Pin the dashed threshold line to the plot band so an out-of-band threshold
+  // sits on the edge rather than driving the data scale.
+  const thresholdY = Math.max(PLOT.padT, Math.min(PLOT.h - PLOT.padB, sy(threshold)));
   const belowThreshold = visible.length > 0 && lastEnergy <= threshold;
 
   const plotAria =
@@ -292,6 +297,7 @@ export function MetricsExplorer({ source }: { source: string }) {
             {/* metric line */}
             {linePath && (
               <path
+                data-testid="metric-line"
                 d={linePath}
                 fill="none"
                 stroke="currentColor"

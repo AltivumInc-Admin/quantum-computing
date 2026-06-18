@@ -41,6 +41,11 @@ function parseQuiz(source: string): ParsedQuiz {
       if (typeof q.q !== "string" || typeof q.a !== "string") {
         throw new Error(`question ${i + 1} needs string "q" and "a" fields`);
       }
+      // Guard the optional hint so a malformed (non-string truthy) value surfaces
+      // as the friendly parse-error card instead of crashing renderInline.
+      if (q.hint != null && typeof q.hint !== "string") {
+        throw new Error(`question ${i + 1} "hint" must be a string`);
+      }
     });
     return { questions: data.questions as QuizQuestion[] };
   } catch (e) {

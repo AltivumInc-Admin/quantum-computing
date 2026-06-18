@@ -17,6 +17,16 @@ describe("diracString", () => {
   it("writes |0> for the ground state", () => {
     expect(diracString(simulate([], 1), 1)).toBe("1.00|0⟩");
   });
+  it("never renders a phantom 0.00 term (filter agrees with the formatter)", () => {
+    // A component below the display epsilon is filtered out, not shown as "0.00".
+    const state: Complex[] = [
+      [0.9999, 0],
+      [0.004, 0],
+    ];
+    const s = diracString(state, 1);
+    expect(s).not.toContain("0.00|");
+    expect(s).toBe("1.00|0⟩");
+  });
   it("writes the Bell state as a sum of |00> and |11>", () => {
     const bell = simulate(
       [

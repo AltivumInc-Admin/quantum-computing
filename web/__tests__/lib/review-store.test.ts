@@ -20,6 +20,15 @@ describe("review-store", () => {
     expect(getCardState("found-superposition-1")).toBeNull();
   });
 
+  it("discards a corrupt-but-valid-JSON record instead of poisoning the schedule", () => {
+    localStorage.setItem("qc:card:a", "{}"); // valid JSON, semantically broken
+    expect(getCardState("a")).toBeNull();
+    const next = gradeCard("a", "good", 0); // falls back to a fresh card
+    expect(next.reps).toBe(1);
+    expect(Number.isFinite(next.stability)).toBe(true);
+    expect(Number.isFinite(next.dueEpochDay)).toBe(true);
+  });
+
   it("persists a graded card so its state reads back", () => {
     const state = gradeCard("found-superposition-1", "good", 0);
     expect(state.reps).toBe(1);

@@ -49,6 +49,26 @@ export function epochDay(nowMs: number): number {
   return Math.floor(nowMs / 86_400_000);
 }
 
+/**
+ * A stored card record is only usable if it is an object whose every numeric
+ * field is finite. A semantically-broken-but-valid-JSON record (`{}`, truncated,
+ * an old schema) would otherwise feed NaN into the scheduler arithmetic and
+ * silently poison the schedule — callers should discard a record that fails this
+ * and fall back to newCard().
+ */
+export function isValidCardState(x: unknown): x is CardState {
+  if (typeof x !== "object" || x === null) return false;
+  const c = x as Record<string, unknown>;
+  return (
+    Number.isFinite(c.reps) &&
+    Number.isFinite(c.lapses) &&
+    Number.isFinite(c.stability) &&
+    Number.isFinite(c.difficulty) &&
+    Number.isFinite(c.dueEpochDay) &&
+    Number.isFinite(c.lastEpochDay)
+  );
+}
+
 /** A fresh, never-reviewed card that is due immediately. */
 export function newCard(todayEpochDay: number): CardState {
   return {
@@ -94,6 +114,9 @@ export function schedule(state: CardState, rating: Rating, todayEpochDay: number
     interval = Math.round(state.stability * mult);
   }
   interval = clamp(interval, 1, MAX_INTERVAL);
+  // A passing review must never shorten the interval (SM-2 monotonicity): the
+  // graduating "hard" step (3) would otherwise fall below an "easy" first step (4).
+  if (rating !== "again") interval = Math.max(interval, state.stability);
 
   return {
     reps,

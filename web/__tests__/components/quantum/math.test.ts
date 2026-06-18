@@ -9,6 +9,9 @@ import {
   H,
   S,
   T,
+  rx,
+  ry,
+  rz,
   probabilities,
   blochVector,
   simulate,
@@ -22,7 +25,10 @@ const FIXTURES = JSON.parse(
     path.join(__dirname, "../../../src/components/quantum/__fixtures__/gates.json"),
     "utf-8"
   )
-) as { gates: Record<string, number[][][]> };
+) as {
+  gates: Record<string, number[][][]>;
+  rotations: Record<string, Record<string, number[][][]>>;
+};
 
 function expectGateMatchesFixture(name: string, gate: Gate2) {
   const fixture = FIXTURES.gates[name];
@@ -46,6 +52,33 @@ describe("quantum/math gate matrices match qcsim fixtures", () => {
     ["T", T],
   ])("%s matches the qcsim-generated matrix to 1e-10", (name, gate) => {
     expectGateMatchesFixture(name, gate as Gate2);
+  });
+});
+
+describe("quantum/math rotation matrices match qcsim fixtures", () => {
+  const builders = { rx, ry, rz } as const;
+  // Keys + thetas mirror scripts that generated FIXTURES.rotations (same IEEE doubles).
+  const angles: Array<[string, number]> = [
+    ["0", 0],
+    ["pi_4", Math.PI / 4],
+    ["pi_3", Math.PI / 3],
+    ["pi_2", Math.PI / 2],
+    ["t0_9", 0.9],
+    ["pi", Math.PI],
+  ];
+  const cases = (["rx", "ry", "rz"] as const).flatMap((g) =>
+    angles.map(([key, theta]) => [g, key, theta] as [keyof typeof builders, string, number])
+  );
+  it.each(cases)("%s(%s) matches the qcsim-generated matrix to 1e-10", (g, key, theta) => {
+    const gate = builders[g](theta);
+    const fixture = FIXTURES.rotations[g][key];
+    expect(fixture).toBeDefined();
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 2; c++) {
+        expect(gate[r][c][0]).toBeCloseTo(fixture[r][c][0], 10);
+        expect(gate[r][c][1]).toBeCloseTo(fixture[r][c][1], 10);
+      }
+    }
   });
 });
 

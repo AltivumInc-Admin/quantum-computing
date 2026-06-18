@@ -42,4 +42,22 @@ describe("MetricsExplorer", () => {
     expect(() => render(<MetricsExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qmetrics error:/)).toBeInTheDocument();
   });
+
+  it("derives the y-axis from the data, so an out-of-band threshold doesn't rescale it", () => {
+    // The plot's aria-label encodes the y-range; with the fix it depends on the
+    // VQE data only, not the user threshold.
+    const yRange = (threshold: number) => {
+      const { container, unmount } = render(
+        <MetricsExplorer source={JSON.stringify({ R: 0.74, threshold })} />
+      );
+      const aria =
+        container.querySelector('[aria-label*="energy from"]')?.getAttribute("aria-label") ?? "";
+      const m = aria.match(/energy from ([\d.-]+) to ([\d.-]+) hartree/);
+      unmount();
+      return m ? `${m[1]}..${m[2]}` : null;
+    };
+    const inBand = yRange(-1.13);
+    expect(inBand).toBeTruthy();
+    expect(yRange(5)).toBe(inBand); // a wildly out-of-band threshold must not change the y-extent
+  });
 });
