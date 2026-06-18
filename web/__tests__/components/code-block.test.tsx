@@ -61,4 +61,39 @@ describe("CodeBlock", () => {
     fireEvent.click(screen.getByRole("button", { name: /wrap/i }));
     expect(pre.className).toContain("whitespace-pre-wrap");
   });
+
+  it("is not a keyboard scroll region when the code fits (no overflow)", () => {
+    const { container } = render(
+      <CodeBlock rawText="x" language="python">
+        <code>x</code>
+      </CodeBlock>
+    );
+    const pre = container.querySelector("pre")!;
+    // jsdom reports scrollWidth === clientWidth === 0, so it does not overflow.
+    expect(pre).not.toHaveAttribute("tabindex");
+    expect(pre).not.toHaveAttribute("role");
+  });
+
+  it("becomes a labelled keyboard scroll region when an unwrapped line overflows", () => {
+    const scrollSpy = jest
+      .spyOn(HTMLElement.prototype, "scrollWidth", "get")
+      .mockReturnValue(400);
+    const clientSpy = jest
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(120);
+    try {
+      const { container } = render(
+        <CodeBlock rawText="x" language="python">
+          <code>x</code>
+        </CodeBlock>
+      );
+      const pre = container.querySelector("pre")!;
+      expect(pre).toHaveAttribute("tabindex", "0");
+      expect(pre).toHaveAttribute("role", "region");
+      expect(pre).toHaveAttribute("aria-label", "python snippet");
+    } finally {
+      scrollSpy.mockRestore();
+      clientSpy.mockRestore();
+    }
+  });
 });

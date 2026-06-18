@@ -52,9 +52,9 @@ export default async function HomePage() {
             <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
             <span className="text-sm text-gray-500 dark:text-gray-500 tabular-nums">{sections.length} sections</span>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul role="list" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {sections.map((section, i) => (
-              <div
+              <li
                 key={section.slug}
                 className="animate-card-enter"
                 style={{ animationDelay: `${600 + i * 80}ms` }}
@@ -63,12 +63,12 @@ export default async function HomePage() {
                   slug={section.slug}
                   index={section.index}
                   title={section.title}
-                  summary={summaries[i] || ""}
+                  summary={summaries[i] || "Hands-on lessons and exercises."}
                   notebookCount={section.notebookCount}
                 />
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       </div>
     </div>

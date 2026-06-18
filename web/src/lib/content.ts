@@ -16,27 +16,37 @@ export interface ContentData {
   notebooks: NotebookEntry[];
 }
 
-export async function getContent(slug: string): Promise<ContentData | null> {
+// Read just the section's GUIDE.md. Shared by getContent (which also lists
+// notebooks) and getContentSummary (which only needs the prose) so the landing
+// page doesn't pay for a notebooks readdir + manifest lookup it never uses.
+async function readGuide(slug: string): Promise<string | null> {
   const section = getSectionBySlug(slug);
   if (!section) return null;
-
   const guidePath = path.join(REPO_ROOT, section.dirName, "GUIDE.md");
-
   try {
-    const markdown = await fs.readFile(guidePath, "utf-8");
-    const title = extractTitle(markdown);
-    const notebooks = await listNotebooks(section.dirName);
-    return { markdown, title, notebooks };
+    return await fs.readFile(guidePath, "utf-8");
   } catch {
     return null;
   }
 }
 
-export async function getContentSummary(slug: string): Promise<string | null> {
-  const content = await getContent(slug);
-  if (!content) return null;
+export async function getContent(slug: string): Promise<ContentData | null> {
+  const section = getSectionBySlug(slug);
+  if (!section) return null;
 
-  const lines = content.markdown.split("\n");
+  const markdown = await readGuide(slug);
+  if (markdown === null) return null;
+
+  const title = extractTitle(markdown);
+  const notebooks = await listNotebooks(section.dirName);
+  return { markdown, title, notebooks };
+}
+
+export async function getContentSummary(slug: string): Promise<string | null> {
+  const markdown = await readGuide(slug);
+  if (markdown === null) return null;
+
+  const lines = markdown.split("\n");
   let summary = "";
   let foundHeading = false;
 

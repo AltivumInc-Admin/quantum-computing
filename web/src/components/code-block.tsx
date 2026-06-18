@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CopyButton } from "./copy-button";
 
 /**
@@ -30,17 +30,35 @@ export function CodeBlock({
   children: ReactNode;
 }) {
   const [wrap, setWrap] = useState(false);
+  const [scrollable, setScrollable] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
   const showLang = !!language && language !== "text";
+
+  // A horizontally-overflowing code block is a scroll region; make it keyboard-
+  // focusable and labelled only when it actually overflows and isn't wrapped, so
+  // not every block becomes a tab stop. Re-measure on resize and on wrap toggle.
+  useEffect(() => {
+    const el = preRef.current;
+    if (!el) return;
+    const measure = () => setScrollable(el.scrollWidth > el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [wrap]);
+
+  const canScroll = scrollable && !wrap;
 
   return (
     <div className="not-prose group relative my-5 overflow-hidden rounded-xl border border-gray-800 bg-gray-900 dark:bg-gray-900/80">
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
         {showLang && (
-          <span className="rounded bg-gray-800/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-gray-400 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+          <span className="rounded bg-gray-800/80 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-gray-400 opacity-100 can-hover:opacity-0 can-hover:transition-opacity can-hover:group-hover:opacity-100 group-focus-within:opacity-100">
             {language!.toUpperCase()}
           </span>
         )}
-        <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+        <div className="flex items-center gap-0.5 opacity-100 can-hover:opacity-0 can-hover:transition-opacity can-hover:group-hover:opacity-100 group-focus-within:opacity-100">
           <button
             type="button"
             onClick={() => setWrap((w) => !w)}
@@ -54,9 +72,13 @@ export function CodeBlock({
         </div>
       </div>
       <pre
+        ref={preRef}
+        tabIndex={canScroll ? 0 : undefined}
+        role={canScroll ? "region" : undefined}
+        aria-label={canScroll ? `${language ?? "code"} snippet` : undefined}
         className={`overflow-x-auto px-4 py-3.5 text-sm leading-relaxed text-gray-200 ${
-          wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
-        }`}
+          canScroll ? "focus-ring " : ""
+        }${wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
       >
         {children}
       </pre>

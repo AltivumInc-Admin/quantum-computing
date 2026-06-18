@@ -36,6 +36,9 @@ export default async function SectionPage({ params }: PageProps) {
   if (!content) notFound();
 
   const headings = extractHeadings(content.markdown);
+  // Reuse the headings the TOC already computed to build the renderer's
+  // line -> slug map, so the GUIDE isn't scanned for headings a second time.
+  const lineSlugs = new Map(headings.map((h) => [h.line, h.slug]));
 
   // The section's identity hue cascades to the sidebar active pill, the "On this
   // page" rail, the Notebooks divider, and the completion toggle — so the color
@@ -52,11 +55,11 @@ export default async function SectionPage({ params }: PageProps) {
         className="read-progress fixed inset-x-0 top-16 z-40 h-0.5 bg-gradient-to-r from-accent to-warm"
       />
       <Sidebar />
-      <div className="flex-1 lg:ml-72">
+      <div id="lesson-content" className="flex-1 lg:ml-72">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-16 xl:grid xl:grid-cols-[minmax(0,1fr)_14rem] xl:gap-12">
           <div className="mx-auto w-full max-w-3xl xl:mx-0">
             <div className="animate-fade-up">
-              <MarkdownRenderer content={content.markdown} />
+              <MarkdownRenderer content={content.markdown} lineSlugs={lineSlugs} />
             </div>
 
             {content.notebooks.length > 0 && (

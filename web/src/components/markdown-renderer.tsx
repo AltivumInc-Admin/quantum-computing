@@ -3,41 +3,19 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
-import { CircuitLab } from "./quantum/circuit-lab";
-import { WavefunctionScrubber } from "./quantum/wavefunction-scrubber";
-import { Challenge } from "./quantum/challenge";
-import { Quiz } from "./quantum/quiz";
-import { RunnableEditor } from "./quantum/runnable-editor";
-import { BlochBuilder } from "./quantum/bloch-builder-widget";
-import { ShotsSampler } from "./quantum/shots-sampler";
-import { CorrelationDemo } from "./quantum/correlation-demo";
-import { CostCalculator } from "./quantum/cost-calculator";
-import { DeviceTable } from "./quantum/device-table";
-import { TopologyExplorer } from "./quantum/topology-explorer";
-import { NoiseVisualizer } from "./quantum/noise-visualizer";
-import { GroverVisualizer } from "./quantum/grover-visualizer";
-import { QftVisualizer } from "./quantum/qft-visualizer";
-import { DjDemo } from "./quantum/dj-demo";
-import { QaoaExplorer } from "./quantum/qaoa-explorer";
-import { EncodingExplorer } from "./quantum/encoding-explorer";
-import { KernelExplorer } from "./quantum/kernel-explorer";
-import { BarrenExplorer } from "./quantum/barren-explorer";
-import { VqcTrainer } from "./quantum/vqc-trainer";
-import { JwExplorer } from "./quantum/jw-explorer";
-import { HamiltonianExplorer } from "./quantum/hamiltonian-explorer";
-import { VqeExplorer } from "./quantum/vqe-explorer";
-import { PesExplorer } from "./quantum/pes-explorer";
-import { JobExplorer } from "./quantum/job-explorer";
-import { ParamCompileExplorer } from "./quantum/param-compile-explorer";
-import { CheckpointExplorer } from "./quantum/checkpoint-explorer";
-import { MetricsExplorer } from "./quantum/metrics-explorer";
-import { ReviewCard } from "./quantum/review-card";
-import { ScrollySection } from "./quantum/scrolly-section";
+import { WidgetFence } from "./quantum/widget-fence";
+import { WIDGET_LANGS } from "./quantum/widget-langs";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 
 interface MarkdownRendererProps {
   content: string;
+  /**
+   * Source-line -> heading-slug map. The lesson page already computes this from
+   * its own extractHeadings call; passing it in avoids a second full scan of the
+   * GUIDE. Falls back to recomputing when a caller renders the renderer standalone.
+   */
+  lineSlugs?: Map<number, string>;
 }
 
 // Shared bra-ket macros so GUIDE authors write \ket{0} instead of the verbose
@@ -71,8 +49,9 @@ function headingId(node: unknown, lineSlugs: Map<number, string>): string | unde
 /**
  * Build the react-markdown component overrides. Heading overrides stamp a stable
  * `id` on each h2/h3 (looked up by source line, so it stays deterministic and
- * matches the table of contents); custom fences route to interactive widgets;
- * all other fences become a CodeBlock with copy + wrap controls.
+ * matches the table of contents); custom ```q* fences route to an interactive
+ * widget (resolved + code-split per-widget by WidgetFence); all other fences
+ * become a CodeBlock with copy + wrap controls.
  */
 export function makeComponents(lineSlugs: Map<number, string>): Components {
   return {
@@ -90,115 +69,28 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
         </h3>
       );
     },
-    // Render ```qsim fenced blocks as the interactive CircuitLab; everything
-    // else falls through to the default <pre> (so rehype-highlight styling is
-    // preserved). Overriding <pre> (not <code>) keeps the markup valid.
+    // Overriding <pre> (not <code>) keeps the markup valid. The bare language
+    // token (e.g. "qsim", "python") is read once from the `language-*` class.
     pre(props) {
       const { node, children } = props;
       const code = node?.children?.[0];
       const className =
         code && code.type === "element" ? code.properties?.className : undefined;
-      if (code && Array.isArray(className) && className.includes("language-qsim")) {
-        return <CircuitLab source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qscrub")) {
-        return <WavefunctionScrubber source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qchallenge")) {
-        return <Challenge source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-quiz")) {
-        return <Quiz source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-runnable")) {
-        return <RunnableEditor source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qbloch")) {
-        return <BlochBuilder />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qshots")) {
-        return <ShotsSampler source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qcorr")) {
-        return <CorrelationDemo source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qcost")) {
-        return <CostCalculator source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qdevices")) {
-        return <DeviceTable />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qtopo")) {
-        return <TopologyExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qnoise")) {
-        return <NoiseVisualizer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qgrover")) {
-        return <GroverVisualizer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qft")) {
-        return <QftVisualizer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qdj")) {
-        return <DjDemo source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qoptim")) {
-        return <QaoaExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qencode")) {
-        return <EncodingExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qkernel")) {
-        return <KernelExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qbarren")) {
-        return <BarrenExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qvqc")) {
-        return <VqcTrainer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qjw")) {
-        return <JwExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qham")) {
-        return <HamiltonianExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qvqe")) {
-        return <VqeExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qpes")) {
-        return <PesExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qjob")) {
-        return <JobExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qparam")) {
-        return <ParamCompileExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qcheckpoint")) {
-        return <CheckpointExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qmetrics")) {
-        return <MetricsExplorer source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qcard")) {
-        return <ReviewCard source={hastText(code as unknown as HastTextNode)} />;
-      }
-      if (code && Array.isArray(className) && className.includes("language-qscrolly")) {
-        return <ScrollySection source={hastText(code as unknown as HastTextNode)} />;
-      }
-      // Every other fence becomes a CodeBlock: the highlighted <code> children are
-      // preserved (syntax colors intact) and a copy button + language chip + wrap
-      // toggle are added. The language is read from the `language-*` class.
       const language = Array.isArray(className)
         ? className
             .map((c) => String(c))
             .find((c) => c.startsWith("language-"))
             ?.replace("language-", "")
         : undefined;
+      const raw = code ? hastText(code as unknown as HastTextNode) : "";
+      // Custom ```q* fences route to a lazily-loaded interactive widget (chunked
+      // per-widget so a page ships only the widgets it renders); every other fence
+      // becomes a CodeBlock with the rehype-highlight token spans preserved.
+      if (language && WIDGET_LANGS.has(language)) {
+        return <WidgetFence language={language} source={raw} />;
+      }
       return (
-        <CodeBlock rawText={hastText(code as unknown as HastTextNode)} language={language}>
+        <CodeBlock rawText={raw} language={language}>
           {children}
         </CodeBlock>
       );
@@ -206,10 +98,10 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
   };
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, lineSlugs: propLineSlugs }: MarkdownRendererProps) {
   // Computed once per render (Server Component): the renderer assigns heading ids
   // from the same slug source the table of contents reads, so anchors line up.
-  const lineSlugs = buildLineSlugMap(content);
+  const lineSlugs = propLineSlugs ?? buildLineSlugMap(content);
   const components = makeComponents(lineSlugs);
 
   return (

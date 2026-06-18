@@ -4,7 +4,7 @@ import { ReviewNavBadge } from "./review-nav-badge";
 
 export function Nav() {
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-200/60 dark:border-gray-800/40 bg-white/80 dark:bg-[color-mix(in_oklab,var(--surface-2)_80%,transparent)] backdrop-blur-xl">
+    <header id="site-header" className="sticky top-0 z-50 border-b border-gray-200/60 dark:border-gray-800/40 bg-white/80 dark:bg-[color-mix(in_oklab,var(--surface-2)_80%,transparent)] backdrop-blur-xl">
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link
           href="/"

@@ -52,11 +52,17 @@ export function completedCount(slugs: string[]): number {
  */
 export function subscribe(callback: () => void): () => void {
   if (typeof window === "undefined") return () => {};
+  // The cross-tab "storage" event fires for EVERY localStorage write in the app
+  // (theme, review cards, pyodide cache, ...). Only react to our own keys — or a
+  // full clear, where key is null — so unrelated writes don't recompute progress.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === null || e.key?.startsWith("qc:")) callback();
+  };
   window.addEventListener(PROGRESS_EVENT, callback);
-  window.addEventListener("storage", callback);
+  window.addEventListener("storage", onStorage);
   return () => {
     window.removeEventListener(PROGRESS_EVENT, callback);
-    window.removeEventListener("storage", callback);
+    window.removeEventListener("storage", onStorage);
   };
 }
 
