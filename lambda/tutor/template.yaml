@@ -4,6 +4,12 @@ Description: >
   Ask the margin — a response-streaming, Bedrock-backed lesson tutor for the
   quantum curriculum. A single stateless Lambda behind a Function URL.
 
+# NOTE: abuse/cost monitoring is managed SEPARATELY (outside this stack): a
+# CloudWatch alarm "quantum-tutor-high-invocations" (AWS/Lambda Invocations, Sum,
+# 1h, >500) already notifies the "quantum-tutor-alerts" SNS topic. This template
+# deliberately does not re-declare it to avoid a duplicate. The load-bearing
+# in-stack control is ReservedConcurrentExecutions below.
+
 Parameters:
   ModelId:
     Type: String
@@ -33,16 +39,6 @@ Parameters:
       invocations. The Function URL is public (AuthType NONE), so this is the
       load-bearing cost/abuse control: excess requests are throttled (429)
       rather than fanning out into unbounded paid Bedrock generations.
-  AlarmEmail:
-    Type: String
-    Default: ""
-    Description: >
-      Optional email to notify when the abuse alarm fires. Leave blank to create
-      the alarm + topic without a subscriber (subscribe later). A non-blank value
-      sends a one-time SNS confirmation email that must be accepted.
-
-Conditions:
-  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
 
 Resources:
   TutorFunction:
@@ -79,7 +75,8 @@ Resources:
         Cors:
           # NOTE: CORS is a browser-enforced UX allowlist, NOT an access control —
           # it does not stop curl/scripted clients. Abuse is bounded by
-          # ReservedConcurrentExecutions + the alarm below (and optionally WAF).
+          # ReservedConcurrentExecutions + the separate invocations alarm (and
+          # optionally WAF).
           AllowOrigins:
             - !Ref AllowedOrigin
           AllowMethods:
@@ -87,46 +84,7 @@ Resources:
           AllowHeaders:
             - content-type
 
-  # --- Observability: catch abuse/cost before the bill arrives ---------------
-  TutorAlarmTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: quantum-tutor-alarms
-
-  TutorAlarmEmailSubscription:
-    Type: AWS::SNS::Subscription
-    Condition: HasAlarmEmail
-    Properties:
-      TopicArn: !Ref TutorAlarmTopic
-      Protocol: email
-      Endpoint: !Ref AlarmEmail
-
-  TutorHighInvocationsAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: quantum-tutor-high-invocations
-      AlarmDescription: >
-        Tutor invocations exceeded the expected hourly volume on a public Function
-        URL — possible abuse. Investigate before costs accrue. Does not block
-        requests (UX is preserved); the reserved-concurrency cap is the hard limit.
-      Namespace: AWS/Lambda
-      MetricName: Invocations
-      Dimensions:
-        - Name: FunctionName
-          Value: quantum-tutor
-      Statistic: Sum
-      Period: 3600
-      EvaluationPeriods: 1
-      Threshold: 500
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        - !Ref TutorAlarmTopic
-
 Outputs:
   TutorUrl:
     Description: Set this as NEXT_PUBLIC_TUTOR_URL in Amplify.
     Value: !GetAtt TutorFunctionUrl.FunctionUrl
-  AlarmTopicArn:
-    Description: SNS topic for tutor abuse alarms — subscribe an endpoint to receive alerts.
-    Value: !Ref TutorAlarmTopic
