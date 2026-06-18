@@ -329,7 +329,7 @@ export function TopologyExplorer({ source }: { source: string }) {
       </div>
 
       {/* Readout */}
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-4 pt-3 pb-1" role="status" aria-live="polite">
         <p className="text-sm text-gray-800 dark:text-gray-200">
           <span className="font-semibold">
             {swaps} SWAP{swaps !== 1 ? "s" : ""}

@@ -173,7 +173,11 @@ export function CostCalculator({ source }: { source: string }) {
                 <td className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   Total
                 </td>
-                <td className="px-3 py-2 text-right font-bold font-mono text-sm text-gray-900 dark:text-gray-100 tabular-nums">
+                <td
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="px-3 py-2 text-right font-bold font-mono text-sm text-gray-900 dark:text-gray-100 tabular-nums"
+                >
                   {totalStr}
                 </td>
               </tr>

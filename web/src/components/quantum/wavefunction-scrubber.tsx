@@ -120,7 +120,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
       </div>
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1" role="status" aria-live="polite">
           <div className="space-y-1.5">
             {probs.map((p, idx) => (
               <div key={idx} className="flex items-center gap-2">

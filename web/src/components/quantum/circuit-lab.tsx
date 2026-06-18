@@ -64,7 +64,7 @@ export function CircuitLab({ source }: { source: string }) {
         </p>
       ) : (
         <div className="flex flex-col sm:flex-row gap-6 px-4 py-4">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0" role="status" aria-live="polite">
             <div className="space-y-1.5">
               {sim.probs!.map((p, idx) => (
                 <div key={idx} className="flex items-center gap-2">

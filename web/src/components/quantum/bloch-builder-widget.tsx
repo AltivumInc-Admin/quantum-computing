@@ -51,7 +51,7 @@ export function BlochBuilder() {
       {/* Main content */}
       <div className="flex flex-col sm:flex-row gap-6 px-4 py-4">
         {/* Left column: prob bars + Dirac string + copy buttons */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0" role="status" aria-live="polite">
           <div className="space-y-1.5">
             {probs.map((p, idx) => (
               <div key={idx} className="flex items-center gap-2">

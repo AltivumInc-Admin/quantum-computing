@@ -17,4 +17,10 @@ describe("VqcTrainer", () => {
     // after clicking Train, the step or accuracy readout reflects progress
     expect(screen.getByText(/accuracy|step|loss/i)).toBeInTheDocument();
   });
+  it("announces the step/loss/accuracy readout as a polite live region", () => {
+    render(<VqcTrainer source={""} />);
+    const live = screen.getByRole("status");
+    expect(live).toHaveTextContent(/step/i);
+    expect(live).toHaveAttribute("aria-live", "polite");
+  });
 });
