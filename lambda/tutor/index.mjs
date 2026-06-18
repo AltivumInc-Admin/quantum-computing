@@ -46,8 +46,14 @@ function buildSystemPrompt(section) {
 }
 // --------------------------------------------------------------------------
 
+// A legit request is tiny ({slug, question<=2000 chars}); reject anything larger
+// before decoding/parsing so a public, unauthenticated URL can't be made to burn
+// CPU/memory JSON-parsing a multi-MB body per invocation.
+const MAX_BODY_BYTES = 16 * 1024;
+
 function parseBody(event) {
   if (!event?.body) return {};
+  if (event.body.length > MAX_BODY_BYTES) return {};
   const raw = event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf8") : event.body;
   try {
     return JSON.parse(raw);
@@ -64,9 +70,13 @@ export const handler = awslambda.streamifyResponse(async (event, responseStream)
 
   try {
     const body = parseBody(event);
-    const slug = String(body.slug || "");
+    const slug = String(body.slug || "").slice(0, 64);
     const question = String(body.question || "").trim().slice(0, 2000);
-    const section = CORPUS[slug];
+    // Own-property lookup: a plain object inherits keys like "__proto__",
+    // "constructor", and "toString", which would otherwise resolve to a truthy
+    // (but text-less) value and slip past the grounding guard into a paid,
+    // effectively ungrounded model call.
+    const section = Object.prototype.hasOwnProperty.call(CORPUS, slug) ? CORPUS[slug] : undefined;
 
     if (!section || !question) {
       stream.write(OUT_OF_SCOPE_MESSAGE);

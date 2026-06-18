@@ -52,4 +52,15 @@ describe("gradeTs", () => {
     ).spec!;
     expect(gradeTs("H 0", spec).status).toBe("error");
   });
+
+  it("rejects a challenge configured beyond the qubit limit instead of allocating 2**n", () => {
+    // Author-only static config (spec.qubits) is unbounded; a typo like qubits:30
+    // must degrade to a clear error, not a frozen tab on a 2**30 allocation.
+    const spec = parseChallenge(
+      JSON.stringify({ prompt: "p", qubits: 30, target: { program: "H 0" } })
+    ).spec!;
+    const r = gradeTs("H 0", spec);
+    expect(r.status).toBe("error");
+    expect(r.message).toMatch(/qubit limit|beyond/i);
+  });
 });

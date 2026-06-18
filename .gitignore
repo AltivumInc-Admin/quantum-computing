@@ -47,3 +47,6 @@ htmlcov/
 lambda/tutor/node_modules/
 lambda/tutor.zip
 lambda/tutor/corpus.json
+
+# SAM build artifacts
+lambda/tutor/.aws-sam/
