@@ -11,6 +11,16 @@
 /** Per-section grounding text is capped so the prompt stays bounded. */
 export const SECTION_CHAR_CAP = 12_000;
 
+/**
+ * In-band failure marker the streaming endpoint writes when it errors. The
+ * response is already committed as HTTP 200 (streaming starts before the model
+ * call), so the status can't signal failure — the client scans for this sentinel
+ * to enter its error state instead of rendering the apology as the answer. The
+ * exact delimited token never occurs in tutor prose. MIRRORED in
+ * lambda/tutor/index.mjs.
+ */
+export const TUTOR_ERROR_SENTINEL = "<<TUTOR-STREAM-ERROR>>";
+
 /** What the endpoint streams back when asked about a section it has no text for. */
 export const OUT_OF_SCOPE_MESSAGE =
   "I can only help with the lessons in this curriculum. Open a lesson and ask me about it there.";
@@ -25,6 +35,8 @@ export interface TutorSection {
  * Reduce a GUIDE's Markdown to plain grounding prose: drop fenced blocks (widget
  * JSON and code — both noise for conceptual Q&A), unwrap inline code, strip math
  * delimiters, links, and Markdown marks, then collapse whitespace and cap length.
+ * When over the cap, truncate on a paragraph boundary so a lesson is never cut
+ * mid-sentence.
  */
 export function stripGuideForTutor(markdown: string, cap: number = SECTION_CHAR_CAP): string {
   let t = markdown;
@@ -37,7 +49,13 @@ export function stripGuideForTutor(markdown: string, cap: number = SECTION_CHAR_
   t = t.replace(/^>\s?/gm, ""); // blockquote marks
   t = t.replace(/[*_]{1,3}/g, ""); // emphasis marks
   t = t.replace(/\n{3,}/g, "\n\n").trim(); // collapse blank lines
-  return t.length > cap ? t.slice(0, cap).trimEnd() : t;
+  if (t.length <= cap) return t;
+  // Cut on the last paragraph break within the window so the text ends on a
+  // section boundary rather than mid-sentence; fall back to the hard cap if the
+  // only break is in the first half.
+  const slice = t.slice(0, cap);
+  const lastBreak = slice.lastIndexOf("\n\n");
+  return (lastBreak > cap / 2 ? slice.slice(0, lastBreak) : slice).trimEnd();
 }
 
 /** Section H2/H3 headings, in order — used for "grounded in" citations. */

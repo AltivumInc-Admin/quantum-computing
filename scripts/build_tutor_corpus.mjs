@@ -28,7 +28,11 @@ function stripGuideForTutor(markdown, cap = SECTION_CHAR_CAP) {
   t = t.replace(/^>\s?/gm, "");
   t = t.replace(/[*_]{1,3}/g, "");
   t = t.replace(/\n{3,}/g, "\n\n").trim();
-  return t.length > cap ? t.slice(0, cap).trimEnd() : t;
+  if (t.length <= cap) return t;
+  // Cut on a paragraph boundary so a lesson is never truncated mid-sentence.
+  const slice = t.slice(0, cap);
+  const lastBreak = slice.lastIndexOf("\n\n");
+  return (lastBreak > cap / 2 ? slice.slice(0, lastBreak) : slice).trimEnd();
 }
 
 function extractSectionHeadings(markdown) {
@@ -47,16 +51,29 @@ const dirs = fs
   .sort();
 
 const corpus = {};
+let truncatedCount = 0;
 for (const dir of dirs) {
   const md = fs.readFileSync(path.join(ROOT, dir, "GUIDE.md"), "utf8");
   const title = (md.match(/^#\s+(.+)$/m)?.[1] ?? dir).trim();
-  corpus[dir] = {
-    title,
-    headings: extractSectionHeadings(md),
-    text: stripGuideForTutor(md),
-  };
+  const text = stripGuideForTutor(md);
+  const fullLen = stripGuideForTutor(md, Infinity).length;
+  // Only advertise headings whose content actually survived truncation, so the
+  // grounding prompt never claims to cover a section it has no text for.
+  const allHeadings = extractSectionHeadings(md);
+  const headings = allHeadings.filter((h) => text.includes(h));
+  if (fullLen > text.length) {
+    truncatedCount++;
+    console.warn(
+      `[tutor-corpus] WARN: ${dir} truncated ${fullLen} -> ${text.length} chars; ` +
+        `${allHeadings.length - headings.length} trailing heading(s) dropped`
+    );
+  }
+  corpus[dir] = { title, headings, text };
 }
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(corpus));
-console.log(`Wrote ${Object.keys(corpus).length} sections (${dirs.join(", ")}) -> ${OUT}`);
+console.log(
+  `Wrote ${Object.keys(corpus).length} sections (${dirs.join(", ")}) -> ${OUT}` +
+    (truncatedCount ? ` (${truncatedCount} truncated)` : "")
+);

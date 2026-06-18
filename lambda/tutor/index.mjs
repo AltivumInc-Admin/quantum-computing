@@ -19,6 +19,12 @@ const client = new BedrockRuntimeClient({});
 const OUT_OF_SCOPE_MESSAGE =
   "I can only help with the lessons in this curriculum. Open a lesson and ask me about it there.";
 
+// In-band failure marker — MIRROR of web/src/lib/tutor.ts TUTOR_ERROR_SENTINEL
+// (keep byte-identical). The response is already committed as HTTP 200, so the
+// client scans for this to enter its error state rather than rendering the
+// apology as part of the answer.
+const TUTOR_ERROR_SENTINEL = "<<TUTOR-STREAM-ERROR>>";
+
 // --- mirror of web/src/lib/tutor.ts buildSystemPrompt ---------------------
 function buildSystemPrompt(section) {
   const headings = section.headings?.length
@@ -82,8 +88,13 @@ export const handler = awslambda.streamifyResponse(async (event, responseStream)
     }
     stream.end();
   } catch (err) {
-    console.error("tutor error", err);
-    stream.write("\n\nSorry — the tutor hit an error. Please try again.");
+    // Structured log so a CloudWatch metric filter can alarm on tutor failures —
+    // the streamed response is already committed as 200, so neither the HTTP
+    // status nor the Lambda Errors metric ever signals this on its own.
+    console.error(JSON.stringify({ tutorError: true, name: err?.name, message: err?.message }));
+    // In-band sentinel so the client enters its error state instead of rendering
+    // the apology as part of the answer.
+    stream.write(`${TUTOR_ERROR_SENTINEL}The tutor hit an error. Please try again.`);
     stream.end();
   }
 });
