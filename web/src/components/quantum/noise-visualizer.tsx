@@ -93,7 +93,12 @@ export function NoiseVisualizer({ source }: { source: string }) {
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
           Noise
         </span>
-        <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+        <span
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+        >
           fidelity {fidelityPct}%
         </span>
       </div>

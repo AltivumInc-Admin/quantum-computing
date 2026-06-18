@@ -284,7 +284,12 @@ export function VqcTrainer({ source }: { source: string }) {
             Variational quantum classifier trainer
           </h3>
 
-          <p className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
+          <p
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100"
+          >
             {`step ${step} · loss ${loss.toFixed(3)} · accuracy `}
             <span className="text-accent dark:text-accent-light">
               {(acc * 100).toFixed(0)}%

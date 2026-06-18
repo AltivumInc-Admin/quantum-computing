@@ -368,7 +368,7 @@ export function PesExplorer({ source }: { source: string }) {
               onChange={(e) => setMark(parseFloat(e.target.value))}
               className="slider flex-1 focus-ring"
               aria-label="Bond length scrubber in angstrom"
-              aria-valuetext={`${mark.toFixed(2)} angstrom`}
+              aria-valuetext={`${mark.toFixed(2)} angstrom; FCI ${readout.fci.toFixed(3)}, Hartree-Fock ${readout.hf.toFixed(3)}, gap ${readout.gap.toFixed(3)} hartree`}
             />
             <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
               {mark.toFixed(2)} &#8491;

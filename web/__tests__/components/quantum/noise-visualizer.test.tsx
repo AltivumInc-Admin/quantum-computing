@@ -24,4 +24,10 @@ describe("NoiseVisualizer", () => {
     render(<NoiseVisualizer source={"NOTAGATE 0"} />);
     expect(screen.getByText(/parse error/i)).toBeInTheDocument();
   });
+  it("announces the fidelity readout as a polite live region", () => {
+    render(<NoiseVisualizer source={"qubits 2\nH 0\nCNOT 0 1"} />);
+    const live = screen.getByRole("status");
+    expect(live).toHaveTextContent(/fidelity/i);
+    expect(live).toHaveAttribute("aria-live", "polite");
+  });
 });
