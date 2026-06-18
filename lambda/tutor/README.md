@@ -31,12 +31,10 @@ sam deploy --guided \
   --parameter-overrides \
     ModelId=<inference-profile-arn> \
     FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0 \
-    MaxConcurrency=5 \
-    AlarmEmail=you@example.com
+    MaxConcurrency=5
 # note the TutorUrl output. MaxConcurrency is the hard cost ceiling (reserved
 # concurrency). FoundationModelId scopes the Bedrock IAM to the model the profile
-# routes to. AlarmEmail is optional — a non-blank value sends an SNS confirmation
-# email you must accept; leave blank to create the alarm/topic without a subscriber.
+# routes to.
 ```
 
 ## Deploy (raw CLI, fallback)
@@ -84,8 +82,10 @@ curl -N -X POST "<FunctionUrl>" \
   invocations; excess requests are throttled (429) rather than fanning out into
   unbounded paid generations. The template also scopes the Bedrock IAM `Resource`
   to the inference-profile + its foundation-model ARNs (least privilege, not `*`),
-  caps `maxTokens` at 800 in the handler, and ships a CloudWatch alarm on hourly
-  invocations to the `quantum-tutor-alarms` SNS topic. Note: `AuthType: NONE` +
+  and caps `maxTokens` at 800 in the handler. Abuse monitoring is managed
+  separately (outside this stack): a CloudWatch alarm `quantum-tutor-high-invocations`
+  (hourly Invocations > 500) already notifies the `quantum-tutor-alerts` SNS topic.
+  Note: `AuthType: NONE` +
   CORS is a browser-only UX allowlist, **not** an access control — it does not stop
   curl/scripted clients, so don't rely on it for abuse protection. For per-IP
   limits, front the Function URL with AWS WAF rate-based rules; or switch to
