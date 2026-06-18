@@ -13,6 +13,7 @@ g.TextEncoder ??= TextEncoder;
 g.TextDecoder ??= TextDecoder;
 
 import { AskTutor } from "@/components/ask-tutor";
+import { TUTOR_ERROR_SENTINEL } from "@/lib/tutor";
 
 let mockPathname = "/learn/03-algorithms";
 jest.mock("next/navigation", () => ({ usePathname: () => mockPathname }));
@@ -81,5 +82,39 @@ describe("AskTutor", () => {
 
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
     expect(body).toEqual({ slug: "03-algorithms", question: "why is it faster?" });
+  });
+
+  it("surfaces an in-band error sentinel as an error, keeping the partial answer", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue(
+        streamResponse(["Partial answer. ", `${TUTOR_ERROR_SENTINEL}the tutor hit an error.`])
+      );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<AskTutor />);
+    fireEvent.click(screen.getByLabelText("Ask about this lesson"));
+    fireEvent.change(screen.getByLabelText("Your question"), { target: { value: "q" } });
+    fireEvent.keyDown(screen.getByLabelText("Your question"), { key: "Enter" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/error/i);
+    expect(screen.getByText("Partial answer.")).toBeInTheDocument(); // partial kept
+    // the sentinel/apology must NOT leak into the rendered answer
+    expect(screen.queryByText((t) => t.includes("TUTOR-STREAM-ERROR"))).toBeNull();
+  });
+
+  it("renders the streamed answer inside a polite live region", () => {
+    render(<AskTutor />);
+    fireEvent.click(screen.getByLabelText("Ask about this lesson"));
+    const live = screen.getByRole("dialog").querySelector('[aria-live="polite"]');
+    expect(live).toBeInTheDocument();
+  });
+
+  it("restores focus to the trigger when the panel is closed", () => {
+    render(<AskTutor />);
+    const trigger = screen.getByLabelText("Ask about this lesson");
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByLabelText("Close tutor"));
+    expect(trigger).toHaveFocus();
   });
 });

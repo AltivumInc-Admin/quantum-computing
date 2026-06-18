@@ -46,6 +46,15 @@ describe("stripGuideForTutor", () => {
     expect(stripGuideForTutor(long, 500).length).toBeLessThanOrEqual(500);
     expect(stripGuideForTutor(long).length).toBeLessThanOrEqual(SECTION_CHAR_CAP);
   });
+
+  it("truncates over-cap text on a paragraph boundary rather than mid-sentence", () => {
+    const p1 = "First paragraph. " + "x".repeat(400);
+    const p2 = "Second paragraph that should be dropped whole.";
+    const md = `${p1}\n\n${p2}`;
+    // The cap lands a few chars into p2, so a naive slice would cut mid-paragraph.
+    const out = stripGuideForTutor(md, p1.length + 5);
+    expect(out).toBe(p1); // cut exactly at the paragraph boundary, p2 dropped whole
+  });
 });
 
 describe("extractSectionHeadings", () => {
