@@ -16,7 +16,7 @@
 // tier:"py" content.
 
 import { simulate, statesApproxEqual, type Complex } from "@/components/quantum/math";
-import { parseProgram, opsFor } from "@/components/quantum/qsim-dsl";
+import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";
 import { getPyodide, runSerialized, type Pyodide } from "./pyodide-runtime";
 import type { ChallengeSpec } from "./challenge-schema";
 import type { GradeResult } from "./challenge-grade";
@@ -57,6 +57,15 @@ export async function gradePy(
     return { status: "error", message: "This challenge's target circuit must be concrete (no slider theta)." };
   }
   const n = Math.max(target.n, Math.round(Math.log2(learnerState.length)) || 1, 1);
+  // Bound the reference simulation: learnerState.length is whatever the learner's
+  // Python produced (Pyodide-memory-bounded, not DSL-clamped), so cap n before a
+  // 2**n target allocation.
+  if (n > MAX_QUBITS) {
+    return {
+      status: "error",
+      message: `This challenge is configured for ${n} qubits, beyond the ${MAX_QUBITS}-qubit limit for in-browser grading.`,
+    };
+  }
   const targetState = simulate(opsFor(target, 0), n);
 
   if (statesApproxEqual(learnerState, targetState)) {

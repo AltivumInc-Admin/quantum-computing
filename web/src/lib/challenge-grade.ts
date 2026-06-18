@@ -3,7 +3,7 @@
 // vectors up to global phase. Zero network, zero backend — the moat.
 
 import { simulate, statesApproxEqual } from "@/components/quantum/math";
-import { parseProgram, opsFor } from "@/components/quantum/qsim-dsl";
+import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";
 import type { ChallengeSpec } from "./challenge-schema";
 
 export type GradeStatus = "solved" | "wrong" | "error";
@@ -44,6 +44,16 @@ export function gradeTs(learnerSource: string, spec: ChallengeSpec): GradeResult
     return { status: "error", message: "This challenge's target circuit must be concrete (no slider theta)." };
   }
   const n = Math.max(spec.qubits ?? 0, target.n, learner.n, 1);
+  // Defense-in-depth: the learner path is already hard-clamped in parseProgram,
+  // but an author's spec.qubits/target.program is unbounded static content — cap
+  // it so a typo (e.g. qubits: 30) degrades to a clear error instead of freezing
+  // the tab on a 2**n allocation (and 1<<n overflows past 31 bits).
+  if (n > MAX_QUBITS) {
+    return {
+      status: "error",
+      message: `This challenge is configured for ${n} qubits, beyond the ${MAX_QUBITS}-qubit limit for in-browser grading.`,
+    };
+  }
   const targetState = simulate(opsFor(target, 0), n);
   const learnerState = simulate(opsFor(learner, 0), n);
 

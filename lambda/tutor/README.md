@@ -28,8 +28,15 @@ cd lambda/tutor
 npm install
 sam build
 sam deploy --guided \
-  --parameter-overrides ModelId=<inference-profile-id> AllowedOrigin=https://quantum.altivum.ai
-# note the TutorUrl output
+  --parameter-overrides \
+    ModelId=<inference-profile-arn> \
+    FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0 \
+    MaxConcurrency=5 \
+    AlarmEmail=you@example.com
+# note the TutorUrl output. MaxConcurrency is the hard cost ceiling (reserved
+# concurrency). FoundationModelId scopes the Bedrock IAM to the model the profile
+# routes to. AlarmEmail is optional — a non-blank value sends an SNS confirmation
+# email you must accept; leave blank to create the alarm/topic without a subscriber.
 ```
 
 ## Deploy (raw CLI, fallback)
@@ -44,7 +51,7 @@ aws iam put-role-policy --role-name quantum-tutor-role \
   --policy-name tutor --policy-document file://lambda/tutor/policy.json
 
 aws lambda create-function --function-name quantum-tutor \
-  --runtime nodejs20.x --handler index.handler \
+  --runtime nodejs22.x --handler index.handler \
   --role arn:aws:iam::<ACCOUNT_ID>:role/quantum-tutor-role \
   --zip-file fileb://lambda/tutor.zip --timeout 60 --memory-size 512 \
   --environment "Variables={TUTOR_MODEL_ID=<inference-profile-id>}"
@@ -72,9 +79,18 @@ curl -N -X POST "<FunctionUrl>" \
 
 ## Notes
 
-- **Cost / abuse:** `AuthType: NONE` + tight CORS to your origin; `maxTokens` capped
-  at 800 in the handler. Add a CloudWatch billing alarm. Tighten the Bedrock IAM
-  `Resource` to the specific model/inference-profile ARN for production. Switch to
-  `AWS_IAM` + signed requests if you need to lock it down further.
+- **Cost / abuse:** the load-bearing control is `ReservedConcurrentExecutions`
+  (`MaxConcurrency`, default 5) — a hard ceiling on simultaneous billable
+  invocations; excess requests are throttled (429) rather than fanning out into
+  unbounded paid generations. The template also scopes the Bedrock IAM `Resource`
+  to the inference-profile + its foundation-model ARNs (least privilege, not `*`),
+  caps `maxTokens` at 800 in the handler, and ships a CloudWatch alarm on hourly
+  invocations to the `quantum-tutor-alarms` SNS topic. Note: `AuthType: NONE` +
+  CORS is a browser-only UX allowlist, **not** an access control — it does not stop
+  curl/scripted clients, so don't rely on it for abuse protection. For per-IP
+  limits, front the Function URL with AWS WAF rate-based rules; or switch to
+  `AWS_IAM` + signed requests if the UX can absorb it. Log retention: the auto-created
+  `/aws/lambda/quantum-tutor` log group defaults to never-expire — set it with
+  `aws logs put-retention-policy --log-group-name /aws/lambda/quantum-tutor --retention-in-days 14`.
 - **Teardown:** `sam delete` (SAM) or `aws lambda delete-function-url-config` +
   `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`.
