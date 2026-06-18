@@ -49,6 +49,13 @@ export async function gradePy(
   }
 
   const target = parseProgram(spec.target.program);
+  // Reference circuit must be valid and concrete — see gradeTs for the same guard.
+  if (target.error) {
+    return { status: "error", message: `This challenge's target circuit is invalid: ${target.error}` };
+  }
+  if (target.hasTheta) {
+    return { status: "error", message: "This challenge's target circuit must be concrete (no slider theta)." };
+  }
   const n = Math.max(target.n, Math.round(Math.log2(learnerState.length)) || 1, 1);
   const targetState = simulate(opsFor(target, 0), n);
 
