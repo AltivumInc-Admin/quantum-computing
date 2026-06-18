@@ -4,11 +4,16 @@ import { basisLabel, type Complex } from "./math";
 // inline CircuitLab and the WavefunctionScrubber so the two never disagree on
 // how amplitudes are rounded or which terms are shown.
 
+// One epsilon shared by the visibility filter and the formatter, so they can
+// never disagree: a term is shown iff at least one component survives the snap,
+// which guarantees no phantom "0.00" term and no shown term whose magnitude was
+// already rounded away.
+const DISPLAY_EPS = 5e-3;
+
 export function formatAmplitude(c: Complex): string {
   const [re, im] = c;
-  const eps = 5e-3;
-  const r = Math.abs(re) < eps ? 0 : re;
-  const i = Math.abs(im) < eps ? 0 : im;
+  const r = Math.abs(re) < DISPLAY_EPS ? 0 : re;
+  const i = Math.abs(im) < DISPLAY_EPS ? 0 : im;
   if (i === 0) return r.toFixed(2);
   if (r === 0) return `${i.toFixed(2)}i`;
   return `(${r.toFixed(2)}${i >= 0 ? "+" : "-"}${Math.abs(i).toFixed(2)}i)`;
@@ -17,7 +22,7 @@ export function formatAmplitude(c: Complex): string {
 export function diracString(state: Complex[], n: number): string {
   const terms = state
     .map((amp, idx) => ({ amp, idx }))
-    .filter(({ amp }) => amp[0] * amp[0] + amp[1] * amp[1] > 1e-6)
+    .filter(({ amp }) => Math.abs(amp[0]) >= DISPLAY_EPS || Math.abs(amp[1]) >= DISPLAY_EPS)
     .map(({ amp, idx }) => `${formatAmplitude(amp)}|${basisLabel(idx, n)}⟩`);
   return terms.length ? terms.join("  +  ") : "0";
 }

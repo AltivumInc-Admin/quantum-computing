@@ -336,7 +336,7 @@ export function TopologyExplorer({ source }: { source: string }) {
           </span>{" "}
           to make q{safeA} and q{safeB} adjacent{" "}
           <span className="text-gray-500 dark:text-gray-400">
-            (depth +{swaps})
+            (+{swaps * 3} two-qubit gates)
           </span>
         </p>
         {path.length > 0 && (

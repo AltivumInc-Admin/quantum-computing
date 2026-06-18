@@ -46,4 +46,14 @@ describe("CopyButton", () => {
     expect(() => fireEvent.click(screen.getByRole("button"))).not.toThrow();
     expect(document.execCommand).toHaveBeenCalledWith("copy");
   });
+
+  it("does NOT announce Copied when both clipboard paths fail", async () => {
+    // @ts-expect-error insecure / unsupported context
+    delete navigator.clipboard;
+    document.execCommand = jest.fn().mockReturnValue(false); // fallback reports failure
+    render(<CopyButton getText={() => "x"} />);
+    fireEvent.click(screen.getByRole("button"));
+    expect(await screen.findByRole("button", { name: /copy failed/i })).toBeInTheDocument();
+    expect(screen.queryByText("Copied")).toBeNull();
+  });
 });
