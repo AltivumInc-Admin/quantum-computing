@@ -27,15 +27,25 @@ echo "==> Building qcsim wheel"
 mkdir -p files/wheels
 cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
 
-# 2b) Generate the kernel's wheel pin from the ACTUAL built wheel filename, so a
-#     qcsim version bump can never desync overrides.json (a stale pin 404s the
-#     in-browser kernel). overrides.json is generated, not committed.
+# 2b) Pin the in-browser kernel to the ACTUAL built wheel via PipliteAddon, so a
+#     qcsim version bump can never desync the pin. `jupyter lite build` reads
+#     PipliteAddon.piplite_urls from jupyter_lite_config.json and bundles the wheel
+#     into the generated piplite index, so the notebook bootstrap's
+#     `piplite.install("qcsim")` resolves it offline. (A settings overrides.json is
+#     NOT applied by the build — litePluginSettings stays empty — so it cannot wire
+#     pipliteUrls; PipliteAddon is the mechanism that works.) The committed
+#     jupyter_lite_config.json carries the current wheel; this regenerates it from
+#     the real filename so it self-heals on a version bump.
 WHEEL_NAME=$(basename "$QCSIM_DIR"/dist/qcsim-*.whl)
-echo "==> Pinning lab kernel to $WHEEL_NAME"
-cat > files/overrides.json <<EOF
+echo "==> Pinning lab kernel (PipliteAddon) to $WHEEL_NAME"
+cat > jupyter_lite_config.json <<EOF
 {
-  "@jupyterlite/pyodide-kernel-extension:kernel": {
-    "pipliteUrls": ["./files/wheels/${WHEEL_NAME}"]
+  "LiteBuildConfig": {
+    "output_dir": "../public/lab",
+    "contents": ["files"]
+  },
+  "PipliteAddon": {
+    "piplite_urls": ["files/wheels/${WHEEL_NAME}"]
   }
 }
 EOF
@@ -66,13 +76,12 @@ python prepare_notebooks.py
 echo "==> jupyter lite build"
 jupyter lite build
 
-# 6) Copy items JupyterLite's content service does not auto-serve:
+# 7) Copy items JupyterLite's content service does not auto-serve:
 #    - lib/ (Python module tree the notebooks import)
-#    - overrides.json (settings overrides)
-# wheels/ and startup.py are picked up automatically.
+# wheels/ and startup.py are picked up automatically; the qcsim wheel is bundled
+# into the piplite index by PipliteAddon (step 2b), so no overrides.json copy.
 echo "==> Copying auxiliary files into lab output"
 cp -R files/lib ../public/lab/files/lib
-cp files/overrides.json ../public/lab/files/overrides.json 2>/dev/null || true
 
 # 8) Strip JupyterLite source maps from the production payload. They are ~45MB
 #    of the ~65MB output and are only fetched when devtools is open, so deleting

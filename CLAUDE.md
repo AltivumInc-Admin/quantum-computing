@@ -71,6 +71,9 @@ Managed via pyproject.toml. Key packages:
 
 ### Commands
 - `npm run dev` — Start dev server (port 3000)
-- `npm test` — Run Jest test suite (443 tests)
+- `npm test` — Run Jest unit suite (472 tests)
+- `npm run test:e2e` — Playwright in-browser smoke (separate runner; needs `npm run build` first). Boots real Pyodide in the JupyterLite lab and runs a browser-runnable notebook end-to-end. See `web/e2e/README.md`.
 - `npm run build` — Static export (12 pages)
 - `npm run lint` — ESLint check
+
+The tutor Lambda has its own offline handler test: `cd lambda/tutor && npm ci && npm test` (`node --test`; stubs Bedrock).

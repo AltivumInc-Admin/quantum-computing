@@ -4,46 +4,18 @@
  * curriculum GUIDE.md, reduces it to plain grounding prose, and writes
  * lambda/tutor/corpus.json keyed by section slug (slug === on-disk dir name).
  *
- * The strip/heading logic MIRRORS web/src/lib/tutor.ts (the tested canonical).
- * Keep the two in sync. Run via `npm --prefix web run build:tutor-corpus` or
- * `node scripts/build_tutor_corpus.mjs` before packaging the Lambda.
+ * The strip/heading logic is imported from lambda/tutor/tutor-core.mjs (the
+ * single source of truth, shared with the Lambda). Run via
+ * `npm --prefix web run build:tutor-corpus` or `node scripts/build_tutor_corpus.mjs`
+ * before packaging the Lambda.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripGuideForTutor, extractSectionHeadings } from "../lambda/tutor/tutor-core.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "lambda", "tutor", "corpus.json");
-const SECTION_CHAR_CAP = 12_000;
-
-// --- mirror of web/src/lib/tutor.ts ---------------------------------------
-function stripGuideForTutor(markdown, cap = SECTION_CHAR_CAP) {
-  let t = markdown;
-  t = t.replace(/```[\s\S]*?```/g, " ");
-  t = t.replace(/\$\$[\s\S]*?\$\$/g, " ");
-  t = t.replace(/\$([^$\n]+)\$/g, "$1");
-  t = t.replace(/`([^`]+)`/g, "$1");
-  t = t.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
-  t = t.replace(/^#{1,6}\s+/gm, "");
-  t = t.replace(/^>\s?/gm, "");
-  t = t.replace(/[*_]{1,3}/g, "");
-  t = t.replace(/\n{3,}/g, "\n\n").trim();
-  if (t.length <= cap) return t;
-  // Cut on a paragraph boundary so a lesson is never truncated mid-sentence.
-  const slice = t.slice(0, cap);
-  const lastBreak = slice.lastIndexOf("\n\n");
-  return (lastBreak > cap / 2 ? slice.slice(0, lastBreak) : slice).trimEnd();
-}
-
-function extractSectionHeadings(markdown) {
-  const out = [];
-  for (const line of markdown.split("\n")) {
-    const m = /^(#{2,3})\s+(.+?)\s*$/.exec(line);
-    if (m) out.push(m[2].trim());
-  }
-  return out;
-}
-// --------------------------------------------------------------------------
 
 const dirs = fs
   .readdirSync(ROOT)

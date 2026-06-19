@@ -83,6 +83,16 @@ jobs:
       - name: Test
         run: npm test
 
+      # The tutor Lambda has its own deps + lockfile; the web job's `npm ci` runs
+      # in web/ and never touches them. node --test imports index.mjs, which imports
+      # @aws-sdk/client-bedrock-runtime at module top, so install first.
+      - name: Install tutor Lambda deps
+        working-directory: lambda/tutor
+        run: npm ci
+      - name: Tutor Lambda handler test
+        working-directory: lambda/tutor
+        run: npm test
+
   build-smoke:
     name: JupyterLite + static export build smoke
     runs-on: ubuntu-latest
@@ -115,6 +125,12 @@ jobs:
       - name: Build JupyterLite distribution (qcsim wheel -> Pyodide)
         run: bash web/jupyterlite-build/build.sh
 
+      # build.sh regenerates the committed jupyter_lite_config.json from the actual
+      # wheel name; assert the committed pin matches so a qcsim version bump can't
+      # silently leave a stale kernel pin (and catches accidental hand-edits).
+      - name: Assert committed lab config matches build.sh output
+        run: git diff --exit-code -- web/jupyterlite-build/jupyter_lite_config.json
+
       - name: Build static export
         working-directory: web
         run: |
@@ -126,3 +142,20 @@ jobs:
           test -d web/out || { echo "missing web/out (static export)"; exit 1; }
           test -d web/public/lab || { echo "missing web/public/lab (JupyterLite)"; exit 1; }
           echo "Build artifacts present: web/out/ and web/public/lab/"
+
+      # Real in-browser smoke: run a browser-runnable notebook under actual Pyodide
+      # + the local qcsim wheel and assert its deterministic output. Reuses the
+      # web/out/ + web/public/lab/ this job already built (no second build).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+      - name: Install Playwright (chromium)
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Pyodide in-browser smoke
+        working-directory: web
+        env:
+          CI: "true"
+        run: npx playwright test

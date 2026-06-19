@@ -4,10 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "gen:tutor-core": "node ../scripts/gen-tutor-core.mjs",
+    "prebuild": "npm run gen:tutor-core",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "pretest": "npm run gen:tutor-core",
     "test": "jest",
+    "test:e2e": "playwright test",
     "build:tutor-corpus": "node ../scripts/build_tutor_corpus.mjs"
   },
   "dependencies": {
@@ -28,6 +32,7 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.19",
     "@testing-library/jest-dom": "^6.9.1",
@@ -40,6 +45,7 @@
     "eslint-config-next": "16.2.6",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
+    "serve": "^14.2.6",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
