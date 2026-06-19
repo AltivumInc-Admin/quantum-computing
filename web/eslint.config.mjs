@@ -22,6 +22,9 @@ const eslintConfig = defineConfig([
     // not first-party source, must not be linted.
     "public/lab/**",
     "jupyterlite-build/**",
+    // Generated build artifacts (e.g. tutor-core.generated.ts, a @ts-nocheck copy
+    // of lambda/tutor/tutor-core.mjs produced by the gen:tutor-core prebuild hook).
+    "src/**/*.generated.ts",
   ]),
 ]);
 

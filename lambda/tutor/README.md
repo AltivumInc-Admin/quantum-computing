@@ -4,8 +4,13 @@ A single, stateless, response-streaming Lambda that answers questions **grounded
 the current lesson** using Amazon Bedrock (Claude, `ConverseStream`). The rest of
 the site stays a static export; this is the only server-side surface.
 
-- `index.mjs` — the streaming handler. Mirrors `web/src/lib/tutor.ts` (the tested
-  canonical) for prompt/grounding; keep them in sync.
+- `index.mjs` — the streaming handler. Imports its prompt/grounding logic from
+  `tutor-core.mjs`; no hand-copied mirror.
+- `tutor-core.mjs` — **the single source of truth** for the strip/heading/system-prompt
+  logic. Committed, dependency-free ESM. Imported directly by `index.mjs` (`./tutor-core.mjs`)
+  and the corpus builder (`scripts/build_tutor_corpus.mjs`). It lives here so `sam build`
+  (default Node builder, `CodeUri: ./`) bundles it. The web app consumes a gitignored
+  prebuild copy, `web/src/lib/tutor-core.generated.ts` (see Notes).
 - `corpus.json` — generated grounding text, **not committed** (gitignored). Build it
   before packaging: `npm --prefix web run build:tutor-corpus`.
 - `template.yaml` — AWS SAM (recommended). `trust.json` / `policy.json` — for the
@@ -41,7 +46,7 @@ sam deploy --guided \
 
 ```bash
 npm --prefix web run build:tutor-corpus
-cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . && cd ../..
+cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . -x 'index.test.mjs' && cd ../..
 
 aws iam create-role --role-name quantum-tutor-role \
   --assume-role-policy-document file://lambda/tutor/trust.json
@@ -68,6 +73,18 @@ and the learner is inside a `/learn/<slug>` lesson.
 
 ## Smoke test
 
+Offline handler test (no AWS creds, stubs Bedrock, no `corpus.json` needed — the
+import-time corpus read is guarded). `npm install` is required first because
+`index.mjs` imports the Bedrock SDK at module top:
+
+```bash
+cd lambda/tutor && npm install && npm test
+# node --test: streaming deltas, the <<TUTOR-STREAM-ERROR>> sentinel on failure,
+# and the out-of-scope / oversized-body gate (no model call)
+```
+
+Live end-to-end (deployed Function URL):
+
 ```bash
 curl -N -X POST "<FunctionUrl>" \
   -H 'content-type: application/json' \
@@ -77,6 +94,21 @@ curl -N -X POST "<FunctionUrl>" \
 
 ## Notes
 
+- **Single-source tutor logic:** `tutor-core.mjs` is the only copy of the
+  strip/heading/system-prompt logic. `index.mjs` and `scripts/build_tutor_corpus.mjs`
+  import it natively (both are plain Node ESM). The web app does **not** import the
+  `.mjs` directly — ts-jest's transform key is `^.+\.tsx?$`, so a cross-boundary `.mjs`
+  re-export makes the Jest suite fail with `SyntaxError: Unexpected token 'export'`.
+  Instead the web `gen:tutor-core` script (run by the `pretest`/`prebuild` hooks) copies
+  `tutor-core.mjs` into the gitignored `web/src/lib/tutor-core.generated.ts` (with a
+  `// @ts-nocheck` banner so `next build`'s strict check passes), and `web/src/lib/tutor.ts`
+  re-exports it. `sam build` bundles `tutor-core.mjs` automatically because it sits under
+  `CodeUri`.
+- **Deployed artifact contents:** the `package.json` `files` whitelist
+  (`index.mjs`, `tutor-core.mjs`, `corpus.json`) scopes what `sam build` packages
+  (its Node builder honors npm pack semantics), so `index.test.mjs` and the non-runtime
+  `template.yaml`/`policy.json`/`trust.json` are kept out of the function bundle. The raw-CLI
+  `zip` path is a plain archive, so it excludes the test explicitly with `-x 'index.test.mjs'`.
 - **Cost / abuse:** the load-bearing control is `ReservedConcurrentExecutions`
   (`MaxConcurrency`, default 5) — a hard ceiling on simultaneous billable
   invocations; excess requests are throttled (429) rather than fanning out into
