@@ -17,6 +17,11 @@
     "03-algorithms/notebooks/03-qft.ipynb",
     "03-algorithms/notebooks/04-qpe.ipynb",
     "03-algorithms/notebooks/05-qaoa-maxcut.ipynb",
-    "03-algorithms/notebooks/06-amplitude-estimation.ipynb"
+    "03-algorithms/notebooks/06-amplitude-estimation.ipynb",
+    "04-quantum-ml/notebooks/01-data-encoding.ipynb",
+    "04-quantum-ml/notebooks/02-quantum-kernels.ipynb",
+    "04-quantum-ml/notebooks/03-variational-classifier.ipynb",
+    "04-quantum-ml/notebooks/05-qnn-architecture.ipynb",
+    "04-quantum-ml/notebooks/06-barren-plateaus.ipynb"
   ]
 }
