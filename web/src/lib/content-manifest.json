@@ -177,15 +177,15 @@
       "notebooks": [
         {
           "filename": "01-molecular-hamiltonians.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "02-fermion-qubit-mapping.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "03-vqe-h2.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "04-vqe-lih.ipynb",
@@ -193,15 +193,15 @@
         },
         {
           "filename": "05-ansatz-design.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "06-active-space.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "07-excited-states.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "08-hybrid-chemistry-job.ipynb",

@@ -22,6 +22,12 @@
     "04-quantum-ml/notebooks/02-quantum-kernels.ipynb",
     "04-quantum-ml/notebooks/03-variational-classifier.ipynb",
     "04-quantum-ml/notebooks/05-qnn-architecture.ipynb",
-    "04-quantum-ml/notebooks/06-barren-plateaus.ipynb"
+    "04-quantum-ml/notebooks/06-barren-plateaus.ipynb",
+    "05-quantum-chemistry/notebooks/01-molecular-hamiltonians.ipynb",
+    "05-quantum-chemistry/notebooks/02-fermion-qubit-mapping.ipynb",
+    "05-quantum-chemistry/notebooks/03-vqe-h2.ipynb",
+    "05-quantum-chemistry/notebooks/05-ansatz-design.ipynb",
+    "05-quantum-chemistry/notebooks/06-active-space.ipynb",
+    "05-quantum-chemistry/notebooks/07-excited-states.ipynb"
   ]
 }
