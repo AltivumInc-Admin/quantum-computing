@@ -78,11 +78,11 @@
         },
         {
           "filename": "02-ionq-exploration.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "03-iqm-exploration.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "04-quera-analog.ipynb",
@@ -90,11 +90,11 @@
         },
         {
           "filename": "05-simulator-comparison.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "06-noise-and-errors.ipynb",
-          "runnable": false
+          "runnable": true
         }
       ]
     },
