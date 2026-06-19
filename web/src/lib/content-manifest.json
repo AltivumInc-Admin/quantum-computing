@@ -119,15 +119,15 @@
         },
         {
           "filename": "04-qpe.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "05-qaoa-maxcut.ipynb",
-          "runnable": false
+          "runnable": true
         },
         {
           "filename": "06-amplitude-estimation.ipynb",
-          "runnable": false
+          "runnable": true
         }
       ]
     },
