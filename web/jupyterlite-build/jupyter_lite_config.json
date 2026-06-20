@@ -1,9 +1,32 @@
 {
   "LiteBuildConfig": {
     "output_dir": "../public/lab",
-    "contents": ["files"]
+    "contents": [
+      "files"
+    ],
+    "ignore_contents": [
+      "/_build/",
+      "/\\.cache/",
+      "/\\.env",
+      "/\\.git",
+      "/\\.ipynb_checkpoints",
+      "/build/",
+      "/dist/",
+      "/envs/",
+      "/node_modules/",
+      "/__pycache__/",
+      "/overrides\\.json",
+      "/untitled\\..*",
+      "/Untitled\\..*",
+      "/workspaces/",
+      "/venvs/",
+      "\\.*doit\\.db$",
+      "\\.pyc$"
+    ]
   },
   "PipliteAddon": {
-    "piplite_urls": ["files/wheels/qcsim-0.1.0-py3-none-any.whl"]
+    "piplite_urls": [
+      "files/wheels/qcsim-0.1.0-py3-none-any.whl"
+    ]
   }
 }

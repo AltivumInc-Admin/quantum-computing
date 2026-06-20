@@ -27,28 +27,47 @@ echo "==> Building qcsim wheel"
 mkdir -p files/wheels
 cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
 
-# 2b) Pin the in-browser kernel to the ACTUAL built wheel via PipliteAddon, so a
-#     qcsim version bump can never desync the pin. `jupyter lite build` reads
-#     PipliteAddon.piplite_urls from jupyter_lite_config.json and bundles the wheel
-#     into the generated piplite index, so the notebook bootstrap's
-#     `piplite.install("qcsim")` resolves it offline. (A settings overrides.json is
-#     NOT applied by the build — litePluginSettings stays empty — so it cannot wire
-#     pipliteUrls; PipliteAddon is the mechanism that works.) The committed
-#     jupyter_lite_config.json carries the current wheel; this regenerates it from
-#     the real filename so it self-heals on a version bump.
+# 2b) Generate jupyter_lite_config.json. Two things it must wire up:
+#     - PipliteAddon.piplite_urls: pin the kernel to the ACTUAL built wheel so a
+#       qcsim version bump can never desync the pin. `jupyter lite build` bundles
+#       the wheel into the generated piplite index, so the notebook bootstrap's
+#       `piplite.install("qcsim")` resolves it offline. (A settings overrides.json
+#       is NOT applied by the build, so it can't wire pipliteUrls; PipliteAddon is
+#       the mechanism that works.)
+#     - ignore_contents: jupyterlite-core's DEFAULT ignore list skips any path
+#       containing "/lib/" (it assumes a build/env dir), which silently drops the
+#       curriculum's shared lib/ package from the in-browser contents -> every
+#       `from lib import ...` cell fails with ModuleNotFoundError. We override it
+#       with a curated subset of that default — "/lib/" REMOVED (so lib is indexed
+#       and importable) and "/__pycache__/" added — omitting the dynamic output_dir
+#       and jupyter-lite config-filename entries, which never appear under files/.
+#     Generated via python (not a heredoc) so the regex escaping is correct and the
+#     output is deterministic; the committed jupyter_lite_config.json carries this
+#     verbatim and build-smoke asserts they match (self-heals on a version bump).
 WHEEL_NAME=$(basename "$QCSIM_DIR"/dist/qcsim-*.whl)
-echo "==> Pinning lab kernel (PipliteAddon) to $WHEEL_NAME"
-cat > jupyter_lite_config.json <<EOF
-{
-  "LiteBuildConfig": {
-    "output_dir": "../public/lab",
-    "contents": ["files"]
-  },
-  "PipliteAddon": {
-    "piplite_urls": ["files/wheels/${WHEEL_NAME}"]
-  }
+echo "==> Pinning lab kernel (PipliteAddon) to $WHEEL_NAME; un-ignoring lib/"
+python - "$WHEEL_NAME" > jupyter_lite_config.json <<'PY'
+import json, sys
+config = {
+    "LiteBuildConfig": {
+        "output_dir": "../public/lab",
+        "contents": ["files"],
+        # Curated subset of jupyterlite-core's default ignore_contents (see
+        # config.py _default_ignore_files): "/lib/" removed so the curriculum lib/
+        # package is served to the kernel, "/__pycache__/" added; the dynamic
+        # output_dir + jupyter-lite config-filename entries are omitted (none appear
+        # under files/). Re-check _default_ignore_files on a jupyterlite-core bump.
+        "ignore_contents": [
+            r"/_build/", r"/\.cache/", r"/\.env", r"/\.git", r"/\.ipynb_checkpoints",
+            r"/build/", r"/dist/", r"/envs/", r"/node_modules/", r"/__pycache__/",
+            r"/overrides\.json", r"/untitled\..*", r"/Untitled\..*",
+            r"/workspaces/", r"/venvs/", r"\.*doit\.db$", r"\.pyc$",
+        ],
+    },
+    "PipliteAddon": {"piplite_urls": [f"files/wheels/{sys.argv[1]}"]},
 }
-EOF
+print(json.dumps(config, indent=2))
+PY
 
 # 3) Stage curriculum notebooks into files/<section>/notebooks/.
 #    Section list is read from the content manifest (the single source of truth)

@@ -38,11 +38,27 @@ test("runs a browser-runnable notebook under real Pyodide and prints determinist
   await page.locator(".lm-Menu-itemLabel", { hasText: /^Run All Cells$/ }).click();
 
   // The deterministic output of the H-circuit cell. Asserting on output TEXT (not a
-  // cell index, not shot-dependent counts, not ASCII art) keeps it robust.
+  // cell index, not shot-dependent counts, not ASCII art) keeps it robust. This
+  // proves Pyodide booted and the qcsim wheel installed (braket.* works).
   await expect(
     page.locator(".jp-OutputArea-output").filter({ hasText: "Qubit count: 1" }).first()
   ).toBeVisible({ timeout: 150_000 });
   await expect(
     page.locator(".jp-OutputArea-output").filter({ hasText: "Circuit depth: 1" }).first()
   ).toBeVisible({ timeout: 30_000 });
+
+  // A LATE cell that depends on the curriculum's shared lib/ package: it uses
+  // ghz_state (imported `from lib.circuits` in the prior cell), so this output only
+  // appears if lib/ is importable in the kernel. Guards against jupyterlite's
+  // default ignore_contents re-dropping lib/ (pre-fix this failed with
+  // "ModuleNotFoundError: No module named 'lib'"). Its lateness also confirms
+  // Run All Cells executed the whole notebook.
+  await expect(
+    page.locator(".jp-OutputArea-output").filter({ hasText: "all qubits agree" }).first()
+  ).toBeVisible({ timeout: 90_000 });
+
+  // With the notebook fully executed, no cell should have errored.
+  await expect(
+    page.locator(".jp-OutputArea-output").filter({ hasText: "Traceback" })
+  ).toHaveCount(0);
 });
