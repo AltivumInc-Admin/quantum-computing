@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { paramSavedSec, paramTimeNaive, paramTimeReused } from "./hybrid";
 import { usePrefersReducedMotion } from "./use-display-caps";
+import { clamp, readNumber } from "./parse-utils";
 
 /**
  * Inline parametric-compilation explorer rendered from a ```qparam fenced block in
@@ -37,25 +38,6 @@ const BAR_H = 18;
 
 type Config = { iterations: number; compileSec: number; runSec: number };
 type ParseResult = { ok: true; config: Config } | { ok: false; error: string };
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-function readNumber(
-  obj: Record<string, unknown>,
-  key: string,
-  fallback: number,
-  lo: number,
-  hi: number
-): { ok: true; value: number } | { ok: false; error: string } {
-  const raw = obj[key];
-  if (raw === undefined) return { ok: true, value: fallback };
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
-    return { ok: false, error: `"${key}" must be a finite number` };
-  }
-  return { ok: true, value: clamp(raw, lo, hi) };
-}
 
 function parseSource(source: string): ParseResult {
   const trimmed = source.trim();

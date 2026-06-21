@@ -5,6 +5,7 @@ import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { wastedNoCheckpoint, wastedWithCheckpoint } from "./hybrid";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
+import { clampInt } from "./parse-utils";
 
 /**
  * Inline checkpointing explorer rendered from a ```qcheckpoint fenced block in
@@ -34,12 +35,6 @@ type ParseOk = {
   every: number;
 };
 type ParseResult = ParseOk | { ok: false; error: string };
-
-function clampInt(v: number, lo: number, hi: number): number {
-  const n = Math.round(v);
-  if (Number.isNaN(n)) return lo;
-  return Math.max(lo, Math.min(hi, n));
-}
 
 function parseSource(source: string): ParseResult {
   const trimmed = source.trim();

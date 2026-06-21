@@ -20,8 +20,8 @@ export interface ParsedGate {
   gate: string;
   target: number;
   control?: number;
-  angle?: number;
-  bound?: boolean; // true if the angle is the slider-bound theta
+  theta?: number;
+  bound?: boolean; // true if theta is the slider-bound value
 }
 
 export interface Program {
@@ -75,9 +75,9 @@ export function parseProgram(source: string): Program {
           hasTheta = true;
           gates.push({ gate, target, bound: true });
         } else {
-          const angle = parseFloat(tok);
-          if (Number.isNaN(angle)) throw new Error(`${gate}: bad angle "${parts[2]}"`);
-          gates.push({ gate, target, angle });
+          const theta = parseFloat(tok);
+          if (Number.isNaN(theta)) throw new Error(`${gate}: bad angle "${parts[2]}"`);
+          gates.push({ gate, target, theta });
         }
         n = Math.max(n, target + 1);
       } else if (SINGLE.has(gate)) {
@@ -102,7 +102,7 @@ export function opsFor(program: Program, theta: number): Op[] {
   return program.gates.map((g) => {
     if (g.gate === "CNOT") return { gate: "CNOT", target: g.target, control: g.control };
     if (ROT.has(g.gate))
-      return { gate: g.gate, target: g.target, theta: g.bound ? theta : g.angle ?? 0 };
+      return { gate: g.gate, target: g.target, theta: g.bound ? theta : g.theta ?? 0 };
     return { gate: g.gate, target: g.target };
   });
 }

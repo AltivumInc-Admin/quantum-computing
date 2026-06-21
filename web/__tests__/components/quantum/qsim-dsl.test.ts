@@ -26,7 +26,7 @@ describe("parseProgram (shared qsim gate DSL)", () => {
   it("parses a literal rotation angle", () => {
     const p = parseProgram("RX 0 1.5708");
     expect(p.gates[0]).toMatchObject({ gate: "RX", target: 0 });
-    expect(p.gates[0].angle).toBeCloseTo(1.5708, 4);
+    expect(p.gates[0].theta).toBeCloseTo(1.5708, 4);
   });
 
   it("ignores blank lines and # comments", () => {

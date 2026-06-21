@@ -17,8 +17,8 @@ export function gateLabel(g: ParsedGate): string {
     ? `CNOT ${g.control}→${g.target}`
     : g.bound
       ? `${g.gate}(θ) q${g.target}`
-      : g.angle !== undefined
-        ? `${g.gate}(${g.angle.toFixed(2)}) q${g.target}`
+      : g.theta !== undefined
+        ? `${g.gate}(${g.theta.toFixed(2)}) q${g.target}`
         : `${g.gate} q${g.target}`;
 }
 
