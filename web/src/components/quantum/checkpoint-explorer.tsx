@@ -118,7 +118,9 @@ function TimelineRow({
   reduced: boolean;
 }) {
   const cellW = TIMELINE_W / iterations;
-  const failX = failAt * cellW;
+  // Clamp so a failure at the final iteration sits on the right edge instead of
+  // clipping to half width (the marker is centered on failX).
+  const failX = Math.min(failAt * cellW, TIMELINE_W - 1);
 
   // Checkpoint multiples of `every` up to iterations (and the implicit 0 start).
   const checkpoints: number[] = [];

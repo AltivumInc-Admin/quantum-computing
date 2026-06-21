@@ -104,6 +104,7 @@ export function MetricsExplorer({ source }: { source: string }) {
 
   const headingId = useId();
   const [shown, setShown] = useState(0); // number of iterations revealed
+  const [streaming, setStreaming] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Run the REAL VQE optimization once per parsed R. history[i] is the energy at
@@ -152,6 +153,9 @@ export function MetricsExplorer({ source }: { source: string }) {
   };
 
   const onStream = () => {
+    // Ignore re-clicks while a stream is already in flight (was silently
+    // restarting the run from the first iteration).
+    if (timerRef.current !== null) return;
     stopStream();
     if (reducedMotion) {
       setShown(total);
@@ -159,6 +163,7 @@ export function MetricsExplorer({ source }: { source: string }) {
     }
     // Reveal points iteration-by-iteration. Start from the first sample so the
     // line begins drawing immediately, then schedule the rest.
+    setStreaming(true);
     setShown(1);
     let i = 1;
     const tick = () => {
@@ -168,6 +173,7 @@ export function MetricsExplorer({ source }: { source: string }) {
         timerRef.current = setTimeout(tick, STREAM_MS);
       } else {
         timerRef.current = null;
+        setStreaming(false);
       }
     };
     timerRef.current = setTimeout(tick, STREAM_MS);
@@ -175,6 +181,7 @@ export function MetricsExplorer({ source }: { source: string }) {
 
   const onReset = () => {
     stopStream();
+    setStreaming(false);
     setShown(0);
   };
 
@@ -200,6 +207,15 @@ export function MetricsExplorer({ source }: { source: string }) {
   // sits on the edge rather than driving the data scale.
   const thresholdY = Math.max(PLOT.padT, Math.min(PLOT.h - PLOT.padB, sy(threshold)));
   const belowThreshold = visible.length > 0 && lastEnergy <= threshold;
+
+  // One concise live-region update on stream start / finish (not per tick): the
+  // text only changes at those two transitions, so a polite region announces
+  // twice rather than ~40 times during the stream.
+  const streamStatus = streaming
+    ? `Streaming ${total} iterations.`
+    : shown >= total && shown > 0
+      ? `Converged to ${lastEnergy.toFixed(4)} hartree at iteration ${lastIndex}; stopping_condition ${belowThreshold ? "met" : "not met"}.`
+      : "";
 
   const plotAria =
     `Live VQE convergence metric. Iteration from 0 to ${total - 1} on the x axis, ` +
@@ -340,6 +356,9 @@ export function MetricsExplorer({ source }: { source: string }) {
 
         {/* Readout + controls */}
         <div className="min-w-0 sm:w-56 sm:shrink-0">
+          <p className="sr-only" role="status" aria-live="polite">
+            {streamStatus}
+          </p>
           <dl className="space-y-1.5 font-mono text-xs tabular-nums">
             <div className="flex items-center justify-between gap-2">
               <dt className="text-gray-500 dark:text-gray-400">iteration</dt>
@@ -365,6 +384,7 @@ export function MetricsExplorer({ source }: { source: string }) {
             <button
               type="button"
               onClick={onStream}
+              aria-busy={streaming}
               className="rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-(--shadow-resting) hover:bg-accent-dark focus-ring transition-colors motion-reduce:transition-none"
             >
               Stream

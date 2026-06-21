@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useDeferredValue, useId, useMemo, useState } from "react";
 import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import {
   accuracy,
@@ -111,6 +111,9 @@ export function KernelExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseSource(source), [source]);
 
   const [scale, setScale] = useState(1.0);
+  // Defer the heavy 36x36 grid recompute so a scale drag stays responsive; the
+  // slider/label use the immediate value and the boundary dims while it catches up.
+  const deferredScale = useDeferredValue(scale);
   const [map, setMap] = useState<FeatureMap>(parsed.ok ? parsed.map : "iqp");
   const scaleId = useId();
   const mapId = useId();
@@ -124,10 +127,10 @@ export function KernelExplorer({ source }: { source: string }) {
   // Decision boundary grid + accuracy readouts.
   const result = useMemo(() => {
     if (!train) return null;
-    const bias = kernelBias(train, map, scale);
+    const bias = kernelBias(train, map, deferredScale);
     // Build each training point's feature state once and reuse it across all
     // grid cells (was rebuilt per cell — ~GRID*GRID*train redundant constructions).
-    const trainStates = train.map((p) => featureState(p.x, map, scale));
+    const trainStates = train.map((p) => featureState(p.x, map, deferredScale));
 
     // 36x36 grid coloured by sign(kernelScore).
     const cells: number[][] = [];
@@ -136,18 +139,18 @@ export function KernelExplorer({ source }: { source: string }) {
       const cy = SPAN - (2 * SPAN * (gy + 0.5)) / GRID; // top row = +SPAN
       for (let gx = 0; gx < GRID; gx++) {
         const cx = -SPAN + (2 * SPAN * (gx + 0.5)) / GRID;
-        row.push(kernelScoreS([cx, cy], trainStates, train, map, scale, bias) >= 0 ? 1 : -1);
+        row.push(kernelScoreS([cx, cy], trainStates, train, map, deferredScale, bias) >= 0 ? 1 : -1);
       }
       cells.push(row);
     }
 
     // Quantum-kernel accuracy on the training set.
-    const preds = train.map((p) => (kernelScoreS(p.x, trainStates, train, map, scale, bias) >= 0 ? 1 : -1));
+    const preds = train.map((p) => (kernelScoreS(p.x, trainStates, train, map, deferredScale, bias) >= 0 ? 1 : -1));
     const acc = accuracy(preds, train.map((p) => p.y));
     const baseline = nearestMeanAccuracy(train);
 
     return { cells, acc, baseline };
-  }, [train, map, scale]);
+  }, [train, map, deferredScale]);
 
   if (!parsed.ok || !train || !result) {
     return <ErrorCard message={parsed.ok ? "kernel error" : parsed.error} />;
@@ -181,7 +184,8 @@ export function KernelExplorer({ source }: { source: string }) {
             height={SVG}
             role="img"
             aria-label={`Quantum-kernel decision boundary over the plane for the ${parsed.dataset} dataset with the ${map} feature map at scale ${scale.toFixed(2)}.`}
-            className="w-full max-w-[240px] mx-auto block rounded-control"
+            aria-busy={scale !== deferredScale}
+            className={`w-full max-w-[240px] mx-auto block rounded-control transition-opacity ${scale !== deferredScale ? "opacity-60" : ""}`}
           >
             {/* boundary regions */}
             {cells.map((row, gy) =>
