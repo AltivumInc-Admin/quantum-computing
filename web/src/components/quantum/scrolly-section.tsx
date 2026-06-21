@@ -103,7 +103,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
         <div className="shrink-0">
           <BlochSphere3D state={state} />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1" role="status" aria-live="polite">
           <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light mb-2">
             Beat {active + 1} / {beats.length}
           </span>

@@ -70,8 +70,9 @@ export function ShotsSampler({ source }: { source: string }) {
             key={n}
             onClick={() => setShots(n)}
             aria-pressed={shots === n}
+            aria-label={`${n} shots`}
             className={[
-              "rounded px-2.5 py-1 text-xs font-mono font-medium transition-colors",
+              "rounded px-2.5 py-1 text-xs font-mono font-medium transition-colors interactive focus-ring",
               shots === n
                 ? "bg-accent text-white"
                 : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
@@ -82,11 +83,18 @@ export function ShotsSampler({ source }: { source: string }) {
         ))}
         <button
           onClick={handleRun}
-          className="ml-2 rounded px-3 py-1 text-xs font-semibold bg-accent text-white hover:bg-accent-dark transition-colors"
+          className="ml-2 rounded px-3 py-1 text-xs font-semibold bg-accent text-white hover:bg-accent-dark transition-colors interactive focus-ring"
         >
           Run
         </button>
       </div>
+
+      {/* Empty-state hint before the first Run */}
+      {total === 0 && (
+        <p className="border-b border-gray-100 dark:border-gray-800 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+          Press Run to sample {shots.toLocaleString()} shots and compare to the exact probability.
+        </p>
+      )}
 
       {/* Histogram */}
       <div className="px-4 py-4 space-y-2">
@@ -96,7 +104,15 @@ export function ShotsSampler({ source }: { source: string }) {
           const empiricalPct = (empirical * 100).toFixed(1);
 
           return (
-            <div key={idx} className="flex items-center gap-2">
+            <div
+              key={idx}
+              className="flex items-center gap-2"
+              aria-label={
+                total > 0
+                  ? `Basis ${basisLabel(idx, program.n)}: empirical ${empiricalPct}%, exact ${exactPct}%`
+                  : `Basis ${basisLabel(idx, program.n)}: exact ${exactPct}%`
+              }
+            >
               {/* Basis label */}
               <span className="w-10 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
                 |{basisLabel(idx, program.n)}&#10217;

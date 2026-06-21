@@ -45,8 +45,9 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
         )}
       </div>
 
-      {/* Tally table */}
-      <div role="status" className="space-y-1.5">
+      {/* Tally table (static visual; per-measure announcement is a single
+          component-level live region in CorrelationDemo) */}
+      <div className="space-y-1.5">
         {LABELS.map((lbl, idx) => {
           const count = tally[idx] ?? 0;
           const pct = total > 0 ? (count / total) * 100 : 0;
@@ -128,6 +129,13 @@ export function CorrelationDemo({ source }: { source: string }) {
 
   return (
     <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
+      {/* One concise screen-reader announcement per Measure (replaces the two
+          competing tally-table live regions that read 8 rows on every click) */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {measurements > 0 && entangledLast !== null && productLast !== null
+          ? `Entangled measured ${basisLabel(entangledLast, 2)}, product measured ${basisLabel(productLast, 2)}; ${measurements} measurement${measurements === 1 ? "" : "s"} total.`
+          : ""}
+      </p>
       {/* Header */}
       <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
