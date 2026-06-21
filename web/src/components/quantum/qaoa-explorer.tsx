@@ -2,11 +2,10 @@
 
 import { useId, useMemo, useState } from "react";
 import { ErrorCard as SharedErrorCard } from "./widget-ui";
-import { basisLabel } from "./math";
 import {
   cutValue,
   qaoaDistribution,
-  qaoaExpectedCut,
+  qaoaExpectedFromDistribution,
   qaoaLandscape,
   verticesIn,
   type Edge,
@@ -20,6 +19,17 @@ import {
  * readout, a 24x24 expected-cut heatmap with the current (gamma, beta) point and
  * the grid-max cell marked, and the bitstring distribution. No backend, no SSR.
  */
+
+/**
+ * Distribution-bar label in VERTEX order (v0 on the left) so the bits line up
+ * with the numbered graph. cutValue maps vertex i to bit i (LSB) — the opposite
+ * of basisLabel's MSB-first ordering — so we read the bits low -> high here.
+ */
+function vertexLabel(idx: number, n: number): string {
+  let s = "";
+  for (let v = 0; v < n; v++) s += (idx >> v) & 1;
+  return s;
+}
 
 const RES = 24;
 const SVG = { w: 220, h: 160, r: 12 };
@@ -218,21 +228,30 @@ export function QaoaExplorer({ source }: { source: string }) {
     return { value: best, gi, bi, lo };
   }, [landscape]);
 
+  // Max cut depends only on the graph, so memoize it on the parse result rather
+  // than re-scanning all 2^n assignments on every gamma/beta tick.
+  const maxCut = useMemo(() => {
+    if (!parsed.ok) return 0;
+    let m = 0;
+    for (let x = 0; x < 1 << parsed.n; x++) m = Math.max(m, cutValue(x, parsed.edges));
+    return m;
+  }, [parsed]);
+
   const live = useMemo(() => {
     if (!parsed.ok) return null;
     const { n, edges } = parsed;
-    const expected = qaoaExpectedCut(n, edges, gamma, beta);
+    // Simulate once per tick; derive the expected cut from the distribution
+    // instead of running the state vector a second time.
     const distribution = qaoaDistribution(n, edges, gamma, beta);
-    let maxCut = 0;
-    for (let x = 0; x < 1 << n; x++) maxCut = Math.max(maxCut, cutValue(x, edges));
-    return { n, edges, expected, distribution, maxCut };
+    const expected = qaoaExpectedFromDistribution(distribution, edges);
+    return { n, edges, expected, distribution };
   }, [parsed, gamma, beta]);
 
   if (!parsed.ok || !landscape || !gridMax || !live) {
     return <ErrorCard message={parsed.ok ? "qaoa error" : parsed.error} />;
   }
 
-  const { n, edges, expected, distribution, maxCut } = live;
+  const { n, edges, expected, distribution } = live;
 
   // Current (gamma, beta) cell on the heatmap grid.
   const curGi = Math.round((gamma / Math.PI) * (RES - 1));
@@ -363,7 +382,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             {distribution.map((p, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <span className="w-12 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                  |{basisLabel(idx, n)}&#10217;
+                  |{vertexLabel(idx, n)}&#10217;
                 </span>
                 <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                   <span
@@ -377,6 +396,9 @@ export function QaoaExplorer({ source }: { source: string }) {
               </div>
             ))}
           </div>
+          <p className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+            bit order: vertex 0 on the left (matches the graph)
+          </p>
         </div>
       </div>
     </div>
