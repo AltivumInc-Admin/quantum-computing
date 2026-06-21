@@ -144,9 +144,10 @@ interface GraphProps {
   gateA: number;
   gateB: number;
   path: number[];
+  swaps: number;
 }
 
-function TopologyGraph({ topo, n, gateA, gateB, path }: GraphProps) {
+function TopologyGraph({ topo, n, gateA, gateB, path, swaps }: GraphProps) {
   const positions = useMemo(
     () => nodePositions(topo, n, SVG_W, SVG_H),
     [topo, n]
@@ -179,14 +180,11 @@ function TopologyGraph({ topo, n, gateA, gateB, path }: GraphProps) {
     return out;
   }, [positions, adj, pathEdgeSet, n]);
 
-  const swaps = Math.max(0, path.length - 2);
   const ariaLabel = `${topo} topology with ${n} qubits. Gate targets q${gateA} and q${gateB}. Shortest path requires ${swaps} SWAP${swaps !== 1 ? "s" : ""}.`;
 
   return (
     <svg
       viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-      width={SVG_W}
-      height={SVG_H}
       role="img"
       aria-label={ariaLabel}
       className="w-full max-w-xs mx-auto block"
@@ -322,6 +320,7 @@ export function TopologyExplorer({ source }: { source: string }) {
           gateA={safeA}
           gateB={safeB}
           path={path}
+          swaps={swaps}
         />
       </div>
 
@@ -346,7 +345,7 @@ export function TopologyExplorer({ source }: { source: string }) {
       {/* Qubit selectors */}
       <div className="flex items-center gap-3 px-4 pb-4 pt-2">
         <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-          q1
+          Qubit A
           <select
             value={safeA}
             onChange={(e) => setQaOverride(Number(e.target.value))}
@@ -362,7 +361,7 @@ export function TopologyExplorer({ source }: { source: string }) {
           </select>
         </label>
         <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-          q2
+          Qubit B
           <select
             value={safeB}
             onChange={(e) => setQbOverride(Number(e.target.value))}
