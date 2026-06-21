@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { blochVector, type Complex } from "./math";
@@ -39,12 +39,37 @@ function circlePoints(plane: "equator" | "xz" | "yz", segments = 64): [number, n
   return pts;
 }
 
+// Static ring/axis geometry never depends on state — build once at module load
+// instead of reallocating on every Scene render (slider/scrub/scroll ticks).
+const EQUATOR_PTS = circlePoints("equator");
+const XZ_PTS = circlePoints("xz");
+const YZ_PTS = circlePoints("yz");
+const AXIS_Y: [number, number, number][] = [
+  [0, -1.15, 0],
+  [0, 1.15, 0],
+];
+const AXIS_X: [number, number, number][] = [
+  [-1.15, 0, 0],
+  [1.15, 0, 0],
+];
+const AXIS_Z: [number, number, number][] = [
+  [0, 0, -1.15],
+  [0, 0, 1.15],
+];
+
 function StateVector({ target, color }: { target: THREE.Vector3; color: string }) {
   const shaft = useRef<THREE.Group>(null);
   const tip = useRef<THREE.Mesh>(null);
   const current = useRef(new THREE.Vector3(0, 1, 0));
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const dir = useMemo(() => new THREE.Vector3(), []);
+  const invalidate = useThree((s) => s.invalidate);
+
+  // In demand mode, kick a render whenever the target moves (slider/scrub/scroll);
+  // the frame loop below then self-sustains until the lerp settles.
+  useEffect(() => {
+    invalidate();
+  }, [target, invalidate]);
 
   useFrame(() => {
     current.current.lerp(target, 0.18);
@@ -55,6 +80,8 @@ function StateVector({ target, color }: { target: THREE.Vector3; color: string }
       shaft.current.scale.set(1, len, 1);
     }
     if (tip.current) tip.current.position.copy(current.current);
+    // Request the next frame only while still converging; idle once settled.
+    if (current.current.distanceToSquared(target) > 1e-6) invalidate();
   });
 
   return (
@@ -91,6 +118,7 @@ function Label({
 
 function Scene({ state, accent }: { state: Complex[]; accent: string }) {
   const target = useMemo(() => blochToThree(state), [state]);
+  const invalidate = useThree((s) => s.invalidate);
   return (
     <>
       {/* faint solid sphere for depth */}
@@ -99,13 +127,13 @@ function Scene({ state, accent }: { state: Complex[]; accent: string }) {
         <meshBasicMaterial color={RING} transparent opacity={0.05} />
       </mesh>
       {/* great circles */}
-      <Line points={circlePoints("equator")} color={RING} lineWidth={1} transparent opacity={0.4} />
-      <Line points={circlePoints("xz")} color={RING} lineWidth={1} transparent opacity={0.25} />
-      <Line points={circlePoints("yz")} color={RING} lineWidth={1} transparent opacity={0.25} />
+      <Line points={EQUATOR_PTS} color={RING} lineWidth={1} transparent opacity={0.4} />
+      <Line points={XZ_PTS} color={RING} lineWidth={1} transparent opacity={0.25} />
+      <Line points={YZ_PTS} color={RING} lineWidth={1} transparent opacity={0.25} />
       {/* axes */}
-      <Line points={[[0, -1.15, 0], [0, 1.15, 0]]} color={RING} lineWidth={1} transparent opacity={0.5} />
-      <Line points={[[-1.15, 0, 0], [1.15, 0, 0]]} color={RING} lineWidth={1} transparent opacity={0.5} />
-      <Line points={[[0, 0, -1.15], [0, 0, 1.15]]} color={RING} lineWidth={1} transparent opacity={0.5} />
+      <Line points={AXIS_Y} color={RING} lineWidth={1} transparent opacity={0.5} />
+      <Line points={AXIS_X} color={RING} lineWidth={1} transparent opacity={0.5} />
+      <Line points={AXIS_Z} color={RING} lineWidth={1} transparent opacity={0.5} />
 
       <Label position={[0, 1.3, 0]}>|0⟩</Label>
       <Label position={[0, -1.3, 0]}>|1⟩</Label>
@@ -115,7 +143,7 @@ function Scene({ state, accent }: { state: Complex[]; accent: string }) {
       <Label position={[0, 0, -1.32]}>|−i⟩</Label>
 
       <StateVector target={target} color={accent} />
-      <OrbitControls enablePan={false} enableZoom={false} rotateSpeed={0.6} />
+      <OrbitControls enablePan={false} enableZoom={false} rotateSpeed={0.6} onChange={() => invalidate()} />
     </>
   );
 }
@@ -145,7 +173,7 @@ export default function BlochSphere3D({ state }: { state: Complex[] }) {
       className="h-[180px] w-[180px] shrink-0 cursor-grab active:cursor-grabbing"
       aria-hidden="true"
     >
-      <Canvas camera={{ position: [1.6, 1.2, 2.2], fov: 45 }} dpr={[1, 2]}>
+      <Canvas frameloop="demand" camera={{ position: [1.6, 1.2, 2.2], fov: 45 }} dpr={[1, 2]}>
         <Scene state={state} accent={accent} />
       </Canvas>
     </div>
