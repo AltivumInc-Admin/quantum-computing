@@ -1,8 +1,9 @@
 import { type Complex } from "./math";
 import { angleState, iqpState, fidelity } from "./encoding";
+import { mulberry32, gauss, type Point } from "./rng";
 
 export type FeatureMap = "angle" | "iqp";
-export interface Point { x: [number, number]; y: -1 | 1; }
+export type { Point };
 
 export function featureState(x: [number, number], map: FeatureMap, scale: number): Complex[] {
   const a = x[0] * scale, b = x[1] * scale;
@@ -37,19 +38,6 @@ export function accuracy(preds: number[], labels: number[]): number {
   let c = 0;
   for (let i = 0; i < preds.length; i++) if (preds[i] === labels[i]) c++;
   return c / preds.length;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function gauss(rng: () => number): number {
-  return Math.sqrt(-2 * Math.log(rng() + 1e-12)) * Math.cos(2 * Math.PI * rng());
 }
 
 export type DatasetName = "circles" | "xor";

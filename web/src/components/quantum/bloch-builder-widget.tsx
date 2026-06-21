@@ -28,8 +28,6 @@ export function BlochBuilder() {
   const { p0, p1 } = useMemo(() => probsFromAngles(theta), [theta]);
   const show3D = !reduced && webgl;
 
-  const gateSeq = `RY ${theta.toFixed(2)}  RZ ${phi.toFixed(2)}`;
-
   const probs = [p0, p1];
 
   return (
@@ -40,7 +38,7 @@ export function BlochBuilder() {
           Build a state
         </span>
         <div className="flex flex-wrap gap-1">
-          <GateChip label={gateSeq} />
+          <GateChip label="|ψ⟩ = cos(θ/2)|0⟩ + e^{iφ}sin(θ/2)|1⟩" />
         </div>
       </div>
 

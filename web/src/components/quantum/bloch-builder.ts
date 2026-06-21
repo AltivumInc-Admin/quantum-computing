@@ -1,14 +1,9 @@
-import type { Complex } from "./math";
-
-/** Canonical single-qubit state for Bloch angles: cos(θ/2)|0> + e^{iφ} sin(θ/2)|1> (no global phase). */
-export function stateFromAngles(theta: number, phi: number): Complex[] {
-  const c = Math.cos(theta / 2);
-  const s = Math.sin(theta / 2);
-  return [
-    [c, 0],
-    [s * Math.cos(phi), s * Math.sin(phi)],
-  ];
-}
+/**
+ * Helpers for the qbloch "Build a state" widget. The state itself is the
+ * canonical single-qubit parameterization cos(θ/2)|0> + e^{iφ}sin(θ/2)|1>,
+ * single-sourced from math.ts (and shared with the qscrolly explorable).
+ */
+export { singleQubitState as stateFromAngles } from "./math";
 
 export function probsFromAngles(theta: number): { p0: number; p1: number } {
   const c = Math.cos(theta / 2);

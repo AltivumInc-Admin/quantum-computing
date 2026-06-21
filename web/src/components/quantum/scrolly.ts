@@ -10,7 +10,7 @@
  * the server (for the static fallback) and the client.
  */
 
-import { zeroState, ry, rz, applyGate1, type Complex } from "./math";
+import { singleQubitState, type Complex } from "./math";
 
 export interface Beat {
   /** Prose shown beside the sphere while this beat is active. */
@@ -57,12 +57,9 @@ export function parseScrolly(source: string): ParsedScrolly {
   }
 }
 
-/** The single-qubit state for a (theta, phi): RZ(phi) RY(theta) |0>. */
+/** The single-qubit state for a (theta, phi) — canonical, shared with qbloch. */
 export function stateForAngles(theta: number, phi: number = 0): Complex[] {
-  let s = zeroState(1);
-  s = applyGate1(s, ry(theta), 0, 1);
-  if (phi !== 0) s = applyGate1(s, rz(phi), 0, 1);
-  return s;
+  return singleQubitState(theta, phi);
 }
 
 export function stateForBeat(beat: Beat): Complex[] {
