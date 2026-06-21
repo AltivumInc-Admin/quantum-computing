@@ -34,6 +34,14 @@ export function kernelScore(x: [number, number], train: Point[], map: FeatureMap
   return s;
 }
 
+/** Like kernelScore but reuses precomputed training feature states (one per train point). */
+export function kernelScoreS(x: [number, number], trainStates: Complex[][], train: Point[], map: FeatureMap, scale: number, bias: number): number {
+  const sx = featureState(x, map, scale);
+  let s = bias;
+  for (let i = 0; i < train.length; i++) s += train[i].y * fidelity(sx, trainStates[i]);
+  return s;
+}
+
 export function accuracy(preds: number[], labels: number[]): number {
   let c = 0;
   for (let i = 0; i < preds.length; i++) if (preds[i] === labels[i]) c++;

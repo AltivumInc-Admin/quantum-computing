@@ -17,6 +17,7 @@ function identity(d: number): CMatrix {
   for (let i = 0; i < d; i++) m[i][i] = [1, 0];
   return m;
 }
+const I2_MAT = identity(2); // single-qubit identity, read-only downstream (kron/matMul never mutate inputs)
 function kron(a: CMatrix, b: CMatrix): CMatrix {
   const ar = a.length, ac = a[0].length, br = b.length, bc = b[0].length;
   const res: CMatrix = Array.from({ length: ar * br }, () => Array.from({ length: ac * bc }, () => zero as Complex));
@@ -52,7 +53,7 @@ function gate2ToMatrix(g: Gate2): CMatrix {
 }
 function expandSingle(g: Gate2, qubit: number, n: number): CMatrix {
   let res: CMatrix = [[[1, 0]]];
-  for (let q = 0; q < n; q++) res = kron(res, q === qubit ? gate2ToMatrix(g) : identity(2));
+  for (let q = 0; q < n; q++) res = kron(res, q === qubit ? gate2ToMatrix(g) : I2_MAT);
   return res;
 }
 function expandCNOT(control: number, target: number, n: number): CMatrix {
@@ -109,11 +110,11 @@ export function noisyRho(ops: Op[], n: number, channel: ChannelName, p: number):
   const d = 1 << n;
   let rho = zeros(d);
   rho[0][0] = [1, 0];
+  const kraus = p > 0 ? krausFor(channel, p) : null; // loop-invariant for fixed (channel, p)
   for (const op of ops) {
     const { U, qubits } = opMatrix(op, n);
     rho = conjugate(U, rho);
-    if (p > 0) {
-      const kraus = krausFor(channel, p);
+    if (kraus) {
       for (const q of qubits) rho = applyChannel1(rho, kraus, q, n);
     }
   }

@@ -1,4 +1,4 @@
-import { type Complex, cMul, cAbs2, applyGate1, rx } from "./math";
+import { type Complex, cMul, cAbs2, applyGate1InPlace, rx } from "./math";
 
 export type Edge = [number, number];
 
@@ -35,7 +35,7 @@ function stateFromCuts(n: number, cuts: number[], gamma: number, beta: number): 
     const ph = -gamma * cuts[x];
     state[x] = cMul([amp0, 0], [Math.cos(ph), Math.sin(ph)]);
   }
-  for (let q = 0; q < n; q++) state = applyGate1(state, rx(2 * beta), q, n);
+  for (let q = 0; q < n; q++) state = applyGate1InPlace(state, rx(2 * beta), q, n);
   return state;
 }
 

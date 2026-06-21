@@ -1,4 +1,4 @@
-import { type Complex, H, applyGate1, cAbs2 } from "./math";
+import { type Complex, H, applyGate1InPlace, cAbs2 } from "./math";
 
 export type Oracle = (x: number) => 0 | 1;
 
@@ -21,9 +21,9 @@ export function djProbabilities(n: number, f: Oracle): number[] {
   const N = 1 << n;
   let state: Complex[] = Array.from({ length: N }, () => [0, 0] as Complex);
   state[0] = [1, 0];
-  for (let q = 0; q < n; q++) state = applyGate1(state, H, q, n);
+  for (let q = 0; q < n; q++) state = applyGate1InPlace(state, H, q, n);
   for (let x = 0; x < N; x++) if (f(x) === 1) state[x] = [-state[x][0], -state[x][1]];
-  for (let q = 0; q < n; q++) state = applyGate1(state, H, q, n);
+  for (let q = 0; q < n; q++) state = applyGate1InPlace(state, H, q, n);
   return state.map(cAbs2);
 }
 

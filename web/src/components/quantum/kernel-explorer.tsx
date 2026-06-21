@@ -4,8 +4,9 @@ import { useId, useMemo, useState } from "react";
 import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import {
   accuracy,
+  featureState,
   kernelBias,
-  kernelScore,
+  kernelScoreS,
   makeDataset,
   type DatasetName,
   type FeatureMap,
@@ -124,6 +125,9 @@ export function KernelExplorer({ source }: { source: string }) {
   const result = useMemo(() => {
     if (!train) return null;
     const bias = kernelBias(train, map, scale);
+    // Build each training point's feature state once and reuse it across all
+    // grid cells (was rebuilt per cell — ~GRID*GRID*train redundant constructions).
+    const trainStates = train.map((p) => featureState(p.x, map, scale));
 
     // 36x36 grid coloured by sign(kernelScore).
     const cells: number[][] = [];
@@ -132,13 +136,13 @@ export function KernelExplorer({ source }: { source: string }) {
       const cy = SPAN - (2 * SPAN * (gy + 0.5)) / GRID; // top row = +SPAN
       for (let gx = 0; gx < GRID; gx++) {
         const cx = -SPAN + (2 * SPAN * (gx + 0.5)) / GRID;
-        row.push(kernelScore([cx, cy], train, map, scale, bias) >= 0 ? 1 : -1);
+        row.push(kernelScoreS([cx, cy], trainStates, train, map, scale, bias) >= 0 ? 1 : -1);
       }
       cells.push(row);
     }
 
     // Quantum-kernel accuracy on the training set.
-    const preds = train.map((p) => (kernelScore(p.x, train, map, scale, bias) >= 0 ? 1 : -1));
+    const preds = train.map((p) => (kernelScoreS(p.x, trainStates, train, map, scale, bias) >= 0 ? 1 : -1));
     const acc = accuracy(preds, train.map((p) => p.y));
     const baseline = nearestMeanAccuracy(train);
 

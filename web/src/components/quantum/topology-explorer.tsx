@@ -165,17 +165,19 @@ function TopologyGraph({ topo, n, gateA, gateB, path }: GraphProps) {
     return s;
   }, [path]);
 
-  const edges: { x1: number; y1: number; x2: number; y2: number; highlighted: boolean }[] = [];
-  for (let u = 0; u < n; u++) {
-    for (const v of adj[u]) {
-      if (v > u) {
-        const [x1, y1] = positions[u];
-        const [x2, y2] = positions[v];
-        const key = `${u}-${v}`;
-        edges.push({ x1, y1, x2, y2, highlighted: pathEdgeSet.has(key) });
+  const edges = useMemo(() => {
+    const out: { x1: number; y1: number; x2: number; y2: number; highlighted: boolean }[] = [];
+    for (let u = 0; u < n; u++) {
+      for (const v of adj[u]) {
+        if (v > u) {
+          const [x1, y1] = positions[u];
+          const [x2, y2] = positions[v];
+          out.push({ x1, y1, x2, y2, highlighted: pathEdgeSet.has(`${u}-${v}`) });
+        }
       }
     }
-  }
+    return out;
+  }, [positions, adj, pathEdgeSet, n]);
 
   const swaps = Math.max(0, path.length - 2);
   const ariaLabel = `${topo} topology with ${n} qubits. Gate targets q${gateA} and q${gateB}. Shortest path requires ${swaps} SWAP${swaps !== 1 ? "s" : ""}.`;
