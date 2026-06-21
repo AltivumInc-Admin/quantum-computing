@@ -1,4 +1,4 @@
-import { estimateCost, PRICING } from "@/components/quantum/cost";
+import { estimateCost, costLabel, PRICING } from "@/components/quantum/cost";
 
 describe("estimateCost", () => {
   it("IonQ 1000 shots, 1 task = $10.30", () => {
@@ -18,5 +18,19 @@ describe("estimateCost", () => {
   });
   it("throws on unknown provider", () => {
     expect(() => estimateCost("Nope" as keyof typeof PRICING, 1, 1, 1)).toThrow();
+  });
+});
+
+describe("costLabel", () => {
+  it("formats per-shot providers exactly as the device table did", () => {
+    expect(costLabel("IonQ")).toBe("$0.30/task + $0.01/shot");
+    expect(costLabel("IQM")).toBe("$0.30/task + $0.00145/shot");
+  });
+  it("formats per-minute simulators", () => {
+    expect(costLabel("SV1")).toBe("$0.075/min");
+    expect(costLabel("TN1")).toBe("$0.275/min");
+  });
+  it("labels the free local simulator", () => {
+    expect(costLabel("LocalSimulator")).toBe("Free");
   });
 });

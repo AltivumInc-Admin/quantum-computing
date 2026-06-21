@@ -1,3 +1,5 @@
+import { type Provider } from "./cost";
+
 export interface Device {
   technology: string; // "Trapped ion" | "Superconducting" | "Neutral atom" | "Simulator"
   vendor: string;
@@ -5,18 +7,19 @@ export interface Device {
   qubits: number;
   connectivity: string; // "All-to-all" | "Square lattice" | "Analog" | "—"
   gateModel: boolean;
-  cost: string;
+  provider: Provider; // PRICING key — the cost label is derived from cost.ts, not stored
+  note?: string; // optional cost-cell decoration (e.g. DM1's "noise")
 }
 
 export const DEVICES: Device[] = [
-  { technology: "Trapped ion", vendor: "IonQ", model: "Aria", qubits: 25, connectivity: "All-to-all", gateModel: true, cost: "$0.30/task + $0.01/shot" },
-  { technology: "Trapped ion", vendor: "IonQ", model: "Forte", qubits: 36, connectivity: "All-to-all", gateModel: true, cost: "$0.30/task + $0.01/shot" },
-  { technology: "Superconducting", vendor: "IQM", model: "Garnet", qubits: 20, connectivity: "Square lattice", gateModel: true, cost: "$0.30/task + $0.00145/shot" },
-  { technology: "Neutral atom", vendor: "QuEra", model: "Aquila", qubits: 256, connectivity: "Analog", gateModel: false, cost: "$0.30/task + $0.01/shot" },
-  { technology: "Simulator", vendor: "AWS", model: "SV1", qubits: 34, connectivity: "—", gateModel: true, cost: "$0.075/min" },
-  { technology: "Simulator", vendor: "AWS", model: "DM1", qubits: 17, connectivity: "—", gateModel: true, cost: "$0.075/min (noise)" },
-  { technology: "Simulator", vendor: "AWS", model: "TN1", qubits: 50, connectivity: "—", gateModel: true, cost: "$0.275/min" },
-  { technology: "Simulator", vendor: "Local", model: "Local", qubits: 25, connectivity: "—", gateModel: true, cost: "Free" },
+  { technology: "Trapped ion", vendor: "IonQ", model: "Aria", qubits: 25, connectivity: "All-to-all", gateModel: true, provider: "IonQ" },
+  { technology: "Trapped ion", vendor: "IonQ", model: "Forte", qubits: 36, connectivity: "All-to-all", gateModel: true, provider: "IonQ" },
+  { technology: "Superconducting", vendor: "IQM", model: "Garnet", qubits: 20, connectivity: "Square lattice", gateModel: true, provider: "IQM" },
+  { technology: "Neutral atom", vendor: "QuEra", model: "Aquila", qubits: 256, connectivity: "Analog", gateModel: false, provider: "QuEra" },
+  { technology: "Simulator", vendor: "AWS", model: "SV1", qubits: 34, connectivity: "—", gateModel: true, provider: "SV1" },
+  { technology: "Simulator", vendor: "AWS", model: "DM1", qubits: 17, connectivity: "—", gateModel: true, provider: "DM1", note: "noise" },
+  { technology: "Simulator", vendor: "AWS", model: "TN1", qubits: 50, connectivity: "—", gateModel: true, provider: "TN1" },
+  { technology: "Simulator", vendor: "Local", model: "Local", qubits: 25, connectivity: "—", gateModel: true, provider: "LocalSimulator" },
 ];
 
 export type SortKey = "qubits" | "model" | "technology";

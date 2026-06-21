@@ -1,7 +1,7 @@
 import {
   type Complex, type Gate2, type Op,
-  cAdd, cMul, cConj,
-  I as I2, X, Y, Z, H, S, T, rx, ry, rz,
+  cAdd, cMul, cConj, gateMatrixFor,
+  I as I2, X, Y, Z,
 } from "./math";
 
 export type CMatrix = Complex[][];
@@ -97,12 +97,10 @@ function applyChannel1(rho: CMatrix, kraus: Gate2[], qubit: number, n: number): 
 }
 
 function opMatrix(op: Op, n: number): { U: CMatrix; qubits: number[] } {
-  const g = op.gate.toUpperCase();
-  if (g === "CNOT") return { U: expandCNOT(op.control!, op.target, n), qubits: [op.control!, op.target] };
-  const gate: Gate2 =
-    g === "RX" ? rx(op.theta ?? 0) : g === "RY" ? ry(op.theta ?? 0) : g === "RZ" ? rz(op.theta ?? 0)
-    : g === "X" ? X : g === "Y" ? Y : g === "Z" ? Z : g === "H" ? H : g === "S" ? S : g === "T" ? T : I2;
-  return { U: expandSingle(gate, op.target, n), qubits: [op.target] };
+  if (op.gate.toUpperCase() === "CNOT") {
+    return { U: expandCNOT(op.control!, op.target, n), qubits: [op.control!, op.target] };
+  }
+  return { U: expandSingle(gateMatrixFor(op), op.target, n), qubits: [op.target] };
 }
 
 /** Full noisy density matrix after the Kraus-channel run (n <= 3 qubits). */

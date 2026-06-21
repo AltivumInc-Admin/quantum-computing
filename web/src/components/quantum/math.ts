@@ -61,7 +61,7 @@ export function rz(theta: number): Gate2 {
   return [[[c, -s], [0, 0]], [[0, 0], [c, s]]];
 }
 
-const NAMED_GATES: Record<string, Gate2> = { I, X, Y, Z, H, S, T };
+export const NAMED_GATES: Record<string, Gate2> = { I, X, Y, Z, H, S, T };
 
 // --- state-vector operations ----------------------------------------------
 
@@ -140,22 +140,28 @@ export interface Op {
   theta?: number;
 }
 
+/**
+ * Resolve a single-qubit op (a named gate or RX/RY/RZ) to its 2x2 matrix; throws
+ * for CNOT and unknown gates. Single-sources the gate-name -> matrix dispatch so
+ * noise.ts's opMatrix and applyOp don't each re-implement it.
+ */
+export function gateMatrixFor(op: Op): Gate2 {
+  const g = op.gate.toUpperCase();
+  if (g === "RX") return rx(op.theta ?? 0);
+  if (g === "RY") return ry(op.theta ?? 0);
+  if (g === "RZ") return rz(op.theta ?? 0);
+  const named = NAMED_GATES[g];
+  if (named) return named;
+  throw new Error(`unknown gate '${op.gate}'`);
+}
+
 /** Apply a single op to a state, returning the new state (no mutation). */
 function applyOp(state: Complex[], op: Op, n: number): Complex[] {
-  const g = op.gate.toUpperCase();
-  if (g === "CNOT") {
+  if (op.gate.toUpperCase() === "CNOT") {
     if (op.control === undefined) throw new Error("CNOT requires a control qubit");
     return applyCNOT(state, op.control, op.target, n);
   }
-  if (g === "RX" || g === "RY" || g === "RZ") {
-    const theta = op.theta ?? 0;
-    const gate = g === "RX" ? rx(theta) : g === "RY" ? ry(theta) : rz(theta);
-    return applyGate1(state, gate, op.target, n);
-  }
-  if (g in NAMED_GATES) {
-    return applyGate1(state, NAMED_GATES[g], op.target, n);
-  }
-  throw new Error(`unknown gate '${op.gate}'`);
+  return applyGate1(state, gateMatrixFor(op), op.target, n);
 }
 
 /** Run a sequence of ops on |0...0> and return the final state vector. */
