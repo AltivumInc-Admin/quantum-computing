@@ -14,7 +14,7 @@ describe("DeviceTable", () => {
   });
   it("filters by technology", () => {
     render(<DeviceTable />);
-    fireEvent.change(screen.getByLabelText(/technology/i), { target: { value: "Trapped ion" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /technology/i }), { target: { value: "Trapped ion" } });
     expect(screen.getByText("Aria")).toBeInTheDocument();
     expect(screen.queryByText("Garnet")).toBeNull();
   });

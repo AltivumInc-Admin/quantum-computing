@@ -476,7 +476,7 @@ export function JobExplorer({ source }: { source: string }) {
         </div>
 
         {/* Delta line */}
-        <p className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
+        <p role="status" aria-live="polite" className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
           priority access saves{" "}
           <span className="font-semibold text-accent dark:text-accent-light">
             {formatDuration(result.savedWall)}

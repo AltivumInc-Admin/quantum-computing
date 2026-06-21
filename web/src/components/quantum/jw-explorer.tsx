@@ -109,7 +109,7 @@ function factorClass(label: string): string {
   if (label === "Z") {
     return "border-transparent bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-gray-800 dark:text-gray-100";
   }
-  return "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40 text-gray-400 dark:text-gray-500";
+  return "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40 text-gray-500 dark:text-gray-400";
 }
 
 // ---------------------------------------------------------------------------
@@ -210,12 +210,12 @@ export function JwExplorer({ source }: { source: string }) {
                     className={`flex h-8 w-8 items-center justify-center rounded-control font-mono text-sm tabular-nums ${
                       bit === 1
                         ? "bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-gray-800 dark:text-gray-100"
-                        : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40 text-gray-400 dark:text-gray-500"
+                        : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40 text-gray-500 dark:text-gray-400"
                     }`}
                   >
                     {bit}
                   </span>
-                  <span className="font-mono text-[10px] text-gray-400 dark:text-gray-500">
+                  <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
                     q{q}
                   </span>
                 </div>
@@ -325,7 +325,7 @@ export function JwExplorer({ source }: { source: string }) {
                   >
                     {f.label}
                   </span>
-                  <span className="font-mono text-[10px] text-gray-400 dark:text-gray-500">
+                  <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
                     q{f.qubit}
                   </span>
                 </div>

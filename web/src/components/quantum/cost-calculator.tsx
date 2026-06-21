@@ -186,7 +186,7 @@ export function CostCalculator({ source }: { source: string }) {
         </div>
 
         {/* Nudge */}
-        <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
           Develop on LocalSimulator (free) first; move to a QPU only when validated.
         </p>
       </div>

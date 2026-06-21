@@ -97,7 +97,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
       </div>
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
-        <div className="min-w-0 flex-1" role="status" aria-live="polite">
+        <div className="min-w-0 flex-1" role="status" aria-live={isPlaying ? "off" : "polite"}>
           <ProbBars probs={probs} n={program.n} />
           <StateReadout state={current} n={program.n} />
         </div>
