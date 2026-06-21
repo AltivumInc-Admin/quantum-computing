@@ -2,33 +2,39 @@ import { blochVector, zeroState, clamp, type Complex } from "./math";
 
 /**
  * A compact 2D Bloch readout: the single-qubit state projected onto the
- * X (right = |+>) / Z (up = |0>) plane. Used by CircuitLab and as the
- * reduced-motion / no-WebGL fallback for the 3D Bloch sphere.
+ * X (right = |+>) / Z (up = |0>) plane. Used by CircuitLab, the VQE explorer,
+ * and as the reduced-motion / no-WebGL fallback for the 3D Bloch sphere.
  *
  * The out-of-plane Y component (|i> = S|+>, |-i>) is encoded as marker depth —
  * the tip grows + brightens toward the viewer (y > 0) and shrinks + dims away
  * (y < 0) — so equatorial-phase states no longer collapse onto the origin and
  * render identically. Accepts either a pure state vector or a precomputed Bloch
  * vector (the latter for mixed reduced states, whose tip sits inside the sphere).
+ *
+ * `size` (default 132) scales the whole disc; all geometry derives from the
+ * 132px reference design, so size={132} is unchanged for existing callers.
  */
 export function BlochDial({
   state,
   vector,
+  size = 132,
 }: {
   state?: Complex[];
   vector?: { x: number; y: number; z: number };
+  size?: number;
 }) {
   const { x, y, z } = vector ?? blochVector(state ?? zeroState(1));
-  const size = 132;
+  const k = size / 132;
   const c = size / 2;
-  const r = 52;
+  const r = 52 * k;
   const px = c + r * x;
   const py = c - r * z;
   // Depth cue for the discarded Y axis: radius/opacity scale with y so |i> (y=+1)
   // and |-i> (y=-1) are visibly distinct from each other and from a null/origin tip.
   const yc = clamp(y, -1, 1);
-  const markerR = 4 * (1 + 0.45 * yc);
+  const markerR = 4 * k * (1 + 0.45 * yc);
   const markerOpacity = 0.55 + 0.45 * ((yc + 1) / 2);
+  const fs = 9 * k;
   const axis = "currentColor";
   return (
     <svg
@@ -45,11 +51,11 @@ export function BlochDial({
       {/* state vector */}
       <line x1={c} y1={c} x2={px} y2={py} stroke={axis} strokeWidth={2} strokeLinecap="round" />
       <circle cx={px} cy={py} r={markerR} fill={axis} opacity={markerOpacity} />
-      <circle cx={c} cy={c} r={2.5} className="fill-gray-400 dark:fill-gray-500" />
-      <text x={c} y={c - r - 4} textAnchor="middle" className="fill-gray-400 text-[9px] font-mono">|0⟩</text>
-      <text x={c} y={c + r + 11} textAnchor="middle" className="fill-gray-400 text-[9px] font-mono">|1⟩</text>
-      <text x={c + r + 2} y={c + 3} textAnchor="start" className="fill-gray-400 text-[9px] font-mono">|+⟩</text>
-      <text x={c - r - 2} y={c + 3} textAnchor="end" className="fill-gray-400 text-[9px] font-mono">|−⟩</text>
+      <circle cx={c} cy={c} r={2.5 * k} className="fill-gray-400 dark:fill-gray-500" />
+      <text x={c} y={c - r - 4 * k} textAnchor="middle" fontSize={fs} className="fill-gray-400 font-mono">|0⟩</text>
+      <text x={c} y={c + r + 11 * k} textAnchor="middle" fontSize={fs} className="fill-gray-400 font-mono">|1⟩</text>
+      <text x={c + r + 2 * k} y={c + 3 * k} textAnchor="start" fontSize={fs} className="fill-gray-400 font-mono">|+⟩</text>
+      <text x={c - r - 2 * k} y={c + 3 * k} textAnchor="end" fontSize={fs} className="fill-gray-400 font-mono">|−⟩</text>
     </svg>
   );
 }
