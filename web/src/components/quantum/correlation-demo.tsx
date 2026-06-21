@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { opsFor } from "./qsim-dsl";
 import { parseCorrelation, sampleOutcome } from "./correlation";
+import { GateChips } from "./widget-ui";
 import type { Program } from "./qsim-dsl";
 
 /**
@@ -13,27 +14,6 @@ import type { Program } from "./qsim-dsl";
  * reveals that the Bell pair only ever yields 00 or 11 while the product state
  * spreads over all four outcomes.
  */
-
-function gateChips(program: Program) {
-  return program.gates.map((g, i) => {
-    const label =
-      g.gate === "CNOT"
-        ? `CNOT ${g.control}→${g.target}`
-        : g.bound
-          ? `${g.gate}(θ) q${g.target}`
-          : g.angle !== undefined
-            ? `${g.gate}(${g.angle.toFixed(2)}) q${g.target}`
-            : `${g.gate} q${g.target}`;
-    return (
-      <span
-        key={i}
-        className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300"
-      >
-        {label}
-      </span>
-    );
-  });
-}
 
 interface PanelProps {
   label: string;
@@ -51,7 +31,7 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
     <div className="flex-1 min-w-0">
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 mr-1">{label}</span>
-        {gateChips(program)}
+        <GateChips gates={program.gates} />
       </div>
 
       {/* Last sampled outcome */}
