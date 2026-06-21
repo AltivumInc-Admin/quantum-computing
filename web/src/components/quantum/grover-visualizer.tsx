@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -70,13 +71,7 @@ export function GroverVisualizer({ source }: { source: string }) {
   }, [n, marked, maxSlider]);
 
   if (parsed.error || history.error || !history.hist) {
-    return (
-      <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-          grover error: {parsed.error ?? history.error}
-        </p>
-      </div>
-    );
+    return <SharedErrorCard label="grover" message={parsed.error ?? history.error} />;
   }
 
   // iterations defaults to the optimal count, clamped to the current slider range.

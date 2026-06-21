@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   parseScrolly,
@@ -31,11 +32,7 @@ const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false })
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 function ErrorCard({ message }: { message?: string }) {
-  return (
-    <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">scrolly error: {message}</p>
-    </div>
-  );
+  return <SharedErrorCard label="scrolly" className="my-8" message={message} />;
 }
 
 /** Static, accessible fallback: every beat shown at once. */

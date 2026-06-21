@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { gradientVariance, mulberry32, type Cost } from "./barren";
 
 /**
@@ -104,13 +105,7 @@ export function BarrenExplorer({ source }: { source: string }) {
   }, [depth, samples]);
 
   if (parsed.error || !parsed.config) {
-    return (
-      <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-          barren error: {parsed.error}
-        </p>
-      </div>
-    );
+    return <SharedErrorCard label="barren" message={parsed.error} />;
   }
 
   // log10 of the variance, floored away from log(0) so empty/zero points plot.

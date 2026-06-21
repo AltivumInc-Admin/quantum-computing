@@ -96,3 +96,28 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
     </div>
   );
 }
+
+/**
+ * Standard parse/validation error card for the explorables. The card markup was
+ * previously copy-pasted into ~17 widgets; only the `label` prefix and vertical
+ * margin (`my-6` vs `my-8`) differed. Renders "<label> error: <message>".
+ */
+export function ErrorCard({
+  label,
+  message,
+  className = "my-6",
+}: {
+  label: string;
+  message?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`not-prose ${className} rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3`}
+    >
+      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
+        {`${label} error: ${message ?? ""}`}
+      </p>
+    </div>
+  );
+}
