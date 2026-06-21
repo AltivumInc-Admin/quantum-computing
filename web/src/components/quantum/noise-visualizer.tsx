@@ -115,7 +115,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
               <div className="flex-1 min-w-0 space-y-1">
                 {/* Ideal bar */}
                 <div className="flex items-center gap-1.5">
-                  <span className="w-8 shrink-0 text-[10px] text-gray-400 dark:text-gray-500">ideal</span>
+                  <span className="w-8 shrink-0 text-[10px] text-gray-500 dark:text-gray-400">ideal</span>
                   <span className="relative h-2.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                     <span
                       className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200"
@@ -128,7 +128,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
                 </div>
                 {/* Noisy bar */}
                 <div className="flex items-center gap-1.5">
-                  <span className="w-8 shrink-0 text-[10px] text-gray-400 dark:text-gray-500">noisy</span>
+                  <span className="w-8 shrink-0 text-[10px] text-gray-500 dark:text-gray-400">noisy</span>
                   <span className="relative h-2.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                     <span
                       className="absolute inset-y-0 left-0 rounded-full bg-amber-500 transition-[width] duration-200"

@@ -69,7 +69,8 @@ export function DeviceTable() {
               >
                 <button
                   onClick={() => handleSort("model")}
-                  className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                  aria-label="Sort by model"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors focus-ring"
                 >
                   Model
                   <SortIndicator active={sortKey === "model"} dir={sortDir} />
@@ -81,7 +82,8 @@ export function DeviceTable() {
               >
                 <button
                   onClick={() => handleSort("technology")}
-                  className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                  aria-label="Sort by technology"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors focus-ring"
                 >
                   Technology
                   <SortIndicator active={sortKey === "technology"} dir={sortDir} />
@@ -96,7 +98,8 @@ export function DeviceTable() {
               >
                 <button
                   onClick={() => handleSort("qubits")}
-                  className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                  aria-label="Sort by qubits"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors focus-ring"
                 >
                   Qubits
                   <SortIndicator active={sortKey === "qubits"} dir={sortDir} />

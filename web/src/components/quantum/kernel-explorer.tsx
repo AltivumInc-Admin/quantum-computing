@@ -223,14 +223,16 @@ export function KernelExplorer({ source }: { source: string }) {
 
         {/* Controls + readout */}
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-gray-800 dark:text-gray-200">
-            quantum-kernel accuracy ={" "}
-            <span className="font-semibold tabular-nums">{(acc * 100).toFixed(0)}%</span>
-          </p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            linear baseline ={" "}
-            <span className="font-semibold tabular-nums">{(baseline * 100).toFixed(0)}%</span>
-          </p>
+          <div role="status" aria-live="polite">
+            <p className="text-sm text-gray-800 dark:text-gray-200">
+              quantum-kernel accuracy ={" "}
+              <span className="font-semibold tabular-nums">{(acc * 100).toFixed(0)}%</span>
+            </p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              linear baseline ={" "}
+              <span className="font-semibold tabular-nums">{(baseline * 100).toFixed(0)}%</span>
+            </p>
+          </div>
 
           {/* map toggle */}
           <div className="mt-4 flex items-center gap-3">

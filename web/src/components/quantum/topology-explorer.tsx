@@ -337,7 +337,7 @@ export function TopologyExplorer({ source }: { source: string }) {
           </span>
         </p>
         {path.length > 0 && (
-          <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500 font-mono">
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 font-mono">
             path: {path.join(" - ")}
           </p>
         )}
