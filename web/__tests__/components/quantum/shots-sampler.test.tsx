@@ -12,12 +12,16 @@ describe("ShotsSampler", () => {
   });
   it("running shots updates the total", () => {
     render(<ShotsSampler source={"qubits 1\nH 0"} />);
-    fireEvent.click(screen.getByRole("button", { name: /^1000$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "1000 shots" }));
     fireEvent.click(screen.getByRole("button", { name: /run/i }));
-    expect(screen.getByText(/1000 shots/i)).toBeInTheDocument();
+    expect(screen.getByText("1000 shots")).toBeInTheDocument();
   });
   it("renders a parse-error card for a bad circuit", () => {
     render(<ShotsSampler source={"NOTAGATE 0"} />);
     expect(screen.getByText(/parse error/i)).toBeInTheDocument();
+  });
+  it("prompts the learner to Run before the first sample", () => {
+    render(<ShotsSampler source={"qubits 1\nH 0"} />);
+    expect(screen.getByText(/press run to sample/i)).toBeInTheDocument();
   });
 });

@@ -26,4 +26,11 @@ describe("CorrelationDemo", () => {
     render(<CorrelationDemo source={"{ not json"} />);
     expect(screen.getByText(/error/i)).toBeInTheDocument();
   });
+  it("announces one summary in a single live region after Measure", () => {
+    render(<CorrelationDemo source={SOURCE} />);
+    fireEvent.click(screen.getByRole("button", { name: "Measure" }));
+    // The two per-panel tally tables are no longer live regions; a single
+    // component-level status node carries the per-measure summary.
+    expect(screen.getByRole("status")).toHaveTextContent(/product measured .*1 measurement total/i);
+  });
 });

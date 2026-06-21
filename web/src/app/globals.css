@@ -274,16 +274,16 @@
   .slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     border-radius: 9999px;
     background: var(--color-accent);
     box-shadow: 0 0 0 3px oklch(0.72 0.15 192 / 0.18);
     cursor: pointer;
   }
   .slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     border: none;
     border-radius: 9999px;
     background: var(--color-accent);
