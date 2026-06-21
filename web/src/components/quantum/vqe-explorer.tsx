@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { BlochDial } from "./bloch-dial";
 import {
   energy1q,
   exactGround,
@@ -200,13 +201,6 @@ export function VqeExplorer({ source }: { source: string }) {
     setTheta(0.4);
   };
 
-  // Bloch indicator geometry (small X-Z plane disc).
-  const BL = { size: 86, r: 34 };
-  const blCx = BL.size / 2;
-  const blCy = BL.size / 2;
-  const blTipX = blCx + expX * BL.r;
-  const blTipY = blCy - expZ * BL.r; // +Z up
-
   const curveAria = `Variational energy E(theta) for tapered H2 at bond length ${R.toFixed(
     2
   )} angstrom. Current angle ${theta.toFixed(2)} radians gives ${energy.toFixed(
@@ -214,10 +208,6 @@ export function VqeExplorer({ source }: { source: string }) {
   )} hartree, ${aboveFloor.toFixed(4)} hartree above the exact ground floor ${floor.toFixed(
     4
   )} hartree.`;
-
-  const blochAria = `Ansatz state in the X-Z plane. Expectation of Z is ${expZ.toFixed(
-    3
-  )} (vertical), expectation of X is ${expX.toFixed(3)} (horizontal).`;
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
@@ -318,83 +308,7 @@ export function VqeExplorer({ source }: { source: string }) {
 
           {/* Bloch indicator (X-Z plane) */}
           <div className="flex items-center gap-3">
-            <svg
-              viewBox={`0 0 ${BL.size} ${BL.size}`}
-              width={BL.size}
-              height={BL.size}
-              role="img"
-              aria-label={blochAria}
-              className="shrink-0"
-            >
-              <circle
-                cx={blCx}
-                cy={blCy}
-                r={BL.r}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1}
-                className="text-gray-300 dark:text-gray-600"
-                aria-hidden="true"
-              />
-              <line
-                x1={blCx - BL.r}
-                y1={blCy}
-                x2={blCx + BL.r}
-                y2={blCy}
-                stroke="currentColor"
-                strokeWidth={0.6}
-                className="text-gray-300 dark:text-gray-700"
-                aria-hidden="true"
-              />
-              <line
-                x1={blCx}
-                y1={blCy - BL.r}
-                x2={blCx}
-                y2={blCy + BL.r}
-                stroke="currentColor"
-                strokeWidth={0.6}
-                className="text-gray-300 dark:text-gray-700"
-                aria-hidden="true"
-              />
-              <line
-                x1={blCx}
-                y1={blCy}
-                x2={blTipX}
-                y2={blTipY}
-                stroke="currentColor"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                className="text-accent dark:text-accent-light transition-[x2,y2] duration-150 motion-reduce:transition-none"
-                aria-hidden="true"
-              />
-              <circle
-                cx={blTipX}
-                cy={blTipY}
-                r={3}
-                className="fill-accent dark:fill-accent-light transition-[cx,cy] duration-150 motion-reduce:transition-none"
-                aria-hidden="true"
-              />
-              <text
-                x={blCx}
-                y={8}
-                textAnchor="middle"
-                fontSize={7}
-                className="fill-gray-400 dark:fill-gray-500 font-mono"
-                aria-hidden="true"
-              >
-                Z
-              </text>
-              <text
-                x={BL.size - 4}
-                y={blCy - 3}
-                textAnchor="end"
-                fontSize={7}
-                className="fill-gray-400 dark:fill-gray-500 font-mono"
-                aria-hidden="true"
-              >
-                X
-              </text>
-            </svg>
+            <BlochDial vector={{ x: expX, y: 0, z: expZ }} size={86} />
             <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400 font-mono tabular-nums">
               &#10216;Z&#10217; = {expZ.toFixed(3)}
               <br />
