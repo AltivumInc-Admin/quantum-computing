@@ -22,3 +22,10 @@ export function estimateCost(provider: Provider, shots: number, minutes: number,
 export function isPerShot(provider: Provider): boolean {
   return "perShot" in PRICING[provider];
 }
+
+/** Human-readable rate label for the device table — derived from PRICING, the single source. */
+export function costLabel(provider: Provider): string {
+  const p = PRICING[provider];
+  if ("perMinute" in p) return p.perMinute === 0 ? "Free" : `$${p.perMinute}/min`;
+  return `$${p.perTask.toFixed(2)}/task + $${p.perShot}/shot`;
+}

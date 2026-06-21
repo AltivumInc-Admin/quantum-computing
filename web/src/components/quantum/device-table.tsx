@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DEVICES, sortDevices, type SortKey } from "./devices";
+import { costLabel } from "./cost";
 
 const TECHNOLOGIES = ["All", "Trapped ion", "Superconducting", "Neutral atom", "Simulator"] as const;
 
@@ -144,7 +145,8 @@ export function DeviceTable() {
                     {device.gateModel ? "Yes" : "No"}
                   </td>
                   <td className="px-4 py-2.5 font-mono text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                    {device.cost}
+                    {costLabel(device.provider)}
+                    {device.note ? ` (${device.note})` : ""}
                   </td>
                 </tr>
               );

@@ -12,7 +12,7 @@
  *   RX 0 1.5708       # or a literal angle in radians
  */
 
-import type { Op } from "./math";
+import { type Op, NAMED_GATES } from "./math";
 
 export const MAX_QUBITS = 4;
 
@@ -31,7 +31,10 @@ export interface Program {
   error?: string;
 }
 
-export const SINGLE = new Set(["H", "X", "Y", "Z", "S", "T", "I"]);
+// Single-qubit gate names come straight from the math kernel's NAMED_GATES so
+// the parser and the executor can't drift. RX/RY/RZ are parameterized rotations
+// (functions, not in NAMED_GATES) so they stay listed explicitly.
+export const SINGLE = new Set(Object.keys(NAMED_GATES));
 export const ROT = new Set(["RX", "RY", "RZ"]);
 
 export function parseProgram(source: string): Program {
