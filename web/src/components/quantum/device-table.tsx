@@ -22,6 +22,7 @@ export function DeviceTable() {
 
   const filtered = tech === "All" ? DEVICES : DEVICES.filter((d) => d.technology === tech);
   const sorted = sortDevices(filtered, sortKey, sortDir);
+  const hasAnalog = sorted.some((d) => !d.gateModel);
 
   const ariaSort = (key: SortKey): "ascending" | "descending" | "none" => {
     if (key !== sortKey) return "none";
@@ -47,7 +48,7 @@ export function DeviceTable() {
             aria-label="Technology"
             value={tech}
             onChange={(e) => setTech(e.target.value)}
-            className="text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-accent/50"
+            className="text-xs rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-2 py-1 focus-ring"
           >
             {TECHNOLOGIES.map((t) => (
               <option key={t} value={t}>
@@ -61,6 +62,10 @@ export function DeviceTable() {
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
+          <caption className="sr-only">
+            Quantum devices by technology. Rows tinted amber are analog
+            (non-gate-model) hardware.
+          </caption>
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
               <th
@@ -70,7 +75,7 @@ export function DeviceTable() {
                 <button
                   onClick={() => handleSort("model")}
                   aria-label="Sort by model"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors focus-ring"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors interactive focus-ring"
                 >
                   Model
                   <SortIndicator active={sortKey === "model"} dir={sortDir} />
@@ -83,7 +88,7 @@ export function DeviceTable() {
                 <button
                   onClick={() => handleSort("technology")}
                   aria-label="Sort by technology"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors focus-ring"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors interactive focus-ring"
                 >
                   Technology
                   <SortIndicator active={sortKey === "technology"} dir={sortDir} />
@@ -99,7 +104,7 @@ export function DeviceTable() {
                 <button
                   onClick={() => handleSort("qubits")}
                   aria-label="Sort by qubits"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors focus-ring"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors interactive focus-ring"
                 >
                   Qubits
                   <SortIndicator active={sortKey === "qubits"} dir={sortDir} />
@@ -157,6 +162,17 @@ export function DeviceTable() {
           </tbody>
         </table>
       </div>
+      {hasAnalog && (
+        <div className="flex items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-4 py-2">
+          <span
+            className="inline-block h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/30 ring-1 ring-amber-300/60 dark:ring-amber-700/40"
+            aria-hidden="true"
+          />
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Analog (non-gate-model) device
+          </span>
+        </div>
+      )}
     </div>
   );
 }

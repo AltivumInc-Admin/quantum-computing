@@ -28,9 +28,19 @@ export function CostCalculator({ source }: { source: string }) {
   const preset = parseSource(source);
 
   const [provider, setProvider] = useState<Provider>(preset.provider ?? "IonQ");
-  const [shots, setShots] = useState(preset.shots ?? 1000);
-  const [tasks, setTasks] = useState(1);
-  const [minutes, setMinutes] = useState(1);
+  // Number fields are string-backed so the learner can clear and retype mid-edit
+  // without the value snapping to 1 on every keystroke; the >=1 floor is applied
+  // to the derived count used for the estimate (and re-displayed on blur).
+  const [shotsStr, setShotsStr] = useState(String(preset.shots ?? 1000));
+  const [tasksStr, setTasksStr] = useState("1");
+  const [minutesStr, setMinutesStr] = useState("1");
+  const toCount = (s: string) => {
+    const n = Math.round(Number(s));
+    return Number.isFinite(n) && n >= 1 ? n : 1;
+  };
+  const shots = toCount(shotsStr);
+  const tasks = toCount(tasksStr);
+  const minutes = toCount(minutesStr);
 
   const perShot = isPerShot(provider);
   const total = estimateCost(provider, shots, minutes, tasks);
@@ -82,7 +92,7 @@ export function CostCalculator({ source }: { source: string }) {
               aria-label="Device"
               value={provider}
               onChange={(e) => setProvider(e.target.value as Provider)}
-              className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/40"
+              className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
             >
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
@@ -105,9 +115,10 @@ export function CostCalculator({ source }: { source: string }) {
               type="number"
               min={1}
               step={1}
-              value={tasks}
-              onChange={(e) => setTasks(Math.max(1, Math.round(Number(e.target.value))))}
-              className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/40"
+              value={tasksStr}
+              onChange={(e) => setTasksStr(e.target.value)}
+              onBlur={() => setTasksStr(String(tasks))}
+              className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
             />
           </div>
 
@@ -125,9 +136,10 @@ export function CostCalculator({ source }: { source: string }) {
                 type="number"
                 min={1}
                 step={100}
-                value={shots}
-                onChange={(e) => setShots(Math.max(1, Math.round(Number(e.target.value))))}
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/40"
+                value={shotsStr}
+                onChange={(e) => setShotsStr(e.target.value)}
+                onBlur={() => setShotsStr(String(shots))}
+                className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
               />
             </div>
           ) : (
@@ -144,9 +156,10 @@ export function CostCalculator({ source }: { source: string }) {
                 type="number"
                 min={1}
                 step={1}
-                value={minutes}
-                onChange={(e) => setMinutes(Math.max(1, Math.round(Number(e.target.value))))}
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/40"
+                value={minutesStr}
+                onChange={(e) => setMinutesStr(e.target.value)}
+                onBlur={() => setMinutesStr(String(minutes))}
+                className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
               />
             </div>
           )}

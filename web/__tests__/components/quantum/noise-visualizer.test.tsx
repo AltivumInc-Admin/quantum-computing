@@ -18,7 +18,8 @@ describe("NoiseVisualizer", () => {
   it("renders fidelity 100% for a Bell pair at default p=0", () => {
     render(<NoiseVisualizer source={"qubits 2\nH 0\nCNOT 0 1"} />);
     expect(screen.getByText(/100/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/error rate/i)).toBeInTheDocument();
+    // The slider label is channel-aware ("Depolarizing p" for the default channel).
+    expect(screen.getByLabelText(/depolarizing p/i)).toBeInTheDocument();
   });
   it("renders a parse-error card for a bad circuit", () => {
     render(<NoiseVisualizer source={"NOTAGATE 0"} />);
@@ -26,8 +27,11 @@ describe("NoiseVisualizer", () => {
   });
   it("announces the fidelity readout as a polite live region", () => {
     render(<NoiseVisualizer source={"qubits 2\nH 0\nCNOT 0 1"} />);
-    const live = screen.getByRole("status");
-    expect(live).toHaveTextContent(/fidelity/i);
+    // Two status regions now exist (aggregate fidelity + a per-basis delta
+    // summary); target the fidelity one by its text (role=status takes no
+    // name-from-content, so a name query can't disambiguate them).
+    const live = screen.getByText(/fidelity/i);
+    expect(live).toHaveAttribute("role", "status");
     expect(live).toHaveAttribute("aria-live", "polite");
   });
 });
