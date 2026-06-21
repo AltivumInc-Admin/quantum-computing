@@ -254,6 +254,18 @@ export function BarrenExplorer({ source }: { source: string }) {
           ))}
         </svg>
 
+        {/* Variance readout — a live region so the recomputed numbers are
+            announced when the depth slider changes. */}
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-3 text-center text-xs font-mono tabular-nums text-gray-600 dark:text-gray-300"
+        >
+          Gradient variance at {N_MAX} qubits — global ≈ 10
+          <sup>{logG[logG.length - 1].toFixed(1)}</sup>, local ≈ 10
+          <sup>{logL[logL.length - 1].toFixed(1)}</sup>
+        </p>
+
         {/* Depth control */}
         <div className="mt-4 flex items-center gap-3">
           <label htmlFor={depthId} className="shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">

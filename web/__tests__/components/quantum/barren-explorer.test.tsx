@@ -18,7 +18,9 @@ describe("BarrenExplorer", () => {
   it("renders the Barren plateaus header and both cost legends", () => {
     render(<BarrenExplorer source={JSON.stringify({ depth: 2, samples: 120 })} />);
     expect(screen.getByText(/barren plateaus/i)).toBeInTheDocument();
-    expect(screen.getByText(/global/i)).toBeInTheDocument();
-    expect(screen.getByText(/local/i)).toBeInTheDocument();
+    // Target the legend specifically; the variance readout also mentions
+    // "global"/"local", so the bare word would now match multiple elements.
+    expect(screen.getByText(/global cost/i)).toBeInTheDocument();
+    expect(screen.getByText(/local cost/i)).toBeInTheDocument();
   });
 });

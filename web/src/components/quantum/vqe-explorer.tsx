@@ -270,6 +270,20 @@ export function VqeExplorer({ source }: { source: string }) {
               >
                 floor {floor.toFixed(3)} Ha
               </text>
+              {/* axis ticks: theta on x (bottom), energy range on y (left) */}
+              {[-Math.PI, 0, Math.PI].map((th, i) => (
+                <text
+                  key={`tx-${i}`}
+                  x={thetaToX(th)}
+                  y={SVG.h - 3}
+                  textAnchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
+                  fontSize={7}
+                  className="fill-gray-400 dark:fill-gray-500 font-mono"
+                  aria-hidden="true"
+                >
+                  {i === 0 ? "-π" : i === 2 ? "π" : "0"}
+                </text>
+              ))}
               {/* energy curve */}
               <path
                 d={curvePath}
@@ -288,7 +302,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 y2={floorY}
                 stroke="currentColor"
                 strokeWidth={0.8}
-                className="text-gray-400 dark:text-gray-500 transition-[x1,x2,y1] duration-150 motion-reduce:transition-none"
+                className="text-gray-400 dark:text-gray-500"
                 aria-hidden="true"
               />
               {/* moving marker dot at current theta */}
@@ -296,7 +310,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 cx={markerX}
                 cy={markerY}
                 r={3.4}
-                className="fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900 transition-[cx,cy] duration-150 motion-reduce:transition-none"
+                className="fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900"
                 strokeWidth={1.4}
                 aria-hidden="true"
               />
