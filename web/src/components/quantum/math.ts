@@ -25,6 +25,10 @@ export const cMul = (a: Complex, b: Complex): Complex => [
 export const cAbs2 = (a: Complex): number => a[0] * a[0] + a[1] * a[1];
 export const cConj = (a: Complex): Complex => [a[0], -a[1]];
 
+/** Clamp `v` into [min, max]. */
+export const clamp = (v: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, v));
+
 const R2 = Math.SQRT1_2; // 1/sqrt(2)
 
 // --- constant gate matrices (match qcsim) ---------------------------------
@@ -110,6 +114,21 @@ export function blochVector(state: Complex[]): { x: number; y: number; z: number
   const b = state[1];
   const ab = cMul(cConj(a), b); // <0|psi>* <1|psi>
   return { x: 2 * ab[0], y: 2 * ab[1], z: cAbs2(a) - cAbs2(b) };
+}
+
+/**
+ * Canonical single-qubit state from Bloch angles:
+ *   cos(θ/2)|0> + e^{iφ} sin(θ/2)|1>   (relative phase on |1>, |0> real).
+ * Shared by the qbloch builder and the qscrolly explorable so both render the
+ * same amplitudes; the Bloch vector itself is convention-independent.
+ */
+export function singleQubitState(theta: number, phi: number): Complex[] {
+  const c = Math.cos(theta / 2);
+  const s = Math.sin(theta / 2);
+  return [
+    [c, 0],
+    [s * Math.cos(phi), s * Math.sin(phi)],
+  ];
 }
 
 // --- a tiny circuit runner for the inline lab DSL -------------------------

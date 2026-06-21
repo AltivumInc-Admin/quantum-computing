@@ -1,6 +1,7 @@
 import { type Complex, ry, rz, applyGate1, applyCNOT, zeroState, cAbs2 } from "./math";
+import { mulberry32, gauss, type Point } from "./rng";
 
-export interface Pt { x: [number, number]; y: -1 | 1; }
+export type { Point };
 
 export const N_PARAMS = 9; // 2 blocks x (RY,RY,RZ,RZ) + final RY on q0
 
@@ -33,14 +34,14 @@ export function paramShiftGrad(x: [number, number], theta: number[], bias: numbe
   return 0.5 * (vqcOutput(x, tp, bias, scale) - vqcOutput(x, tm, bias, scale));
 }
 
-export function mseLoss(data: Pt[], theta: number[], bias: number, scale = 1): number {
+export function mseLoss(data: Point[], theta: number[], bias: number, scale = 1): number {
   let s = 0;
   for (const d of data) s += (vqcOutput(d.x, theta, bias, scale) - d.y) ** 2;
   return s / data.length;
 }
 
 /** One full-batch gradient-descent step on MSE; returns updated theta + bias. */
-export function trainStep(data: Pt[], theta: number[], bias: number, lr: number, scale = 1): { theta: number[]; bias: number } {
+export function trainStep(data: Point[], theta: number[], bias: number, lr: number, scale = 1): { theta: number[]; bias: number } {
   const grads = new Array(theta.length).fill(0);
   let gb = 0;
   for (const d of data) {
@@ -52,24 +53,11 @@ export function trainStep(data: Pt[], theta: number[], bias: number, lr: number,
   return { theta: theta.map((t, j) => t - (lr * grads[j]) / M), bias: bias - (lr * gb) / M };
 }
 
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function gauss(rng: () => number): number {
-  return Math.sqrt(-2 * Math.log(rng() + 1e-12)) * Math.cos(2 * Math.PI * rng());
-}
-
 /** Two separable Gaussian blobs at (+/-0.7,+/-0.7), clipped to [-pi, pi]. */
-export function makeBlobs(n: number, seed: number): Pt[] {
+export function makeBlobs(n: number, seed: number): Point[] {
   const rng = mulberry32(seed);
   const clip = (v: number) => Math.max(-Math.PI, Math.min(Math.PI, v));
-  const pts: Pt[] = [];
+  const pts: Point[] = [];
   for (let i = 0; i < n; i++) {
     const pos = i % 2 === 0;
     const c = pos ? 0.7 : -0.7;

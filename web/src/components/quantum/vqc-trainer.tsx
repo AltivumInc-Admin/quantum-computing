@@ -8,7 +8,7 @@ import {
   mseLoss,
   trainStep,
   vqcOutput,
-  type Pt,
+  type Point,
 } from "./vqc";
 
 /**
@@ -60,7 +60,7 @@ function initTheta(): number[] {
   return Array.from({ length: N_PARAMS }, () => -0.1 + 0.4 * Math.random());
 }
 
-function accuracyOf(data: Pt[], theta: number[], bias: number): number {
+function accuracyOf(data: Point[], theta: number[], bias: number): number {
   let correct = 0;
   for (const d of data) {
     const pred = vqcOutput(d.x, theta, bias) >= 0 ? 1 : -1;
@@ -96,7 +96,7 @@ function BoundaryPlot({
   theta,
   bias,
 }: {
-  data: Pt[];
+  data: Point[];
   theta: number[];
   bias: number;
 }) {

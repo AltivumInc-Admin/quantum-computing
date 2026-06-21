@@ -21,11 +21,5 @@ export function parseCorrelation(source: string): ParsedCorrelation {
   }
 }
 
-/** Inverse-transform sample one basis-state index from `probs`. */
-export function sampleOutcome(probs: number[], rng: () => number = Math.random): number {
-  const total = probs.reduce((a, b) => a + b, 0);
-  const r = rng() * total;
-  let acc = 0;
-  for (let i = 0; i < probs.length; i++) { acc += probs[i]; if (r <= acc) return i; }
-  return probs.length - 1;
-}
+/** One Born-rule draw — single-sourced from shots.ts (which skips zero-mass outcomes). */
+export { sampleIndex as sampleOutcome } from "./shots";

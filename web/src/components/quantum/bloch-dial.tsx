@@ -1,10 +1,4 @@
-import { blochVector, type Complex } from "./math";
-
-const ZERO_STATE: Complex[] = [
-  [1, 0],
-  [0, 0],
-];
-const clampUnit = (v: number) => Math.max(-1, Math.min(1, v));
+import { blochVector, zeroState, clamp, type Complex } from "./math";
 
 /**
  * A compact 2D Bloch readout: the single-qubit state projected onto the
@@ -24,7 +18,7 @@ export function BlochDial({
   state?: Complex[];
   vector?: { x: number; y: number; z: number };
 }) {
-  const { x, y, z } = vector ?? blochVector(state ?? ZERO_STATE);
+  const { x, y, z } = vector ?? blochVector(state ?? zeroState(1));
   const size = 132;
   const c = size / 2;
   const r = 52;
@@ -32,7 +26,7 @@ export function BlochDial({
   const py = c - r * z;
   // Depth cue for the discarded Y axis: radius/opacity scale with y so |i> (y=+1)
   // and |-i> (y=-1) are visibly distinct from each other and from a null/origin tip.
-  const yc = clampUnit(y);
+  const yc = clamp(y, -1, 1);
   const markerR = 4 * (1 + 0.45 * yc);
   const markerOpacity = 0.55 + 0.45 * ((yc + 1) / 2);
   const axis = "currentColor";
