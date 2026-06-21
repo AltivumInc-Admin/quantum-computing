@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import {
   accuracy,
   kernelBias,
@@ -98,13 +99,7 @@ function nearestMeanAccuracy(train: Point[]): number {
 // ---------------------------------------------------------------------------
 
 function ErrorCard({ message }: { message: string }) {
-  return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-        kernel error: {message}
-      </p>
-    </div>
-  );
+  return <SharedErrorCard label="kernel" message={message} />;
 }
 
 // ---------------------------------------------------------------------------

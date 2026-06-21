@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { H2 as H } from "./h2-data";
 import { type H2Point } from "./chemistry";
 
@@ -81,13 +82,7 @@ function curveAt(R: number, points: H2Point[]): { fci: number; hf: number } {
 // ---------------------------------------------------------------------------
 
 function ErrorCard({ message }: { message: string }) {
-  return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-        qpes error: {message}
-      </p>
-    </div>
-  );
+  return <SharedErrorCard label="qpes" message={message} />;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { basisLabel } from "./math";
 import { djProbabilities, isConstant, ORACLES } from "./deutsch-jozsa";
 
@@ -52,22 +53,16 @@ export function DjDemo({ source }: { source: string }) {
   }, [config, oracleKey]);
 
   if ("error" in config) {
-    return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-          qdj error: {config.error}
-        </p>
-      </div>
-    );
+    return <SharedErrorCard label="qdj" className="my-8" message={config.error} />;
   }
 
   if (!result || "error" in result) {
     return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-          qdj error: {result?.error ?? "could not evaluate oracle"}
-        </p>
-      </div>
+      <SharedErrorCard
+        label="qdj"
+        className="my-8"
+        message={result?.error ?? "could not evaluate oracle"}
+      />
     );
   }
 

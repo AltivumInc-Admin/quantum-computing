@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import { type Complex, basisLabel } from "./math";
 import { qft, basisState, periodicState } from "./qft";
 
@@ -76,13 +77,7 @@ function parseConfig(source: string): ParseResult {
 const mag = (c: Complex) => Math.hypot(c[0], c[1]);
 
 function ErrorCard({ message }: { message: string }) {
-  return (
-    <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-        qft error: {message}
-      </p>
-    </div>
-  );
+  return <SharedErrorCard label="qft" className="my-8" message={message} />;
 }
 
 function MagnitudeBars({
