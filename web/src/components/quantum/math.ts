@@ -88,6 +88,26 @@ export function applyGate1(state: Complex[], gate: Gate2, qubit: number, n: numb
   return out;
 }
 
+/**
+ * In-place butterfly variant of applyGate1: mutates `state` and returns it. Each
+ * (i, j) stride pair is read fully before being written, so no entry is read
+ * after it is overwritten. Use only when `state` is a private scratch vector
+ * (e.g. the QAOA / Deutsch-Jozsa kernels); external callers keep applyGate1.
+ */
+export function applyGate1InPlace(state: Complex[], gate: Gate2, qubit: number, n: number): Complex[] {
+  const stride = 1 << (n - 1 - qubit);
+  for (let i = 0; i < state.length; i++) {
+    if ((i & stride) === 0) {
+      const j = i | stride;
+      const a = state[i];
+      const b = state[j];
+      state[i] = cAdd(cMul(gate[0][0], a), cMul(gate[0][1], b));
+      state[j] = cAdd(cMul(gate[1][0], a), cMul(gate[1][1], b));
+    }
+  }
+  return state;
+}
+
 /** Apply CNOT: flip `target` when `control` is |1>. */
 export function applyCNOT(state: Complex[], control: number, target: number, n: number): Complex[] {
   const out = state.map((c) => [c[0], c[1]] as Complex);
