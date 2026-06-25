@@ -25,6 +25,10 @@ export default defineConfig({
   // only as insurance against CPU-contention timeouts on shared runners, not flaky
   // CDN fetches; the spec also asserts zero third-party requests.
   retries: process.env.CI ? 1 : 0,
+  // Serial: each test boots its own Pyodide kernel; running them concurrently would
+  // pit two heavy WASM boots against each other on a 2-core CI runner and risk
+  // timeouts. Wall-clock is a few notebook runs, still well under the build-smoke job.
+  workers: 1,
   reporter: "list",
   use: {
     baseURL: "http://127.0.0.1:4173",
