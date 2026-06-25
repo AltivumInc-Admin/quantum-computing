@@ -45,3 +45,47 @@ describe("diracString", () => {
     expect(diracString(onlyOne, 1)).toBe("1.00|1⟩");
   });
 });
+
+describe("diracString sign-aware assembly", () => {
+  it("renders a negative non-first term with a minus separator, not '+ -'", () => {
+    // The core bug-3 regression: H then Z gives 0.71|0> - 0.71|1>.
+    const state: Complex[] = [
+      [0.7071, 0],
+      [-0.7071, 0],
+    ];
+    expect(diracString(state, 1)).toBe("0.71|0⟩ - 0.71|1⟩");
+  });
+  it("keeps a bare leading minus on a negative first term", () => {
+    const state: Complex[] = [
+      [-0.7071, 0],
+      [0.7071, 0],
+    ];
+    expect(diracString(state, 1)).toBe("-0.71|0⟩ + 0.71|1⟩");
+  });
+  it("uses a minus separator for a negative imaginary amplitude", () => {
+    const state: Complex[] = [
+      [0.7071, 0],
+      [0, -0.7071],
+    ];
+    expect(diracString(state, 1)).toBe("0.71|0⟩ - 0.71i|1⟩");
+  });
+  it("keeps a compound amplitude paren-wrapped with a positive separator", () => {
+    const state: Complex[] = [
+      [0.7071, 0],
+      [-0.5, 0.5],
+    ];
+    const s = diracString(state, 1);
+    expect(s).toContain(" + (-0.50+0.50i)|");
+    expect(s).not.toContain("+ -");
+    expect(s).not.toContain("+  -");
+  });
+  it("never emits a '+ -' sequence for any signed superposition", () => {
+    const state: Complex[] = [
+      [0.5, 0],
+      [-0.5, 0],
+      [0, -0.5],
+      [-0.5, 0],
+    ];
+    expect(diracString(state, 2)).not.toMatch(/\+\s+-/);
+  });
+});

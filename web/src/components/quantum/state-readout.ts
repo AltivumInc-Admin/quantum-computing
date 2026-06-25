@@ -20,11 +20,23 @@ export function formatAmplitude(c: Complex): string {
 }
 
 export function diracString(state: Complex[], n: number): string {
-  const terms = state
+  const shown = state
     .map((amp, idx) => ({ amp, idx }))
-    .filter(({ amp }) => Math.abs(amp[0]) >= DISPLAY_EPS || Math.abs(amp[1]) >= DISPLAY_EPS)
-    .map(({ amp, idx }) => `${formatAmplitude(amp)}|${basisLabel(idx, n)}⟩`);
-  return terms.length ? terms.join("  +  ") : "0";
+    .filter(({ amp }) => Math.abs(amp[0]) >= DISPLAY_EPS || Math.abs(amp[1]) >= DISPLAY_EPS);
+  if (shown.length === 0) return "0";
+  let out = "";
+  shown.forEach(({ amp, idx }, i) => {
+    const formatted = formatAmplitude(amp);
+    // formatAmplitude only emits a bare leading "-" for negative real-only or
+    // negative imaginary-only amplitudes; the compound "(r±im i)" form is
+    // paren-wrapped, so it is always treated as positive here.
+    const negative = formatted.startsWith("-");
+    const magnitude = negative ? formatted.slice(1) : formatted;
+    const term = `${magnitude}|${basisLabel(idx, n)}⟩`;
+    if (i === 0) out = negative ? `-${term}` : term;
+    else out += `${negative ? " - " : " + "}${term}`;
+  });
+  return out;
 }
 
 // A runnable NumPy complex-array literal for the "Copy as Python" action, so a

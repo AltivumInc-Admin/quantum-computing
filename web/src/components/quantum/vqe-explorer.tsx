@@ -131,13 +131,15 @@ export function VqeExplorer({ source }: { source: string }) {
   const expZ = Math.cos(theta);
   const expX = Math.sin(theta);
 
-  // Plot geometry: theta on x, energy on y (inverted, lower = nearer the floor).
+  // Plot geometry: theta on x; energy on y mapped so HIGHER energy is nearer the
+  // top and LOWER energy (the variational floor) is nearer the bottom — SVG y
+  // grows downward, so e=eMax -> padY (top) and e=eMin -> padY+plotH (bottom).
   const span = Math.max(1e-9, eMax - eMin);
   const plotW = SVG.w - 2 * SVG.padX;
   const plotH = SVG.h - 2 * SVG.padY;
   const thetaToX = (th: number) => SVG.padX + ((th + Math.PI) / TAU) * plotW;
   const energyToY = (e: number) =>
-    SVG.padY + ((e - eMin) / span) * plotH;
+    SVG.padY + ((eMax - e) / span) * plotH;
 
   const curvePath = samples
     .map((s, i) => {
