@@ -41,6 +41,43 @@ describe("parseProgram (shared qsim gate DSL)", () => {
   it("rejects circuits wider than MAX_QUBITS", () => {
     expect(parseProgram(`H ${MAX_QUBITS}`).error).toMatch(/qubits/i);
   });
+
+  it("rejects a negative qubit index instead of crashing simulate()", () => {
+    const p = parseProgram("H -1");
+    expect(p.error).toMatch(/target qubit/i);
+    expect(p.gates).toHaveLength(0);
+  });
+
+  it("rejects a garbage index that parseInt would silently truncate", () => {
+    // parseInt("0abc") === 0, which would build a wrong-but-silent circuit.
+    expect(parseProgram("H 0abc").error).toMatch(/target qubit/i);
+    expect(parseProgram("H 2x").error).toMatch(/target qubit/i);
+  });
+
+  it("rejects a negative or trailing-garbage index on CNOT", () => {
+    expect(parseProgram("CNOT -1 0").error).toMatch(/control and a target/i);
+    expect(parseProgram("CNOT 0 1x").error).toMatch(/control and a target/i);
+  });
+
+  it("rejects a garbage angle that parseFloat would truncate", () => {
+    expect(parseProgram("RY 0 1.5xyz").error).toMatch(/bad angle/i);
+  });
+
+  it("still accepts a valid negative rotation angle", () => {
+    const p = parseProgram("RX 0 -1.5708");
+    expect(p.error).toBeUndefined();
+    expect(p.gates[0].theta).toBeCloseTo(-1.5708, 4);
+  });
+
+  it("accepts leading-zero indices", () => {
+    const p = parseProgram("H 03");
+    expect(p.error).toBeUndefined();
+    expect(p.gates[0]).toEqual({ gate: "H", target: 3 });
+  });
+
+  it("rejects a non-numeric `qubits` directive", () => {
+    expect(parseProgram("qubits x\nH 0").error).toMatch(/qubits directive/i);
+  });
 });
 
 describe("opsFor (binds slider theta into the op list)", () => {

@@ -13,6 +13,7 @@
  */
 
 import { type Op, NAMED_GATES } from "./math";
+import { parseIndex, parseAngle } from "./parse-utils";
 
 export const MAX_QUBITS = 4;
 
@@ -53,36 +54,41 @@ export function parseProgram(source: string): Program {
       const head = parts[0].toLowerCase();
 
       if (head === "qubits") {
-        n = Math.max(n, parseInt(parts[1], 10));
+        const got = parseIndex(parts[1]);
+        if (!got.ok) throw new Error("qubits directive needs a non-negative count");
+        n = Math.max(n, got.value);
         continue;
       }
 
       const gate = parts[0].toUpperCase();
 
       if (gate === "CNOT") {
-        const control = parseInt(parts[1], 10);
-        const target = parseInt(parts[2], 10);
-        if (Number.isNaN(control) || Number.isNaN(target))
-          throw new Error("CNOT needs a control and a target qubit");
+        const c = parseIndex(parts[1]);
+        const t = parseIndex(parts[2]);
+        if (!c.ok || !t.ok) throw new Error("CNOT needs a control and a target qubit");
+        const control = c.value;
+        const target = t.value;
         gates.push({ gate, target, control });
         n = Math.max(n, control + 1, target + 1);
       } else if (ROT.has(gate)) {
-        const target = parseInt(parts[1], 10);
+        const t = parseIndex(parts[1]);
         const tok = (parts[2] ?? "").toLowerCase();
-        if (Number.isNaN(target) || tok === "")
+        if (!t.ok || tok === "")
           throw new Error(`${gate} needs a target qubit and an angle`);
+        const target = t.value;
         if (tok === "theta") {
           hasTheta = true;
           gates.push({ gate, target, bound: true });
         } else {
-          const theta = parseFloat(tok);
-          if (Number.isNaN(theta)) throw new Error(`${gate}: bad angle "${parts[2]}"`);
-          gates.push({ gate, target, theta });
+          const angle = parseAngle(parts[2]); // original-case token for the message
+          if (!angle.ok) throw new Error(`${gate}: bad angle "${parts[2]}"`);
+          gates.push({ gate, target, theta: angle.value });
         }
         n = Math.max(n, target + 1);
       } else if (SINGLE.has(gate)) {
-        const target = parseInt(parts[1], 10);
-        if (Number.isNaN(target)) throw new Error(`${gate} needs a target qubit`);
+        const t = parseIndex(parts[1]);
+        if (!t.ok) throw new Error(`${gate} needs a target qubit`);
+        const target = t.value;
         gates.push({ gate, target });
         n = Math.max(n, target + 1);
       } else {
