@@ -4,11 +4,15 @@
  * and deterministic. The caller injects "today" as an integer epoch-day, matching
  * the repo convention of keeping Date.now() at the edge (see review-store.ts).
  *
- * A card's `stability` is simply its current interval in days; the next interval
- * is the stability multiplied by an ease factor derived from `difficulty`. A
- * lapse ("Again") resets the schedule to one day and nudges difficulty up; "Easy"
- * nudges it down. Intervals are monotonic across successful reviews by
- * construction, and every quantity is clamped to a sane range.
+ * A card's `stability` is simply its current interval in days; on a mature
+ * review the next interval is the larger of the current stability and the days
+ * the card was actually overdue, multiplied by an ease factor derived from
+ * `difficulty` — so a long-overdue pass is credited the elapsed time (the
+ * defining behavior of the FSRS/SM-2 family) and earns a longer interval than
+ * the same grade given exactly on the due day. A lapse ("Again") resets the
+ * schedule to one day and nudges difficulty up; "Easy" nudges it down. Intervals
+ * are monotonic across successful reviews by construction, and every quantity is
+ * clamped to a sane range.
  */
 
 export type Rating = "again" | "hard" | "good" | "easy";
@@ -108,10 +112,15 @@ export function schedule(state: CardState, rating: Rating, todayEpochDay: number
     // Second successful review (graduating step).
     interval = rating === "hard" ? 3 : rating === "good" ? 6 : 9;
   } else {
-    // Mature review: grow the previous interval by an ease-derived multiplier.
+    // Mature review: grow the previous interval by an ease-derived multiplier,
+    // crediting overdue time (FSRS/SM-2 family) so a long-overdue pass earns a
+    // longer interval than the same grade given exactly on the due day. An early
+    // review (graded before due) clamps elapsed to 0, preserving on-time growth.
+    const elapsed = Math.max(0, todayEpochDay - state.dueEpochDay);
+    const growthBase = Math.max(state.stability, elapsed);
     const ease = easeFor(difficulty);
     const mult = rating === "hard" ? 1.2 : rating === "good" ? ease : ease * 1.3;
-    interval = Math.round(state.stability * mult);
+    interval = Math.round(growthBase * mult);
   }
   interval = clamp(interval, 1, MAX_INTERVAL);
   // A passing review must never shorten the interval (SM-2 monotonicity): the
