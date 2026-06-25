@@ -53,6 +53,14 @@ Resources:
       Timeout: 60
       # HARD cost ceiling on a public (AuthType NONE) Bedrock-invoking endpoint.
       ReservedConcurrentExecutions: !Ref MaxConcurrency
+      # Cost-attribution tags on the Lambda's OWN compute. The dominant cost
+      # (Bedrock inference) is attributed separately via the application
+      # inference profile passed as ModelId; keep these keys in sync with that
+      # profile's tags and activate them as cost-allocation tags in Billing.
+      Tags:
+        Project: quantum
+        Feature: ask-tutor
+        CostCategory: genai
       Environment:
         Variables:
           TUTOR_MODEL_ID: !Ref ModelId
