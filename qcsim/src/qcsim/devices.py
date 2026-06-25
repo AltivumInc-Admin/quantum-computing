@@ -14,8 +14,14 @@ if TYPE_CHECKING:
 class _Result:
     """Subset-compatible stand-in for braket.tasks.GateModelQuantumTaskResult."""
 
-    def __init__(self, measurements: np.ndarray) -> None:
+    def __init__(self, measurements: np.ndarray, measured_qubits: list[int]) -> None:
         self.measurements = measurements  # shape (shots, n_qubits), dtype int8
+        # The qubits each measurement column corresponds to, in their ORIGINAL
+        # labels (Braket sets this too). For a compacted register these are the
+        # distinct used qubits ascending — e.g. [0, 2] for h(0).cnot(0, 2). Lets
+        # lib/utils/results.parse_counts validate its positional bitstring
+        # assumption instead of silently trusting it.
+        self.measured_qubits = measured_qubits
 
     @property
     def measurement_counts(self) -> Counter:
@@ -51,6 +57,10 @@ class LocalSimulator:
                 "shots must be a positive integer; qcsim does not support analytic mode"
             )
 
+        if circuit.qubit_count == 0:
+            # Match Braket, which refuses to run a gate-less circuit on a device.
+            raise ValueError("Circuit must have at least one non-zero-qubit gate to run")
+
         n = max(circuit.qubit_count, 1)
         state = circuit.state_vector()
         probs = np.abs(state) ** 2
@@ -69,7 +79,11 @@ class LocalSimulator:
             shift = n - 1 - j
             measurements[:, j] = ((indices >> shift) & 1).astype(np.int8)
 
-        return _Task(_Result(measurements))
+        # The measured register, in original qubit labels: the distinct used
+        # qubits (e.g. [0, 2] for h(0).cnot(0, 2)). Guaranteed non-empty by the
+        # zero-qubit guard above.
+        measured_qubits = circuit._used_qubits()
+        return _Task(_Result(measurements, measured_qubits))
 
 
 __all__ = ["LocalSimulator"]

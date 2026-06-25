@@ -1,6 +1,9 @@
 [project]
 name = "qcsim"
-version = "0.1.0"
+# Single-sourced from qcsim/src/qcsim/__init__.py:__version__ so the built wheel
+# filename can never drift from what scripts/validate_runnable.py pins into the
+# content manifest + JupyterLite config (a drift would 404 the in-browser wheel).
+dynamic = ["version"]
 description = "Pure-NumPy state-vector simulator that mirrors the Braket API subset used by this curriculum's notebooks. Designed to run inside Pyodide / JupyterLite."
 requires-python = ">=3.10"
 dependencies = [
@@ -19,6 +22,9 @@ classifiers = [
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = { attr = "qcsim.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

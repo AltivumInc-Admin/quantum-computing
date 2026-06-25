@@ -29,10 +29,10 @@ already imported.
 | `.ccnot(c1, c2, t)` | Toffoli |
 | `.add_circuit(other)` | Append another circuit's gates (optional `target_mapping` remap) |
 | `.adjoint()` | New circuit implementing the inverse U-dagger (reverse order + conjugate-transpose each gate). Mirrors Braket; powers compute-uncompute kernels |
-| `.instructions` | List of applied `Instruction` objects (`.operator` label, `.target` qubit tuple). Supports `sum(1 for _ in circuit.instructions)` |
-| `.qubit_count` | Highest target qubit + 1 |
-| `.depth` | Length of the gate list (informational) |
-| `str(circuit)` | Multi-line ASCII rendering |
+| `.instructions` | List of applied `Instruction` objects. `.operator` is a Gate-like object whose `.name` matches Braket's capitalization (`H`, `CNot`, `Swap`, `CCNot`, `Rx`, `CPhaseShift` — **not** `CNOT`/`SWAP`). `.target` is the gate's qubit tuple in ORIGINAL labels. Supports `sum(1 for _ in circuit.instructions)`. The legacy `ins.operator == "CNOT"` idiom still counts (qcsim-only back-compat shim; real Braket returns `False`) — prefer `.operator.name == "CNot"`. |
+| `.qubit_count` | Number of DISTINCT used qubits — Braket's compacted register width. `Circuit().h(0).cnot(0, 2)` is a 2-qubit circuit, not 3 (qubit indices stay 0 and 2). |
+| `.depth` | Greedy DAG depth: the longest gate chain on any single qubit. |
+| `str(circuit)` | Multi-line ASCII rendering, rows labelled with the original (used) qubit indices. |
 
 All gate methods mutate the circuit in place AND return `self` for chaining.
 
@@ -47,9 +47,10 @@ All gate methods mutate the circuit in place AND return `self` for chaining.
 
 | Attribute | Notes |
 |-----------|-------|
-| `result.measurement_counts` | `collections.Counter` of bitstring → count |
+| `result.measurement_counts` | `collections.Counter` of bitstring → count. Bitstring width is the compacted `qubit_count`. |
 | `result.measurements` | `numpy.ndarray` of shape `(shots, n_qubits)`, dtype `int8`. Bit 0 leftmost in row. |
 | `result.measurement_probabilities` | `dict[str, float]` — empirical probabilities |
+| `result.measured_qubits` | `list[int]` — the qubits each measurement column corresponds to, in ORIGINAL labels (e.g. `[0, 2]` for `h(0).cnot(0, 2)`). Matches Braket; lets `lib/utils/results.parse_counts` validate its positional bitstring assumption. |
 
 ## What is intentionally NOT covered
 
@@ -66,3 +67,7 @@ Notebooks that import `braket.aws` MUST NOT be marked
 `tests/test_qcsim_parity.py` exercises 10 reference circuits and asserts
 that `qcsim` and real Braket produce measurement distributions matching
 within 4-sigma at 1000 shots, plus exact equality on deterministic states.
+It also runs cross-SDK *object-shape* checks that diff `qcsim` against the
+installed `amazon-braket-sdk` on `qubit_count`, bitstring width, instruction
+`target` labels, `measured_qubits`, and every gate's `operator.name`, so a
+future divergence from Braket fails CI rather than silently mis-teaching.

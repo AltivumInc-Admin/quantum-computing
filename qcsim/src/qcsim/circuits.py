@@ -114,18 +114,94 @@ def _apply_three(
 # Instruction (minimal Braket-compatible view of an applied gate)
 # ---------------------------------------------------------------------------
 
+# qcsim's internal gate labels -> the ``.name`` real ``braket.circuits.Gate``
+# objects report. Braket's capitalization is NOT uppercase-everywhere: a CNOT is
+# ``"CNot"``, a SWAP is ``"Swap"``, a Toffoli is ``"CCNot"``. Matching these
+# exactly is the whole point — a learner counting ``ins.operator.name == "CNot"``
+# in the browser gets the same answer on real hardware.
+_BRAKET_GATE_NAMES = {
+    "H": "H",
+    "X": "X",
+    "Y": "Y",
+    "Z": "Z",
+    "S": "S",
+    "T": "T",
+    "I": "I",
+    "CNOT": "CNot",
+    "CZ": "CZ",
+    "SWAP": "Swap",
+    "CCNOT": "CCNot",
+    # Parameterized labels carry a "(...)" suffix and are handled in _braket_name.
+}
+
+
+def _braket_name(label: str) -> str:
+    """Map a qcsim gate label to the name the real Braket Gate would report."""
+    if label.startswith("Rx("):
+        return "Rx"
+    if label.startswith("Ry("):
+        return "Ry"
+    if label.startswith("Rz("):
+        return "Rz"
+    if label.startswith("CP("):
+        return "CPhaseShift"
+    return _BRAKET_GATE_NAMES.get(label, label)
+
+
+class _Operator:
+    """Gate-like stand-in for a ``braket.circuits.Gate``.
+
+    Real Braket exposes ``ins.operator`` as a Gate object whose ``.name`` uses
+    Braket's own capitalization (e.g. ``"CNot"``, not ``"CNOT"``). This wrapper
+    matches that so the curriculum's ``ins.operator.name == "CNot"`` idiom
+    teaches the real-hardware answer.
+
+    ``__eq__`` additionally accepts a bare string for backward compatibility with
+    the legacy ``ins.operator == "CNOT"`` idiom some older learner code uses, so
+    a qcsim update does not silently break it. NOTE: real Braket returns ``False``
+    for ``gate == "CNot"`` (a Gate is not a str); this leniency is qcsim-only and
+    intentional. New code should compare ``.name``.
+    """
+
+    __slots__ = ("name", "_label")
+
+    def __init__(self, label: str) -> None:
+        self._label = label
+        self.name = _braket_name(label)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _Operator):
+            return self.name == other.name
+        if isinstance(other, str):
+            # Back-compat only: accept the Braket name ("CNot") and the legacy
+            # qcsim label ("CNOT"). Deliberately NOT case-insensitive — matching
+            # "cnot"/"rx" would diverge FURTHER from Braket (which returns False
+            # for any string compare), the opposite of this change's intent.
+            return other in (self.name, self._label)
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.name
+
 
 class Instruction:
     """Minimal stand-in for ``braket.circuits.Instruction``.
 
-    Exposes the two attributes curriculum notebooks read — ``operator`` (the
-    gate label) and ``target`` (a tuple of qubit indices) — and supports the
+    Exposes the two attributes curriculum notebooks read — ``operator`` (a
+    Gate-like object whose ``.name`` matches Braket) and ``target`` (a tuple of
+    the gate's qubit indices, in their ORIGINAL labeling) — and supports the
     common ``sum(1 for _ in circuit.instructions)`` gate-count idiom.
     """
 
     __slots__ = ("operator", "target")
 
-    def __init__(self, operator: str, target: tuple[int, ...]) -> None:
+    def __init__(self, operator: "_Operator", target: tuple[int, ...]) -> None:
         self.operator = operator
         self.target = target
 
@@ -149,11 +225,35 @@ class Circuit:
     # ----- bookkeeping -----
 
     def _touch(self, qubits: Iterable[int]) -> None:
-        for q in qubits:
+        qs = list(qubits)
+        for q in qs:
             if q < 0:
                 raise ValueError(f"qubit index must be non-negative, got {q}")
             if q > self._max_qubit:
                 self._max_qubit = q
+        # A multi-qubit gate needs distinct targets; Braket rejects e.g. cnot(1, 1)
+        # at construction. Catch it here too, before the compaction map would
+        # collapse both axes and numpy raised a cryptic "duplicate axes" error.
+        if len(set(qs)) != len(qs):
+            raise ValueError(f"a gate's target qubits must be distinct, got {tuple(qs)}")
+
+    def _used_qubits(self) -> list[int]:
+        """The distinct qubit indices touched by any gate, ascending.
+
+        Braket compacts a circuit's register to exactly the qubits it uses, so
+        ``Circuit().h(0).cnot(0, 2)`` is a TWO-qubit circuit (qubits 0 and 2),
+        not three. We mirror that: this set is the measured register, in their
+        ORIGINAL labels (qubit 2 stays "2" in ``measured_qubits`` / ``target``),
+        while the state-vector math uses their compacted positions.
+        """
+        seen: set[int] = set()
+        for _name, _gate, qubits in self._gates:
+            seen.update(qubits)
+        return sorted(seen)
+
+    def _compaction_map(self) -> dict[int, int]:
+        """Map each used qubit's ORIGINAL index to its 0..k-1 state-vector axis."""
+        return {q: i for i, q in enumerate(self._used_qubits())}
 
     # ----- single-qubit gates -----
 
@@ -272,12 +372,18 @@ class Circuit:
 
     @property
     def instructions(self) -> list[Instruction]:
-        """Applied instructions in order (Braket-compatible; for iteration/counting)."""
-        return [Instruction(name, qubits) for name, _gate, qubits in self._gates]
+        """Applied instructions in order (Braket-compatible; for iteration/counting).
+
+        ``operator`` is a Gate-like object whose ``.name`` matches Braket, and
+        ``target`` keeps the gate's ORIGINAL qubit labels (Braket does too — it
+        compacts the *register width*, not the qubit numbers on each gate).
+        """
+        return [Instruction(_Operator(name), qubits) for name, _gate, qubits in self._gates]
 
     @property
     def qubit_count(self) -> int:
-        return self._max_qubit + 1
+        """Number of DISTINCT used qubits — Braket's compacted register width."""
+        return len(self._used_qubits())
 
     @property
     def depth(self) -> int:
@@ -295,59 +401,67 @@ class Circuit:
     # ----- evaluation -----
 
     def state_vector(self) -> np.ndarray:
-        """Apply all gates to |0...0> and return the final state vector."""
-        n = max(self.qubit_count, 1)
+        """Apply all gates to |0...0> and return the final state vector.
+
+        The vector spans the COMPACTED register (one axis per distinct used
+        qubit), so ``Circuit().h(0).cnot(0, 2)`` is the 4-element Bell state, not
+        an 8-element padded one — matching Braket. Each gate's original qubit
+        indices are remapped to their compacted axis before application.
+        """
+        cmap = self._compaction_map()
+        n = max(len(cmap), 1)
         state = np.zeros(2**n, dtype=np.complex128)
         state[0] = 1.0
         for _name, gate, qubits in self._gates:
-            if len(qubits) == 1:
-                state = _apply_single(state, gate, qubits[0], n)
-            elif len(qubits) == 2:
-                state = _apply_two(state, gate, qubits[0], qubits[1], n)
-            elif len(qubits) == 3:
-                state = _apply_three(state, gate, qubits[0], qubits[1], qubits[2], n)
+            mapped = tuple(cmap[q] for q in qubits)
+            if len(mapped) == 1:
+                state = _apply_single(state, gate, mapped[0], n)
+            elif len(mapped) == 2:
+                state = _apply_two(state, gate, mapped[0], mapped[1], n)
+            elif len(mapped) == 3:
+                state = _apply_three(state, gate, mapped[0], mapped[1], mapped[2], n)
             else:
-                raise NotImplementedError(f"gate on {len(qubits)} qubits is not supported")
+                raise NotImplementedError(f"gate on {len(mapped)} qubits is not supported")
         return state
 
     # ----- rendering -----
 
     def __str__(self) -> str:
-        n = self.qubit_count
-        if n == 0:
+        used = self._used_qubits()
+        if not used:
             return "q0 : -"
+        # Rows are the used qubits in their ORIGINAL labels (q0, q2, ...); gates
+        # are placed by each qubit's compacted row position.
+        cmap = {q: i for i, q in enumerate(used)}
+        n = len(used)
         rows = ["" for _ in range(n)]
         if not self._gates:
-            for q in range(n):
-                rows[q] = f"q{q} : -"
-            return "\n".join(rows)
+            return "\n".join(f"q{q} : -" for q in used)
         for name, _gate, qubits in self._gates:
             col = [" - " for _ in range(n)]
-            if len(qubits) == 1:
+            m = [cmap[q] for q in qubits]
+            if len(m) == 1:
                 # Use first character of name; for parameterized gates this is R
-                col[qubits[0]] = f" {name[0]} "
+                col[m[0]] = f" {name[0]} "
             elif name == "CNOT":
-                col[qubits[0]] = " C "
-                col[qubits[1]] = " X "
+                col[m[0]] = " C "
+                col[m[1]] = " X "
             elif name == "CZ":
-                col[qubits[0]] = " C "
-                col[qubits[1]] = " Z "
+                col[m[0]] = " C "
+                col[m[1]] = " Z "
             elif name == "SWAP":
-                col[qubits[0]] = " S "
-                col[qubits[1]] = " W "
+                col[m[0]] = " S "
+                col[m[1]] = " W "
             elif name.startswith("CP("):
-                col[qubits[0]] = " C "
-                col[qubits[1]] = " P "
+                col[m[0]] = " C "
+                col[m[1]] = " P "
             elif name == "CCNOT":
-                col[qubits[0]] = " C "
-                col[qubits[1]] = " C "
-                col[qubits[2]] = " X "
-            for q in range(n):
-                rows[q] += col[q]
-        out = []
-        for q in range(n):
-            out.append(f"q{q} :" + rows[q])
-        return "\n".join(out)
+                col[m[0]] = " C "
+                col[m[1]] = " C "
+                col[m[2]] = " X "
+            for i in range(n):
+                rows[i] += col[i]
+        return "\n".join(f"q{used[i]} :" + rows[i] for i in range(n))
 
     def __repr__(self) -> str:
         return f"Circuit(n_qubits={self.qubit_count}, depth={self.depth}, gates={len(self._gates)})"
