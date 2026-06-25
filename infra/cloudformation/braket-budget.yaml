@@ -25,10 +25,15 @@ Resources:
           Service:
             - Amazon Braket
       NotificationsWithSubscribers:
+        # Thresholds are PERCENT of MonthlyBudget (the AWS default for
+        # AWS::Budgets::Budget Notification), NOT dollar amounts. Stated
+        # explicitly so the intent can't be misread as $50/$80/$100 when a
+        # non-default MonthlyBudget is deployed.
         - Notification:
             NotificationType: ACTUAL
             ComparisonOperator: GREATER_THAN
             Threshold: 50
+            ThresholdType: PERCENTAGE
           Subscribers:
             - SubscriptionType: EMAIL
               Address: !Ref NotificationEmail
@@ -36,6 +41,7 @@ Resources:
             NotificationType: ACTUAL
             ComparisonOperator: GREATER_THAN
             Threshold: 80
+            ThresholdType: PERCENTAGE
           Subscribers:
             - SubscriptionType: EMAIL
               Address: !Ref NotificationEmail
@@ -43,6 +49,7 @@ Resources:
             NotificationType: FORECASTED
             ComparisonOperator: GREATER_THAN
             Threshold: 100
+            ThresholdType: PERCENTAGE
           Subscribers:
             - SubscriptionType: EMAIL
               Address: !Ref NotificationEmail
