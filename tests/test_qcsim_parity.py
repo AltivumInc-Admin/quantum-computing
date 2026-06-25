@@ -231,6 +231,10 @@ def test_instructions_iterable_and_counts():
     assert sum(1 for _ in c.instructions) == 3
     assert c.instructions[0].target == (0,)
     assert c.instructions[1].target == (0, 1)
+    # operator is a Gate-like object whose .name matches Braket's capitalization.
+    assert c.instructions[0].operator.name == "H"
+    assert c.instructions[1].operator.name == "CNot"
+    assert c.instructions[2].operator.name == "Ry"
 
 
 def test_qubit_count_and_depth():
@@ -246,3 +250,155 @@ def test_measurement_counts_match_braket_for_bell():
     r = QSimulator().run(QCircuit().h(0).cnot(0, 1), shots=2000).result()
     assert set(r.measurement_counts) == {"00", "11"}
     assert sum(r.measurement_counts.values()) == 2000
+
+
+# ---------------------------------------------------------------------------
+# Cross-SDK fidelity: qcsim must agree with real Braket on object shape, not
+# just measurement distributions. Each test diffs qcsim against the real SDK so
+# a future divergence fails CI. The asserted values were VERIFIED against the
+# installed amazon-braket-sdk, not assumed.
+# ---------------------------------------------------------------------------
+
+
+def test_noncontiguous_qubits_compact_like_braket():
+    """h(0).cnot(0, 2): Braket compacts to a 2-qubit register; qcsim must too."""
+    q = QCircuit().h(0).cnot(0, 2)
+    b = BraketCircuit().h(0).cnot(0, 2)
+    assert q.qubit_count == b.qubit_count == 2
+    np.random.seed(0)
+    qr = QSimulator().run(q, shots=2000).result()
+    br = _run_braket(lambda C: C().h(0).cnot(0, 2), shots=2000)
+    # Bitstrings are length 2 (the compacted width), support {'00', '11'}.
+    assert {len(k) for k in qr.measurement_counts} == {2}
+    assert set(qr.measurement_counts) == set(br.measurement_counts) == {"00", "11"}
+    # The two used qubits remain perfectly correlated (the entanglement the
+    # IQM routing lesson relies on), regardless of their original labels.
+    assert all(bitstring[0] == bitstring[1] for bitstring in qr.measurement_counts)
+
+
+def test_instruction_target_keeps_original_labels_like_braket():
+    """Braket compacts the register WIDTH but keeps each gate's qubit labels."""
+    q = QCircuit().h(0).cnot(0, 2).ry(2, 0.3)
+    b = BraketCircuit().h(0).cnot(0, 2).ry(2, 0.3)
+    q_targets = [tuple(int(t) for t in ins.target) for ins in q.instructions]
+    b_targets = [tuple(int(t) for t in ins.target) for ins in b.instructions]
+    assert q_targets == b_targets == [(0,), (0, 2), (2,)]
+
+
+def test_measured_qubits_match_braket_original_indices():
+    """measured_qubits reports ORIGINAL labels (Braket does too): [0, 2], NOT [0, 1].
+
+    Because of that, parse_counts' positional guard CORRECTLY raises on a
+    non-contiguous circuit (column 1 is qubit 2, not qubit 1) and passes on a
+    contiguous one. Before this change qcsim never set measured_qubits, so the
+    guard was silently skipped.
+    """
+    from lib.utils.results import parse_counts
+
+    np.random.seed(0)
+    qr = QSimulator().run(QCircuit().h(0).cnot(0, 2), shots=100).result()
+    br = _run_braket(lambda C: C().h(0).cnot(0, 2), shots=100)
+    assert list(qr.measured_qubits) == list(br.measured_qubits) == [0, 2]
+    # Non-contiguous: the guard now runs and correctly rejects positional labeling.
+    with pytest.raises(ValueError, match="measured_qubits"):
+        parse_counts(qr)
+
+    # Contiguous: measured_qubits == range(n), so the guard runs AND passes.
+    np.random.seed(0)
+    qc = QSimulator().run(QCircuit().h(0).cnot(0, 1), shots=100).result()
+    assert list(qc.measured_qubits) == [0, 1]
+    assert all(len(k) == 2 for k in parse_counts(qc))
+
+
+def test_measured_qubits_single_qubit():
+    """A single-qubit circuit measures [0], matching Braket."""
+    np.random.seed(0)
+    qr = QSimulator().run(QCircuit().i(0), shots=10).result()
+    assert list(qr.measured_qubits) == [0]
+
+
+def test_empty_circuit_refuses_to_run_like_braket():
+    """A gate-less circuit has qubit_count 0 and cannot run — Braket refuses too."""
+    assert QCircuit().qubit_count == 0
+    with pytest.raises(ValueError, match="at least one"):
+        QSimulator().run(QCircuit(), shots=10)
+    # Real Braket raises for the same reason (different message wording).
+    with pytest.raises(ValueError):
+        BraketSimulator().run(BraketCircuit(), shots=10).result()
+
+
+def test_duplicate_target_gate_rejected_like_braket():
+    """A multi-qubit gate on a repeated qubit is rejected at construction, as in Braket."""
+    with pytest.raises(ValueError, match="distinct"):
+        QCircuit().cnot(1, 1)
+    with pytest.raises(ValueError, match="distinct"):
+        QCircuit().ccnot(0, 1, 1)
+    # Real Braket also raises at construction (qubit-count vs target-set size).
+    with pytest.raises(ValueError):
+        BraketCircuit().cnot(1, 1)
+
+
+def _all_gates(C):
+    """Build a circuit exercising every gate qcsim supports, on the given Circuit class."""
+    return (
+        C()
+        .h(0)
+        .x(0)
+        .y(0)
+        .z(0)
+        .s(0)
+        .t(0)
+        .i(0)
+        .rx(0, 0.2)
+        .ry(0, 0.3)
+        .rz(0, 0.4)
+        .cnot(0, 1)
+        .cz(0, 1)
+        .swap(0, 1)
+        .cphaseshift(0, 1, 0.5)
+        .ccnot(0, 1, 2)
+    )
+
+
+def test_instruction_operator_name_matches_braket_for_every_gate():
+    """Every qcsim gate's operator.name must equal the real Braket Gate.name.
+
+    This is the authoritative anti-drift check: Braket's names are NOT all
+    uppercase (CNot, Swap, CCNot, CPhaseShift), and a learner counting by
+    .name must get the same answer in the browser and on hardware.
+    """
+    q_names = [ins.operator.name for ins in _all_gates(QCircuit).instructions]
+    b_names = [ins.operator.name for ins in _all_gates(BraketCircuit).instructions]
+    assert q_names == b_names
+    # Spot the capitalization traps explicitly.
+    assert "CNot" in q_names and "CNOT" not in q_names
+    assert "Swap" in q_names and "SWAP" not in q_names
+    assert "CCNot" in q_names and "CCNOT" not in q_names
+    assert "CPhaseShift" in q_names
+
+
+def test_operator_count_idiom_agrees_across_sdks():
+    """The curriculum's `.operator.name == "CNot"` count idiom must agree."""
+    q = QCircuit().h(0).cnot(0, 1).cnot(1, 2).ry(2, 0.3)
+    b = BraketCircuit().h(0).cnot(0, 1).cnot(1, 2).ry(2, 0.3)
+    q_cnots = sum(1 for ins in q.instructions if ins.operator.name == "CNot")
+    b_cnots = sum(1 for ins in b.instructions if ins.operator.name == "CNot")
+    assert q_cnots == b_cnots == 2
+
+
+def test_operator_legacy_string_equality_still_counts():
+    """Back-compat shim: the legacy `ins.operator == "CNOT"` idiom still counts.
+
+    This leniency is qcsim-only (real Braket returns False for `gate == "CNot"`,
+    since a Gate is not a str) and intentional, so a qcsim update does not
+    silently break older learner code. New code should compare `.name`.
+    """
+    q = QCircuit().h(0).cnot(0, 1)
+    assert sum(1 for ins in q.instructions if ins.operator == "CNOT") == 1  # legacy label
+    assert sum(1 for ins in q.instructions if ins.operator == "CNot") == 1  # Braket name
+    # Deliberately NOT case-insensitive: matching "cnot" would diverge further
+    # from Braket, so the shim stays as narrow as the two real idioms.
+    assert sum(1 for ins in q.instructions if ins.operator == "cnot") == 0
+    # Real Braket, for contrast, does NOT match a Gate against a string at all.
+    b = BraketCircuit().h(0).cnot(0, 1)
+    assert sum(1 for ins in b.instructions if ins.operator == "CNot") == 0

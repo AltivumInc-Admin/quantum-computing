@@ -25,6 +25,9 @@ echo "==> Building qcsim wheel"
   python -m build --wheel --outdir dist
 )
 mkdir -p files/wheels
+# Clear any wheel from a previous (e.g. pre-version-bump) build so an incremental
+# local run never stages two qcsim wheels — only the freshly built one ships.
+rm -f files/wheels/qcsim-*.whl
 cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
 
 # 2b) Generate jupyter_lite_config.json. Two things it must wire up:

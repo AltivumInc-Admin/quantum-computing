@@ -21,7 +21,11 @@ from .circuits import Circuit
 from .devices import LocalSimulator
 
 __all__ = ["Circuit", "LocalSimulator"]
-__version__ = "0.1.0"
+# 0.2.0: Braket-faithful qubit compaction (qubit_count/state-vector width =
+# distinct used qubits), Gate-like Instruction.operator (.name matches Braket
+# capitalization, e.g. "CNot"), and measured_qubits on results. The version bump
+# changes the wheel filename so returning browsers fetch fresh, not a stale cache.
+__version__ = "0.2.0"
 
 
 def _register_braket_aliases() -> None:
