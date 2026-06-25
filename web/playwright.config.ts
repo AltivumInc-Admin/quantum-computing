@@ -20,6 +20,10 @@ export default defineConfig({
   testMatch: "**/*.e2e.ts",
   timeout: 180_000,
   expect: { timeout: 150_000 },
+  // The lab is now fully same-origin (Pyodide + wheels self-hosted, comm bundled), so
+  // the run is deterministic with no network dependency. The single CI retry is kept
+  // only as insurance against CPU-contention timeouts on shared runners, not flaky
+  // CDN fetches; the spec also asserts zero third-party requests.
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
   use: {

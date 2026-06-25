@@ -8,8 +8,12 @@ import { test, expect } from "@playwright/test";
  * and the CPython notebook-contract test cannot: the actual browser kernel path and
  * the local-wheel install contract.
  *
- * Slow by nature (Pyodide core boots from the jsDelivr CDN, then installs the local
- * qcsim wheel), so timeouts are generous and it lives in CI's build-smoke job.
+ * It ALSO asserts the lab is fully same-origin: the kernel's Pyodide distribution is
+ * self-hosted under /lab/static/pyodide/ and the comm wheel is bundled into the local
+ * piplite index (with disablePyPIFallback), so a run makes ZERO third-party requests.
+ * Before this, the kernel booted Pyodide from cdn.jsdelivr.net and fetched comm from
+ * pypi.org on every start — two runtime SPOFs that bricked the whole lab when a CDN
+ * was blocked/down. The external-request assertion below is the regression guard.
  */
 const NOTEBOOK_URL =
   "/lab/lab/index.html?path=" +
@@ -23,6 +27,16 @@ test("runs a browser-runnable notebook under real Pyodide and prints determinist
     if (msg.type() === "error") console.log("[lab console error]", msg.text());
   });
   page.on("pageerror", (err) => console.log("[lab page error]", err.message));
+
+  // Record every cross-origin request so we can prove the run is fully same-origin
+  // (asserted after the notebook executes). chrome-extension:// and data: are ignored.
+  const external: string[] = [];
+  page.on("request", (req) => {
+    const u = req.url();
+    if (/^https?:/.test(u) && !/^https?:\/\/(127\.0\.0\.1|localhost)/.test(u)) {
+      external.push(`${req.method()} ${u}`);
+    }
+  });
 
   await page.goto(NOTEBOOK_URL);
 
@@ -61,4 +75,10 @@ test("runs a browser-runnable notebook under real Pyodide and prints determinist
   await expect(
     page.locator(".jp-OutputArea-output").filter({ hasText: "Traceback" })
   ).toHaveCount(0);
+
+  // Same-origin regression guard: a full kernel boot + qcsim install + run-all just
+  // happened, so if anything still reached a third party it would be in `external`.
+  // Pyodide (runtime + every wheel) is self-hosted and comm is in the local piplite
+  // index, so this must be empty. The message dumps the offending URLs on failure.
+  expect(external, `lab made third-party requests:\n${external.join("\n")}`).toEqual([]);
 });
