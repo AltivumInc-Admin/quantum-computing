@@ -149,6 +149,30 @@ jobs:
           done
           echo "self-hosted Pyodide $ver OK (core + micropip/numpy dependency closure)"
 
+      # The in-browser LAB kernel (JupyterLite) self-hosts its OWN Pyodide under
+      # public/lab/static/pyodide/ (a different pin from the lesson runtime above) and
+      # bundles the comm wheel into the same-origin piplite index, so a "Run in
+      # Browser" never touches cdn.jsdelivr.net or pypi.org. Assert that wiring; the
+      # Playwright smoke below also asserts ZERO third-party requests at runtime, but
+      # this catches a broken self-host before paying for the browser run.
+      - name: Assert the LAB kernel is wired fully same-origin
+        run: |
+          base=web/public/lab/static/pyodide
+          test -f "$base/pyodide.js" || { echo "lab self-hosted pyodide.js missing"; exit 1; }
+          # Closure roots: the kernel-boot packages that resolve via the Pyodide lock
+          # (sqlite3, ipython, jedi) + micropip + the curriculum notebook imports
+          # (numpy, matplotlib). Transitive deps are computed from the lock by build.sh.
+          for w in micropip sqlite3 ipython jedi numpy matplotlib; do
+            ls "$base/$w"-*.whl >/dev/null 2>&1 || { echo "missing lab closure root wheel: $w"; exit 1; }
+          done
+          # comm must be bundled in the local piplite index (else the kernel fetches it
+          # from pypi.org on every boot — pyodide_kernel hard-imports it).
+          python3 -c "import json,sys; d=json.load(open('web/public/lab/pypi/all.json')); sys.exit(0 if 'comm' in d else 'comm missing from local piplite index')"
+          # The kernel must point at the self-hosted Pyodide and never fall back to PyPI.
+          # Single-line python (semicolons) to avoid YAML/Python indentation pitfalls.
+          python3 -c "import json,sys; d=json.load(open('web/public/lab/jupyter-lite.json')); s=d.get('jupyter-config-data',d); ks=s['litePluginSettings']['@jupyterlite/pyodide-kernel-extension:kernel']; u=ks.get('pyodideUrl',''); assert 'jsdelivr' not in u and u.startswith('./'), 'pyodideUrl not same-origin: '+repr(u); assert ks.get('disablePyPIFallback') is True, 'disablePyPIFallback not set'; print('lab kernel same-origin OK: pyodideUrl='+u)"
+          echo "LAB self-host OK (Pyodide + closure + comm, no third-party CDN)"
+
       - name: Build static export
         working-directory: web
         run: |

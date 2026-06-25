@@ -70,6 +70,127 @@ for whl in $CLOSURE_WHEELS; do
   test -s "$PYODIDE_DEST/$whl" || { echo "closure wheel $whl missing/empty after fetch"; exit 1; }
 done
 
+# 1c) Self-host the in-browser LAB kernel's Pyodide distribution under
+#     jupyterlite-build/static/pyodide/ — PyodideAddon's "well-known" path, which
+#     `jupyter lite build` auto-detects: it copies the dir into the lab output at
+#     static/pyodide/ and rewrites the kernel's `pyodideUrl` to the same-origin
+#     ./static/pyodide/pyodide.js. Without this the JupyterLite kernel boots Pyodide
+#     from cdn.jsdelivr.net on every "Run in Browser", so a blocked/owned/down CDN
+#     bricks the whole lab.
+#
+#     This is a SEPARATE Pyodide from the lesson runtime above: its version is the
+#     KERNEL package's own pin (read from jupyterlite-pyodide-kernel so a kernel bump
+#     self-heals), which differs from the lesson runtime's pin, so the two must not
+#     share a directory. As with the lesson runtime, "core" ships no wheels, so after
+#     unpacking core we fetch the exact wheel closure the lab loads (computed from the
+#     lock; see below).
+LAB_PYODIDE_VERSION=$(python -c 'from jupyterlite_pyodide_kernel.constants import PYODIDE_VERSION; print(PYODIDE_VERSION)')
+test -n "$LAB_PYODIDE_VERSION" || { echo "could not read kernel PYODIDE_VERSION"; exit 1; }
+LAB_PYO_DEST="static/pyodide"   # relative to lite_dir (here); PyodideAddon well-known path
+LAB_PYO_CDN="https://cdn.jsdelivr.net/pyodide/v${LAB_PYODIDE_VERSION}/full"
+echo "==> Self-hosting LAB kernel Pyodide ${LAB_PYODIDE_VERSION} -> ${LAB_PYO_DEST}"
+rm -rf "$LAB_PYO_DEST"
+mkdir -p "$LAB_PYO_DEST"
+TMP_LAB=$(mktemp -d "${TMPDIR:-/tmp}/pyodide-lab-XXXXXX")
+curl -fsSL --retry 3 \
+  "https://github.com/pyodide/pyodide/releases/download/${LAB_PYODIDE_VERSION}/pyodide-core-${LAB_PYODIDE_VERSION}.tar.bz2" \
+  -o "$TMP_LAB/core.tar.bz2"
+tar -xjf "$TMP_LAB/core.tar.bz2" -C "$TMP_LAB"   # unpacks to $TMP_LAB/pyodide/
+cp -R "$TMP_LAB"/pyodide/. "$LAB_PYO_DEST"/
+rm -rf "$TMP_LAB"
+test -f "$LAB_PYO_DEST/pyodide.js" || { echo "lab pyodide.js missing after self-host"; exit 1; }
+# Compute the exact wheel closure the lab loads from the lock. Roots:
+#   - kernel boot packages that resolve via the Pyodide lock: sqlite3, jedi, ipython
+#     (from the kernel's initKernel list ["sqlite3","ipykernel","comm","pyodide_kernel",
+#     "jedi","ipython"]; ipykernel/pyodide_kernel come from the bundled same-origin
+#     piplite index, comm is bundled in step 2a below);
+#   - micropip (always loadPackage'd to bootstrap piplite);
+#   - the curriculum notebooks' non-stdlib imports: numpy + matplotlib.
+# Closure is depends-transitive AND augmented with any lock package that shares an
+# import name with a closure package — Pyodide's loadPackagesFromImports loads ALL
+# packages providing an imported name, which is how `import numpy` also pulls
+# numpy-tests (it declares imports: ['numpy']). A build-time coverage check below
+# fails the build if a runnable notebook imports a lock package these roots miss —
+# the e2e's third-party-request assertion can't see that (such a wheel would 404
+# SAME-ORIGIN, since the kernel loads it via loadPackage from ./static/pyodide/).
+LAB_CLOSURE_WHEELS=$(python - "$LAB_PYO_DEST/pyodide-lock.json" <<'PYLAB'
+import json, sys
+lock = json.load(open(sys.argv[1]))
+pkgs = lock["packages"]
+norm = lambda s: s.lower().replace("_", "-")
+by = {norm(k): v for k, v in pkgs.items()}
+roots = ["micropip", "sqlite3", "jedi", "ipython", "numpy", "matplotlib"]
+seen, stack = set(), list(roots)
+while stack:
+    n = norm(stack.pop())
+    if n in seen or n not in by:
+        continue
+    seen.add(n)
+    stack.extend(by[n].get("depends", []))
+imports_in_closure = {imp for n in seen for imp in by[n].get("imports", [])}
+for n, v in by.items():
+    if n not in seen and any(imp in imports_in_closure for imp in v.get("imports", [])):
+        seen.add(n)
+print("\n".join(sorted(by[n]["file_name"] for n in seen)))
+PYLAB
+)
+test -n "$LAB_CLOSURE_WHEELS" || { echo "could not compute lab Pyodide closure from lock"; exit 1; }
+for whl in $LAB_CLOSURE_WHEELS; do
+  echo "    fetching lab closure wheel $whl"
+  curl -fsSL --retry 3 "${LAB_PYO_CDN}/${whl}" -o "$LAB_PYO_DEST/$whl"
+  test -s "$LAB_PYO_DEST/$whl" || { echo "lab closure wheel $whl missing/empty after fetch"; exit 1; }
+done
+
+# 1d) Coverage check: assert every Pyodide-lock package imported by ANY browser-
+#     runnable notebook (per the content manifest) is in the closure we just staged.
+#     A lock package the closure misses would 404 SAME-ORIGIN at runtime (the kernel
+#     loads it via loadPackage from ./static/pyodide/, not via piplite, so
+#     disablePyPIFallback doesn't redirect it and the e2e third-party-request guard
+#     can't see it). Failing here, loudly, is the real guard against a future notebook
+#     adding e.g. `import scipy` without extending the closure roots above. Imports
+#     not in the lock (stdlib, braket->qcsim, lib, the optional ipywidgets) are skipped.
+echo "==> Verifying the lab closure covers every runnable notebook's imports"
+python - "$LAB_PYO_DEST" <<'PYCOVER'
+import json, sys, re, glob, os
+dest = sys.argv[1]
+pkgs = json.load(open(os.path.join(dest, "pyodide-lock.json")))["packages"]
+norm = lambda s: s.lower().replace("_", "-")
+provider = {}                       # import name -> lock package(s) providing it
+for k, v in pkgs.items():
+    for imp in v.get("imports", []):
+        provider.setdefault(imp, []).append(norm(k))
+present_files = {os.path.basename(p) for p in glob.glob(os.path.join(dest, "*.whl"))}
+present = {norm(k) for k, v in pkgs.items() if v["file_name"] in present_files}
+manifest = json.load(open("../src/lib/content-manifest.json"))
+imp_re = re.compile(r"^\s*(?:import\s+([a-zA-Z0-9_]+)|from\s+([a-zA-Z0-9_]+)\s+import)")
+missing, checked = set(), 0
+for s in manifest["sections"]:
+    for nb in s.get("notebooks", []):
+        if not nb.get("runnable"):
+            continue
+        path = os.path.join("..", "..", s["dirName"], "notebooks", nb["filename"])
+        if not os.path.exists(path):
+            continue
+        checked += 1
+        for cell in json.load(open(path)).get("cells", []):
+            if cell.get("cell_type") != "code":
+                continue
+            src = cell.get("source", "")
+            src = "".join(src) if isinstance(src, list) else src
+            for line in src.splitlines():
+                m = imp_re.match(line)
+                name = m and (m.group(1) or m.group(2))
+                if name in provider and not any(p in present for p in provider[name]):
+                    missing.add((s["dirName"] + "/" + nb["filename"], name, tuple(provider[name])))
+if missing:
+    print("  ERROR: runnable notebooks import Pyodide-lock packages NOT in the closure:", file=sys.stderr)
+    for nb, name, provs in sorted(missing):
+        print(f"    {nb}: import {name} -> needs {list(provs)}", file=sys.stderr)
+    print("  Add the package to the closure roots (the PYLAB block above).", file=sys.stderr)
+    sys.exit(1)
+print(f"  OK: {checked} runnable notebooks; every lock-resolved import is in the closure")
+PYCOVER
+
 # 2) Build the qcsim wheel and stash it under files/wheels/.
 QCSIM_DIR="../../qcsim"
 echo "==> Building qcsim wheel"
@@ -83,6 +204,23 @@ mkdir -p files/wheels
 # local run never stages two qcsim wheels — only the freshly built one ships.
 rm -f files/wheels/qcsim-*.whl
 cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
+
+# 2a) Bundle the `comm` wheel into the SAME-ORIGIN piplite index. The lab kernel's
+#     boot sequence hard-installs comm BEFORE `import pyodide_kernel` (pyodide_kernel
+#     does a top-level `import comm`, so the kernel fails to boot without it), and
+#     comm is in neither the Pyodide lock nor the kernel's bundled index — so today
+#     it is fetched from pypi.org on EVERY kernel start: a second runtime SPOF where
+#     PyPI being down/blocked breaks the entire lab kernel, not just widgets. Pin and
+#     bundle it locally; combined with disablePyPIFallback (set on the built config in
+#     step 6b) the lab kernel boots fully same-origin. comm is pure-python with NO
+#     runtime dependencies (its wheel declares only a pytest test-extra), so it installs
+#     same-origin with nothing left to resolve under the disabled PyPI fallback.
+COMM_VERSION="0.2.3"
+echo "==> Bundling comm==${COMM_VERSION} into the local piplite index"
+rm -f files/wheels/comm-*.whl
+pip download --quiet --no-deps --only-binary=:all: "comm==${COMM_VERSION}" --dest files/wheels
+ls files/wheels/comm-"${COMM_VERSION}"-*.whl >/dev/null 2>&1 \
+  || { echo "comm==${COMM_VERSION} wheel not downloaded"; exit 1; }
 
 # 2b) Generate jupyter_lite_config.json. Two things it must wire up:
 #     - PipliteAddon.piplite_urls: pin the kernel to the ACTUAL built wheel so a
@@ -102,8 +240,9 @@ cp "$QCSIM_DIR"/dist/qcsim-*.whl files/wheels/
 #     output is deterministic; the committed jupyter_lite_config.json carries this
 #     verbatim and build-smoke asserts they match (self-heals on a version bump).
 WHEEL_NAME=$(basename "$QCSIM_DIR"/dist/qcsim-*.whl)
-echo "==> Pinning lab kernel (PipliteAddon) to $WHEEL_NAME; un-ignoring lib/"
-python - "$WHEEL_NAME" > jupyter_lite_config.json <<'PY'
+COMM_WHEEL_NAME=$(basename files/wheels/comm-*.whl)
+echo "==> Pinning lab kernel (PipliteAddon) to $WHEEL_NAME + $COMM_WHEEL_NAME; un-ignoring lib/"
+python - "$WHEEL_NAME" "$COMM_WHEEL_NAME" > jupyter_lite_config.json <<'PY'
 import json, sys
 config = {
     "LiteBuildConfig": {
@@ -121,7 +260,11 @@ config = {
             r"/workspaces/", r"/venvs/", r"\.*doit\.db$", r"\.pyc$",
         ],
     },
-    "PipliteAddon": {"piplite_urls": [f"files/wheels/{sys.argv[1]}"]},
+    # qcsim (braket.* shim) + comm (the lab kernel's hard boot dependency, otherwise
+    # fetched from pypi.org) bundled same-origin into the generated piplite index.
+    "PipliteAddon": {
+        "piplite_urls": [f"files/wheels/{sys.argv[1]}", f"files/wheels/{sys.argv[2]}"]
+    },
 }
 print(json.dumps(config, indent=2))
 PY
@@ -151,6 +294,42 @@ python prepare_notebooks.py
 # 6) Build the JupyterLite distribution.
 echo "==> jupyter lite build"
 jupyter lite build
+
+# 6b) Lock the LAB kernel to same-origin. PyodideAddon (driven by the well-known
+#     static/pyodide staged in step 1c) should have rewritten the kernel's pyodideUrl
+#     to ./static/pyodide/pyodide.js; ASSERT that (no jsdelivr left), then set
+#     disablePyPIFallback so piplite never reaches pypi.org — comm and every boot
+#     package now resolve from the same-origin index/distribution. Patch every emitted
+#     jupyter-lite.json that carries the kernel plugin settings. Fails the build if no
+#     config carries those settings (would mean the self-host silently didn't apply).
+echo "==> Locking LAB kernel to same-origin (verify pyodideUrl + set disablePyPIFallback)"
+python - <<'PYLOCK'
+import json, sys
+from pathlib import Path
+
+PLUGIN = "@jupyterlite/pyodide-kernel-extension:kernel"
+out = Path("../public/lab")
+found = 0
+for cfg in sorted(out.rglob("jupyter-lite.json")):
+    data = json.loads(cfg.read_text())
+    settings = data.get("jupyter-config-data", data)
+    ks = settings.get("litePluginSettings", {}).get(PLUGIN)
+    if not isinstance(ks, dict):
+        continue
+    url = ks.get("pyodideUrl", "")
+    if "jsdelivr" not in url and url.startswith("./") and "pyodide.js" in url:
+        found += 1
+    else:
+        sys.exit(f"  ERROR: {cfg} pyodideUrl is not same-origin: {url!r}")
+    if ks.get("disablePyPIFallback") is not True:
+        ks["disablePyPIFallback"] = True
+        cfg.write_text(json.dumps(data, indent=1) + "\n")
+    print(f"  {cfg.relative_to(out)}: pyodideUrl={url} disablePyPIFallback=True")
+if not found:
+    sys.exit("  ERROR: no emitted jupyter-lite.json carried the pyodide kernel "
+             "settings — the self-hosted Pyodide was not wired in")
+print(f"  locked {found} lab config(s) to same-origin")
+PYLOCK
 
 # 7) Copy items JupyterLite's content service does not auto-serve:
 #    - lib/ (Python module tree the notebooks import)

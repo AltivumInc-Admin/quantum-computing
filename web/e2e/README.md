@@ -13,9 +13,14 @@ the deterministic stdout (`Qubit count: 1` / `Circuit depth: 1`). This covers wh
 `tests/test_notebook_contract.py` (CPython qcsim) cannot: the actual browser kernel
 path and the local-wheel install contract.
 
-Pyodide's core runtime is fetched from the jsDelivr CDN (the one network dependency,
-hence `retries: 1` in CI); the qcsim wheel is bundled into the local piplite index by
-`PipliteAddon` (see `jupyterlite-build/jupyter_lite_config.json`) and served locally.
+The lab is **fully same-origin**: `build.sh` self-hosts the kernel's Pyodide
+distribution under `/lab/static/pyodide/` (via `PyodideAddon`'s well-known path) and
+bundles both the qcsim and `comm` wheels into the local piplite index (`PipliteAddon`,
+with `disablePyPIFallback`). The spec therefore also **asserts zero third-party
+requests** — a regression guard against the kernel ever again booting Pyodide from
+cdn.jsdelivr.net or fetching `comm` from pypi.org (the two runtime SPOFs this
+replaced). Because there is no network dependency, the run is deterministic; the
+single CI retry is just CPU-contention insurance.
 
 ## Running
 
