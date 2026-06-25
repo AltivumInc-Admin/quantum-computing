@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TUTOR_ERROR_SENTINEL } from "@/lib/tutor";
+import { sha256Hex } from "@/lib/sha256";
 
 /**
  * "Ask the margin" — a Socratic lesson tutor. A fixed affordance (and Cmd/Ctrl-K)
@@ -101,10 +102,19 @@ export function AskTutor() {
     setError(null);
     setAnswer("");
     try {
+      const bodyStr = JSON.stringify({ slug, question: q });
+      // CloudFront Origin Access Control requires the SHA-256 of the POST body in
+      // x-amz-content-sha256 (Lambda doesn't accept unsigned payloads through OAC).
+      // Guard for crypto.subtle, absent in non-secure/test contexts; the deployed
+      // HTTPS site always has it. When absent we omit the header rather than throw.
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (typeof crypto !== "undefined" && crypto.subtle) {
+        headers["x-amz-content-sha256"] = await sha256Hex(bodyStr);
+      }
       const res = await fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug, question: q }),
+        headers,
+        body: bodyStr,
         signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(`request failed (${res.status})`);

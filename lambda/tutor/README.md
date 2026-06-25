@@ -109,21 +109,46 @@ curl -N -X POST "<FunctionUrl>" \
   (its Node builder honors npm pack semantics), so `index.test.mjs` and the non-runtime
   `template.yaml`/`policy.json`/`trust.json` are kept out of the function bundle. The raw-CLI
   `zip` path is a plain archive, so it excludes the test explicitly with `-x 'index.test.mjs'`.
-- **Cost / abuse:** the load-bearing control is `ReservedConcurrentExecutions`
-  (`MaxConcurrency`, default 5) — a hard ceiling on simultaneous billable
-  invocations; excess requests are throttled (429) rather than fanning out into
-  unbounded paid generations. The template also scopes the Bedrock IAM `Resource`
-  to the inference-profile + its foundation-model ARNs (least privilege, not `*`),
-  and caps `maxTokens` at 800 in the handler. Abuse monitoring is managed
-  separately (outside this stack): a CloudWatch alarm `quantum-tutor-high-invocations`
-  (hourly Invocations > 500) already notifies the `quantum-tutor-alerts` SNS topic.
-  Note: `AuthType: NONE` +
-  CORS is a browser-only UX allowlist, **not** an access control — it does not stop
-  curl/scripted clients, so don't rely on it for abuse protection. For per-IP
-  limits, front the Function URL with AWS WAF rate-based rules; or switch to
-  `AWS_IAM` + signed requests if the UX can absorb it. Log retention: the auto-created
-  `/aws/lambda/quantum-tutor` log group defaults to never-expire — set it with
-  `aws logs put-retention-policy --log-group-name /aws/lambda/quantum-tutor --retention-in-days 14`.
+- **Cost / abuse — two layers.**
+  1. **Per-IP rate limiting at the edge (`edge.yaml`).** WAF **cannot** attach
+     directly to a Lambda Function URL — WAFv2 web ACLs only attach to CloudFront,
+     ALB, API Gateway, AppSync, Cognito, App Runner, Verified Access. So per-IP
+     limiting requires fronting the Function URL with **CloudFront + a WAFv2
+     rate-based rule**. `edge.yaml` (a separate **us-east-1** stack — CloudFront-scope
+     WAF must live there) deploys that: a per-IP rate rule (default 300 req/60s →
+     429) plus an **Origin Access Control** that signs every CloudFront→origin
+     request with SigV4. OAC **requires** the Function URL `AuthType: AWS_IAM`
+     (`FunctionUrlAuthType` param), which also closes the public bypass — direct
+     unsigned hits to the raw Function URL then return 403. **POST through OAC
+     requires the client to send `x-amz-content-sha256` (SHA-256 of the body)** —
+     "Lambda doesn't support unsigned payloads"; `web/src/components/ask-tutor.tsx`
+     computes it via `web/src/lib/sha256.ts`, and the Function URL CORS allows the
+     header. Deploy + wire it with:
+     ```bash
+     # 1) us-east-2 stack stays as-is for now (AuthType still NONE during cutover):
+     sam deploy --parameter-overrides FunctionUrlAuthType=NONE ...
+     # 2) edge stack in us-east-1 (host part of the TutorUrl output):
+     aws cloudformation deploy --region us-east-1 --stack-name quantum-tutor-edge \
+       --template-file edge.yaml --capabilities CAPABILITY_IAM \
+       --parameter-overrides FunctionUrlDomain=<host-of-TutorUrl>
+     # 3) grant CloudFront OAC access to the Function URL (CLI only):
+     DISTRIBUTION_ID=<edge output DistributionId> ./scripts/grant-oac.sh
+     # 4) verify CloudFront streams a grounded answer (signed POST + x-amz-content-sha256),
+     #    point NEXT_PUBLIC_TUTOR_URL at https://<DistributionDomainName>/ and redeploy Amplify,
+     # 5) finally flip the Function URL closed: sam deploy --parameter-overrides FunctionUrlAuthType=AWS_IAM
+     ```
+     (API Gateway is **rejected** as the front door: HTTP APIs don't support Lambda
+     response streaming, which would break the streaming tutor UX.)
+  2. **`ReservedConcurrentExecutions`** (`MaxConcurrency`, default 5) — a hard
+     ceiling on simultaneous billable invocations behind the edge limit; excess is
+     throttled rather than fanning out into unbounded paid generations. The
+     template also scopes the Bedrock IAM `Resource` to the inference-profile + its
+     foundation-model ARNs (least privilege, not `*`) and caps `maxTokens` at 800.
+     A CloudWatch alarm `quantum-tutor-high-invocations` (hourly Invocations > 500)
+     notifies the `quantum-tutor-alerts` SNS topic (managed separately). Log
+     retention: the auto-created `/aws/lambda/quantum-tutor` log group defaults to
+     never-expire — set it with `aws logs put-retention-policy --log-group-name
+     /aws/lambda/quantum-tutor --retention-in-days 14`.
 - **Teardown:** `sam delete` (SAM) or `aws lambda delete-function-url-config` +
   `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`. Also
   delete the application inference profile (below).
