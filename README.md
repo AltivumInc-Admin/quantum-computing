@@ -291,7 +291,7 @@ quantum-computing/
 │   └── scripts/             #   deploy / teardown / validate-setup / cost-report
 │
 ├── tests/                   # 13 pytest modules (lib + qcsim parity + notebook contract)
-├── scripts/                 # validate_runnable.py · generate_notebooks.py
+├── scripts/                 # validate_runnable.py · gen_h2_fixture.py · build_tutor_corpus.mjs
 ├── docs/                    # design specs & implementation plans
 ├── Makefile                 # setup · lab · test · devices · cost · lint · deploy-infra …
 ├── pyproject.toml           # deps (core / dev / full extras), ruff, pytest config
