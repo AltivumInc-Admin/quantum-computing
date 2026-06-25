@@ -110,4 +110,42 @@ describe("review-schedule", () => {
       expect(schedule(c, r, T0)).toEqual(schedule(c, r, T0));
     }
   });
+
+  // Two on-time Good reviews leave the card mature (reps === 2), so the next
+  // review takes the mature (overdue-crediting) branch.
+  const mature = (): CardState => {
+    let c = newCard(T0);
+    c = schedule(c, "good", T0);
+    c = schedule(c, "good", c.dueEpochDay);
+    return c;
+  };
+
+  it("credits overdue time: a long-overdue Good beats an on-time Good", () => {
+    const c = mature();
+    const onTime = schedule(c, "good", c.dueEpochDay);
+    const overdue = schedule(c, "good", c.dueEpochDay + 90);
+    expect(overdue.stability).toBeGreaterThan(onTime.stability);
+    expect(nextIntervalDays(overdue)).toBeGreaterThan(nextIntervalDays(onTime));
+  });
+
+  it("does not penalize an early review (elapsed clamps to 0)", () => {
+    const c = mature();
+    const early = schedule(c, "good", c.dueEpochDay - 3);
+    const onTime = schedule(c, "good", c.dueEpochDay);
+    expect(early.stability).toBe(onTime.stability);
+  });
+
+  it("overdue growth still respects MAX_INTERVAL and monotonicity", () => {
+    const c = mature();
+    const result = schedule(c, "easy", c.dueEpochDay + 10_000);
+    expect(nextIntervalDays(result)).toBeLessThanOrEqual(MAX_INTERVAL);
+    expect(result.stability).toBeGreaterThanOrEqual(c.stability);
+  });
+
+  it("a lapse ignores overdue time (resets to one day)", () => {
+    const c = mature();
+    const failed = schedule(c, "again", c.dueEpochDay + 90);
+    expect(nextIntervalDays(failed)).toBe(1);
+    expect(failed.lapses).toBe(c.lapses + 1);
+  });
 });
