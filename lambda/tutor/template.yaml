@@ -4,11 +4,14 @@ Description: >
   Ask the margin — a response-streaming, Bedrock-backed lesson tutor for the
   quantum curriculum. A single stateless Lambda behind a Function URL.
 
-# NOTE: abuse/cost monitoring is managed SEPARATELY (outside this stack): a
-# CloudWatch alarm "quantum-tutor-high-invocations" (AWS/Lambda Invocations, Sum,
-# 1h, >500) already notifies the "quantum-tutor-alerts" SNS topic. This template
-# deliberately does not re-declare it to avoid a duplicate. The load-bearing
-# in-stack control is ReservedConcurrentExecutions below.
+# NOTE: abuse/cost monitoring has two layers. (1) Per-IP rate limiting is enforced
+# at the edge by a CloudFront + WAFv2 rate-based rule (see edge.yaml, a separate
+# us-east-1 stack); requests over the per-IP limit get a 429 before reaching this
+# function. With OAC in front, set FunctionUrlAuthType=AWS_IAM so the raw Function
+# URL cannot be hit directly, bypassing the edge. (2) ReservedConcurrentExecutions
+# remains a hard ceiling on simultaneous billable invocations. A CloudWatch alarm
+# "quantum-tutor-high-invocations" (Invocations Sum 1h >500 -> "quantum-tutor-alerts"
+# SNS topic) is managed separately and not re-declared here.
 
 Parameters:
   ModelId:
@@ -36,9 +39,18 @@ Parameters:
     MinValue: 1
     Description: >
       Reserved concurrency — a HARD ceiling on simultaneous (billable)
-      invocations. The Function URL is public (AuthType NONE), so this is the
-      load-bearing cost/abuse control: excess requests are throttled (429)
-      rather than fanning out into unbounded paid Bedrock generations.
+      invocations. A second-layer cost control behind the edge WAF rate limit:
+      excess requests are throttled rather than fanning out into unbounded paid
+      Bedrock generations.
+  FunctionUrlAuthType:
+    Type: String
+    Default: AWS_IAM
+    AllowedValues: [AWS_IAM, NONE]
+    Description: >
+      Function URL auth. AWS_IAM (default, end state) locks the URL so ONLY the
+      CloudFront Origin Access Control in edge.yaml can invoke it — closing the
+      public bypass. NONE is used transiently during the cutover (front CloudFront
+      first, verify, then flip to AWS_IAM). OAC REQUIRES AWS_IAM.
 
 Resources:
   TutorFunction:
@@ -51,7 +63,7 @@ Resources:
       CodeUri: ./
       MemorySize: 512
       Timeout: 60
-      # HARD cost ceiling on a public (AuthType NONE) Bedrock-invoking endpoint.
+      # HARD cost ceiling (second layer behind the edge WAF rate limit).
       ReservedConcurrentExecutions: !Ref MaxConcurrency
       # Cost-attribution tags on the Lambda's OWN compute. The dominant cost
       # (Bedrock inference) is attributed separately via the application
@@ -78,19 +90,20 @@ Resources:
                 - !Sub "arn:aws:bedrock:us-east-2::foundation-model/${FoundationModelId}"
                 - !Sub "arn:aws:bedrock:us-west-2::foundation-model/${FoundationModelId}"
       FunctionUrlConfig:
-        AuthType: NONE
+        AuthType: !Ref FunctionUrlAuthType
         InvokeMode: RESPONSE_STREAM
         Cors:
-          # NOTE: CORS is a browser-enforced UX allowlist, NOT an access control —
-          # it does not stop curl/scripted clients. Abuse is bounded by
-          # ReservedConcurrentExecutions + the separate invocations alarm (and
-          # optionally WAF).
+          # CORS is a browser-enforced UX allowlist, NOT access control. The real
+          # access control is AuthType AWS_IAM + the edge WAF (edge.yaml).
+          # x-amz-content-sha256 is allowed so the browser's POST preflight passes
+          # once OAC requires the body-hash header on POST.
           AllowOrigins:
             - !Ref AllowedOrigin
           AllowMethods:
             - POST
           AllowHeaders:
             - content-type
+            - x-amz-content-sha256
 
 Outputs:
   TutorUrl:

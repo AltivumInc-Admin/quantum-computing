@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Edge protection for the "Ask the margin" tutor Function URL: a CloudFront
+  distribution (Origin Access Control -> the us-east-2 Lambda Function URL)
+  fronted by a WAFv2 rate-based rule that sheds per-IP abuse (HTTP 429) BEFORE it
+  can fan out into paid Bedrock generations. CloudFront-scope WAF must live in
+  us-east-1, so this is a SEPARATE stack from template.yaml (us-east-2); deploy it
+  with the host part of that stack's TutorUrl output as FunctionUrlDomain.
+  Caching is disabled so the streamed tutor response is never buffered/cached.
+
+Parameters:
+  FunctionUrlDomain:
+    Type: String
+    Description: >
+      Host (no scheme, no path) of the us-east-2 Function URL — the host part of
+      the quantum-tutor stack's TutorUrl output, e.g.
+      abcd1234.lambda-url.us-east-2.on.aws
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues: [PriceClass_100, PriceClass_200, PriceClass_All]
+    Description: CloudFront price class (PriceClass_100 = NA/EU edges, cheapest).
+  RateLimitPerMinute:
+    Type: Number
+    Default: 300
+    MinValue: 10
+    Description: >
+      Max requests per source IP per 60s before WAF blocks (429). 300/min is
+      orders of magnitude above a real learner yet well below scripted abuse.
+
+Resources:
+  # CloudFront-scope WAF web ACL: one per-IP rate-based rule, default Allow.
+  TutorWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: quantum-tutor-edge
+      Scope: CLOUDFRONT
+      Description: Per-IP rate limit for the public tutor endpoint.
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Name: PerIpRateLimit
+          Priority: 0
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref RateLimitPerMinute
+              EvaluationWindowSec: 60
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: quantumTutorRateLimit
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: quantumTutorEdgeAcl
+
+  # OAC that signs every CloudFront->origin request with SigV4 so the Function URL
+  # can be locked to AWS_IAM (no public direct access). Origin type 'lambda'.
+  TutorOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: quantum-tutor-oac
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  TutorDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: quantum-tutor edge (WAF per-IP rate limit + OAC)
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: !Ref PriceClass
+        WebACLId: !GetAtt TutorWebAcl.Arn
+        Origins:
+          - Id: TutorFunctionUrlOrigin
+            DomainName: !Ref FunctionUrlDomain
+            OriginAccessControlId: !GetAtt TutorOAC.Id
+            # Lambda Function URLs are HTTPS-only. The read timeout covers the
+            # 60s Lambda Timeout so a long streamed answer isn't cut off.
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: TutorFunctionUrlOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: false
+          # Managed-CachingDisabled: never cache the dynamic streamed response.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          # Managed-AllViewerExceptHostHeader: forward content-type, Origin, and
+          # x-amz-content-sha256 to the origin, but NOT Host (OAC sets the Host to
+          # the Function URL domain and signs against it).
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+Outputs:
+  DistributionDomainName:
+    Description: Set https://<this>/ as NEXT_PUBLIC_TUTOR_URL in Amplify.
+    Value: !GetAtt TutorDistribution.DomainName
+  DistributionId:
+    Description: Use in the OAC grant (scripts/grant-oac.sh) and CloudWatch.
+    Value: !Ref TutorDistribution
+  WebAclArn:
+    Description: The CLOUDFRONT-scope WAF web ACL ARN (us-east-1).
+    Value: !GetAtt TutorWebAcl.Arn
