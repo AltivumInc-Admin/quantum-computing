@@ -37,6 +37,17 @@ describe("gradeTs", () => {
     expect(gradeTs("FOO 0", bell).status).toBe("error");
   });
 
+  it("surfaces a friendly error for a negative qubit index instead of throwing", () => {
+    // Before the parser hardening, "H -1" parsed clean and simulate() threw an
+    // uncaught "Cannot read properties of undefined" on the Check button.
+    expect(() => gradeTs("H -1", bell)).not.toThrow();
+    expect(gradeTs("H -1", bell).status).toBe("error");
+  });
+
+  it("surfaces a friendly error for a garbage index instead of grading silently wrong", () => {
+    expect(gradeTs("H 0abc", bell).status).toBe("error");
+  });
+
   it("rejects a challenge whose target uses a slider theta (would grade against the identity)", () => {
     const spec = parseChallenge(
       JSON.stringify({ prompt: "p", qubits: 1, target: { program: "RY 0 theta" } })

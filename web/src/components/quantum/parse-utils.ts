@@ -47,3 +47,30 @@ export function numberOr(
   if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
   return v;
 }
+
+/**
+ * Parse a whitespace-DSL token as a non-negative integer index. Unlike
+ * parseInt, this rejects signs, decimals, and trailing garbage: parseInt("-1")
+ * is -1 and parseInt("0abc") is 0, both of which would otherwise build a wrong
+ * (or crash-on-simulate) circuit. Leading zeros are accepted ("03" -> 3).
+ */
+export function parseIndex(
+  tok: string | undefined
+): { ok: true; value: number } | { ok: false } {
+  if (tok === undefined || !/^\d+$/.test(tok)) return { ok: false };
+  return { ok: true, value: Number(tok) };
+}
+
+/**
+ * Parse a whitespace-DSL token as a finite float angle (radians). Rejects
+ * trailing garbage that parseFloat would silently truncate ("1.5xyz" -> 1.5);
+ * negative and exponent forms are allowed (rotations may be negative).
+ */
+export function parseAngle(
+  tok: string | undefined
+): { ok: true; value: number } | { ok: false } {
+  if (tok === undefined || tok === "") return { ok: false };
+  const v = Number(tok); // Number("1.5xyz") === NaN, Number("1e-3") === 0.001
+  if (!Number.isFinite(v)) return { ok: false };
+  return { ok: true, value: v };
+}
