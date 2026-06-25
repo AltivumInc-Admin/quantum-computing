@@ -131,6 +131,24 @@ jobs:
       - name: Assert committed lab config matches build.sh output
         run: git diff --exit-code -- web/jupyterlite-build/jupyter_lite_config.json
 
+      # The lesson runtime self-hosts Pyodide under /pyodide/. Assert it was staged,
+      # its version matches the runtime constant (no self-host/runtime drift), and
+      # the {micropip, numpy} wheel closure the runtime needs is present — without
+      # these wheels the same-origin boot would 404 and silently fall back to CDN.
+      - name: Assert self-hosted Pyodide matches the runtime version + closure
+        run: |
+          test -f web/public/pyodide/pyodide.js || { echo "self-hosted pyodide.js missing"; exit 1; }
+          ver=$(grep -oE 'PYODIDE_VERSION *= *"[0-9.]+"' web/src/lib/pyodide-runtime.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          grep -q "\"version\": \"$ver\"" web/public/pyodide/pyodide-lock.json \
+            || { echo "self-hosted pyodide-lock version != runtime $ver"; exit 1; }
+          # Assert the STABLE closure roots only (micropip is always loadPackage'd;
+          # numpy is qcsim's dependency). Transitive deps are computed from the lock
+          # by build.sh and may change across Pyodide versions, so we don't pin them.
+          for w in micropip numpy; do
+            ls web/public/pyodide/$w-*.whl >/dev/null 2>&1 || { echo "missing closure root wheel: $w"; exit 1; }
+          done
+          echo "self-hosted Pyodide $ver OK (core + micropip/numpy dependency closure)"
+
       - name: Build static export
         working-directory: web
         run: |

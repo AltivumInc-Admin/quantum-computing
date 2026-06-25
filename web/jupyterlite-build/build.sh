@@ -16,6 +16,60 @@ source .venv/bin/activate
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 
+# 1b) Self-host the pinned Pyodide LESSON runtime under ../public/pyodide so
+#     src/lib/pyodide-runtime.ts boots from SAME-ORIGIN instead of a third-party
+#     CDN, removing the runtime single point of failure. The version is parsed
+#     from the runtime file so the self-host and the runtime can never drift.
+#
+#     The "core" distribution ships pyodide.js + wasm + stdlib + the package
+#     lockfile but NO package wheels — and the runtime needs micropip (to install
+#     the qcsim wheel) plus numpy (qcsim's dependency). So after unpacking core we
+#     also fetch exactly the lockfile dependency closure of {micropip, numpy}
+#     (micropip, numpy, packaging) into the same dir, which is where Pyodide
+#     resolves packages from indexURL. Computed from the lock so a Pyodide bump
+#     stays correct. (This is a BUILD-time CDN fetch; the goal is to remove the
+#     RUNTIME CDN dependency, and `set -euo pipefail` aborts on any fetch failure
+#     so a partial self-host can never ship.)
+PYODIDE_VERSION=$(grep -oE 'PYODIDE_VERSION *= *"[0-9.]+"' ../src/lib/pyodide-runtime.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+test -n "$PYODIDE_VERSION" || { echo "could not parse PYODIDE_VERSION from pyodide-runtime.ts"; exit 1; }
+PYODIDE_DEST="../public/pyodide"
+PYODIDE_CDN="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full"
+echo "==> Self-hosting Pyodide ${PYODIDE_VERSION} runtime -> ${PYODIDE_DEST}"
+rm -rf "$PYODIDE_DEST"
+mkdir -p "$PYODIDE_DEST"
+TMP_PYO=$(mktemp -d "${TMPDIR:-/tmp}/pyodide-core-XXXXXX")
+curl -fsSL --retry 3 \
+  "https://github.com/pyodide/pyodide/releases/download/${PYODIDE_VERSION}/pyodide-core-${PYODIDE_VERSION}.tar.bz2" \
+  -o "$TMP_PYO/core.tar.bz2"
+tar -xjf "$TMP_PYO/core.tar.bz2" -C "$TMP_PYO"   # unpacks to $TMP_PYO/pyodide/
+cp -R "$TMP_PYO"/pyodide/. "$PYODIDE_DEST"/
+rm -rf "$TMP_PYO"
+test -f "$PYODIDE_DEST/pyodide.js" || { echo "pyodide.js missing after self-host"; exit 1; }
+# Fetch the {micropip, numpy} closure (the wheels 'core' omits) so the runtime's
+# loadPackage('micropip') + micropip.install(qcsim -> numpy) all resolve same-origin.
+CLOSURE_WHEELS=$(python - "$PYODIDE_DEST/pyodide-lock.json" <<'PYCLOSURE'
+import json, sys
+lock = json.load(open(sys.argv[1]))
+pkgs = lock["packages"]
+norm = lambda s: s.lower().replace("_", "-")
+by_norm = {norm(k): v for k, v in pkgs.items()}
+seen, stack = set(), ["micropip", "numpy"]
+while stack:
+    name = norm(stack.pop())
+    if name in seen or name not in by_norm:
+        continue
+    seen.add(name)
+    stack.extend(by_norm[name].get("depends", []))
+print("\n".join(sorted(by_norm[n]["file_name"] for n in seen)))
+PYCLOSURE
+)
+test -n "$CLOSURE_WHEELS" || { echo "could not compute Pyodide dependency closure from lock"; exit 1; }
+for whl in $CLOSURE_WHEELS; do
+  echo "    fetching closure wheel $whl"
+  curl -fsSL --retry 3 "${PYODIDE_CDN}/${whl}" -o "$PYODIDE_DEST/$whl"
+  test -s "$PYODIDE_DEST/$whl" || { echo "closure wheel $whl missing/empty after fetch"; exit 1; }
+done
+
 # 2) Build the qcsim wheel and stash it under files/wheels/.
 QCSIM_DIR="../../qcsim"
 echo "==> Building qcsim wheel"
