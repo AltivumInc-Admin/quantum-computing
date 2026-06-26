@@ -41,4 +41,19 @@ describe("JwExplorer", () => {
     expect(() => render(<JwExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qjw error:/i)).toBeInTheDocument();
   });
+
+  it("does not assert a phantom Z-string for the default mode-0 view", () => {
+    const { container } = render(<JwExplorer source="" />);
+    expect(container).not.toHaveTextContent(/q0 through q0/);
+    expect(container).toHaveTextContent(/no trailing Z-string/i);
+  });
+
+  it("describes the Z-string range for a higher mode", () => {
+    const { container } = render(
+      <JwExplorer
+        source={JSON.stringify({ modes: 4, electrons: 2, mode: 2, dagger: true })}
+      />
+    );
+    expect(container).toHaveTextContent(/q0 through q1/);
+  });
 });

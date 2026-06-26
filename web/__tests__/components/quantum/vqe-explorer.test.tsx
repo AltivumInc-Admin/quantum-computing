@@ -38,6 +38,21 @@ describe("VqeExplorer", () => {
     expect(screen.getByText(/qvqe error:/i)).toBeInTheDocument();
   });
 
+  it("plots lower energy lower: the above-floor marker sits above the floor line", () => {
+    // At the default theta (0.4) the energy is above the variational floor, so
+    // with the corrected y-map the marker dot is HIGHER on screen (smaller cy)
+    // than the dashed floor line. This fails on the pre-fix upside-down map.
+    const { container } = render(<VqeExplorer source={JSON.stringify({ R: 0.75 })} />);
+    const svg = container.querySelector(
+      'svg[aria-label^="Variational energy"]'
+    ) as SVGSVGElement;
+    const marker = svg.querySelector("circle")!;
+    const floor = svg.querySelector('line[stroke-dasharray="3 3"]')!;
+    const markerCy = Number(marker.getAttribute("cy"));
+    const floorY = Number(floor.getAttribute("y1"));
+    expect(markerCy).toBeLessThan(floorY);
+  });
+
   it("keeps theta within the slider domain [-pi, pi] after Optimize", () => {
     mockMatchMedia(true); // reduced motion -> jump straight to the optimized angle
     render(<VqeExplorer source={JSON.stringify({ R: 0.75 })} />);

@@ -340,12 +340,23 @@ export function JwExplorer({ source }: { source: string }) {
 
         {/* Plain-English note */}
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-          The trailing Z-string counts the parity of every lower-index orbital
-          (q0 through q{activeMode > 0 ? activeMode - 1 : 0}). That product of Z
-          operators is what encodes fermionic antisymmetry: flipping occupation
-          on mode {activeMode} must respect the sign of how many electrons sit
-          below it. The mapping is exact and deterministic — pure combinatorics,
-          big-endian with qubit 0 on the left.
+          {image.zChain.length > 0 ? (
+            <>
+              The trailing Z-string counts the parity of every lower-index
+              orbital (q0 through q{activeMode - 1}). That product of Z operators
+              is what encodes fermionic antisymmetry: flipping occupation on mode{" "}
+              {activeMode} must respect the sign of how many electrons sit below
+              it.{" "}
+            </>
+          ) : (
+            <>
+              Mode 0 has no lower-index orbitals, so there is no trailing
+              Z-string — the operator is just (X {sign} iY) / 2 on q0. The parity
+              bookkeeping appears only for higher modes.{" "}
+            </>
+          )}
+          The mapping is exact and deterministic — pure combinatorics, big-endian
+          with qubit 0 on the left.
         </p>
       </div>
     </div>
