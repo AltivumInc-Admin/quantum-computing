@@ -10,6 +10,7 @@ import {
   verticesIn,
   type Edge,
 } from "./qaoa";
+import { parseJsonObject } from "./parse-utils";
 
 /**
  * Inline QAOA / variational-landscape explorer rendered from a ```qoptim fenced
@@ -47,20 +48,12 @@ const DEFAULT_EDGES: Edge[] = [
 function parseSource(
   source: string
 ): { ok: true; edges: Edge[]; n: number } | { ok: false; error: string } {
-  const trimmed = source.trim();
   let edges: Edge[] = DEFAULT_EDGES;
 
-  if (trimmed.length > 0) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(trimmed);
-    } catch {
-      return { ok: false, error: "invalid JSON" };
-    }
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return { ok: false, error: "expected a JSON object" };
-    }
-    const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return { ok: false, error: base.error };
+  if (base.obj) {
+    const obj = base.obj;
     const rawEdges = obj["edges"];
     if (rawEdges !== undefined) {
       if (!Array.isArray(rawEdges) || rawEdges.length === 0) {

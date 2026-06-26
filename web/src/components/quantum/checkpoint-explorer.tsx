@@ -5,7 +5,7 @@ import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./wi
 import { wastedNoCheckpoint, wastedWithCheckpoint } from "./hybrid";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
-import { clampInt } from "./parse-utils";
+import { clampInt, parseJsonObject } from "./parse-utils";
 
 /**
  * Inline checkpointing explorer rendered from a ```qcheckpoint fenced block in
@@ -37,22 +37,14 @@ type ParseOk = {
 type ParseResult = ParseOk | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
   let iterations: number = DEFAULTS.iterations;
   let failAt: number = DEFAULTS.failAt;
   let every: number = DEFAULTS.every;
 
-  if (trimmed.length > 0) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(trimmed);
-    } catch {
-      return { ok: false, error: "invalid JSON" };
-    }
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return { ok: false, error: "expected a JSON object" };
-    }
-    const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return { ok: false, error: base.error };
+  if (base.obj) {
+    const obj = base.obj;
     if (obj["iterations"] !== undefined) {
       if (typeof obj["iterations"] !== "number") {
         return { ok: false, error: '"iterations" must be a number' };
@@ -98,7 +90,6 @@ function TimelineRow({
   every,
   failAt,
   redoneFrom,
-  label,
   ariaLabel,
   showCheckpoints,
   reduced,
@@ -107,7 +98,6 @@ function TimelineRow({
   every: number;
   failAt: number;
   redoneFrom: number;
-  label: string;
   ariaLabel: string;
   showCheckpoints: boolean;
   reduced: boolean;
@@ -181,15 +171,6 @@ function TimelineRow({
         className="text-rose-500 dark:text-rose-400"
       />
 
-      <text
-        x={2}
-        y={ROW_H + 6}
-        fontSize={7}
-        className="fill-gray-400 dark:fill-gray-500 font-mono"
-        aria-hidden="true"
-      >
-        {label}
-      </text>
     </svg>
   );
 }
@@ -267,7 +248,6 @@ export function CheckpointExplorer({ source }: { source: string }) {
               every={clampedEvery}
               failAt={clampedFail}
               redoneFrom={0}
-              label="restart redoes 0..fail"
               showCheckpoints={false}
               reduced={reduced}
               ariaLabel={`No-checkpoint timeline of ${iterations} iterations. Failure at iteration ${clampedFail}. A restart redoes all ${wastedNo} completed iterations.`}
@@ -283,7 +263,6 @@ export function CheckpointExplorer({ source }: { source: string }) {
               every={clampedEvery}
               failAt={clampedFail}
               redoneFrom={lastCheckpoint}
-              label="restart redoes lastCheckpoint..fail"
               showCheckpoints
               reduced={reduced}
               ariaLabel={`Checkpointed timeline of ${iterations} iterations with a checkpoint every ${clampedEvery}. Failure at iteration ${clampedFail}. The last checkpoint is at ${lastCheckpoint}, so a restart redoes only ${wastedWith} iterations.`}

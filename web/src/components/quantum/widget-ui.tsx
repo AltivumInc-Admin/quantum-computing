@@ -240,3 +240,12 @@ export function LiveStatus({ children }: { children: ReactNode }) {
     </p>
   );
 }
+
+export const primaryActionClass =
+  "rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-(--shadow-resting) hover:bg-accent-dark focus-ring transition-colors motion-reduce:transition-none disabled:opacity-60";
+
+export const secondaryActionClass =
+  "rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none";
+
+export const fieldClass =
+  "rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200 focus-ring";

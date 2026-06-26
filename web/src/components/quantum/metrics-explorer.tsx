@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
 import { H2 as H } from "./h2-data";
 import {
   h2OneQubit,
@@ -9,6 +9,8 @@ import {
   vqeGradientDescent,
 } from "./chemistry";
 import { usePrefersReducedMotion } from "./use-display-caps";
+import { parseJsonObject } from "./parse-utils";
+import { formatHartree, hartreeSR } from "./format";
 
 /**
  * Inline live-metrics dashboard rendered from a ```qmetrics fenced block in the
@@ -49,21 +51,12 @@ function clampR(R: number): number {
 function parseSource(source: string): ParseResult {
   const defaultR = H.equilibrium.R;
   const defaultThreshold = H.equilibrium.fci + 0.02;
-  const trimmed = source.trim();
-  if (trimmed.length === 0) {
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) {
     return { ok: true, R: defaultR, threshold: defaultThreshold };
   }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const obj = base.obj;
 
   let R = defaultR;
   const rawR = obj["R"];
@@ -196,34 +189,34 @@ export function MetricsExplorer({ source }: { source: string }) {
     PLOT.padL + (total <= 1 ? 0 : (i / (total - 1)) * innerW);
   const sy = (e: number) => PLOT.padT + ((yHi - e) / span) * innerH;
 
+  const started = shown > 0;
   const visible = history.slice(0, Math.max(0, shown));
   const linePath = visible
+    .map((e, i) => `${i === 0 ? "M" : "L"}${sx(i).toFixed(2)},${sy(e).toFixed(2)}`)
+    .join(" ");
+  const previewPath = history
     .map((e, i) => `${i === 0 ? "M" : "L"}${sx(i).toFixed(2)},${sy(e).toFixed(2)}`)
     .join(" ");
 
   const lastIndex = visible.length > 0 ? visible.length - 1 : 0;
   const lastEnergy = visible.length > 0 ? visible[lastIndex] : history[0];
-  // Pin the dashed threshold line to the plot band so an out-of-band threshold
-  // sits on the edge rather than driving the data scale.
   const thresholdY = Math.max(PLOT.padT, Math.min(PLOT.h - PLOT.padB, sy(threshold)));
-  const belowThreshold = visible.length > 0 && lastEnergy <= threshold;
+  const belowThreshold = started && lastEnergy <= threshold;
+  const phase = streaming ? "running" : started ? (belowThreshold ? "met" : "stopped") : "ready";
 
-  // One concise live-region update on stream start / finish (not per tick): the
-  // text only changes at those two transitions, so a polite region announces
-  // twice rather than ~40 times during the stream.
   const streamStatus = streaming
     ? `Streaming ${total} iterations.`
     : shown >= total && shown > 0
-      ? `Converged to ${lastEnergy.toFixed(4)} hartree at iteration ${lastIndex}; stopping_condition ${belowThreshold ? "met" : "not met"}.`
+      ? `Converged to ${hartreeSR(lastEnergy)} at iteration ${lastIndex}; stopping_condition ${belowThreshold ? "met" : "not met"}.`
       : "";
 
   const plotAria =
     `Live VQE convergence metric. Iteration from 0 to ${total - 1} on the x axis, ` +
-    `energy from ${yHi.toFixed(2)} to ${yLo.toFixed(2)} hartree on the y axis. ` +
-    `A dashed stopping_condition threshold sits at ${threshold.toFixed(3)} hartree. ` +
-    (visible.length > 0
-      ? `At iteration ${lastIndex} the energy is ${lastEnergy.toFixed(4)} hartree.`
-      : `No iterations streamed yet.`);
+    `energy from ${hartreeSR(yHi, 2)} to ${hartreeSR(yLo, 2)} on the y axis. ` +
+    `A dashed stopping_condition threshold sits at ${hartreeSR(threshold, 3)}. ` +
+    (started
+      ? `At iteration ${lastIndex} the energy is ${hartreeSR(lastEnergy)}.`
+      : `Not started; the full curve is previewed.`);
 
   return (
     <WidgetCard
@@ -234,12 +227,14 @@ export function MetricsExplorer({ source }: { source: string }) {
           <Chip>metric: energy</Chip>
           <span
             className={
-              belowThreshold
+              phase === "met"
                 ? "rounded-chip bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[11px] font-mono text-emerald-700 dark:text-emerald-300"
-                : "rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300"
+                : phase === "running"
+                  ? "rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300"
+                  : "rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300"
             }
           >
-            {belowThreshold ? "stopping_condition met" : "running"}
+            {phase === "met" ? "stopping_condition met" : phase}
           </span>
         </div>
       }
@@ -299,6 +294,20 @@ export function MetricsExplorer({ source }: { source: string }) {
             >
               stopping_condition
             </text>
+
+            {/* faint preview when idle */}
+            {!started && previewPath && (
+              <path
+                d={previewPath}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.2}
+                strokeDasharray="3 4"
+                strokeLinejoin="round"
+                className="text-gray-300 dark:text-gray-700"
+                aria-hidden="true"
+              />
+            )}
 
             {/* metric line */}
             {linePath && (
@@ -364,13 +373,13 @@ export function MetricsExplorer({ source }: { source: string }) {
             <div className="flex items-center justify-between gap-2">
               <dt className="text-accent dark:text-accent-light">energy</dt>
               <dd className="text-gray-800 dark:text-gray-100">
-                {lastEnergy.toFixed(4)} Ha
+                {formatHartree(lastEnergy)}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-gray-500 dark:text-gray-400">threshold</dt>
               <dd className="text-gray-800 dark:text-gray-100">
-                {threshold.toFixed(4)} Ha
+                {formatHartree(threshold)}
               </dd>
             </div>
           </dl>
@@ -379,15 +388,16 @@ export function MetricsExplorer({ source }: { source: string }) {
             <button
               type="button"
               onClick={onStream}
+              disabled={streaming}
               aria-busy={streaming}
-              className="rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-(--shadow-resting) hover:bg-accent-dark focus-ring transition-colors motion-reduce:transition-none"
+              className={primaryActionClass}
             >
-              Stream
+              {streaming ? "Streaming…" : "Stream"}
             </button>
             <button
               type="button"
               onClick={onReset}
-              className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none"
+              className={secondaryActionClass}
             >
               Reset
             </button>

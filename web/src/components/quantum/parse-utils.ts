@@ -5,16 +5,36 @@
  * particular lived in two files — so they are single-sourced here.
  */
 
-/** Clamp a number into [lo, hi]. */
-export function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
+import { clamp } from "./math";
+export { clamp };
 
 /** Round then clamp into [lo, hi]; NaN falls back to `lo`. */
 export function clampInt(v: number, lo: number, hi: number): number {
   const n = Math.round(v);
   if (Number.isNaN(n)) return lo;
-  return Math.max(lo, Math.min(hi, n));
+  return clamp(n, lo, hi);
+}
+
+/**
+ * Parse the optional JSON-object config body shared by every fenced explorable.
+ * Empty/whitespace -> { ok: true, obj: null } (caller substitutes its defaults);
+ * a JSON object -> { ok: true, obj }; anything else -> { ok: false, error }.
+ */
+export function parseJsonObject(
+  source: string
+): { ok: true; obj: Record<string, unknown> | null } | { ok: false; error: string } {
+  const trimmed = source.trim();
+  if (trimmed.length === 0) return { ok: true, obj: null };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(trimmed);
+  } catch {
+    return { ok: false, error: "invalid JSON" };
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ok: false, error: "expected a JSON object" };
+  }
+  return { ok: true, obj: raw as Record<string, unknown> };
 }
 
 /**

@@ -43,6 +43,18 @@ describe("MetricsExplorer", () => {
     expect(screen.getByText(/qmetrics error:/)).toBeInTheDocument();
   });
 
+  it("shows 'ready' chip at idle, not 'running'", () => {
+    render(<MetricsExplorer source="" />);
+    expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.queryByText("running")).not.toBeInTheDocument();
+  });
+
+  it("Stream button is initially enabled", () => {
+    render(<MetricsExplorer source="" />);
+    const btn = screen.getByRole("button", { name: /stream/i });
+    expect(btn).not.toBeDisabled();
+  });
+
   it("derives the y-axis from the data, so an out-of-band threshold doesn't rescale it", () => {
     // The plot's aria-label encodes the y-range; with the fix it depends on the
     // VQE data only, not the user threshold.
@@ -52,7 +64,7 @@ describe("MetricsExplorer", () => {
       );
       const aria =
         container.querySelector('[aria-label*="energy from"]')?.getAttribute("aria-label") ?? "";
-      const m = aria.match(/energy from ([\d.-]+) to ([\d.-]+) hartree/);
+      const m = aria.match(/energy from ([\d.-]+) hartree to ([\d.-]+) hartree/);
       unmount();
       return m ? `${m[1]}..${m[2]}` : null;
     };

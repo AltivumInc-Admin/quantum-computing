@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { DEVICES, sortDevices, type SortKey } from "./devices";
 import { costLabel } from "./cost";
 import { LiveStatus } from "./widget-ui";
@@ -8,6 +8,7 @@ import { LiveStatus } from "./widget-ui";
 const TECHNOLOGIES = ["All", "Trapped ion", "Superconducting", "Neutral atom", "Simulator"] as const;
 
 export function DeviceTable() {
+  const techId = useId();
   const [sortKey, setSortKey] = useState<SortKey>("model");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [tech, setTech] = useState<string>("All");
@@ -45,13 +46,13 @@ export function DeviceTable() {
         </span>
         <div className="flex items-center gap-2">
           <label
-            htmlFor="device-tech-filter"
+            htmlFor={techId}
             className="text-xs text-gray-500 dark:text-gray-400"
           >
             Technology
           </label>
           <select
-            id="device-tech-filter"
+            id={techId}
             aria-label="Technology"
             value={tech}
             onChange={(e) => setTech(e.target.value)}
@@ -76,6 +77,7 @@ export function DeviceTable() {
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
               <th
+                scope="col"
                 aria-sort={ariaSort("model")}
                 className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap"
               >
@@ -89,6 +91,7 @@ export function DeviceTable() {
                 </button>
               </th>
               <th
+                scope="col"
                 aria-sort={ariaSort("technology")}
                 className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap"
               >
@@ -101,10 +104,11 @@ export function DeviceTable() {
                   <SortIndicator active={sortKey === "technology"} dir={sortDir} />
                 </button>
               </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Vendor
               </th>
               <th
+                scope="col"
                 aria-sort={ariaSort("qubits")}
                 className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap"
               >
@@ -117,13 +121,13 @@ export function DeviceTable() {
                   <SortIndicator active={sortKey === "qubits"} dir={sortDir} />
                 </button>
               </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Connectivity
               </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Gate model
               </th>
-              <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
                 Cost
               </th>
             </tr>

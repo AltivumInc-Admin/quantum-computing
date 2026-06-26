@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { PRICING, Provider, estimateCost, isPerShot } from "./cost";
 import { EyebrowLabel, WidgetCard } from "./widget-ui";
 
@@ -28,10 +28,12 @@ function parseSource(source: string): { provider?: Provider; shots?: number } {
 export function CostCalculator({ source }: { source: string }) {
   const preset = useMemo(() => parseSource(source), [source]);
 
+  const deviceId = useId();
+  const tasksId = useId();
+  const shotsId = useId();
+  const minutesId = useId();
+
   const [provider, setProvider] = useState<Provider>(preset.provider ?? "IonQ");
-  // Number fields are string-backed so the learner can clear and retype mid-edit
-  // without the value snapping to 1 on every keystroke; the >=1 floor is applied
-  // to the derived count used for the estimate (and re-displayed on blur).
   const [shotsStr, setShotsStr] = useState(String(preset.shots ?? 1000));
   const [tasksStr, setTasksStr] = useState("1");
   const [minutesStr, setMinutesStr] = useState("1");
@@ -82,13 +84,13 @@ export function CostCalculator({ source }: { source: string }) {
           {/* Device picker */}
           <div className="flex flex-col gap-1">
             <label
-              htmlFor="qcost-device"
+              htmlFor={deviceId}
               className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
             >
               Device
             </label>
             <select
-              id="qcost-device"
+              id={deviceId}
               aria-label="Device"
               value={provider}
               onChange={(e) => setProvider(e.target.value as Provider)}
@@ -105,13 +107,13 @@ export function CostCalculator({ source }: { source: string }) {
           {/* Tasks (always shown) */}
           <div className="flex flex-col gap-1">
             <label
-              htmlFor="qcost-tasks"
+              htmlFor={tasksId}
               className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
             >
               Tasks
             </label>
             <input
-              id="qcost-tasks"
+              id={tasksId}
               type="number"
               min={1}
               step={1}
@@ -126,13 +128,13 @@ export function CostCalculator({ source }: { source: string }) {
             /* Shots — shown for QPU providers */
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label
-                htmlFor="qcost-shots"
+                htmlFor={shotsId}
                 className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
               >
                 Shots per task
               </label>
               <input
-                id="qcost-shots"
+                id={shotsId}
                 type="number"
                 min={1}
                 step={100}
@@ -146,13 +148,13 @@ export function CostCalculator({ source }: { source: string }) {
             /* Minutes — shown for managed simulators */
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label
-                htmlFor="qcost-minutes"
+                htmlFor={minutesId}
                 className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
               >
                 Minutes per task
               </label>
               <input
-                id="qcost-minutes"
+                id={minutesId}
                 type="number"
                 min={1}
                 step={1}
@@ -168,6 +170,12 @@ export function CostCalculator({ source }: { source: string }) {
         {/* Itemized breakdown */}
         <div className="rounded-md bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50 overflow-hidden">
           <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-gray-700/40">
+                <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Item</th>
+                <th scope="col" className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">USD</th>
+              </tr>
+            </thead>
             <tbody>
               {lines.map((line, i) => (
                 <tr

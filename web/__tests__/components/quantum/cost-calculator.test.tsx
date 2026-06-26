@@ -10,6 +10,11 @@ describe("CostCalculator", () => {
     render(<CostCalculator source={""} />);
     expect(screen.getByText(/\$10\.30/)).toBeInTheDocument();
   });
+  it("shows USD header in breakdown table", () => {
+    render(<CostCalculator source={""} />);
+    expect(screen.getByText("USD")).toBeInTheDocument();
+    expect(screen.getByText("Item")).toBeInTheDocument();
+  });
   it("switching to LocalSimulator shows free", () => {
     render(<CostCalculator source={""} />);
     fireEvent.change(screen.getByLabelText(/device/i), { target: { value: "LocalSimulator" } });

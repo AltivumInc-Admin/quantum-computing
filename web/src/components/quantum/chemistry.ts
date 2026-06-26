@@ -326,25 +326,40 @@ export function loadH2Curve(json: unknown): H2Curve {
   return o as H2Curve;
 }
 
+function h2Bracket(R: number, points: H2Point[]): { a: H2Point; b: H2Point; t: number } {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (R <= first.R) return { a: first, b: first, t: 0 };
+  if (R >= last.R) return { a: last, b: last, t: 0 };
+  let i = 0;
+  while (i < points.length - 1 && points[i + 1].R < R) i++;
+  const a = points[i];
+  const b = points[i + 1];
+  return { a, b, t: (R - a.R) / (b.R - a.R) };
+}
+
 /** Linearly interpolate the tapered (c0, cz, cx) at bond length R. */
 export function h2OneQubit(
   R: number,
   points: H2Point[]
 ): { c0: number; cz: number; cx: number } {
-  const first = points[0];
-  const last = points[points.length - 1];
-  if (R <= first.R) return { c0: first.c0, cz: first.cz, cx: first.cx };
-  if (R >= last.R) return { c0: last.c0, cz: last.cz, cx: last.cx };
-  let i = 0;
-  while (i < points.length - 1 && points[i + 1].R < R) i++;
-  const a = points[i];
-  const b = points[i + 1];
-  const t = (R - a.R) / (b.R - a.R);
+  const { a, b, t } = h2Bracket(R, points);
   return {
     c0: a.c0 + t * (b.c0 - a.c0),
     cz: a.cz + t * (b.cz - a.cz),
     cx: a.cx + t * (b.cx - a.cx),
   };
+}
+
+/** Linearly interpolate the FCI and restricted-HF energies at bond length R. */
+export function h2Energies(R: number, points: H2Point[]): { fci: number; hf: number } {
+  const { a, b, t } = h2Bracket(R, points);
+  return { fci: a.fci + t * (b.fci - a.fci), hf: a.hf + t * (b.hf - a.hf) };
+}
+
+/** Exact ground energy of the tapered single-qubit H = c0 I + cz Z + cx X. */
+export function oneQubitGroundEnergy(c0: number, cz: number, cx: number): number {
+  return c0 - Math.hypot(cz, cx);
 }
 
 /** Build the 4-qubit JW Hamiltonian for a fixture point. */

@@ -40,7 +40,7 @@ function StaticBeats({ beats }: { beats: Beat[] }) {
   return (
     <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
       <div className="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
           Walkthrough
         </span>
       </div>
@@ -104,7 +104,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
           <BlochSphere3D state={state} />
         </div>
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
-          <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light mb-2">
+          <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light mb-2">
             Beat {active + 1} / {beats.length}
           </span>
           <div className="relative min-h-24">

@@ -12,6 +12,7 @@ import {
   type FeatureMap,
   type Point,
 } from "./kernel";
+import { parseJsonObject } from "./parse-utils";
 
 /**
  * Inline quantum-kernel decision-boundary explorer rendered from a ```qkernel
@@ -37,21 +38,13 @@ const MAPS: FeatureMap[] = ["angle", "iqp"];
 function parseSource(
   source: string
 ): { ok: true; dataset: DatasetName; map: FeatureMap } | { ok: false; error: string } {
-  const trimmed = source.trim();
   let dataset: DatasetName = "circles";
   let map: FeatureMap = "iqp";
 
-  if (trimmed.length > 0) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(trimmed);
-    } catch {
-      return { ok: false, error: "invalid JSON" };
-    }
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      return { ok: false, error: "expected a JSON object" };
-    }
-    const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return { ok: false, error: base.error };
+  if (base.obj) {
+    const obj = base.obj;
     if (obj["dataset"] !== undefined) {
       if (typeof obj["dataset"] !== "string" || !DATASETS.includes(obj["dataset"] as DatasetName)) {
         return { ok: false, error: '"dataset" must be "circles" or "xor"' };
