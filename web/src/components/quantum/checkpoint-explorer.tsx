@@ -352,7 +352,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
             <p className="font-mono text-lg font-semibold tabular-nums text-gray-800 dark:text-gray-100">
               {wastedNo.toFixed(0)}
             </p>
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            <p className="text-[10px] uppercase tracking-wide text-caption">
               wasted, no checkpoint
             </p>
           </div>
@@ -360,7 +360,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
             <p className="font-mono text-lg font-semibold tabular-nums text-gray-800 dark:text-gray-100">
               {wastedWith.toFixed(0)}
             </p>
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            <p className="text-[10px] uppercase tracking-wide text-caption">
               wasted, with checkpoint
             </p>
           </div>
@@ -368,13 +368,13 @@ export function CheckpointExplorer({ source }: { source: string }) {
             <p className="font-mono text-lg font-semibold tabular-nums text-accent dark:text-accent-light">
               {saving.toFixed(0)}
             </p>
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            <p className="text-[10px] uppercase tracking-wide text-caption">
               iterations saved
             </p>
           </div>
         </div>
 
-        <p className="mt-4 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
+        <p className="mt-4 text-[11px] leading-relaxed text-caption">
           Concept visualization of save_job_checkpoint / load_job_checkpoint.
           Counts are exact from the model: a restart without checkpointing redoes
           every completed iteration, while a checkpoint every {clampedEvery}{" "}

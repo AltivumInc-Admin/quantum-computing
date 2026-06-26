@@ -261,13 +261,13 @@ export function VqcTrainer({ source }: { source: string }) {
         <div className="flex flex-col gap-4">
           <div>
             <BoundaryPlot data={data} theta={theta} bias={bias} />
-            <p className="mt-1 text-center text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+            <p className="mt-1 text-center text-[10px] text-caption font-mono">
               decision boundary
             </p>
           </div>
           <div>
             <LossCurve history={history} />
-            <p className="mt-1 text-center text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+            <p className="mt-1 text-center text-[10px] text-caption font-mono">
               MSE objective
             </p>
           </div>

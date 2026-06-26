@@ -319,7 +319,7 @@ export function QaoaExplorer({ source }: { source: string }) {
                 strokeWidth={0.4}
               />
             </svg>
-            <p className="mt-1 text-center text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+            <p className="mt-1 text-center text-[10px] text-caption font-mono">
               &#947; horizontal &middot; &#946; vertical
             </p>
           </div>
@@ -396,7 +396,7 @@ export function QaoaExplorer({ source }: { source: string }) {
               </div>
             ))}
           </div>
-          <p className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+          <p className="mt-1.5 text-[10px] text-caption font-mono">
             bit order: vertex 0 on the left (matches the graph)
           </p>
         </div>

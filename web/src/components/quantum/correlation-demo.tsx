@@ -142,7 +142,7 @@ export function CorrelationDemo({ source }: { source: string }) {
           Correlation
         </span>
         {measurements > 0 && (
-          <span className="text-xs tabular-nums text-gray-400 dark:text-gray-500">
+          <span className="text-xs tabular-nums text-caption">
             {measurements} measurement{measurements === 1 ? "" : "s"}
           </span>
         )}

@@ -99,7 +99,7 @@ export function RunnableEditor({ source }: { source: string }) {
         {showOutput && (
           <div className="flex items-center gap-2 bg-gray-50 px-4 pt-3 dark:bg-gray-950/40 sm:px-5">
             <StatusDot state={status} />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-caption">
               Output
             </span>
           </div>
@@ -114,7 +114,7 @@ export function RunnableEditor({ source }: { source: string }) {
           }
         >
           {busy && !result ? (
-            <span className="text-gray-400 dark:text-gray-500">
+            <span className="text-caption">
               Booting Python (first run takes a few seconds)…
             </span>
           ) : result ? (
@@ -138,7 +138,7 @@ function Output({ result }: { result: RunResult }) {
     );
   }
   if (!result.output) {
-    return <span className="text-gray-400 dark:text-gray-500">(no output)</span>;
+    return <span className="text-caption">(no output)</span>;
   }
   return <span className="text-gray-800 dark:text-gray-200">{result.output}</span>;
 }

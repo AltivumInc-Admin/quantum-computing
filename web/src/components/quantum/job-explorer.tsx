@@ -179,7 +179,7 @@ function CompareBar({
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
           {label}
         </span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">{note}</span>
+        <span className="text-[11px] text-caption">{note}</span>
       </div>
 
       {/* wall-clock */}

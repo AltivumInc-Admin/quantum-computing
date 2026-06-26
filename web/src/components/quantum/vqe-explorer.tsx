@@ -317,7 +317,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 aria-hidden="true"
               />
             </svg>
-            <p className="mt-1 text-center text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+            <p className="mt-1 text-center text-[10px] text-caption font-mono">
               E(&#952;) over &#952; &isin; [-&#960;, &#960;]
             </p>
           </div>

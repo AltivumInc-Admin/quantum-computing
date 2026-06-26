@@ -15,4 +15,10 @@ describe("DjDemo", () => {
     fireEvent.change(screen.getByLabelText(/oracle/i), { target: { value: "parity" } });
     expect(screen.getByText(/balanced/i)).toBeInTheDocument();
   });
+  it("renders the footnote caption with the shared .text-caption utility", () => {
+    render(<DjDemo source={JSON.stringify({ qubits: 3 })} />);
+    const footnote = screen.getByText(/one query decides it/i);
+    expect(footnote).toHaveClass("text-caption");
+    expect(footnote).not.toHaveClass("text-gray-400");
+  });
 });

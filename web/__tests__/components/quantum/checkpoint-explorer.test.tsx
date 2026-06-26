@@ -44,4 +44,15 @@ describe("CheckpointExplorer", () => {
     ).not.toThrow();
     expect(screen.getByText(/qcheckpoint error:/)).toBeInTheDocument();
   });
+
+  it("renders stat labels with the shared .text-caption utility", () => {
+    render(
+      <CheckpointExplorer
+        source={JSON.stringify({ iterations: 40, failAt: 27, every: 10 })}
+      />
+    );
+    const label = screen.getByText("iterations saved");
+    expect(label).toHaveClass("text-caption");
+    expect(label).not.toHaveClass("text-gray-400");
+  });
 });

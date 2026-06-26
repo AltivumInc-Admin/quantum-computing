@@ -134,7 +134,7 @@ export function ReviewCard({ source }: { source: string }) {
           Recall
         </span>
         {reviewedBefore && !feedback && (
-          <span className="text-xs tabular-nums text-gray-400 dark:text-gray-500">
+          <span className="text-xs tabular-nums text-caption">
             reviewed {state.reps === 1 ? "once" : `${state.reps}×`}
           </span>
         )}
@@ -170,7 +170,7 @@ export function ReviewCard({ source }: { source: string }) {
             </div>
 
             <div className="mt-3">
-              <span className="block text-[11px] text-gray-400 dark:text-gray-500 mb-1.5">
+              <span className="block text-[11px] text-caption mb-1.5">
                 How well did you recall it?
               </span>
               <div className="flex flex-wrap gap-2">

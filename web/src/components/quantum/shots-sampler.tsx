@@ -56,7 +56,7 @@ export function ShotsSampler({ source }: { source: string }) {
           Shots sampler
         </span>
         {total > 0 && (
-          <span className="text-xs tabular-nums text-gray-400 dark:text-gray-500">
+          <span className="text-xs tabular-nums text-caption">
             {total} shots
           </span>
         )}

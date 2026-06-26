@@ -310,7 +310,7 @@ export function HamiltonianExplorer({ source }: { source: string }) {
         </p>
 
         {/* Honesty / provenance */}
-        <p className="mt-3 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
+        <p className="mt-3 text-[11px] leading-relaxed text-caption">
           Coefficients are read directly from the committed {H.molecule} fixture
           (basis {H.basis}); none are invented. Data from PennyLane
           differentiable Hartree-Fock, see scripts/gen_h2_fixture.py.

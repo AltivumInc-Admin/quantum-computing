@@ -159,7 +159,7 @@ export function Challenge({ source }: { source: string }) {
             Check
           </button>
           {spec.tier === "py" && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">
+            <span className="text-xs text-caption">
               graded with real qcsim in your browser
             </span>
           )}

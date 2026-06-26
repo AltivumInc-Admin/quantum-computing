@@ -408,7 +408,7 @@ export function MetricsExplorer({ source }: { source: string }) {
           iteration the managed device reports back, and the dashed line is the
           job&apos;s stopping_condition.
         </p>
-        <p className="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
+        <p className="mt-2 text-[11px] leading-relaxed text-caption">
           Honesty note: the curve is a genuine single-qubit VQE optimization from
           the verified chemistry kernel (module 05) &mdash; real
           parameter-shift gradient descent on the tapered H&#8322; Hamiltonian.
