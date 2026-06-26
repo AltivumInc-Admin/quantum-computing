@@ -5,7 +5,7 @@ import { basisLabel, cAbs2, type Complex } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
 import { angleState, amplitudeState, iqpState, reducedBloch } from "./encoding";
-import { LiveStatus } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 
 /**
  * Inline data-encoding explorer rendered from a ```qencode fenced block. Parses a
@@ -40,30 +40,44 @@ function isEncoding(v: unknown): v is Encoding {
   return typeof v === "string" && (ENCODINGS as string[]).includes(v);
 }
 
-/** Defensive parse: any malformed input falls back to the defaults (never throws). */
-function parseSource(source: string): Parsed {
+type ParseResult = { ok: true; value: Parsed } | { ok: false; error: string };
+
+function parseSource(source: string): ParseResult {
   const trimmed = source.trim();
-  if (trimmed.length === 0) return DEFAULTS;
+  if (trimmed.length === 0) return { ok: true, value: DEFAULTS };
   let raw: unknown;
   try {
     raw = JSON.parse(trimmed);
   } catch {
-    return DEFAULTS;
+    return { ok: false, error: "invalid JSON" };
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return DEFAULTS;
+    return { ok: false, error: "expected a JSON object" };
   }
   const obj = raw as Record<string, unknown>;
 
   let x: [number, number] = [...DEFAULTS.x];
   const rawX = obj["x"];
-  if (Array.isArray(rawX) && rawX.length >= 2 && typeof rawX[0] === "number" && typeof rawX[1] === "number") {
+  if (rawX !== undefined) {
+    if (
+      !Array.isArray(rawX) || rawX.length < 2 ||
+      typeof rawX[0] !== "number" || typeof rawX[1] !== "number" ||
+      !Number.isFinite(rawX[0]) || !Number.isFinite(rawX[1])
+    ) {
+      return { ok: false, error: '"x" must be a two-number array' };
+    }
     x = [rawX[0], rawX[1]];
   }
 
-  const encoding = isEncoding(obj["encoding"]) ? obj["encoding"] : DEFAULTS.encoding;
-
-  return { x, encoding };
+  const rawEnc = obj["encoding"];
+  let encoding: Encoding = DEFAULTS.encoding;
+  if (rawEnc !== undefined) {
+    if (!isEncoding(rawEnc)) {
+      return { ok: false, error: `encoding must be one of ${ENCODINGS.join(", ")}` };
+    }
+    encoding = rawEnc;
+  }
+  return { ok: true, value: { x, encoding } };
 }
 
 const PI = Math.PI;
@@ -75,10 +89,11 @@ const clamp = (v: number) => Math.max(-PI, Math.min(PI, v));
 
 export function EncodingExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseSource(source), [source]);
+  const fallback = parsed.ok ? parsed.value : DEFAULTS;
 
-  const [x0, setX0] = useState(() => clamp(parsed.x[0]));
-  const [x1, setX1] = useState(() => clamp(parsed.x[1]));
-  const [encoding, setEncoding] = useState<Encoding>(parsed.encoding);
+  const [x0, setX0] = useState(() => clamp(fallback.x[0]));
+  const [x1, setX1] = useState(() => clamp(fallback.x[1]));
+  const [encoding, setEncoding] = useState<Encoding>(fallback.encoding);
   const x0Id = useId();
   const x1Id = useId();
   const encId = useId();
@@ -97,6 +112,10 @@ export function EncodingExplorer({ source }: { source: string }) {
   );
 
   const dirac = useMemo(() => diracString(state, n), [state, n]);
+
+  if (!parsed.ok) {
+    return <SharedErrorCard label="qencode" message={parsed.error} />;
+  }
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">

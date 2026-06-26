@@ -21,9 +21,13 @@ describe("NoiseVisualizer", () => {
     // The slider label is channel-aware ("Depolarizing p" for the default channel).
     expect(screen.getByLabelText(/depolarizing p/i)).toBeInTheDocument();
   });
-  it("renders a parse-error card for a bad circuit", () => {
+  it("renders the shared error card for a bad circuit", () => {
     render(<NoiseVisualizer source={"NOTAGATE 0"} />);
-    expect(screen.getByText(/parse error/i)).toBeInTheDocument();
+    expect(screen.getByText(/qnoise error/i)).toBeInTheDocument();
+  });
+  it("renders the shared error card over the 3-qubit limit", () => {
+    render(<NoiseVisualizer source={"H 0\nH 1\nH 2\nH 3"} />);
+    expect(screen.getByText(/qnoise error/i)).toBeInTheDocument();
   });
   it("announces the fidelity readout as a polite live region", () => {
     render(<NoiseVisualizer source={"qubits 2\nH 0\nCNOT 0 1"} />);

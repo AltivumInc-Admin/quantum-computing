@@ -23,4 +23,8 @@ describe("EncodingExplorer", () => {
     const sliders = screen.getAllByRole("slider");
     expect(sliders[0]).toHaveAttribute("aria-valuetext", expect.stringMatching(/norm/i));
   });
+  it("renders the qencode error card for malformed source", () => {
+    expect(() => render(<EncodingExplorer source="{not json" />)).not.toThrow();
+    expect(screen.getByText(/qencode error/i)).toBeInTheDocument();
+  });
 });

@@ -27,6 +27,9 @@ export function basisState(n: number, j: number): Complex[] {
 
 /** Normalized comb: equal amplitude on indices j with j mod period === 0. */
 export function periodicState(n: number, period: number): Complex[] {
+  if (!Number.isInteger(period) || period <= 0) {
+    throw new RangeError("periodicState: period must be a positive integer");
+  }
   const N = 1 << n;
   const idx: number[] = [];
   for (let j = 0; j < N; j += period) idx.push(j);

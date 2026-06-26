@@ -28,10 +28,8 @@ export function kernelBias(train: Point[], map: FeatureMap, scale: number): numb
 }
 
 export function kernelScore(x: [number, number], train: Point[], map: FeatureMap, scale: number, bias: number): number {
-  const sx = featureState(x, map, scale);
-  let s = bias;
-  for (const p of train) s += p.y * fidelity(sx, featureState(p.x, map, scale));
-  return s;
+  const trainStates = train.map((p) => featureState(p.x, map, scale));
+  return kernelScoreS(x, trainStates, train, map, scale, bias);
 }
 
 /** Like kernelScore but reuses precomputed training feature states (one per train point). */

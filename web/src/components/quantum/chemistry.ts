@@ -314,8 +314,8 @@ export function loadH2Curve(json: unknown): H2Curve {
   let prevR = -Infinity;
   for (const p of o.points) {
     const fields = [p.R, p.c0, p.cz, p.cx, p.fci, p.hf];
-    if (fields.some((x) => typeof x !== "number" || Number.isNaN(x))) {
-      throw new Error("loadH2Curve: non-numeric point field");
+    if (fields.some((x) => typeof x !== "number" || !Number.isFinite(x))) {
+      throw new Error("loadH2Curve: non-finite point field");
     }
     if (!Array.isArray(p.jw) || p.jw.length !== o.jwTerms.length) {
       throw new Error("loadH2Curve: jw length mismatch");

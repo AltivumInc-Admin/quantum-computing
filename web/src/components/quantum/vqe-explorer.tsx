@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 import { BlochDial } from "./bloch-dial";
 import {
@@ -97,6 +97,15 @@ export function VqeExplorer({ source }: { source: string }) {
   const thetaId = useId();
   const reducedMotion = usePrefersReducedMotion();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
 
   // Coefficients + floor depend only on the parsed R, so memoize on parse.
   const model = useMemo(() => {

@@ -68,6 +68,7 @@ export function parseProgram(source: string): Program {
         if (!c.ok || !t.ok) throw new Error("CNOT needs a control and a target qubit");
         const control = c.value;
         const target = t.value;
+        if (control === target) throw new Error("CNOT control and target must differ");
         gates.push({ gate, target, control });
         n = Math.max(n, control + 1, target + 1);
       } else if (ROT.has(gate)) {

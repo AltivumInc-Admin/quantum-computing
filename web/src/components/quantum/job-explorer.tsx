@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { ErrorCard as SharedErrorCard } from "./widget-ui";
-import { clamp, numberOr } from "./parse-utils";
+import { readNumber } from "./parse-utils";
 import {
   INSTANCES,
   hybridWallClockSec,
@@ -99,13 +99,22 @@ function parseSource(source: string): ParseResult {
     instance = obj["instance"] as InstanceType;
   }
 
+  const it = readNumber(obj, "iterations", DEFAULTS.iterations, ITER.min, ITER.max);
+  if (!it.ok) return { ok: false, error: it.error };
+  const sh = readNumber(obj, "shots", DEFAULTS.shots, SHOTS.min, SHOTS.max);
+  if (!sh.ok) return { ok: false, error: sh.error };
+  const qw = readNumber(obj, "queueWaitSec", DEFAULTS.queueWaitSec, QUEUE.min, QUEUE.max);
+  if (!qw.ok) return { ok: false, error: qw.error };
+  const isec = readNumber(obj, "iterSec", DEFAULTS.iterSec, ITERSEC.min, ITERSEC.max);
+  if (!isec.ok) return { ok: false, error: isec.error };
+
   const config: Config = {
-    iterations: Math.round(clamp(numberOr(obj, "iterations", DEFAULTS.iterations), ITER.min, ITER.max)),
-    shots: Math.round(clamp(numberOr(obj, "shots", DEFAULTS.shots), SHOTS.min, SHOTS.max)),
+    iterations: Math.round(it.value),
+    shots: Math.round(sh.value),
     provider,
     instance,
-    queueWaitSec: clamp(numberOr(obj, "queueWaitSec", DEFAULTS.queueWaitSec), QUEUE.min, QUEUE.max),
-    iterSec: clamp(numberOr(obj, "iterSec", DEFAULTS.iterSec), ITERSEC.min, ITERSEC.max),
+    queueWaitSec: qw.value,
+    iterSec: isec.value,
   };
   return { ok: true, config };
 }
