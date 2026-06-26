@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { wastedNoCheckpoint, wastedWithCheckpoint } from "./hybrid";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
@@ -229,7 +229,17 @@ export function CheckpointExplorer({ source }: { source: string }) {
   const bondLengths = H.points.length;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="Checkpointing"
+      eyebrowAs="h3"
+      eyebrowId={headingId}
+      chips={
+        <>
+          <Chip>{iterations} iters</Chip>
+          <Chip>{bondLengths} bond lengths</Chip>
+        </>
+      }
+    >
       <LiveStatus>
         {`Failure at iteration ${clampedFail}, checkpoint every ${clampedEvery}: ${saving.toFixed(
           0
@@ -237,22 +247,6 @@ export function CheckpointExplorer({ source }: { source: string }) {
           0
         )} with).`}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <h3
-          id={headingId}
-          className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light"
-        >
-          Checkpointing
-        </h3>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {iterations} iters
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {bondLengths} bond lengths
-        </span>
-      </div>
 
       <div className="px-4 py-4">
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
@@ -383,6 +377,6 @@ export function CheckpointExplorer({ source }: { source: string }) {
           iterations bounds the lost work to the steps since the last save.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

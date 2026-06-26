@@ -5,7 +5,7 @@ import { cAbs2, type Complex } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
 import { angleState, amplitudeState, iqpState, reducedBloch } from "./encoding";
-import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 
 /**
  * Inline data-encoding explorer rendered from a ```qencode fenced block. Parses a
@@ -118,22 +118,15 @@ export function EncodingExplorer({ source }: { source: string }) {
   }
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="Encoding"
+      chips={<Chip>{ENCODING_LABEL[encoding]}</Chip>}
+    >
       <LiveStatus>
         {`${ENCODING_LABEL[encoding]} feature map. ‖ψ‖ = ${norm.toFixed(
           3
         )}. |ψ⟩ = ${dirac}.`}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Encoding
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {ENCODING_LABEL[encoding]}
-        </span>
-      </div>
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         {/* Bloch dials */}
@@ -237,6 +230,6 @@ export function EncodingExplorer({ source }: { source: string }) {
           </p>
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

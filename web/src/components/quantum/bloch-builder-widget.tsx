@@ -4,7 +4,7 @@ import { useId, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { BlochDial } from "./bloch-dial";
 import { stateFromAngles, probsFromAngles } from "./bloch-builder";
-import { GateChip, ProbBars, StateReadout } from "./widget-ui";
+import { GateChip, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 
 const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
@@ -31,17 +31,14 @@ export function BlochBuilder() {
   const probs = [p0, p1];
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Build a state
-        </span>
+    <WidgetCard
+      eyebrow="Build a state"
+      chips={
         <div className="flex flex-wrap gap-1">
           <GateChip label="|ψ⟩ = cos(θ/2)|0⟩ + e^{iφ}sin(θ/2)|1⟩" />
         </div>
-      </div>
-
+      }
+    >
       {/* Main content */}
       <div className="flex flex-col sm:flex-row gap-6 px-4 py-4">
         {/* Left column: prob bars + Dirac string + copy buttons */}
@@ -101,6 +98,6 @@ export function BlochBuilder() {
           {phi.toFixed(2)} rad
         </span>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

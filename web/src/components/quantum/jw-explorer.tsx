@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { hfOccupation, jwTransform } from "./jw";
 
 /**
@@ -171,7 +171,15 @@ export function JwExplorer({ source }: { source: string }) {
   } Z factors on the lower modes, an X or Y factor on mode ${activeMode}, identity above.`;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="Jordan-Wigner mapping"
+      chips={
+        <>
+          <Chip>{config.modes}q</Chip>
+          <Chip>{config.electrons}e</Chip>
+        </>
+      }
+    >
       <LiveStatus>
         {`${dagger ? "Creation" : "Annihilation"} operator ${opName}: X-string ${
           image.xString
@@ -179,19 +187,6 @@ export function JwExplorer({ source }: { source: string }) {
           image.zChain.length === 1 ? "" : "s"
         }.`}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Jordan-Wigner mapping
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {config.modes}q
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {config.electrons}e
-        </span>
-      </div>
 
       <div className="flex flex-col gap-6 px-4 py-4">
         <h3 id={headingId} className="sr-only">
@@ -367,6 +362,6 @@ export function JwExplorer({ source }: { source: string }) {
           with qubit 0 on the left.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

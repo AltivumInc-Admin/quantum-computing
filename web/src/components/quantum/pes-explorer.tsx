@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
 import { H2 as H } from "./h2-data";
 import { type H2Point } from "./chemistry";
 
@@ -181,20 +181,17 @@ export function PesExplorer({ source }: { source: string }) {
     `${readout.gap.toFixed(3)} hartree.`;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Potential energy surface
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          H&#8322; dissociation
-        </span>
-        <span className="rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300">
-          STO-3G minimal basis
-        </span>
-      </div>
-
+    <WidgetCard
+      eyebrow="Potential energy surface"
+      chips={
+        <>
+          <Chip>H&#8322; dissociation</Chip>
+          <span className="rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300">
+            STO-3G minimal basis
+          </span>
+        </>
+      }
+    >
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         {/* Plot */}
         <div className="min-w-0 flex-1">
@@ -427,6 +424,6 @@ export function PesExplorer({ source }: { source: string }) {
           basis.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

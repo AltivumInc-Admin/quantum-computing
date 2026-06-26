@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
 import { gradientVariance, mulberry32, type Cost } from "./barren";
 
 /**
@@ -124,20 +124,15 @@ export function BarrenExplorer({ source }: { source: string }) {
   for (let d = loLog; d <= hiLog; d++) ticks.push(d);
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Barren plateaus
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          depth = {depth}
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {samples} samples
-        </span>
-      </div>
-
+    <WidgetCard
+      eyebrow="Barren plateaus"
+      chips={
+        <>
+          <Chip>depth = {depth}</Chip>
+          <Chip>{samples} samples</Chip>
+        </>
+      }
+    >
       <div className="px-4 py-4">
         {/* Legend */}
         <div className="mb-3 flex flex-wrap items-center gap-4 text-xs">
@@ -295,6 +290,6 @@ export function BarrenExplorer({ source }: { source: string }) {
           the depth slider and even the amber curve flattens (Cerezo 2021).
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

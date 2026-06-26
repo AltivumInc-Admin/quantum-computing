@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 import {
   cutValue,
   qaoaDistribution,
@@ -271,20 +271,10 @@ export function QaoaExplorer({ source }: { source: string }) {
   const curBi = Math.round((beta / (Math.PI / 2)) * (RES - 1));
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard eyebrow="QAOA" chips={<Chip>{n}q</Chip>}>
       <LiveStatus>
         {`Expected cut ${expected.toFixed(2)} of ${maxCut} maximum.`}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          QAOA
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {n}q
-        </span>
-      </div>
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         {/* Graph + landscape */}
@@ -380,6 +370,6 @@ export function QaoaExplorer({ source }: { source: string }) {
           </p>
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

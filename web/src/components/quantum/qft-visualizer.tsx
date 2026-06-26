@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Bar, ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Bar, Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { type Complex, basisLabel } from "./math";
 import { qft, basisState, periodicState } from "./qft";
 
@@ -152,17 +152,11 @@ export function QftVisualizer({ source }: { source: string }) {
     kind === "period" && spacing !== null && idx % spacing === 0;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="Fourier"
+      chips={<Chip>{n} qubits · N = {N}</Chip>}
+    >
       <LiveStatus>{note}</LiveStatus>
-
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Fourier
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {n} qubits · N = {N}
-        </span>
-      </div>
 
       <div className="grid grid-cols-1 gap-6 px-4 py-4 sm:grid-cols-2">
         <div className="min-w-0">
@@ -182,6 +176,6 @@ export function QftVisualizer({ source }: { source: string }) {
       <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
         <p className="font-mono text-xs text-gray-500 dark:text-gray-400">{note}</p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

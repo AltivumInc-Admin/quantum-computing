@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { simulateSteps, probabilities, zeroState } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial } from "./bloch-dial";
-import { GateChips, ProbBars, StateReadout } from "./widget-ui";
+import { GateChips, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 
 /**
@@ -86,16 +86,14 @@ export function WavefunctionScrubber({ source }: { source: string }) {
   const show3D = !reduced && webgl && program.n === 1;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Wavefunction scrubber
-        </span>
+    <WidgetCard
+      eyebrow="Wavefunction scrubber"
+      chips={
         <div className="flex flex-wrap gap-1">
           <GateChips gates={program.gates} activeIndex={activeGate} />
         </div>
-      </div>
-
+      }
+    >
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         <div className="min-w-0 flex-1" role="status" aria-live={isPlaying ? "off" : "polite"}>
           <ProbBars probs={probs} n={program.n} />
@@ -165,6 +163,6 @@ export function WavefunctionScrubber({ source }: { source: string }) {
           </span>
         </div>
       )}
-    </div>
+    </WidgetCard>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PRICING, Provider, estimateCost, isPerShot } from "./cost";
+import { EyebrowLabel, WidgetCard } from "./widget-ui";
 
 const PROVIDERS = Object.keys(PRICING) as Provider[];
 
@@ -68,14 +69,13 @@ export function CostCalculator({ source }: { source: string }) {
   }
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Cost calculator
-        </span>
-      </div>
-
+    <WidgetCard
+      header={
+        <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+          <EyebrowLabel>Cost calculator</EyebrowLabel>
+        </div>
+      }
+    >
       <div className="px-4 py-4 space-y-4">
         {/* Controls */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -203,6 +203,6 @@ export function CostCalculator({ source }: { source: string }) {
           Develop on LocalSimulator (free) first; move to a QPU only when validated.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }
