@@ -1,10 +1,11 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard, secondaryActionClass } from "./widget-ui";
 import { h2OneQubit, type H2Point } from "./chemistry";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
+import { parseJsonObject } from "./parse-utils";
 
 /**
  * Inline H2 Hamiltonian + symmetry-tapering explorer rendered from a ```qham
@@ -34,23 +35,12 @@ type ParseResult =
 function parseSource(source: string): ParseResult {
   const minR = H.points[0].R;
   const maxR = H.points[H.points.length - 1].R;
-  const trimmed = source.trim();
-
-  // Empty -> equilibrium bond length, untapered.
-  if (trimmed.length === 0) {
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) {
     return { ok: true, R: H.equilibrium.R, tapered: false };
   }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const obj = base.obj;
 
   let R = H.equilibrium.R;
   const rawR = obj["R"];
@@ -275,7 +265,7 @@ export function HamiltonianExplorer({ source }: { source: string }) {
             role="switch"
             aria-checked={tapered}
             onClick={() => setTapered((v) => !v)}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none"
+            className={secondaryActionClass}
           >
             {tapered ? "Show full 4-qubit Hamiltonian" : "Apply Z2 symmetry tapering"}
           </button>

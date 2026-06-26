@@ -13,6 +13,8 @@ import {
   vqeGradientDescent,
   loadH2Curve,
   h2OneQubit,
+  h2Energies,
+  oneQubitGroundEnergy,
   jwHamiltonian,
 } from "@/components/quantum/chemistry";
 
@@ -148,5 +150,30 @@ describe("H2 fixture (the source of truth)", () => {
     const hi = CURVE.points[11];
     const mid = h2OneQubit((lo.R + hi.R) / 2, CURVE.points);
     expect(mid.c0).toBeCloseTo((lo.c0 + hi.c0) / 2, 6);
+  });
+});
+
+describe("oneQubitGroundEnergy", () => {
+  it("matches exactGround for tapered single-qubit H", () => {
+    for (const p of [CURVE.points[5], CURVE.points[20]]) {
+      const exact = exactGround(oneQubitHamiltonian(p.c0, p.cz, p.cx)).energy;
+      expect(oneQubitGroundEnergy(p.c0, p.cz, p.cx)).toBeCloseTo(exact, 9);
+    }
+  });
+});
+
+describe("h2Energies", () => {
+  it("interpolates FCI and HF between grid points", () => {
+    const lo = CURVE.points[10];
+    const hi = CURVE.points[11];
+    const mid = h2Energies((lo.R + hi.R) / 2, CURVE.points);
+    expect(mid.fci).toBeCloseTo((lo.fci + hi.fci) / 2, 6);
+    expect(mid.hf).toBeCloseTo((lo.hf + hi.hf) / 2, 6);
+  });
+  it("clamps at endpoints", () => {
+    const first = CURVE.points[0];
+    const last = CURVE.points[CURVE.points.length - 1];
+    expect(h2Energies(first.R - 1, CURVE.points).fci).toBe(first.fci);
+    expect(h2Energies(last.R + 1, CURVE.points).fci).toBe(last.fci);
   });
 });

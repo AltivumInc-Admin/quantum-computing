@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard } from "./widget-ui";
-import { readNumber } from "./parse-utils";
+import { parseJsonObject, readNumber } from "./parse-utils";
 import {
   INSTANCES,
   hybridWallClockSec,
@@ -69,19 +69,10 @@ const DEFAULTS: Config = {
 };
 
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
-  if (trimmed.length === 0) return { ok: true, config: { ...DEFAULTS } };
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) return { ok: true, config: { ...DEFAULTS } };
+  const obj = base.obj;
 
   let provider: Provider = DEFAULTS.provider;
   if (obj["provider"] !== undefined) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
 import {
   N_PARAMS,
   makeBlobs,
@@ -10,6 +10,7 @@ import {
   vqcOutput,
   type Point,
 } from "./vqc";
+import { parseJsonObject } from "./parse-utils";
 
 /**
  * Inline variational-quantum-classifier trainer rendered from a ```qvqc fenced
@@ -36,18 +37,10 @@ const MAX_HISTORY = 240;
 type ParseResult = { ok: true; dataset: "blobs" } | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
-  if (trimmed.length === 0) return { ok: true, dataset: "blobs" };
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) return { ok: true, dataset: "blobs" };
+  const obj = base.obj;
   const ds = obj["dataset"];
   if (ds !== undefined && ds !== "blobs") {
     return { ok: false, error: `unknown dataset "${String(ds)}"` };
@@ -286,14 +279,14 @@ export function VqcTrainer({ source }: { source: string }) {
             <button
               type="button"
               onClick={onTrain}
-              className="rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-(--shadow-resting) hover:bg-accent-dark focus-ring transition-colors motion-reduce:transition-none"
+              className={primaryActionClass}
             >
               Train ({STEPS_PER_TRAIN}&times;)
             </button>
             <button
               type="button"
               onClick={onReset}
-              className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none"
+              className={secondaryActionClass}
             >
               Reset
             </button>

@@ -4,7 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { paramSavedSec, paramTimeNaive, paramTimeReused } from "./hybrid";
 import { usePrefersReducedMotion } from "./use-display-caps";
-import { clamp, readNumber } from "./parse-utils";
+import { clamp, parseJsonObject, readNumber } from "./parse-utils";
 
 /**
  * Inline parametric-compilation explorer rendered from a ```qparam fenced block in
@@ -40,21 +40,12 @@ type Config = { iterations: number; compileSec: number; runSec: number };
 type ParseResult = { ok: true; config: Config } | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
-  if (trimmed.length === 0) {
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) {
     return { ok: true, config: { ...DEFAULTS } };
   }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const obj = base.obj;
 
   const iterations = readNumber(obj, "iterations", DEFAULTS.iterations, ITER_MIN, ITER_MAX);
   if (!iterations.ok) return iterations;
@@ -141,7 +132,7 @@ function TimeBar({
           style={reduced ? { transition: "none" } : undefined}
         />
       </svg>
-      <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-700 dark:text-gray-200">
+      <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-700 dark:text-gray-200">
         {formatSec(seconds)}
       </span>
     </div>
@@ -181,7 +172,7 @@ function SliderRow({
     <div className="mt-3 flex items-center gap-3">
       <label
         htmlFor={id}
-        className="w-32 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
+        className="w-40 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
       >
         {label}
       </label>

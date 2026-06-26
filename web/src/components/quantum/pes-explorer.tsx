@@ -3,7 +3,9 @@
 import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
 import { H2 as H } from "./h2-data";
-import { type H2Point } from "./chemistry";
+import { h2Energies, oneQubitGroundEnergy } from "./chemistry";
+import { parseJsonObject } from "./parse-utils";
+import { formatHartree, hartreeSR, angstromSR } from "./format";
 
 /**
  * Inline potential-energy-surface explorer rendered from a ```qpes fenced block.
@@ -29,19 +31,10 @@ type ParseResult = { ok: true; mark: number } | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
   const equilibrium = H.equilibrium.R;
-  const trimmed = source.trim();
-  if (trimmed.length === 0) return { ok: true, mark: equilibrium };
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) return { ok: true, mark: equilibrium };
+  const obj = base.obj;
   const m = obj["mark"];
   if (m === undefined) return { ok: true, mark: equilibrium };
   if (typeof m !== "number" || !Number.isFinite(m)) {
@@ -55,27 +48,6 @@ function parseSource(source: string): ParseResult {
   return { ok: true, mark: m };
 }
 
-/** Analytic VQE ground energy of c0 I + cz Z + cx X: c0 - sqrt(cz^2 + cx^2). */
-function vqeEnergyAt(p: H2Point): number {
-  return p.c0 - Math.hypot(p.cz, p.cx);
-}
-
-/** Linearly interpolate fci/hf at bond length R from the fixture points. */
-function curveAt(R: number, points: H2Point[]): { fci: number; hf: number } {
-  const first = points[0];
-  const last = points[points.length - 1];
-  if (R <= first.R) return { fci: first.fci, hf: first.hf };
-  if (R >= last.R) return { fci: last.fci, hf: last.hf };
-  let i = 0;
-  while (i < points.length - 1 && points[i + 1].R < R) i++;
-  const a = points[i];
-  const b = points[i + 1];
-  const t = (R - a.R) / (b.R - a.R);
-  return {
-    fci: a.fci + t * (b.fci - a.fci),
-    hf: a.hf + t * (b.hf - a.hf),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Error card
@@ -121,7 +93,7 @@ export function PesExplorer({ source }: { source: string }) {
 
     const vqeDots = points
       .filter((_, i) => i % VQE_STRIDE === 0)
-      .map((p) => ({ R: p.R, x: sx(p.R), y: sy(vqeEnergyAt(p)) }));
+      .map((p) => ({ R: p.R, x: sx(p.R), y: sy(oneQubitGroundEnergy(p.c0, p.cz, p.cx)) }));
 
     // Equilibrium (minimum FCI) marker.
     const eqR = H.equilibrium.R;
@@ -157,7 +129,7 @@ export function PesExplorer({ source }: { source: string }) {
 
   // Read FCI/HF/gap at the current scrubber position.
   const readout = useMemo(() => {
-    const { fci, hf } = curveAt(mark, geom.points);
+    const { fci, hf } = h2Energies(mark, geom.points);
     return { fci, hf, gap: hf - fci };
   }, [mark, geom.points]);
 
@@ -172,13 +144,13 @@ export function PesExplorer({ source }: { source: string }) {
   const markHfY = sy(readout.hf);
 
   const plotAria =
-    `STO-3G H2 potential energy surface. Bond length from ${rMin.toFixed(2)} to ` +
-    `${rMax.toFixed(2)} angstrom on the x axis, energy from ${yHi.toFixed(2)} to ` +
-    `${yLo.toFixed(2)} hartree on the y axis. The FCI curve has its minimum near ` +
-    `${geom.eqR.toFixed(2)} angstrom; at the marker ${mark.toFixed(2)} angstrom the ` +
-    `FCI energy is ${readout.fci.toFixed(3)} hartree, the Hartree-Fock energy is ` +
-    `${readout.hf.toFixed(3)} hartree, and the correlation gap is ` +
-    `${readout.gap.toFixed(3)} hartree.`;
+    `STO-3G H2 potential energy surface. Bond length from ${angstromSR(rMin)} to ` +
+    `${angstromSR(rMax)} on the x axis, energy from ${hartreeSR(yHi, 2)} to ` +
+    `${hartreeSR(yLo, 2)} on the y axis. The FCI curve has its minimum near ` +
+    `${angstromSR(geom.eqR)}; at the marker ${angstromSR(mark)} the ` +
+    `FCI energy is ${hartreeSR(readout.fci, 3)}, the Hartree-Fock energy is ` +
+    `${hartreeSR(readout.hf, 3)}, and the correlation gap is ` +
+    `${hartreeSR(readout.gap, 3)}.`;
 
   return (
     <WidgetCard
@@ -360,7 +332,7 @@ export function PesExplorer({ source }: { source: string }) {
               onChange={(e) => setMark(parseFloat(e.target.value))}
               className="slider flex-1 focus-ring"
               aria-label="Bond length scrubber in angstrom"
-              aria-valuetext={`${mark.toFixed(2)} angstrom; FCI ${readout.fci.toFixed(3)}, Hartree-Fock ${readout.hf.toFixed(3)}, gap ${readout.gap.toFixed(3)} hartree`}
+              aria-valuetext={`${angstromSR(mark)}; FCI ${hartreeSR(readout.fci, 3)}, Hartree-Fock ${hartreeSR(readout.hf, 3)}, gap ${hartreeSR(readout.gap, 3)}`}
             />
             <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
               {mark.toFixed(2)} &#8491;
@@ -371,16 +343,16 @@ export function PesExplorer({ source }: { source: string }) {
           <dl className="mt-4 space-y-1.5 font-mono text-xs tabular-nums">
             <div className="flex items-center justify-between gap-2">
               <dt className="text-accent dark:text-accent-light">FCI</dt>
-              <dd className="text-gray-800 dark:text-gray-100">{readout.fci.toFixed(4)} Ha</dd>
+              <dd className="text-gray-800 dark:text-gray-100">{formatHartree(readout.fci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-gray-500 dark:text-gray-400">HF</dt>
-              <dd className="text-gray-800 dark:text-gray-100">{readout.hf.toFixed(4)} Ha</dd>
+              <dd className="text-gray-800 dark:text-gray-100">{formatHartree(readout.hf)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-gray-500 dark:text-gray-400">HF &minus; FCI gap</dt>
               <dd className="font-semibold text-gray-900 dark:text-white">
-                {readout.gap.toFixed(4)} Ha
+                {formatHartree(readout.gap)}
               </dd>
             </div>
           </dl>
@@ -393,15 +365,15 @@ export function PesExplorer({ source }: { source: string }) {
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>min FCI</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{geom.eqFci.toFixed(4)} Ha</dd>
+              <dd className="text-gray-700 dark:text-gray-200">{formatHartree(geom.eqFci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>well depth</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{geom.wellDepth.toFixed(4)} Ha</dd>
+              <dd className="text-gray-700 dark:text-gray-200">{formatHartree(geom.wellDepth)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>asymptote</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{geom.asymptote.toFixed(4)} Ha</dd>
+              <dd className="text-gray-700 dark:text-gray-200">{formatHartree(geom.asymptote)}</dd>
             </div>
           </dl>
         </div>

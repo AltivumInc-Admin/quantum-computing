@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
 import { BlochDial } from "./bloch-dial";
 import {
   energy1q,
-  exactGround,
   h2OneQubit,
+  oneQubitGroundEnergy,
   oneQubitHamiltonian,
   vqeGradientDescent,
 } from "./chemistry";
 import { H2 } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
+import { parseJsonObject } from "./parse-utils";
+import { formatFixed, formatHartree, formatRadians, hartreeSR, angstromSR } from "./format";
 
 /**
  * Inline single-qubit VQE energy-landscape explorer rendered from a ```qvqe
@@ -45,20 +47,12 @@ type ParseResult =
   | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
-  if (trimmed.length === 0) {
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) {
     return { ok: true, R: H2.equilibrium.R };
   }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const obj = base.obj;
   const rawR = obj["R"];
   if (rawR === undefined) {
     return { ok: true, R: H2.equilibrium.R };
@@ -112,7 +106,7 @@ export function VqeExplorer({ source }: { source: string }) {
     if (!parsed.ok) return null;
     const { c0, cz, cx } = h2OneQubit(parsed.R, H2.points);
     const H = oneQubitHamiltonian(c0, cz, cx);
-    const floor = exactGround(H).energy; // = c0 - hypot(cz, cx)
+    const floor = oneQubitGroundEnergy(c0, cz, cx);
     let eMin = Infinity;
     let eMax = -Infinity;
     const samples: { theta: number; energy: number }[] = [];
@@ -201,13 +195,7 @@ export function VqeExplorer({ source }: { source: string }) {
     setTheta(0.4);
   };
 
-  const curveAria = `Variational energy E(theta) for tapered H2 at bond length ${R.toFixed(
-    2
-  )} angstrom. Current angle ${theta.toFixed(2)} radians gives ${energy.toFixed(
-    4
-  )} hartree, ${aboveFloor.toFixed(4)} hartree above the exact ground floor ${floor.toFixed(
-    4
-  )} hartree.`;
+  const curveAria = `Variational energy E(theta) for tapered H2 at bond length ${angstromSR(R)}. Current angle ${formatFixed(theta, 2)} radians gives ${hartreeSR(energy)}, ${hartreeSR(aboveFloor)} above the exact ground floor ${hartreeSR(floor)}.`;
 
   return (
     <WidgetCard
@@ -223,9 +211,7 @@ export function VqeExplorer({ source }: { source: string }) {
       <LiveStatus>
         {optimizing
           ? "Optimizing toward the variational floor."
-          : `Energy ${energy.toFixed(4)} hartree, ${aboveFloor.toFixed(
-              4
-            )} above the exact ground floor ${floor.toFixed(4)} hartree.`}
+          : `Energy ${hartreeSR(energy)}, ${hartreeSR(aboveFloor)} above the exact ground floor ${hartreeSR(floor)}.`}
       </LiveStatus>
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
@@ -269,7 +255,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 className="fill-emerald-700 dark:fill-emerald-300 font-mono"
                 aria-hidden="true"
               >
-                floor {floor.toFixed(3)} Ha
+                floor {formatHartree(floor, 3)}
               </text>
               {/* axis ticks: theta on x (bottom), energy range on y (left) */}
               {[-Math.PI, 0, Math.PI].map((th, i) => (
@@ -325,9 +311,9 @@ export function VqeExplorer({ source }: { source: string }) {
           <div className="flex items-center gap-3">
             <BlochDial vector={{ x: expX, y: 0, z: expZ }} size={86} />
             <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400 font-mono tabular-nums">
-              &#10216;Z&#10217; = {expZ.toFixed(3)}
+              &#10216;Z&#10217; = {formatFixed(expZ, 3)}
               <br />
-              &#10216;X&#10217; = {expX.toFixed(3)}
+              &#10216;X&#10217; = {formatFixed(expX, 3)}
             </p>
           </div>
         </div>
@@ -337,11 +323,11 @@ export function VqeExplorer({ source }: { source: string }) {
           <p className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
             {"E = "}
             <span className="font-semibold text-accent dark:text-accent-light">
-              {energy.toFixed(4)} Ha
+              {formatHartree(energy)}
             </span>
           </p>
           <p className="mt-1 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            floor {floor.toFixed(4)} Ha &middot; gap {aboveFloor.toFixed(4)} Ha
+            floor {formatHartree(floor)} &middot; gap {formatHartree(aboveFloor)}
           </p>
 
           {/* theta slider */}
@@ -366,12 +352,10 @@ export function VqeExplorer({ source }: { source: string }) {
               }}
               className="slider flex-1 focus-ring"
               aria-label="Ansatz angle theta in radians"
-              aria-valuetext={`${theta.toFixed(2)} radians, energy ${energy.toFixed(
-                4
-              )} hartree`}
+              aria-valuetext={`${formatFixed(theta, 2)} radians, energy ${hartreeSR(energy)}`}
             />
-            <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {theta.toFixed(2)}
+            <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+              {formatRadians(theta)}
             </span>
           </div>
 
@@ -380,14 +364,14 @@ export function VqeExplorer({ source }: { source: string }) {
               type="button"
               onClick={onOptimize}
               disabled={optimizing}
-              className="rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-(--shadow-resting) hover:bg-accent-dark focus-ring transition-colors motion-reduce:transition-none disabled:opacity-60"
+              className={primaryActionClass}
             >
               {optimizing ? "Optimizing…" : "Optimize"}
             </button>
             <button
               type="button"
               onClick={onReset}
-              className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none"
+              className={secondaryActionClass}
             >
               Reset
             </button>

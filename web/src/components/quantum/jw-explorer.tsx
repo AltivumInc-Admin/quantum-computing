@@ -3,6 +3,7 @@
 import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { hfOccupation, jwTransform } from "./jw";
+import { clampInt, parseJsonObject } from "./parse-utils";
 
 /**
  * Inline Jordan-Wigner explorer rendered from a ```qjw fenced block. Parses an
@@ -40,24 +41,11 @@ const DEFAULT_CONFIG: JwConfig = {
 
 type ParseResult = { ok: true; config: JwConfig } | { ok: false; error: string };
 
-function clamp(value: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, value));
-}
-
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
-  if (trimmed.length === 0) return { ok: true, config: { ...DEFAULT_CONFIG } };
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) return { ok: true, config: { ...DEFAULT_CONFIG } };
+  const obj = base.obj;
 
   const num = (key: string, fallback: number): number | null => {
     const v = obj[key];
@@ -81,9 +69,9 @@ function parseSource(source: string): ParseResult {
 
   // Clamp into the documented ranges: modes in [1,6], electrons in [0,modes],
   // mode in [0,modes-1].
-  const modes = clamp(Math.round(rawModes), MIN_MODES, MAX_MODES);
-  const electrons = clamp(Math.round(rawElectrons), 0, modes);
-  const mode = clamp(Math.round(rawMode), 0, modes - 1);
+  const modes = clampInt(rawModes, MIN_MODES, MAX_MODES);
+  const electrons = clampInt(rawElectrons, 0, modes);
+  const mode = clampInt(rawMode, 0, modes - 1);
 
   return { ok: true, config: { modes, electrons, mode, dagger } };
 }
@@ -133,7 +121,7 @@ export function JwExplorer({ source }: { source: string }) {
 
   // The currently selected mode, re-clamped against the parsed mode count so a
   // stale selection can never index out of range.
-  const activeMode = clamp(mode, 0, config.modes - 1);
+  const activeMode = clampInt(mode, 0, config.modes - 1);
 
   // Jordan-Wigner image of the selected creation/annihilation operator.
   const image = useMemo(
