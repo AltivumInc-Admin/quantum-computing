@@ -18,4 +18,10 @@ describe("DeviceTable", () => {
     expect(screen.getByText("Aria")).toBeInTheDocument();
     expect(screen.queryByText("Garnet")).toBeNull();
   });
+  it("announces the filtered device count and technology", () => {
+    render(<DeviceTable />);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: /technology/i }), { target: { value: "Trapped ion" } });
+    expect(screen.getByRole("status")).toHaveTextContent(/trapped ion/i);
+  });
 });

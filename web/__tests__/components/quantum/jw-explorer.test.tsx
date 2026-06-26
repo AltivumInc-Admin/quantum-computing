@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { JwExplorer } from "@/components/quantum/jw-explorer";
 
 // jsdom does not implement matchMedia; mirror the markdown-renderer fence-routing
@@ -55,5 +55,11 @@ describe("JwExplorer", () => {
       />
     );
     expect(container).toHaveTextContent(/q0 through q1/);
+  });
+
+  it("announces the operator when toggled to annihilation", () => {
+    render(<JwExplorer source="" />);
+    fireEvent.click(screen.getByRole("button", { name: /annihilation/i }));
+    expect(screen.getByRole("status")).toHaveTextContent(/annihilation/i);
   });
 });

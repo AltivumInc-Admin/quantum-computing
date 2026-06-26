@@ -9,11 +9,18 @@ describe("EncodingExplorer", () => {
   it("renders the Encoding header and a unit-norm readout", () => {
     render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "angle" })} />);
     expect(screen.getByText(/encoding/i)).toBeInTheDocument();
-    expect(screen.getByText(/1\.000/)).toBeInTheDocument();
+    // "1.000" appears in both the visible norm readout and the sr-only status.
+    expect(screen.getAllByText(/1\.000/).length).toBeGreaterThan(0);
   });
   it("switches encoding without crashing", () => {
     render(<EncodingExplorer source={""} />);
     fireEvent.change(screen.getByLabelText(/encoding/i), { target: { value: "iqp" } });
     expect(screen.getByText(/encoding/i)).toBeInTheDocument();
+  });
+  it("announces the feature map and norm, and embeds norm in the slider value text", () => {
+    render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "angle" })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/feature map/i);
+    const sliders = screen.getAllByRole("slider");
+    expect(sliders[0]).toHaveAttribute("aria-valuetext", expect.stringMatching(/norm/i));
   });
 });

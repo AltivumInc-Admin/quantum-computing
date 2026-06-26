@@ -24,4 +24,12 @@ describe("ShotsSampler", () => {
     render(<ShotsSampler source={"qubits 1\nH 0"} />);
     expect(screen.getByText(/press run to sample/i)).toBeInTheDocument();
   });
+  it("announces the sampled shots and most-probable basis after Run", () => {
+    render(<ShotsSampler source={"qubits 1\nH 0"} />);
+    fireEvent.click(screen.getByRole("button", { name: "1000 shots" }));
+    fireEvent.click(screen.getByRole("button", { name: /run/i }));
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(/sampled 1000 shots/i);
+    expect(status).toHaveTextContent(/empirical/i);
+  });
 });

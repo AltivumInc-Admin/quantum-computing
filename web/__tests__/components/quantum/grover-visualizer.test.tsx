@@ -15,4 +15,12 @@ describe("GroverVisualizer", () => {
     render(<GroverVisualizer source={JSON.stringify({ qubits: 2, marked: 9 })} />);
     expect(screen.getByText(/error/i)).toBeInTheDocument();
   });
+  it("announces the success probability and embeds it in the slider value text", () => {
+    render(<GroverVisualizer source={JSON.stringify({ qubits: 3, marked: 5 })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/success probability/i);
+    expect(screen.getByRole("slider")).toHaveAttribute(
+      "aria-valuetext",
+      expect.stringMatching(/success/i)
+    );
+  });
 });

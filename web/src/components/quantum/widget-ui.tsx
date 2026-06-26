@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { basisLabel, type Complex } from "./math";
 import type { ParsedGate } from "./qsim-dsl";
 import { diracString, toPythonState } from "./state-readout";
@@ -119,5 +120,22 @@ export function ErrorCard({
         {`${label} error: ${message ?? ""}`}
       </p>
     </div>
+  );
+}
+
+/**
+ * Polite screen-reader live region for announcing a recomputed teaching result
+ * (a verdict, probability, energy, coefficient, ...) when a select / Run /
+ * Optimize / toggle changes it. Visually hidden (sr-only); the node stays
+ * mounted so aria-live fires on text change. Keep the announcement to one
+ * concise line and pass an empty string when there is nothing to announce
+ * (e.g. before the first Run). Polite, never assertive, to avoid drag-spam.
+ * Mirrors correlation-demo.tsx / metrics-explorer.tsx / job-explorer.tsx.
+ */
+export function LiveStatus({ children }: { children: ReactNode }) {
+  return (
+    <p className="sr-only" role="status" aria-live="polite">
+      {children}
+    </p>
   );
 }
