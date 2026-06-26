@@ -40,4 +40,13 @@ describe("ParamCompileExplorer", () => {
     expect(() => render(<ParamCompileExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qparam error:/)).toBeInTheDocument();
   });
+
+  it("announces the wall-clock percent saved", () => {
+    render(
+      <ParamCompileExplorer
+        source={JSON.stringify({ iterations: 50, compileSec: 8, runSec: 2 })}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(/%/);
+  });
 });

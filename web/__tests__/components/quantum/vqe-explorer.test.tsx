@@ -62,4 +62,11 @@ describe("VqeExplorer", () => {
     expect(value).toBeGreaterThanOrEqual(-Math.PI - 1e-9);
     expect(value).toBeLessThanOrEqual(Math.PI + 1e-9);
   });
+
+  it("announces the settled energy after Optimize", () => {
+    mockMatchMedia(true);
+    render(<VqeExplorer source={JSON.stringify({ R: 0.75 })} />);
+    fireEvent.click(screen.getByRole("button", { name: /optimize/i }));
+    expect(screen.getByRole("status")).toHaveTextContent(/hartree/i);
+  });
 });

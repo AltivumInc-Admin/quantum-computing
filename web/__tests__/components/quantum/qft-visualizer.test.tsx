@@ -24,4 +24,8 @@ describe("QftVisualizer", () => {
     expect(screen.queryByText(/must divide/i)).not.toBeInTheDocument();
     expect(screen.getByText(/fourier/i)).toBeInTheDocument();
   });
+  it("announces the spectrum note for a valid period", () => {
+    render(<QftVisualizer source={JSON.stringify({ qubits: 3, input: "period:4" })} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/spikes every/i);
+  });
 });

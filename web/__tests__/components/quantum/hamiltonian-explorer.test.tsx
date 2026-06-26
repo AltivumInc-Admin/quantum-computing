@@ -39,4 +39,11 @@ describe("HamiltonianExplorer", () => {
     expect(() => render(<HamiltonianExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qham error:/)).toBeInTheDocument();
   });
+
+  it("announces the bond length and largest-term coefficient", () => {
+    render(<HamiltonianExplorer source={JSON.stringify({ R: 0.75, tapered: false })} />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(/R = /);
+    expect(status).toHaveTextContent(/hartree/i);
+  });
 });

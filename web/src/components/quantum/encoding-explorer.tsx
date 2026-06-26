@@ -5,6 +5,7 @@ import { basisLabel, cAbs2, type Complex } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
 import { angleState, amplitudeState, iqpState, reducedBloch } from "./encoding";
+import { LiveStatus } from "./widget-ui";
 
 /**
  * Inline data-encoding explorer rendered from a ```qencode fenced block. Parses a
@@ -99,6 +100,12 @@ export function EncodingExplorer({ source }: { source: string }) {
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+      <LiveStatus>
+        {`${ENCODING_LABEL[encoding]} feature map. ‖ψ‖ = ${norm.toFixed(
+          3
+        )}. |ψ⟩ = ${dirac}.`}
+      </LiveStatus>
+
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
@@ -168,7 +175,7 @@ export function EncodingExplorer({ source }: { source: string }) {
               onChange={(e) => setX0(parseFloat(e.target.value))}
               className="slider flex-1 focus-ring"
               aria-label="Feature x0"
-              aria-valuetext={`${x0.toFixed(2)}`}
+              aria-valuetext={`x0 = ${x0.toFixed(2)}, norm ${norm.toFixed(3)}`}
             />
             <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
               {x0.toFixed(2)}
@@ -190,7 +197,7 @@ export function EncodingExplorer({ source }: { source: string }) {
               onChange={(e) => setX1(parseFloat(e.target.value))}
               className="slider flex-1 focus-ring"
               aria-label="Feature x1"
-              aria-valuetext={`${x1.toFixed(2)}`}
+              aria-valuetext={`x1 = ${x1.toFixed(2)}, norm ${norm.toFixed(3)}`}
             />
             <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
               {x1.toFixed(2)}

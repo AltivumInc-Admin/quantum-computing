@@ -55,4 +55,13 @@ describe("CheckpointExplorer", () => {
     expect(label).toHaveClass("text-caption");
     expect(label).not.toHaveClass("text-gray-400");
   });
+
+  it("announces the iterations saved", () => {
+    render(
+      <CheckpointExplorer
+        source={JSON.stringify({ iterations: 40, failAt: 27, every: 10 })}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(/iterations saved/i);
+  });
 });

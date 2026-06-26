@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 import { paramSavedSec, paramTimeNaive, paramTimeReused } from "./hybrid";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { clamp, readNumber } from "./parse-utils";
@@ -241,6 +241,12 @@ export function ParamCompileExplorer({ source }: { source: string }) {
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+      <LiveStatus>
+        {`Compile once and reuse saves ${formatSec(saved)} (${percent.toFixed(
+          1
+        )}% less wall-clock) over ${n} iterations.`}
+      </LiveStatus>
+
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DEVICES, sortDevices, type SortKey } from "./devices";
 import { costLabel } from "./cost";
+import { LiveStatus } from "./widget-ui";
 
 const TECHNOLOGIES = ["All", "Trapped ion", "Superconducting", "Neutral atom", "Simulator"] as const;
 
@@ -31,6 +32,12 @@ export function DeviceTable() {
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+      <LiveStatus>
+        {`${sorted.length} device${sorted.length === 1 ? "" : "s"} shown${
+          tech === "All" ? "" : `, ${tech}`
+        }.`}
+      </LiveStatus>
+
       {/* Header */}
       <div className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { sampleCounts } from "./shots";
+import { LiveStatus } from "./widget-ui";
 
 /**
  * Inline shots-sampler widget rendered from a ```qshots fenced block in a
@@ -48,8 +49,23 @@ export function ShotsSampler({ source }: { source: string }) {
     );
   }
 
+  const empiricalArgmax = counts
+    ? counts.reduce((best, c, i, arr) => (c > arr[best] ? i : best), 0)
+    : 0;
+
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+      <LiveStatus>
+        {total > 0 && counts
+          ? `Sampled ${total} shots. Most-probable |${basisLabel(
+              empiricalArgmax,
+              program.n
+            )}⟩: empirical ${((counts[empiricalArgmax] / total) * 100).toFixed(
+              1
+            )}%, exact ${(probs[empiricalArgmax] * 100).toFixed(1)}%.`
+          : ""}
+      </LiveStatus>
+
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">

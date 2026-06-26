@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -89,6 +89,12 @@ export function GroverVisualizer({ source }: { source: string }) {
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+      <LiveStatus>
+        {`Success probability ${(success * 100).toFixed(1)}% at ${frame} iteration${
+          frame === 1 ? "" : "s"
+        }.`}
+      </LiveStatus>
+
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
           Grover
@@ -160,7 +166,9 @@ export function GroverVisualizer({ source }: { source: string }) {
           onChange={(e) => setIterations(parseInt(e.target.value, 10))}
           className="slider flex-1 focus-ring"
           aria-label="Number of Grover iterations"
-          aria-valuetext={`${frame} iterations`}
+          aria-valuetext={`${frame} iteration${frame === 1 ? "" : "s"}, success ${(
+            success * 100
+          ).toFixed(1)}%`}
         />
         <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
           {frame}
