@@ -21,3 +21,15 @@ describe("qft", () => {
     }
   });
 });
+
+describe("periodicState guards", () => {
+  it("throws on period 0", () => {
+    expect(() => periodicState(3, 0)).toThrow(/positive integer/);
+  });
+  it("throws on negative period", () => {
+    expect(() => periodicState(3, -1)).toThrow(/positive integer/);
+  });
+  it("throws on non-integer period", () => {
+    expect(() => periodicState(3, 1.5)).toThrow(/positive integer/);
+  });
+});

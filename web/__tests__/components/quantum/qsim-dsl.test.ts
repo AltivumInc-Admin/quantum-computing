@@ -78,6 +78,12 @@ describe("parseProgram (shared qsim gate DSL)", () => {
   it("rejects a non-numeric `qubits` directive", () => {
     expect(parseProgram("qubits x\nH 0").error).toMatch(/qubits directive/i);
   });
+
+  it("rejects CNOT with equal control and target", () => {
+    const p = parseProgram("CNOT 0 0");
+    expect(p.error).toMatch(/must differ/i);
+    expect(p.gates).toHaveLength(0);
+  });
 });
 
 describe("opsFor (binds slider theta into the op list)", () => {

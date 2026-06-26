@@ -119,6 +119,11 @@ describe("H2 fixture (the source of truth)", () => {
       loadH2Curve({ basis: "sto-3g", jwTerms: ["I"], points: [{ R: 0.5, c0: 0, cz: 0, fci: 0, hf: 0, jw: [0] }] })
     ).toThrow();
   });
+  it("rejects a point with Infinity (non-finite)", () => {
+    expect(() =>
+      loadH2Curve({ basis: "sto-3g", jwTerms: ["I"], points: [{ R: Infinity, c0: 0, cz: 0, cx: 0, fci: 0, hf: 0, jw: [0] }] })
+    ).toThrow(/non-finite/i);
+  });
   it("tapered E0 = c0 - hypot(cz, cx) = FCI at every R", () => {
     for (const p of CURVE.points) {
       expect(p.c0 - Math.hypot(p.cz, p.cx)).toBeCloseTo(p.fci, 5);

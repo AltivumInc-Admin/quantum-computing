@@ -28,4 +28,12 @@ describe("QftVisualizer", () => {
     render(<QftVisualizer source={JSON.stringify({ qubits: 3, input: "period:4" })} />);
     expect(screen.getByRole("status")).toHaveTextContent(/spikes every/i);
   });
+  it("renders the error card for malformed JSON", () => {
+    render(<QftVisualizer source="{not json" />);
+    expect(screen.getByText(/invalid json/i)).toBeInTheDocument();
+  });
+  it("still renders the Fourier header for an empty source (default)", () => {
+    render(<QftVisualizer source="" />);
+    expect(screen.getByText(/fourier/i)).toBeInTheDocument();
+  });
 });

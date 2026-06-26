@@ -4,6 +4,7 @@ import { useDeferredValue, useId, useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { noisyRho, stateFidelity, type ChannelName } from "./noise";
+import { ErrorCard as SharedErrorCard } from "./widget-ui";
 
 /**
  * Inline noise-visualizer widget rendered from a ```qnoise fenced block in a
@@ -75,36 +76,12 @@ export function NoiseVisualizer({ source }: { source: string }) {
     return `Largest shift at basis ${basisLabel(mi, program.n)}: ideal ${((ideal[mi] ?? 0) * 100).toFixed(0)} percent, noisy ${((noisy[mi] ?? 0) * 100).toFixed(0)} percent.`;
   }, [ideal, noisy, valid, program.n]);
 
-  // Parse-error card
   if (program.error) {
-    return (
-      <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-            Noise
-          </span>
-        </div>
-        <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">
-          qsim parse error: {program.error}
-        </p>
-      </div>
-    );
+    return <SharedErrorCard label="qnoise" message={program.error} />;
   }
 
-  // Over-qubit-limit card
   if (program.n > 3) {
-    return (
-      <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-            Noise
-          </span>
-        </div>
-        <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-          qnoise supports up to 3 qubits.
-        </p>
-      </div>
-    );
+    return <SharedErrorCard label="qnoise" message="supports up to 3 qubits" />;
   }
 
   const fidelity = stateFidelity(idealState, rho);

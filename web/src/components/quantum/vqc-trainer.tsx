@@ -209,7 +209,7 @@ export function VqcTrainer({ source }: { source: string }) {
   const [theta, setTheta] = useState<number[]>(() => initTheta());
   const [bias, setBias] = useState(0);
   const [step, setStep] = useState(0);
-  const [history, setHistory] = useState<number[]>(() => [mseLoss(makeBlobs(30, 1), initTheta(), 0)]);
+  const [history, setHistory] = useState<number[]>(() => [mseLoss(data, theta, 0)]);
   const headingId = useId();
 
   if (!parsed.ok) {

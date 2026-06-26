@@ -69,4 +69,16 @@ describe("VqeExplorer", () => {
     fireEvent.click(screen.getByRole("button", { name: /optimize/i }));
     expect(screen.getByRole("status")).toHaveTextContent(/hartree/i);
   });
+
+  it("clears the pending optimize-animation timer on unmount", () => {
+    jest.useFakeTimers();
+    mockMatchMedia(false);
+    const clearSpy = jest.spyOn(global, "clearTimeout");
+    const { unmount } = render(<VqeExplorer source={JSON.stringify({ R: 0.75 })} />);
+    fireEvent.click(screen.getByRole("button", { name: /optimize/i }));
+    unmount();
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockRestore();
+    jest.useRealTimers();
+  });
 });

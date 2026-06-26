@@ -27,13 +27,19 @@ interface ParseResult {
 }
 
 function parseConfig(source: string): ParseResult {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(source);
-  } catch {
-    raw = {};
+  const trimmed = source.trim();
+  let raw: unknown = {};
+  if (trimmed.length > 0) {
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      return { error: "invalid JSON" };
+    }
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return { error: "expected a JSON object" };
+    }
   }
-  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const obj = raw as Record<string, unknown>;
 
   const n = typeof obj.qubits === "number" ? obj.qubits : 4;
   if (!Number.isInteger(n) || n < 2 || n > 4) {
@@ -129,17 +135,15 @@ export function QftVisualizer({ source }: { source: string }) {
 
   const result = useMemo(() => {
     if (!parsed.config) return null;
-    const { n, kind, value } = parsed.config;
-    const input =
-      kind === "basis" ? basisState(n, value) : periodicState(n, value);
-    const output = qft(input);
-    return {
-      n,
-      kind,
-      value,
-      inMag: input.map(mag),
-      outMag: output.map(mag),
-    };
+    try {
+      const { n, kind, value } = parsed.config;
+      const input =
+        kind === "basis" ? basisState(n, value) : periodicState(n, value);
+      const output = qft(input);
+      return { n, kind, value, inMag: input.map(mag), outMag: output.map(mag) };
+    } catch {
+      return null;
+    }
   }, [parsed]);
 
   if (!parsed.config || !result) {

@@ -1,4 +1,4 @@
-import { kernelMatrix, kernelBias, kernelScore, makeDataset, accuracy } from "@/components/quantum/kernel";
+import { kernelMatrix, kernelBias, kernelScore, kernelScoreS, featureState, makeDataset, accuracy } from "@/components/quantum/kernel";
 
 describe("kernel", () => {
   it("kernel matrix is symmetric with unit diagonal in [0,1]", () => {
@@ -19,5 +19,13 @@ describe("kernel", () => {
     const bias = kernelBias(train, "iqp", 1);
     const preds = test.map((p) => (kernelScore(p.x, train, "iqp", 1, bias) >= 0 ? 1 : -1));
     expect(accuracy(preds, test.map((p) => p.y))).toBeGreaterThan(0.7);
+  });
+  it("kernelScore matches kernelScoreS (single shipped path)", () => {
+    const train = makeDataset("xor", 12, 3);
+    const states = train.map((p) => featureState(p.x, "angle", 1.3));
+    const x: [number, number] = [0.2, -0.4];
+    expect(kernelScore(x, train, "angle", 1.3, 0.1)).toBeCloseTo(
+      kernelScoreS(x, states, train, "angle", 1.3, 0.1), 12
+    );
   });
 });

@@ -47,4 +47,12 @@ describe("JobExplorer", () => {
     expect(() => render(<JobExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qjob error:/i)).toBeInTheDocument();
   });
+  it("renders the qjob error card for a non-finite numeric field", () => {
+    render(<JobExplorer source={'{"iterations": 1e999}'} />);
+    expect(screen.getByText(/qjob error/i)).toBeInTheDocument();
+  });
+  it("renders the qjob error card for a non-numeric field", () => {
+    render(<JobExplorer source={'{"shots":"many"}'} />);
+    expect(screen.getByText(/qjob error/i)).toBeInTheDocument();
+  });
 });
