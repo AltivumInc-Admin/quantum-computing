@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Bar, ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -113,28 +113,18 @@ export function GroverVisualizer({ source }: { source: string }) {
             const p = amp * amp;
             const isMarked = idx === marked;
             return (
-              <div key={idx} className="flex items-center gap-2">
-                <span
-                  className={`w-12 shrink-0 font-mono text-xs ${
-                    isMarked
-                      ? "text-accent-dark dark:text-accent-light font-semibold"
-                      : "text-gray-500 dark:text-gray-400"
-                  }`}
-                >
-                  |{basisLabel(idx, n)}&#10217;
-                </span>
-                <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                  <span
-                    className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-200 motion-reduce:transition-none ${
-                      isMarked ? "bg-accent" : "bg-gray-300 dark:bg-gray-600"
-                    }`}
-                    style={{ width: `${(p * 100).toFixed(2)}%` }}
-                  />
-                </span>
-                <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                  {(p * 100).toFixed(1)}%
-                </span>
-              </div>
+              <Bar
+                key={idx}
+                label={basisLabel(idx, n)}
+                fraction={p}
+                fillClass={isMarked ? "bg-accent" : "bg-gray-300 dark:bg-gray-600"}
+                valueText={`${(p * 100).toFixed(1)}%`}
+                labelClassName={
+                  isMarked
+                    ? "text-accent-dark dark:text-accent-light font-semibold"
+                    : "text-gray-500 dark:text-gray-400"
+                }
+              />
             );
           })}
         </div>

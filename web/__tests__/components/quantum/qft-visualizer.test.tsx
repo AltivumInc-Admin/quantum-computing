@@ -36,4 +36,8 @@ describe("QftVisualizer", () => {
     render(<QftVisualizer source="" />);
     expect(screen.getByText(/fourier/i)).toBeInTheDocument();
   });
+  it("renders magnitude values via Bar-based MagnitudeBars", () => {
+    render(<QftVisualizer source={JSON.stringify({ qubits: 3, input: "period:4" })} />);
+    expect(screen.getAllByText(/^\d\.\d\d$/).length).toBeGreaterThan(0);
+  });
 });

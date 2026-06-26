@@ -27,4 +27,8 @@ describe("EncodingExplorer", () => {
     expect(() => render(<EncodingExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qencode error/i)).toBeInTheDocument();
   });
+  it("renders amplitude bars via ProbBars for the default angle encoding", () => {
+    render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "angle" })} />);
+    expect(screen.getAllByText(/%$/).length).toBeGreaterThanOrEqual(4);
+  });
 });

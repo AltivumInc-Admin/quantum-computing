@@ -1,8 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
-import { basisLabel } from "./math";
+import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars } from "./widget-ui";
 import { djProbabilities, isConstant, ORACLES } from "./deutsch-jozsa";
 
 /**
@@ -114,24 +113,7 @@ export function DjDemo({ source }: { source: string }) {
           </select>
         </div>
 
-        <div className="space-y-1.5">
-          {result.probs.map((p, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <span className="w-16 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                |{basisLabel(idx, result.n)}&#10217;
-              </span>
-              <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <span
-                  className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200"
-                  style={{ width: `${(p * 100).toFixed(2)}%` }}
-                />
-              </span>
-              <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                {(p * 100).toFixed(1)}%
-              </span>
-            </div>
-          ))}
-        </div>
+        <ProbBars probs={result.probs} n={result.n} />
 
         <p className="text-xs text-caption leading-relaxed">
           One query decides it: all-zeros with certainty means the function never

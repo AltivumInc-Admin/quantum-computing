@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Bar, ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 import { type Complex, basisLabel } from "./math";
 import { qft, basisState, periodicState } from "./qft";
 
@@ -102,28 +102,19 @@ function MagnitudeBars({
     <div className="space-y-1.5">
       {values.map((v, idx) => {
         const hot = highlight ? highlight(idx) : false;
+        const fillClass = hot
+          ? "bg-warm"
+          : accent
+            ? "bg-accent"
+            : "bg-gray-400 dark:bg-gray-500";
         return (
-          <div key={idx} className="flex items-center gap-2">
-            <span className="w-12 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-              |{basisLabel(idx, n)}&#10217;
-            </span>
-            <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-              <span
-                className={
-                  "absolute inset-y-0 left-0 rounded-full motion-safe:transition-[width] motion-safe:duration-200 " +
-                  (hot
-                    ? "bg-warm"
-                    : accent
-                      ? "bg-accent"
-                      : "bg-gray-400 dark:bg-gray-500")
-                }
-                style={{ width: `${((v / peak) * 100).toFixed(2)}%` }}
-              />
-            </span>
-            <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {v.toFixed(2)}
-            </span>
-          </div>
+          <Bar
+            key={idx}
+            label={basisLabel(idx, n)}
+            fraction={v / peak}
+            fillClass={fillClass}
+            valueText={v.toFixed(2)}
+          />
         );
       })}
     </div>
