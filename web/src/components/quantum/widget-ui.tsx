@@ -55,25 +55,59 @@ export function GateChips({
   );
 }
 
+export function Bar({
+  label,
+  fraction,
+  valueText,
+  fillClass = "bg-accent",
+  labelClassName = "text-gray-500 dark:text-gray-400",
+  valueClassName = "text-gray-500 dark:text-gray-400",
+}: {
+  label: string;
+  fraction: number;
+  valueText: string;
+  fillClass?: string;
+  labelClassName?: string;
+  valueClassName?: string;
+}) {
+  const pct = Math.max(0, Math.min(1, fraction)) * 100;
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-12 shrink-0 font-mono text-xs ${labelClassName}`}>
+        |{label}&#10217;
+      </span>
+      <span className="relative h-3 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+        <span
+          className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-200 motion-reduce:transition-none ${fillClass}`}
+          style={{ width: `${pct.toFixed(2)}%` }}
+        />
+      </span>
+      <span className={`w-12 shrink-0 text-right font-mono text-xs tabular-nums ${valueClassName}`}>
+        {valueText}
+      </span>
+    </div>
+  );
+}
+
 /** Probability bars: one row per basis state (|label⟩, accent fill, percentage). */
-export function ProbBars({ probs, n }: { probs: number[]; n: number }) {
+export function ProbBars({
+  probs,
+  n,
+  labelFor = basisLabel,
+}: {
+  probs: number[];
+  n: number;
+  labelFor?: (idx: number, n: number) => string;
+}) {
   return (
     <div className="space-y-1.5">
       {probs.map((p, idx) => (
-        <div key={idx} className="flex items-center gap-2">
-          <span className="w-12 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-            |{basisLabel(idx, n)}&#10217;
-          </span>
-          <span className="relative h-3 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-            <span
-              className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200"
-              style={{ width: `${(p * 100).toFixed(2)}%` }}
-            />
-          </span>
-          <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            {(p * 100).toFixed(1)}%
-          </span>
-        </div>
+        <Bar
+          key={idx}
+          label={labelFor(idx, n)}
+          fraction={p}
+          valueText={`${(p * 100).toFixed(1)}%`}
+        />
       ))}
     </div>
   );

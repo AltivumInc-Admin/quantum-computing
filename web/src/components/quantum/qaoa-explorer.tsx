@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars } from "./widget-ui";
 import {
   cutValue,
   qaoaDistribution,
@@ -372,23 +372,8 @@ export function QaoaExplorer({ source }: { source: string }) {
           </div>
 
           {/* distribution bars */}
-          <div className="mt-4 space-y-1.5">
-            {distribution.map((p, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <span className="w-12 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                  |{vertexLabel(idx, n)}&#10217;
-                </span>
-                <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                  <span
-                    className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200 motion-reduce:transition-none"
-                    style={{ width: `${(p * 100).toFixed(2)}%` }}
-                  />
-                </span>
-                <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                  {(p * 100).toFixed(1)}%
-                </span>
-              </div>
-            ))}
+          <div className="mt-4">
+            <ProbBars probs={distribution} n={n} labelFor={vertexLabel} />
           </div>
           <p className="mt-1.5 text-[10px] text-caption font-mono">
             bit order: vertex 0 on the left (matches the graph)

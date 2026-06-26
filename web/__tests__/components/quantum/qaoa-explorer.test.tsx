@@ -20,4 +20,9 @@ describe("QaoaExplorer", () => {
     render(<QaoaExplorer source={JSON.stringify({ edges: [[0, 1], [1, 2], [2, 0]] })} />);
     expect(screen.getByRole("status")).toHaveTextContent(/expected cut/i);
   });
+  it("renders vertex-order labels and the bit-order caption via ProbBars", () => {
+    render(<QaoaExplorer source={JSON.stringify({ edges: [[0, 1], [1, 2], [2, 0]] })} />);
+    expect(screen.getByText(/vertex 0 on the left/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/%$/).length).toBeGreaterThanOrEqual(8);
+  });
 });
