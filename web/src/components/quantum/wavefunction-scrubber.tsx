@@ -106,7 +106,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
           (show3D ? (
             <BlochSphere3D state={current} />
           ) : (
-            <BlochDial state={current} />
+            <BlochDial state={current} size={180} />
           ))}
       </div>
 

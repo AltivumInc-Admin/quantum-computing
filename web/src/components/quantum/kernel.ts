@@ -27,6 +27,17 @@ export function kernelBias(train: Point[], map: FeatureMap, scale: number): numb
   return -total / train.length;
 }
 
+/** Like kernelBias but reuses precomputed training feature states. */
+export function kernelBiasS(trainStates: Complex[][], train: Point[]): number {
+  let total = 0;
+  for (let j = 0; j < train.length; j++) {
+    let s = 0;
+    for (let i = 0; i < train.length; i++) s += train[i].y * fidelity(trainStates[j], trainStates[i]);
+    total += s;
+  }
+  return -total / train.length;
+}
+
 export function kernelScore(x: [number, number], train: Point[], map: FeatureMap, scale: number, bias: number): number {
   const trainStates = train.map((p) => featureState(p.x, map, scale));
   return kernelScoreS(x, trainStates, train, map, scale, bias);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PRICING, Provider, estimateCost, isPerShot } from "./cost";
 
 const PROVIDERS = Object.keys(PRICING) as Provider[];
@@ -25,7 +25,7 @@ function parseSource(source: string): { provider?: Provider; shots?: number } {
 }
 
 export function CostCalculator({ source }: { source: string }) {
-  const preset = parseSource(source);
+  const preset = useMemo(() => parseSource(source), [source]);
 
   const [provider, setProvider] = useState<Provider>(preset.provider ?? "IonQ");
   // Number fields are string-backed so the learner can clear and retype mid-edit

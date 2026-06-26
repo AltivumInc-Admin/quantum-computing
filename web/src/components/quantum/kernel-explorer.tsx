@@ -5,7 +5,7 @@ import { ErrorCard as SharedErrorCard } from "./widget-ui";
 import {
   accuracy,
   featureState,
-  kernelBias,
+  kernelBiasS,
   kernelScoreS,
   makeDataset,
   type DatasetName,
@@ -124,19 +124,17 @@ export function KernelExplorer({ source }: { source: string }) {
     return makeDataset(parsed.dataset, 60, 1);
   }, [parsed]);
 
-  // Decision boundary grid + accuracy readouts.
+  const baseline = useMemo(() => (train ? nearestMeanAccuracy(train) : 0), [train]);
+
   const result = useMemo(() => {
     if (!train) return null;
-    const bias = kernelBias(train, map, deferredScale);
-    // Build each training point's feature state once and reuse it across all
-    // grid cells (was rebuilt per cell — ~GRID*GRID*train redundant constructions).
     const trainStates = train.map((p) => featureState(p.x, map, deferredScale));
+    const bias = kernelBiasS(trainStates, train);
 
-    // 36x36 grid coloured by sign(kernelScore).
     const cells: number[][] = [];
     for (let gy = 0; gy < GRID; gy++) {
       const row: number[] = [];
-      const cy = SPAN - (2 * SPAN * (gy + 0.5)) / GRID; // top row = +SPAN
+      const cy = SPAN - (2 * SPAN * (gy + 0.5)) / GRID;
       for (let gx = 0; gx < GRID; gx++) {
         const cx = -SPAN + (2 * SPAN * (gx + 0.5)) / GRID;
         row.push(kernelScoreS([cx, cy], trainStates, train, map, deferredScale, bias) >= 0 ? 1 : -1);
@@ -144,19 +142,17 @@ export function KernelExplorer({ source }: { source: string }) {
       cells.push(row);
     }
 
-    // Quantum-kernel accuracy on the training set.
     const preds = train.map((p) => (kernelScoreS(p.x, trainStates, train, map, deferredScale, bias) >= 0 ? 1 : -1));
     const acc = accuracy(preds, train.map((p) => p.y));
-    const baseline = nearestMeanAccuracy(train);
 
-    return { cells, acc, baseline };
+    return { cells, acc };
   }, [train, map, deferredScale]);
 
   if (!parsed.ok || !train || !result) {
     return <ErrorCard message={parsed.ok ? "kernel error" : parsed.error} />;
   }
 
-  const { cells, acc, baseline } = result;
+  const { cells, acc } = result;
   const cell = SVG / GRID;
 
   // Map plane coordinates [-SPAN, SPAN] to SVG pixels.

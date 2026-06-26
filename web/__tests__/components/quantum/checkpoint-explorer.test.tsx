@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 
 import { CheckpointExplorer } from "@/components/quantum/checkpoint-explorer";
@@ -56,6 +56,22 @@ describe("CheckpointExplorer", () => {
     expect(label).not.toHaveClass("text-gray-400");
   });
 
+  it("preserves base-track rect count after slider interaction (memo integrity)", () => {
+    render(
+      <CheckpointExplorer
+        source={JSON.stringify({ iterations: 40, failAt: 27, every: 10 })}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/iteration at which/i), { target: { value: "15" } });
+    const timelines = screen.getAllByRole("img");
+    for (const svg of timelines) {
+      const rects = svg.querySelectorAll("rect");
+      const baseCells = Array.from(rects).filter((r) =>
+        r.getAttribute("fill")?.includes("10%")
+      );
+      expect(baseCells).toHaveLength(40);
+    }
+  });
   it("announces the iterations saved", () => {
     render(
       <CheckpointExplorer

@@ -54,7 +54,7 @@ export function BlochBuilder() {
         {show3D ? (
           <BlochSphere3D state={state} />
         ) : (
-          <BlochDial state={state} />
+          <BlochDial state={state} size={180} />
         )}
       </div>
 
