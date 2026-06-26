@@ -113,11 +113,16 @@ function TimelineRow({
   reduced: boolean;
 }) {
   const cellW = TIMELINE_W / iterations;
-  // Clamp so a failure at the final iteration sits on the right edge instead of
-  // clipping to half width (the marker is centered on failX).
   const failX = Math.min(failAt * cellW, TIMELINE_W - 1);
 
-  // Checkpoint multiples of `every` up to iterations (and the implicit 0 start).
+  const baseCells = useMemo(
+    () => Array.from({ length: iterations }, (_, i) => (
+      <rect key={i} x={i * cellW} y={4} width={Math.max(0, cellW - 0.6)} height={ROW_H}
+        rx={0.8} fill="color-mix(in oklab, var(--accent) 10%, transparent)" />
+    )),
+    [iterations, cellW]
+  );
+
   const checkpoints: number[] = [];
   if (showCheckpoints) {
     for (let c = 0; c <= iterations; c += every) checkpoints.push(c);
@@ -132,18 +137,7 @@ function TimelineRow({
       aria-label={ariaLabel}
       className="w-full max-w-[320px] block"
     >
-      {/* base track cells */}
-      {Array.from({ length: iterations }, (_, i) => (
-        <rect
-          key={i}
-          x={i * cellW}
-          y={4}
-          width={Math.max(0, cellW - 0.6)}
-          height={ROW_H}
-          rx={0.8}
-          fill="color-mix(in oklab, var(--accent) 10%, transparent)"
-        />
-      ))}
+      {baseCells}
 
       {/* shaded "redone on restart" region: cells redoneFrom .. failAt */}
       {failAt > redoneFrom && (

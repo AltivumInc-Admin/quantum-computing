@@ -52,6 +52,12 @@ describe("WavefunctionScrubber", () => {
     expect(screen.getByText(/0\.71\|11⟩/)).toBeInTheDocument();
   });
 
+  it("renders the fallback Bloch dial at 180px for a single-qubit circuit", () => {
+    render(<WavefunctionScrubber source="H 0" />);
+    const svg = screen.getByLabelText(/bloch vector/i);
+    expect(svg).toHaveAttribute("width", "180");
+    expect(svg).toHaveAttribute("height", "180");
+  });
   it("offers a Play control when motion is allowed", () => {
     render(<WavefunctionScrubber source={"H 0\nCNOT 0 1"} />);
     expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();

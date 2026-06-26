@@ -123,44 +123,33 @@ export function VqeExplorer({ source }: { source: string }) {
       if (e < eMin) eMin = e;
       if (e > eMax) eMax = e;
     }
-    return { c0, cz, cx, H, floor, samples, eMin, eMax };
+    const span = Math.max(1e-9, eMax - eMin);
+    const plotW = SVG.w - 2 * SVG.padX;
+    const plotH = SVG.h - 2 * SVG.padY;
+    const thetaToX = (th: number) => SVG.padX + ((th + Math.PI) / TAU) * plotW;
+    const energyToY = (e: number) => SVG.padY + ((eMax - e) / span) * plotH;
+    const curvePath = samples
+      .map((s, i) => `${i === 0 ? "M" : "L"}${thetaToX(s.theta).toFixed(2)},${energyToY(s.energy).toFixed(2)}`)
+      .join(" ");
+    const floorY = energyToY(floor);
+    return { c0, cz, cx, H, floor, eMin, eMax, thetaToX, energyToY, curvePath, floorY };
   }, [parsed]);
 
   if (!parsed.ok || !model) {
     return <ErrorCard message={parsed.ok ? "no model" : parsed.error} />;
   }
 
-  const { c0, cz, cx, H, floor, samples, eMin, eMax } = model;
+  const { c0, cz, cx, H, floor, thetaToX, energyToY, curvePath, floorY } = model;
   const R = parsed.R;
 
   const energy = energy1q(c0, cz, cx, theta);
   const aboveFloor = energy - floor;
 
-  // Ansatz state in the X-Z plane: <Z> = cos(theta), <X> = sin(theta).
   const expZ = Math.cos(theta);
   const expX = Math.sin(theta);
 
-  // Plot geometry: theta on x; energy on y mapped so HIGHER energy is nearer the
-  // top and LOWER energy (the variational floor) is nearer the bottom — SVG y
-  // grows downward, so e=eMax -> padY (top) and e=eMin -> padY+plotH (bottom).
-  const span = Math.max(1e-9, eMax - eMin);
-  const plotW = SVG.w - 2 * SVG.padX;
-  const plotH = SVG.h - 2 * SVG.padY;
-  const thetaToX = (th: number) => SVG.padX + ((th + Math.PI) / TAU) * plotW;
-  const energyToY = (e: number) =>
-    SVG.padY + ((eMax - e) / span) * plotH;
-
-  const curvePath = samples
-    .map((s, i) => {
-      const x = thetaToX(s.theta);
-      const y = energyToY(s.energy);
-      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(" ");
-
   const markerX = thetaToX(theta);
   const markerY = energyToY(energy);
-  const floorY = energyToY(floor);
 
   const stopAnimation = () => {
     if (timerRef.current !== null) {

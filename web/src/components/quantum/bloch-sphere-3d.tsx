@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -116,6 +116,16 @@ function Label({
   );
 }
 
+const KET_LABELS: { pos: [number, number, number]; text: string }[] = [
+  { pos: [0, 1.3, 0], text: "|0⟩" }, { pos: [0, -1.3, 0], text: "|1⟩" },
+  { pos: [1.32, 0, 0], text: "|+⟩" }, { pos: [-1.32, 0, 0], text: "|−⟩" },
+  { pos: [0, 0, 1.32], text: "|i⟩" }, { pos: [0, 0, -1.32], text: "|−i⟩" },
+];
+
+const KetLabels = memo(function KetLabels() {
+  return <>{KET_LABELS.map((l) => <Label key={l.text} position={l.pos}>{l.text}</Label>)}</>;
+});
+
 function Scene({ state, accent }: { state: Complex[]; accent: string }) {
   const target = useMemo(() => blochToThree(state), [state]);
   const invalidate = useThree((s) => s.invalidate);
@@ -135,12 +145,7 @@ function Scene({ state, accent }: { state: Complex[]; accent: string }) {
       <Line points={AXIS_X} color={RING} lineWidth={1} transparent opacity={0.5} />
       <Line points={AXIS_Z} color={RING} lineWidth={1} transparent opacity={0.5} />
 
-      <Label position={[0, 1.3, 0]}>|0⟩</Label>
-      <Label position={[0, -1.3, 0]}>|1⟩</Label>
-      <Label position={[1.32, 0, 0]}>|+⟩</Label>
-      <Label position={[-1.32, 0, 0]}>|−⟩</Label>
-      <Label position={[0, 0, 1.32]}>|i⟩</Label>
-      <Label position={[0, 0, -1.32]}>|−i⟩</Label>
+      <KetLabels />
 
       <StateVector target={target} color={accent} />
       <OrbitControls enablePan={false} enableZoom={false} rotateSpeed={0.6} onChange={() => invalidate()} />

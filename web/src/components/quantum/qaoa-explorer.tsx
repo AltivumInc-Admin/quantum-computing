@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
 import {
   cutValue,
@@ -117,7 +117,7 @@ function heatColor(t: number): string {
 // Graph SVG
 // ---------------------------------------------------------------------------
 
-function GraphSvg({ edges, n }: { edges: Edge[]; n: number }) {
+const GraphSvg = memo(function GraphSvg({ edges, n }: { edges: Edge[]; n: number }) {
   const positions = useMemo<[number, number][]>(() => {
     const cx = SVG.w / 2;
     const cy = SVG.h / 2;
@@ -179,7 +179,7 @@ function GraphSvg({ edges, n }: { edges: Edge[]; n: number }) {
       ))}
     </svg>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Error card
@@ -237,27 +237,38 @@ export function QaoaExplorer({ source }: { source: string }) {
     return m;
   }, [parsed]);
 
+  const heat = useMemo(() => {
+    if (!landscape || !gridMax) return null;
+    const span = Math.max(1e-9, gridMax.value - gridMax.lo);
+    const cells = landscape.flatMap((row, gi) =>
+      row.map((v, bi) => (
+        <rect key={`${gi}-${bi}`} x={bi} y={RES - 1 - gi} width={1} height={1}
+          fill={heatColor((v - gridMax.lo) / span)} />
+      ))
+    );
+    const maxMarker = (
+      <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
+        stroke="currentColor" strokeWidth={0.5} className="text-amber-500 dark:text-amber-400" />
+    );
+    return { cells, maxMarker };
+  }, [landscape, gridMax]);
+
   const live = useMemo(() => {
     if (!parsed.ok) return null;
     const { n, edges } = parsed;
-    // Simulate once per tick; derive the expected cut from the distribution
-    // instead of running the state vector a second time.
     const distribution = qaoaDistribution(n, edges, gamma, beta);
     const expected = qaoaExpectedFromDistribution(distribution, edges);
     return { n, edges, expected, distribution };
   }, [parsed, gamma, beta]);
 
-  if (!parsed.ok || !landscape || !gridMax || !live) {
+  if (!parsed.ok || !landscape || !gridMax || !heat || !live) {
     return <ErrorCard message={parsed.ok ? "qaoa error" : parsed.error} />;
   }
 
   const { n, edges, expected, distribution } = live;
 
-  // Current (gamma, beta) cell on the heatmap grid.
   const curGi = Math.round((gamma / Math.PI) * (RES - 1));
   const curBi = Math.round((beta / (Math.PI / 2)) * (RES - 1));
-
-  const span = Math.max(1e-9, gridMax.value - gridMax.lo);
 
   return (
     <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
@@ -290,29 +301,8 @@ export function QaoaExplorer({ source }: { source: string }) {
               aria-label={`Expected-cut landscape over gamma in [0, pi] and beta in [0, pi/2]. Grid maximum ${gridMax.value.toFixed(2)}.`}
               className="w-full max-w-[160px] mx-auto block rounded-control"
             >
-              {landscape.map((row, gi) =>
-                row.map((v, bi) => (
-                  <rect
-                    key={`${gi}-${bi}`}
-                    x={bi}
-                    y={RES - 1 - gi}
-                    width={1}
-                    height={1}
-                    fill={heatColor((v - gridMax.lo) / span)}
-                  />
-                ))
-              )}
-              {/* grid-max cell marker */}
-              <rect
-                x={gridMax.bi}
-                y={RES - 1 - gridMax.gi}
-                width={1}
-                height={1}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={0.5}
-                className="text-amber-500 dark:text-amber-400"
-              />
+              {heat.cells}
+              {heat.maxMarker}
               {/* current (gamma, beta) marker */}
               <circle
                 cx={curBi + 0.5}

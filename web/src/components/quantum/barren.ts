@@ -1,9 +1,12 @@
-import { type Complex, ry, applyGate1, zeroState, cAbs2 } from "./math";
+import { type Complex, ry, applyGate1InPlace, zeroState, cAbs2 } from "./math";
 
 export { mulberry32 } from "./rng";
 
-/** Unique CZ ring edges (dedup so n=2 applies CZ once). */
+const czEdgeCache = new Map<number, [number, number][]>();
+
 function czEdges(n: number): [number, number][] {
+  const hit = czEdgeCache.get(n);
+  if (hit) return hit;
   const seen = new Set<string>();
   const e: [number, number][] = [];
   for (let q = 0; q < n; q++) {
@@ -12,26 +15,25 @@ function czEdges(n: number): [number, number][] {
     const key = a < b ? `${a}-${b}` : `${b}-${a}`;
     if (!seen.has(key)) { seen.add(key); e.push([a, b]); }
   }
+  czEdgeCache.set(n, e);
   return e;
 }
 
-function applyCZRing(state: Complex[], n: number): Complex[] {
-  const out = state.map((c) => [c[0], c[1]] as Complex);
+function applyCZRingInPlace(state: Complex[], n: number): void {
   for (const [a, b] of czEdges(n)) {
     const ma = 1 << (n - 1 - a), mb = 1 << (n - 1 - b);
-    for (let i = 0; i < out.length; i++) if ((i & ma) && (i & mb)) out[i] = [-out[i][0], -out[i][1]];
+    for (let i = 0; i < state.length; i++) if ((i & ma) && (i & mb)) state[i] = [-state[i][0], -state[i][1]];
   }
-  return out;
 }
 
 /** Hardware-efficient ansatz: RY(pi/4) seed, then L layers of [RY(theta_q) per qubit] + CZ ring. */
 function buildState(n: number, L: number, thetas: number[]): Complex[] {
-  let s = zeroState(n);
-  for (let q = 0; q < n; q++) s = applyGate1(s, ry(Math.PI / 4), q, n);
+  const s = zeroState(n);
+  for (let q = 0; q < n; q++) applyGate1InPlace(s, ry(Math.PI / 4), q, n);
   let p = 0;
   for (let l = 0; l < L; l++) {
-    for (let q = 0; q < n; q++) s = applyGate1(s, ry(thetas[p++]), q, n);
-    s = applyCZRing(s, n);
+    for (let q = 0; q < n; q++) applyGate1InPlace(s, ry(thetas[p++]), q, n);
+    applyCZRingInPlace(s, n);
   }
   return s;
 }
