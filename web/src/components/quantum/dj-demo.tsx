@@ -127,7 +127,7 @@ export function DjDemo({ source }: { source: string }) {
           ))}
         </div>
 
-        <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+        <p className="text-xs text-caption leading-relaxed">
           One query decides it: all-zeros with certainty means the function never
           varies; any other outcome means it splits its inputs evenly.
         </p>

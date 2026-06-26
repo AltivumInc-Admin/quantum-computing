@@ -220,7 +220,7 @@ export function KernelExplorer({ source }: { source: string }) {
               />
             ))}
           </svg>
-          <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+          <p className="text-center text-[10px] text-caption font-mono">
             +1 region shaded &middot; class points overlaid
           </p>
         </div>

@@ -115,17 +115,17 @@ export function EncodingExplorer({ source }: { source: string }) {
           {encoding === "amplitude" ? (
             <>
               <BlochDial state={state.slice(0, 2)} />
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">single qubit</span>
+              <span className="text-[10px] text-caption font-mono">single qubit</span>
             </>
           ) : (
             <div className="flex gap-3">
               <div className="flex flex-col items-center gap-1">
                 <BlochDial vector={reducedBloch(state, 0)} />
-                <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">q0</span>
+                <span className="text-[10px] text-caption font-mono">q0</span>
               </div>
               <div className="flex flex-col items-center gap-1">
                 <BlochDial vector={reducedBloch(state, 1)} />
-                <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">q1</span>
+                <span className="text-[10px] text-caption font-mono">q1</span>
               </div>
             </div>
           )}

@@ -83,7 +83,7 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
   return (
     <div className="mt-4 flex items-start gap-2">
       <p className="min-w-0 flex-1 break-words font-mono text-sm text-gray-700 dark:text-gray-200">
-        <span className="text-gray-400 dark:text-gray-500">|&#968;&#10217; = </span>
+        <span className="text-caption">|&#968;&#10217; = </span>
         <span className="text-accent dark:text-accent-light">{diracString(state, n)}</span>
       </p>
       <div className="flex shrink-0 items-center gap-1">

@@ -199,7 +199,7 @@ function SliderRow({
       />
       <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
         {display}
-        <span className="ml-1 text-gray-400 dark:text-gray-500">{unitLabel}</span>
+        <span className="ml-1 text-caption">{unitLabel}</span>
       </span>
     </div>
   );

@@ -135,7 +135,7 @@ export function GroverVisualizer({ source }: { source: string }) {
 
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
           <p className="font-mono text-sm text-gray-700 dark:text-gray-200">
-            <span className="text-gray-400 dark:text-gray-500">success P(marked) = </span>
+            <span className="text-caption">success P(marked) = </span>
             <span className="text-accent dark:text-accent-light tabular-nums">
               {(success * 100).toFixed(1)}%
             </span>

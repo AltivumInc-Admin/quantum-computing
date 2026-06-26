@@ -420,7 +420,7 @@ export function PesExplorer({ source }: { source: string }) {
           the correct asymptote. The VQE markers sit on the FCI curve because the
           tapered single-qubit ansatz reaches the exact STO-3G ground energy.
         </p>
-        <p className="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
+        <p className="mt-2 text-[11px] leading-relaxed text-caption">
           Honesty note: this is the STO-3G FCI curve, not the experimental exact
           PES. A minimal basis recovers full correlation only within its own tiny
           orbital space; the true potential energy surface needs a far larger

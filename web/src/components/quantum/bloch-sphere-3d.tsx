@@ -109,7 +109,7 @@ function Label({
 }) {
   return (
     <Html position={position} center distanceFactor={6} style={{ pointerEvents: "none" }}>
-      <span className="select-none font-mono text-[10px] text-gray-400 dark:text-gray-500">
+      <span className="select-none font-mono text-[10px] text-caption">
         {children}
       </span>
     </Html>
