@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { opsFor } from "./qsim-dsl";
 import { parseCorrelation, sampleOutcome } from "./correlation";
-import { GateChips } from "./widget-ui";
+import { GateChips, WidgetCard } from "./widget-ui";
 import type { Program } from "./qsim-dsl";
 
 /**
@@ -128,7 +128,17 @@ export function CorrelationDemo({ source }: { source: string }) {
   }
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
+    <WidgetCard
+      eyebrow="Correlation"
+      className="my-8"
+      headerRight={
+        measurements > 0 ? (
+          <span className="text-xs tabular-nums text-caption">
+            {measurements} measurement{measurements === 1 ? "" : "s"}
+          </span>
+        ) : null
+      }
+    >
       {/* One concise screen-reader announcement per Measure (replaces the two
           competing tally-table live regions that read 8 rows on every click) */}
       <p className="sr-only" role="status" aria-live="polite">
@@ -136,17 +146,6 @@ export function CorrelationDemo({ source }: { source: string }) {
           ? `Entangled measured ${basisLabel(entangledLast, 2)}, product measured ${basisLabel(productLast, 2)}; ${measurements} measurement${measurements === 1 ? "" : "s"} total.`
           : ""}
       </p>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Correlation
-        </span>
-        {measurements > 0 && (
-          <span className="text-xs tabular-nums text-caption">
-            {measurements} measurement{measurements === 1 ? "" : "s"}
-          </span>
-        )}
-      </div>
 
       {/* Prompt */}
       <div className="px-4 pt-4 pb-2">
@@ -193,6 +192,6 @@ export function CorrelationDemo({ source }: { source: string }) {
           Reset
         </button>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

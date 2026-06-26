@@ -132,11 +132,80 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
   );
 }
 
-/**
- * Standard parse/validation error card for the explorables. The card markup was
- * previously copy-pasted into ~17 widgets; only the `label` prefix and vertical
- * margin (`my-6` vs `my-8`) differed. Renders "<label> error: <message>".
- */
+export const cardShell =
+  "rounded-card border border-gray-200/80 dark:border-gray-700/40 " +
+  "bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] " +
+  "shadow-(--shadow-resting)";
+
+export function EyebrowLabel({
+  children,
+  as: Tag = "span",
+  id,
+}: {
+  children: ReactNode;
+  as?: "span" | "h3";
+  id?: string;
+}) {
+  return (
+    <Tag
+      id={id}
+      className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light"
+    >
+      {children}
+    </Tag>
+  );
+}
+
+export function Chip({ children }: { children: ReactNode }) {
+  return (
+    <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
+      {children}
+    </span>
+  );
+}
+
+export function WidgetCard({
+  eyebrow,
+  eyebrowAs,
+  eyebrowId,
+  chips,
+  headerRight,
+  header,
+  children,
+  className = "my-6",
+}: {
+  eyebrow?: ReactNode;
+  eyebrowAs?: "span" | "h3";
+  eyebrowId?: string;
+  chips?: ReactNode;
+  headerRight?: ReactNode;
+  header?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  const hasHeader = header !== undefined || eyebrow !== undefined;
+  let headerNode: ReactNode = header;
+  if (headerNode === undefined && eyebrow !== undefined) {
+    headerNode = headerRight !== undefined ? (
+      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+        <EyebrowLabel as={eyebrowAs} id={eyebrowId}>{eyebrow}</EyebrowLabel>
+        {headerRight}
+      </div>
+    ) : (
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+        <EyebrowLabel as={eyebrowAs} id={eyebrowId}>{eyebrow}</EyebrowLabel>
+        {chips}
+      </div>
+    );
+  }
+  return (
+    <div className={`not-prose ${className} ${cardShell}${hasHeader ? " overflow-hidden" : ""}`}>
+      {headerNode}
+      {children}
+    </div>
+  );
+}
+
 export function ErrorCard({
   label,
   message,
@@ -147,9 +216,7 @@ export function ErrorCard({
   className?: string;
 }) {
   return (
-    <div
-      className={`not-prose ${className} rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3`}
-    >
+    <div className={`not-prose ${className} ${cardShell} px-4 py-3`}>
       <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
         {`${label} error: ${message ?? ""}`}
       </p>

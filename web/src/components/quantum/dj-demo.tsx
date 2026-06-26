@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 import { djProbabilities, isConstant, ORACLES } from "./deutsch-jozsa";
 
 /**
@@ -68,17 +68,9 @@ export function DjDemo({ source }: { source: string }) {
   const verdict = result.constant ? "Constant" : "Balanced";
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      <LiveStatus>
-        {`Verdict: ${verdict}. All-zeros probability ${(
-          result.probs[0] * 100
-        ).toFixed(1)}%.`}
-      </LiveStatus>
-
-      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Deutsch&#8211;Jozsa
-        </span>
+    <WidgetCard
+      eyebrow={<>Deutsch&#8211;Jozsa</>}
+      headerRight={
         <span
           className={`rounded-chip px-2 py-0.5 text-xs font-semibold ${
             result.constant
@@ -88,7 +80,13 @@ export function DjDemo({ source }: { source: string }) {
         >
           {verdict}
         </span>
-      </div>
+      }
+    >
+      <LiveStatus>
+        {`Verdict: ${verdict}. All-zeros probability ${(
+          result.probs[0] * 100
+        ).toFixed(1)}%.`}
+      </LiveStatus>
 
       <div className="px-4 py-4 space-y-4">
         <div className="flex flex-col gap-1">
@@ -120,6 +118,6 @@ export function DjDemo({ source }: { source: string }) {
           varies; any other outcome means it splits its inputs evenly.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

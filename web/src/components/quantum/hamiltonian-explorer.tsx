@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { h2OneQubit, type H2Point } from "./chemistry";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
@@ -224,7 +224,15 @@ export function HamiltonianExplorer({ source }: { source: string }) {
       )} Angstrom, largest magnitude ${maxMag.toFixed(BAR_PRECISION)} Hartree.`;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="H2 Hamiltonian"
+      chips={
+        <>
+          <Chip>STO-3G minimal basis</Chip>
+          <Chip>{tapered ? "1q / 3 terms" : "4q / 15 terms"}</Chip>
+        </>
+      }
+    >
       <LiveStatus>
         {`${tapered ? "Tapered 1-qubit" : "4-qubit"} H2 at R = ${R.toFixed(
           2
@@ -233,19 +241,6 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           BAR_PRECISION
         )} hartree.`}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          H2 Hamiltonian
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          STO-3G minimal basis
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {tapered ? "1q / 3 terms" : "4q / 15 terms"}
-        </span>
-      </div>
 
       <div className="px-4 py-4">
         {/* Bond-length slider */}
@@ -325,6 +320,6 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           differentiable Hartree-Fock, see scripts/gen_h2_fixture.py.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Bar, ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Bar, Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -88,24 +88,20 @@ export function GroverVisualizer({ source }: { source: string }) {
   };
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="Grover"
+      chips={
+        <>
+          <Chip>N = {N}</Chip>
+          <Chip>marked = |{basisLabel(marked, n)}&#10217;</Chip>
+        </>
+      }
+    >
       <LiveStatus>
         {`Success probability ${(success * 100).toFixed(1)}% at ${frame} iteration${
           frame === 1 ? "" : "s"
         }.`}
       </LiveStatus>
-
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Grover
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          N = {N}
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          marked = |{basisLabel(marked, n)}&#10217;
-        </span>
-      </div>
 
       <div className="px-4 py-4">
         <div className="space-y-1.5">
@@ -201,6 +197,6 @@ export function GroverVisualizer({ source }: { source: string }) {
           </select>
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

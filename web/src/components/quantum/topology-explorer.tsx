@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
 import { adjacency, swapCost, type Topology } from "./topology";
 
 const TOPOLOGIES: Topology[] = ["all-to-all", "line", "ring", "grid"];
@@ -298,20 +298,15 @@ export function TopologyExplorer({ source }: { source: string }) {
   const qubitOptions = Array.from({ length: qubits }, (_, i) => i);
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Connectivity
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {topology}
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {qubits}q
-        </span>
-      </div>
-
+    <WidgetCard
+      eyebrow="Connectivity"
+      chips={
+        <>
+          <Chip>{topology}</Chip>
+          <Chip>{qubits}q</Chip>
+        </>
+      }
+    >
       {/* Graph */}
       <div className="px-4 pt-4">
         <TopologyGraph
@@ -377,6 +372,6 @@ export function TopologyExplorer({ source }: { source: string }) {
           </select>
         </label>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

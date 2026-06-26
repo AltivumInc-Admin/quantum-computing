@@ -4,7 +4,7 @@ import { useDeferredValue, useId, useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { noisyRho, stateFidelity, type ChannelName } from "./noise";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
 
 /**
  * Inline noise-visualizer widget rendered from a ```qnoise fenced block in a
@@ -94,12 +94,9 @@ export function NoiseVisualizer({ source }: { source: string }) {
   }
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Noise
-        </span>
+    <WidgetCard
+      eyebrow="Noise"
+      headerRight={
         <span
           role="status"
           aria-live="polite"
@@ -108,7 +105,8 @@ export function NoiseVisualizer({ source }: { source: string }) {
         >
           fidelity {fidelityPct}%
         </span>
-      </div>
+      }
+    >
 
       {/* Probability bars. The bars intentionally have no width transition: they
           track the (deferred) simulation 1:1 so they never lag the fidelity
@@ -210,6 +208,6 @@ export function NoiseVisualizer({ source }: { source: string }) {
           </span>
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

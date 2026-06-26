@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { paramSavedSec, paramTimeNaive, paramTimeReused } from "./hybrid";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { clamp, readNumber } from "./parse-utils";
@@ -240,22 +240,12 @@ export function ParamCompileExplorer({ source }: { source: string }) {
   const maxSeconds = Math.max(naive, reused, 1e-9);
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard eyebrow="Parametric compilation" chips={<Chip>{n} iter</Chip>}>
       <LiveStatus>
         {`Compile once and reuse saves ${formatSec(saved)} (${percent.toFixed(
           1
         )}% less wall-clock) over ${n} iterations.`}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Parametric compilation
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          {n} iter
-        </span>
-      </div>
 
       <div className="px-4 py-4">
         {/* Time bars */}
@@ -338,6 +328,6 @@ export function ParamCompileExplorer({ source }: { source: string }) {
           compile-once-and-reuse behavior is a real Braket feature.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

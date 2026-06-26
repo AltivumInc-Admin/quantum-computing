@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
 import {
   N_PARAMS,
   makeBlobs,
@@ -242,19 +242,10 @@ export function VqcTrainer({ source }: { source: string }) {
   };
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          VQC
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          2q angle
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          blobs
-        </span>
-      </div>
+    <WidgetCard
+      eyebrow="VQC"
+      chips={<><Chip>2q angle</Chip><Chip>blobs</Chip></>}
+    >
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         {/* Boundary + loss */}
@@ -315,6 +306,6 @@ export function VqcTrainer({ source }: { source: string }) {
           </p>
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

@@ -4,7 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { simulate, probabilities } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial } from "./bloch-dial";
-import { GateChips, ProbBars, StateReadout } from "./widget-ui";
+import { GateChips, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 
 /**
  * Inline, zero-boot quantum readout rendered from a ```qsim fenced block in a
@@ -30,16 +30,14 @@ export function CircuitLab({ source }: { source: string }) {
   }, [program, theta]);
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Live circuit
-        </span>
+    <WidgetCard
+      eyebrow="Live circuit"
+      chips={
         <div className="flex flex-wrap gap-1">
           <GateChips gates={program.gates} />
         </div>
-      </div>
-
+      }
+    >
       {"error" in sim ? (
         <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">
           qsim parse error: {sim.error}
@@ -77,6 +75,6 @@ export function CircuitLab({ source }: { source: string }) {
           </span>
         </div>
       )}
-    </div>
+    </WidgetCard>
   );
 }

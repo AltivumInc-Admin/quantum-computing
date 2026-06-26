@@ -3,7 +3,15 @@
  */
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
-import { Bar, LiveStatus, ProbBars } from "@/components/quantum/widget-ui";
+import {
+  Bar,
+  Chip,
+  EyebrowLabel,
+  ErrorCard,
+  LiveStatus,
+  ProbBars,
+  WidgetCard,
+} from "@/components/quantum/widget-ui";
 
 describe("LiveStatus", () => {
   it("renders a polite, visually-hidden status region carrying its children", () => {
@@ -75,5 +83,102 @@ describe("ProbBars", () => {
     );
     expect(screen.getByText(/\|v0⟩/)).toBeInTheDocument();
     expect(screen.queryByText(/\|00⟩/)).not.toBeInTheDocument();
+  });
+});
+
+describe("EyebrowLabel", () => {
+  it("renders a span by default", () => {
+    render(<EyebrowLabel>Circuit</EyebrowLabel>);
+    const el = screen.getByText("Circuit");
+    expect(el.tagName).toBe("SPAN");
+    expect(el.className).toContain("text-accent");
+    expect(el.className).toContain("uppercase");
+  });
+
+  it('renders an h3 with id when as="h3"', () => {
+    render(<EyebrowLabel as="h3" id="hw">Heading</EyebrowLabel>);
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading).toHaveTextContent("Heading");
+    expect(heading).toHaveAttribute("id", "hw");
+  });
+});
+
+describe("Chip", () => {
+  it("renders a mono pill with rounded-chip class", () => {
+    render(<Chip>N = 8</Chip>);
+    const el = screen.getByText("N = 8");
+    expect(el.tagName).toBe("SPAN");
+    expect(el.className).toContain("rounded-chip");
+    expect(el.className).toContain("font-mono");
+  });
+});
+
+describe("WidgetCard", () => {
+  it("renders children with cardShell classes and not-prose", () => {
+    const { container } = render(
+      <WidgetCard><p>body</p></WidgetCard>
+    );
+    expect(screen.getByText("body")).toBeInTheDocument();
+    const outer = container.firstElementChild!;
+    expect(outer.className).toContain("not-prose");
+    expect(outer.className).toContain("rounded-card");
+    expect(outer.className).toContain("shadow-(--shadow-resting)");
+  });
+
+  it("adds overflow-hidden and header row when eyebrow is set", () => {
+    const { container } = render(
+      <WidgetCard eyebrow="Test"><p>body</p></WidgetCard>
+    );
+    const outer = container.firstElementChild!;
+    expect(outer.className).toContain("overflow-hidden");
+    expect(screen.getByText("Test")).toBeInTheDocument();
+    expect(screen.getByText("Test").className).toContain("uppercase");
+  });
+
+  it("renders chips in the header alongside the eyebrow", () => {
+    render(
+      <WidgetCard eyebrow="X" chips={<Chip>3q</Chip>}><p>body</p></WidgetCard>
+    );
+    expect(screen.getByText("X")).toBeInTheDocument();
+    expect(screen.getByText("3q")).toBeInTheDocument();
+  });
+
+  it("renders headerRight with justify-between layout", () => {
+    const { container } = render(
+      <WidgetCard eyebrow="A" headerRight={<span>status</span>}>
+        <p>body</p>
+      </WidgetCard>
+    );
+    const headerDiv = container.querySelector(".border-b")!;
+    expect(headerDiv.className).toContain("justify-between");
+    expect(screen.getByText("status")).toBeInTheDocument();
+  });
+
+  it("uses full header escape hatch when header prop is set", () => {
+    render(
+      <WidgetCard header={<div data-testid="custom">custom</div>}>
+        <p>body</p>
+      </WidgetCard>
+    );
+    expect(screen.getByTestId("custom")).toBeInTheDocument();
+  });
+
+  it("omits overflow-hidden when no header", () => {
+    const { container } = render(
+      <WidgetCard><p>body</p></WidgetCard>
+    );
+    expect(container.firstElementChild!.className).not.toContain("overflow-hidden");
+  });
+});
+
+describe("ErrorCard", () => {
+  it("renders with cardShell classes and error text", () => {
+    const { container } = render(
+      <ErrorCard label="qsim" message="parse error" />
+    );
+    const outer = container.firstElementChild!;
+    expect(outer.className).toContain("rounded-card");
+    expect(outer.className).toContain("px-4");
+    expect(screen.getByText("qsim error: parse error")).toBeInTheDocument();
   });
 });

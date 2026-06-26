@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard } from "./widget-ui";
 import { H2 as H } from "./h2-data";
 import {
   h2OneQubit,
@@ -226,29 +226,24 @@ export function MetricsExplorer({ source }: { source: string }) {
       : `No iterations streamed yet.`);
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Live job metrics
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          R = {parsed.R.toFixed(2)} &#8491;
-        </span>
-        <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
-          metric: energy
-        </span>
-        <span
-          className={
-            belowThreshold
-              ? "rounded-chip bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[11px] font-mono text-emerald-700 dark:text-emerald-300"
-              : "rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300"
-          }
-        >
-          {belowThreshold ? "stopping_condition met" : "running"}
-        </span>
-      </div>
-
+    <WidgetCard
+      header={
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+          <EyebrowLabel>Live job metrics</EyebrowLabel>
+          <Chip>R = {parsed.R.toFixed(2)} &#8491;</Chip>
+          <Chip>metric: energy</Chip>
+          <span
+            className={
+              belowThreshold
+                ? "rounded-chip bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[11px] font-mono text-emerald-700 dark:text-emerald-300"
+                : "rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300"
+            }
+          >
+            {belowThreshold ? "stopping_condition met" : "running"}
+          </span>
+        </div>
+      }
+    >
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         {/* Metric chart */}
         <div className="min-w-0 flex-1">
@@ -415,6 +410,6 @@ export function MetricsExplorer({ source }: { source: string }) {
           Only the framing as job monitoring is illustrative; no AWS call is made.
         </p>
       </div>
-    </div>
+    </WidgetCard>
   );
 }
