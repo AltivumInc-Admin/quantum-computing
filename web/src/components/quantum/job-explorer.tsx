@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, LabeledSlider, WidgetCard } from "./widget-ui";
 import { parseJsonObject, readNumber } from "./parse-utils";
 import {
   INSTANCES,
@@ -243,9 +243,6 @@ export function JobExplorer({ source }: { source: string }) {
   const [provider, setProvider] = useState<Provider>(initial.provider);
   const [instance, setInstance] = useState<InstanceType>(initial.instance);
 
-  const iterId = useId();
-  const queueId = useId();
-  const iterSecId = useId();
   const providerId = useId();
   const instanceId = useId();
 
@@ -308,85 +305,56 @@ export function JobExplorer({ source }: { source: string }) {
         {/* Controls */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* iterations slider */}
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={iterId}
-              className="font-mono text-xs text-gray-600 dark:text-gray-300"
-            >
-              iterations
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                id={iterId}
-                type="range"
-                min={ITER.min}
-                max={ITER.max}
-                step={1}
-                value={iterations}
-                onChange={(e) => setIterations(parseInt(e.target.value, 10))}
-                className="slider flex-1 focus-ring"
-                aria-label="Number of iterations (quantum tasks)"
-                aria-valuetext={`${iterations} iterations`}
-              />
-              <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                {iterations}
-              </span>
-            </div>
-          </div>
+          <LabeledSlider
+            labelAbove
+            label="iterations"
+            value={iterations}
+            min={ITER.min}
+            max={ITER.max}
+            step={1}
+            parse={(s) => parseInt(s, 10)}
+            onChange={setIterations}
+            ariaLabel="Number of iterations (quantum tasks)"
+            ariaValueText={`${iterations} iterations`}
+            display={iterations}
+            rowClassName="flex flex-col gap-1"
+            labelClassName="font-mono text-xs text-gray-600 dark:text-gray-300"
+            valueWidth="w-12"
+          />
 
           {/* queue wait slider */}
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={queueId}
-              className="font-mono text-xs text-gray-600 dark:text-gray-300"
-            >
-              queue wait / task
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                id={queueId}
-                type="range"
-                min={QUEUE.min}
-                max={QUEUE.max}
-                step={1}
-                value={queueWaitSec}
-                onChange={(e) => setQueueWaitSec(parseFloat(e.target.value))}
-                className="slider flex-1 focus-ring"
-                aria-label="Illustrative general-queue wait per standalone task, in seconds"
-                aria-valuetext={`${queueWaitSec.toFixed(0)} seconds`}
-              />
-              <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                {queueWaitSec.toFixed(0)}s
-              </span>
-            </div>
-          </div>
+          <LabeledSlider
+            labelAbove
+            label="queue wait / task"
+            value={queueWaitSec}
+            min={QUEUE.min}
+            max={QUEUE.max}
+            step={1}
+            onChange={setQueueWaitSec}
+            ariaLabel="Illustrative general-queue wait per standalone task, in seconds"
+            ariaValueText={`${queueWaitSec.toFixed(0)} seconds`}
+            display={`${queueWaitSec.toFixed(0)}s`}
+            rowClassName="flex flex-col gap-1"
+            labelClassName="font-mono text-xs text-gray-600 dark:text-gray-300"
+            valueWidth="w-12"
+          />
 
           {/* iter compute slider */}
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={iterSecId}
-              className="font-mono text-xs text-gray-600 dark:text-gray-300"
-            >
-              compute / iteration
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                id={iterSecId}
-                type="range"
-                min={ITERSEC.min}
-                max={ITERSEC.max}
-                step={0.1}
-                value={iterSec}
-                onChange={(e) => setIterSec(parseFloat(e.target.value))}
-                className="slider flex-1 focus-ring"
-                aria-label="Per-iteration quantum compute time, in seconds"
-                aria-valuetext={`${iterSec.toFixed(1)} seconds`}
-              />
-              <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                {iterSec.toFixed(1)}s
-              </span>
-            </div>
-          </div>
+          <LabeledSlider
+            labelAbove
+            label="compute / iteration"
+            value={iterSec}
+            min={ITERSEC.min}
+            max={ITERSEC.max}
+            step={0.1}
+            onChange={setIterSec}
+            ariaLabel="Per-iteration quantum compute time, in seconds"
+            ariaValueText={`${iterSec.toFixed(1)} seconds`}
+            display={`${iterSec.toFixed(1)}s`}
+            rowClassName="flex flex-col gap-1"
+            labelClassName="font-mono text-xs text-gray-600 dark:text-gray-300"
+            valueWidth="w-12"
+          />
 
           {/* provider + instance selects */}
           <div className="grid grid-cols-2 gap-3">

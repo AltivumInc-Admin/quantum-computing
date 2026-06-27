@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import {
   accuracy,
   featureState,
@@ -108,7 +108,6 @@ export function KernelExplorer({ source }: { source: string }) {
   // slider/label use the immediate value and the boundary dims while it catches up.
   const deferredScale = useDeferredValue(scale);
   const [map, setMap] = useState<FeatureMap>(parsed.ok ? parsed.map : "iqp");
-  const scaleId = useId();
   const mapId = useId();
 
   // Training set depends only on the dataset, so it is memoized on the parse result.
@@ -235,26 +234,20 @@ export function KernelExplorer({ source }: { source: string }) {
           </div>
 
           {/* feature-scale slider */}
-          <div className="mt-3 flex items-center gap-3">
-            <label htmlFor={scaleId} className="w-16 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
-              scale
-            </label>
-            <input
-              id={scaleId}
-              type="range"
-              min={0.3}
-              max={2.0}
-              step={0.05}
-              value={scale}
-              onChange={(e) => setScale(parseFloat(e.target.value))}
-              className="slider flex-1 focus-ring"
-              aria-label="Feature-map scale"
-              aria-valuetext={`${scale.toFixed(2)}`}
-            />
-            <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {scale.toFixed(2)}
-            </span>
-          </div>
+          <LabeledSlider
+            label="scale"
+            value={scale}
+            min={0.3}
+            max={2.0}
+            step={0.05}
+            onChange={setScale}
+            ariaLabel="Feature-map scale"
+            ariaValueText={`${scale.toFixed(2)}`}
+            display={scale.toFixed(2)}
+            rowClassName="mt-3 flex items-center gap-3"
+            labelClassName="w-16 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            valueWidth="w-12"
+          />
 
           <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
             The fidelity kernel lifts the data into Hilbert space, so a quantum

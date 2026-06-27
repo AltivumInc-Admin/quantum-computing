@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard, secondaryActionClass } from "./widget-ui";
+import { useMemo, useState } from "react";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard, secondaryActionClass } from "./widget-ui";
 import { h2OneQubit, type H2Point } from "./chemistry";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
@@ -173,7 +173,6 @@ export function HamiltonianExplorer({ source }: { source: string }) {
 
   const [R, setR] = useState(() => (parsed.ok ? parsed.R : H.equilibrium.R));
   const [tapered, setTapered] = useState(() => (parsed.ok ? parsed.tapered : false));
-  const rId = useId();
   const reduced = usePrefersReducedMotion();
 
   // Nearest committed fixture point for the chosen R (defensive default).
@@ -234,29 +233,19 @@ export function HamiltonianExplorer({ source }: { source: string }) {
 
       <div className="px-4 py-4">
         {/* Bond-length slider */}
-        <div className="flex items-center gap-3">
-          <label
-            htmlFor={rId}
-            className="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
-          >
-            R
-          </label>
-          <input
-            id={rId}
-            type="range"
-            min={minR}
-            max={maxR}
-            step={stepR}
-            value={R}
-            onChange={(e) => setR(parseFloat(e.target.value))}
-            className="slider flex-1 focus-ring"
-            aria-label="H2 bond length R in Angstrom"
-            aria-valuetext={`${R.toFixed(R_PRECISION)} Angstrom`}
-          />
-          <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            {R.toFixed(R_PRECISION)} &#8491;
-          </span>
-        </div>
+        <LabeledSlider
+          label="R"
+          value={R}
+          min={minR}
+          max={maxR}
+          step={stepR}
+          onChange={setR}
+          ariaLabel="H2 bond length R in Angstrom"
+          ariaValueText={`${R.toFixed(R_PRECISION)} Angstrom`}
+          display={<>{R.toFixed(R_PRECISION)} &#8491;</>}
+          labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+          valueWidth="w-20"
+        />
 
         {/* Tapered toggle */}
         <div className="mt-3 flex flex-wrap items-center gap-3">

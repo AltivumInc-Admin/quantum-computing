@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
 import { BlochDial } from "./bloch-dial";
 import {
   energy1q,
@@ -88,7 +88,6 @@ export function VqeExplorer({ source }: { source: string }) {
 
   const [theta, setTheta] = useState(0.4);
   const [optimizing, setOptimizing] = useState(false);
-  const thetaId = useId();
   const reducedMotion = usePrefersReducedMotion();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -331,33 +330,24 @@ export function VqeExplorer({ source }: { source: string }) {
           </p>
 
           {/* theta slider */}
-          <div className="mt-4 flex items-center gap-3">
-            <label
-              htmlFor={thetaId}
-              className="w-6 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
-            >
-              &#952;
-            </label>
-            <input
-              id={thetaId}
-              type="range"
-              min={-Math.PI}
-              max={Math.PI}
-              step={Math.PI / 90}
-              value={theta}
-              onChange={(e) => {
-                stopAnimation();
-                setOptimizing(false);
-                setTheta(parseFloat(e.target.value));
-              }}
-              className="slider flex-1 focus-ring"
-              aria-label="Ansatz angle theta in radians"
-              aria-valuetext={`${formatFixed(theta, 2)} radians, energy ${hartreeSR(energy)}`}
-            />
-            <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {formatRadians(theta)}
-            </span>
-          </div>
+          <LabeledSlider
+            label={<>&#952;</>}
+            value={theta}
+            min={-Math.PI}
+            max={Math.PI}
+            step={Math.PI / 90}
+            onChange={(v) => {
+              stopAnimation();
+              setOptimizing(false);
+              setTheta(v);
+            }}
+            ariaLabel="Ansatz angle theta in radians"
+            ariaValueText={`${formatFixed(theta, 2)} radians, energy ${hartreeSR(energy)}`}
+            display={formatRadians(theta)}
+            rowClassName="mt-4 flex items-center gap-3"
+            labelClassName="w-6 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            valueWidth="w-20"
+          />
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button

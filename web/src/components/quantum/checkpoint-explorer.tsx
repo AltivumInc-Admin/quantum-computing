@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard } from "./widget-ui";
 import { wastedNoCheckpoint, wastedWithCheckpoint } from "./hybrid";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
@@ -185,8 +185,6 @@ export function CheckpointExplorer({ source }: { source: string }) {
   const iterations = parsed.ok ? parsed.iterations : DEFAULTS.iterations;
   const [failAt, setFailAt] = useState(parsed.ok ? parsed.failAt : DEFAULTS.failAt);
   const [every, setEvery] = useState(parsed.ok ? parsed.every : DEFAULTS.every);
-  const failId = useId();
-  const everyId = useId();
   const headingId = useId();
   const reduced = usePrefersReducedMotion();
 
@@ -272,53 +270,35 @@ export function CheckpointExplorer({ source }: { source: string }) {
 
         {/* Controls */}
         <div className="mt-5 flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <label
-              htmlFor={failId}
-              className="w-28 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
-            >
-              fail at
-            </label>
-            <input
-              id={failId}
-              type="range"
-              min={0}
-              max={iterations}
-              step={1}
-              value={clampedFail}
-              onChange={(e) => setFailAt(parseInt(e.target.value, 10))}
-              className="slider flex-1 focus-ring"
-              aria-label="Iteration at which the managed instance is reclaimed"
-              aria-valuetext={`${clampedFail} iterations`}
-            />
-            <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {clampedFail}
-            </span>
-          </div>
+          <LabeledSlider
+            label="fail at"
+            value={clampedFail}
+            min={0}
+            max={iterations}
+            step={1}
+            parse={(s) => parseInt(s, 10)}
+            onChange={setFailAt}
+            ariaLabel="Iteration at which the managed instance is reclaimed"
+            ariaValueText={`${clampedFail} iterations`}
+            display={clampedFail}
+            labelClassName="w-28 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
+            valueWidth="w-10"
+          />
 
-          <div className="flex items-center gap-3">
-            <label
-              htmlFor={everyId}
-              className="w-28 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
-            >
-              checkpoint every
-            </label>
-            <input
-              id={everyId}
-              type="range"
-              min={1}
-              max={iterations}
-              step={1}
-              value={clampedEvery}
-              onChange={(e) => setEvery(parseInt(e.target.value, 10))}
-              className="slider flex-1 focus-ring"
-              aria-label="Checkpoint interval in iterations"
-              aria-valuetext={`${clampedEvery} iterations`}
-            />
-            <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {clampedEvery}
-            </span>
-          </div>
+          <LabeledSlider
+            label="checkpoint every"
+            value={clampedEvery}
+            min={1}
+            max={iterations}
+            step={1}
+            parse={(s) => parseInt(s, 10)}
+            onChange={setEvery}
+            ariaLabel="Checkpoint interval in iterations"
+            ariaValueText={`${clampedEvery} iterations`}
+            display={clampedEvery}
+            labelClassName="w-28 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
+            valueWidth="w-10"
+          />
         </div>
 
         {/* Readout */}

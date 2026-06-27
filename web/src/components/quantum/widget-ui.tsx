@@ -1,4 +1,6 @@
-import { type ReactNode } from "react";
+"use client";
+
+import { useId, type ReactNode } from "react";
 import { basisLabel, type Complex } from "./math";
 import type { ParsedGate } from "./qsim-dsl";
 import { diracString, toPythonState } from "./state-readout";
@@ -249,3 +251,104 @@ export const secondaryActionClass =
 
 export const fieldClass =
   "rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200 focus-ring";
+
+/**
+ * One labeled range-slider row, shared by every explorable that exposes a
+ * numeric control (angle θ/φ, depth, iterations, bond length R, error rate, …).
+ * Centralizes the invariant contract the per-widget copies kept drifting on:
+ * the `slider flex-1 focus-ring` input (focus ring + 24px touch target), the
+ * `aria-label`/`aria-valuetext` pairing, the `tabular-nums` value readout, and a
+ * self-owned `useId` wiring `<label htmlFor>` to the input (callers no longer
+ * thread their own id). `display` is the rendered value (e.g. `1.57 rad`, `42`,
+ * a unit sub-span); `parse` converts the raw string (default `parseFloat`; pass
+ * a base-10 `parseInt` for integer sliders). Bespoke geometry stays per-caller:
+ * `valueWidth` (the readout column), `labelClassName` (symbol vs word, size),
+ * and `rowClassName` (inline `mt-*` row vs full-bleed `border-t … px-4 py-3`
+ * card section). `leading` injects a node before the input (e.g. a play button);
+ * `labelAbove` stacks the label over the input for grid layouts.
+ */
+export function LabeledSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  ariaLabel,
+  ariaValueText,
+  display,
+  parse = parseFloat,
+  rowClassName = "flex items-center gap-3",
+  labelClassName = "shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300",
+  valueWidth = "w-16",
+  labelAbove = false,
+  leading,
+}: {
+  label?: ReactNode;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  ariaLabel: string;
+  ariaValueText?: string;
+  display: ReactNode;
+  parse?: (raw: string) => number;
+  rowClassName?: string;
+  labelClassName?: string;
+  valueWidth?: string;
+  labelAbove?: boolean;
+  leading?: ReactNode;
+}) {
+  const id = useId();
+  // A label-less slider (e.g. a timeline scrubber) relies on aria-label alone.
+  const labelEl =
+    label === undefined ? null : (
+      <label htmlFor={id} className={labelClassName}>
+        {label}
+      </label>
+    );
+  const inputEl = (
+    <input
+      id={id}
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parse(e.target.value))}
+      className="slider flex-1 focus-ring"
+      aria-label={ariaLabel}
+      aria-valuetext={ariaValueText}
+    />
+  );
+  const valueEl = (
+    <span
+      className={`${valueWidth} shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400`}
+    >
+      {display}
+    </span>
+  );
+
+  if (labelAbove) {
+    return (
+      <div className={rowClassName}>
+        {labelEl}
+        <div className="flex items-center gap-3">
+          {leading}
+          {inputEl}
+          {valueEl}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={rowClassName}>
+      {leading}
+      {labelEl}
+      {inputEl}
+      {valueEl}
+    </div>
+  );
+}

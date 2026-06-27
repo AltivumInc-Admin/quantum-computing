@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { BlochDial } from "./bloch-dial";
 import { stateFromAngles, probsFromAngles } from "./bloch-builder";
-import { GateChip, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import { GateChip, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 
 const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
@@ -19,8 +19,6 @@ const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false })
 export function BlochBuilder() {
   const [theta, setTheta] = useState(Math.PI / 2);
   const [phi, setPhi] = useState(0);
-  const thetaId = useId();
-  const phiId = useId();
   const reduced = usePrefersReducedMotion();
   const webgl = useWebGL();
 
@@ -56,48 +54,34 @@ export function BlochBuilder() {
       </div>
 
       {/* Slider: theta */}
-      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        <label htmlFor={thetaId} className="font-mono text-sm text-gray-600 dark:text-gray-300 w-4 shrink-0">
-          &#952;
-        </label>
-        <input
-          id={thetaId}
-          type="range"
-          min={0}
-          max={Math.PI}
-          step={Math.PI / 60}
-          value={theta}
-          onChange={(e) => setTheta(parseFloat(e.target.value))}
-          className="slider flex-1 focus-ring"
-          aria-label="Polar angle theta in radians"
-          aria-valuetext={`${theta.toFixed(2)} radians`}
-        />
-        <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-          {theta.toFixed(2)} rad
-        </span>
-      </div>
+      <LabeledSlider
+        label={<>&#952;</>}
+        value={theta}
+        min={0}
+        max={Math.PI}
+        step={Math.PI / 60}
+        onChange={setTheta}
+        ariaLabel="Polar angle theta in radians"
+        ariaValueText={`${theta.toFixed(2)} radians`}
+        display={`${theta.toFixed(2)} rad`}
+        rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+        labelClassName="w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+      />
 
       {/* Slider: phi */}
-      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        <label htmlFor={phiId} className="font-mono text-sm text-gray-600 dark:text-gray-300 w-4 shrink-0">
-          &#966;
-        </label>
-        <input
-          id={phiId}
-          type="range"
-          min={0}
-          max={2 * Math.PI}
-          step={Math.PI / 60}
-          value={phi}
-          onChange={(e) => setPhi(parseFloat(e.target.value))}
-          className="slider flex-1 focus-ring"
-          aria-label="Azimuthal angle phi in radians"
-          aria-valuetext={`${phi.toFixed(2)} radians`}
-        />
-        <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-          {phi.toFixed(2)} rad
-        </span>
-      </div>
+      <LabeledSlider
+        label={<>&#966;</>}
+        value={phi}
+        min={0}
+        max={2 * Math.PI}
+        step={Math.PI / 60}
+        onChange={setPhi}
+        ariaLabel="Azimuthal angle phi in radians"
+        ariaValueText={`${phi.toFixed(2)} radians`}
+        display={`${phi.toFixed(2)} rad`}
+        rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+        labelClassName="w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+      />
     </WidgetCard>
   );
 }
