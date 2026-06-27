@@ -1,6 +1,7 @@
 import { getSections } from "@/lib/sections";
 import { getContentSummary } from "@/lib/content";
 import { SectionCard } from "@/components/section-card";
+import { GlossaryCard } from "@/components/glossary-card";
 import { OrbitalDecoration } from "@/components/orbital-decoration";
 
 export default async function HomePage() {
@@ -68,6 +69,12 @@ export default async function HomePage() {
                 />
               </li>
             ))}
+            <li
+              className="animate-card-enter"
+              style={{ animationDelay: `${600 + sections.length * 80}ms` }}
+            >
+              <GlossaryCard />
+            </li>
           </ul>
         </section>
       </div>
