@@ -179,7 +179,7 @@ export function CorrelationDemo({ source }: { source: string }) {
           type="button"
           aria-label="Measure"
           onClick={handleMeasure}
-          className="rounded-control bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-dark interactive focus-ring"
+          className="rounded-control surface-accent px-3 py-1.5 text-sm font-medium interactive focus-ring"
         >
           Measure
         </button>

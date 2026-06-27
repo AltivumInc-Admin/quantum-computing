@@ -92,7 +92,7 @@ function factorClass(label: string): string {
   // Color via tokens only: the active X/Y factor reads as accent; the Z parity
   // string reads as a muted fill; identity stays faint.
   if (label === "X" || label === "Y") {
-    return "border-transparent bg-accent text-white dark:bg-accent-light dark:text-gray-900";
+    return "border-transparent bg-accent text-gray-900 dark:bg-accent-light dark:text-gray-900";
   }
   if (label === "Z") {
     return "border-transparent bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-gray-800 dark:text-gray-100";
@@ -243,7 +243,7 @@ export function JwExplorer({ source }: { source: string }) {
                     aria-label={`Select spin-orbital ${q}`}
                     className={`h-8 w-9 rounded-control font-mono text-sm tabular-nums focus-ring transition-colors motion-reduce:transition-none ${
                       selected
-                        ? "bg-accent text-white dark:bg-accent-light dark:text-gray-900"
+                        ? "bg-accent text-gray-900 dark:bg-accent-light dark:text-gray-900"
                         : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                     }`}
                   >
@@ -261,7 +261,7 @@ export function JwExplorer({ source }: { source: string }) {
               aria-pressed={dagger}
               className={`rounded-control px-3 py-1.5 text-sm font-medium focus-ring transition-colors motion-reduce:transition-none ${
                 dagger
-                  ? "bg-accent text-white dark:bg-accent-light dark:text-gray-900"
+                  ? "bg-accent text-gray-900 dark:bg-accent-light dark:text-gray-900"
                   : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               }`}
             >
@@ -273,7 +273,7 @@ export function JwExplorer({ source }: { source: string }) {
               aria-pressed={!dagger}
               className={`rounded-control px-3 py-1.5 text-sm font-medium focus-ring transition-colors motion-reduce:transition-none ${
                 !dagger
-                  ? "bg-accent text-white dark:bg-accent-light dark:text-gray-900"
+                  ? "bg-accent text-gray-900 dark:bg-accent-light dark:text-gray-900"
                   : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               }`}
             >

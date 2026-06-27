@@ -274,7 +274,7 @@ export function AskTutor() {
               <button
                 type="submit"
                 disabled={busy || !question.trim()}
-                className="inline-flex items-center gap-1.5 rounded-control bg-accent px-3.5 py-1.5 text-sm font-medium text-white hover:bg-accent-dark interactive focus-ring disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-control surface-accent px-3.5 py-1.5 text-sm font-medium interactive focus-ring disabled:opacity-60"
               >
                 {busy ? "Asking…" : "Ask"}
               </button>

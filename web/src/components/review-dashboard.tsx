@@ -41,7 +41,7 @@ export function ReviewDashboard() {
         <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-3">
           Spaced repetition
         </p>
-        <h1 className="font-display text-4xl sm:text-5xl tracking-tight text-gray-900 dark:text-white">
+        <h1 className="font-display text-display-xl tracking-tight text-gray-900 dark:text-white">
           Review
         </h1>
         <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 leading-relaxed">

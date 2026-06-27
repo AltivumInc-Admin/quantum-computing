@@ -24,7 +24,7 @@ export default async function HomePage() {
           <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-4">
             Amazon Braket Learning Platform
           </p>
-          <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl tracking-tight leading-[1.05] max-w-4xl">
+          <h1 className="font-display text-display-2xl tracking-tight max-w-4xl">
             <span className="text-gray-900 dark:text-white">Master </span>
             <span className="text-gradient">Quantum Computing</span>
             <span className="text-gray-900 dark:text-white"> from First Principles</span>
@@ -48,7 +48,7 @@ export default async function HomePage() {
         {/* Section grid */}
         <section>
           <div className="flex items-center gap-4 mb-10 animate-slide-in" style={{ animationDelay: "500ms" }}>
-            <h2 className="font-display text-3xl text-gray-900 dark:text-white">Learning Path</h2>
+            <h2 className="font-display text-display-lg text-gray-900 dark:text-white">Learning Path</h2>
             <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
             <span className="text-sm text-gray-500 dark:text-gray-500 tabular-nums">{sections.length} sections</span>
           </div>

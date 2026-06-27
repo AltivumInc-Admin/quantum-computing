@@ -153,7 +153,7 @@ export function Challenge({ source }: { source: string }) {
             type="button"
             onClick={onCheck}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-control bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-dark interactive focus-ring disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-control surface-accent px-3 py-1.5 text-sm font-medium interactive focus-ring disabled:opacity-60"
           >
             <CheckIcon />
             Check

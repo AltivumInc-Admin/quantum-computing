@@ -9,6 +9,7 @@ import {
   EyebrowLabel,
   ErrorCard,
   LiveStatus,
+  primaryActionClass,
   ProbBars,
   WidgetCard,
 } from "@/components/quantum/widget-ui";
@@ -180,5 +181,17 @@ describe("ErrorCard", () => {
     expect(outer.className).toContain("rounded-card");
     expect(outer.className).toContain("px-4");
     expect(screen.getByText("qsim error: parse error")).toBeInTheDocument();
+  });
+});
+
+describe("primaryActionClass", () => {
+  // Guards the WCAG fix: the primary button must ride the accessible filled
+  // surface (.surface-accent → accent-dark base, white text 5.09:1), never the
+  // flat bg-accent it replaced (white text 2.25:1, sub-AA). See globals.css.
+  it("uses the accessible .surface-accent and not the flat bg-accent fill", () => {
+    expect(primaryActionClass).toContain("surface-accent");
+    // Forbid the flat `bg-accent` fill only — not the accessible bg-accent-dark /
+    // bg-accent-light variants (the trailing (?!-) keeps the hyphenated tokens legal).
+    expect(primaryActionClass).not.toMatch(/\bbg-accent\b(?!-)/);
   });
 });

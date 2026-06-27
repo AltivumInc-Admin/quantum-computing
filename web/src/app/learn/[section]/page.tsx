@@ -65,7 +65,7 @@ export default async function SectionPage({ params }: PageProps) {
             {content.notebooks.length > 0 && (
               <section className="mt-16 reveal">
                 <div className="flex items-center gap-4 mb-6">
-                  <h2 className="font-display text-2xl text-gray-900 dark:text-white">Notebooks</h2>
+                  <h2 className="font-display text-display-md text-gray-900 dark:text-white">Notebooks</h2>
                   <div className="flex-1 h-px hue-divider" />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">

@@ -31,7 +31,7 @@ export function GateChip({ label, active = false }: { label: string; active?: bo
     <span
       className={`rounded-chip px-2 py-0.5 text-[11px] font-mono transition-colors duration-150 ${
         active
-          ? "bg-accent text-white dark:text-gray-950"
+          ? "bg-accent text-gray-950"
           : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"
       }`}
     >
@@ -244,7 +244,7 @@ export function LiveStatus({ children }: { children: ReactNode }) {
 }
 
 export const primaryActionClass =
-  "rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-white shadow-(--shadow-resting) hover:bg-accent-dark focus-ring transition-colors motion-reduce:transition-none disabled:opacity-60";
+  "rounded-control surface-accent px-4 py-1.5 text-sm font-semibold focus-ring interactive disabled:opacity-60";
 
 export const secondaryActionClass =
   "rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none";

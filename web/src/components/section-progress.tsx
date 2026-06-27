@@ -41,7 +41,7 @@ export function SectionProgress({ slug }: { slug: string }) {
       <span
         className={`flex h-5 w-5 items-center justify-center rounded-full transition-all duration-300 ${
           complete
-            ? "bg-accent text-white shadow-sm shadow-accent/40"
+            ? "bg-accent-dark text-white shadow-sm shadow-accent/40"
             : "border border-gray-300 text-transparent dark:border-gray-600 group-hover:border-accent/50"
         }`}
       >

@@ -73,7 +73,7 @@ export function RunnableEditor({ source }: { source: string }) {
             type="button"
             onClick={run}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-control bg-accent px-3.5 py-1.5 text-sm font-medium text-white shadow-sm shadow-accent/30 hover:bg-accent-dark interactive focus-ring disabled:opacity-60 disabled:shadow-none"
+            className="inline-flex items-center gap-1.5 rounded-control surface-accent px-3.5 py-1.5 text-sm font-medium interactive focus-ring disabled:opacity-60"
           >
             {busy ? (
               <>

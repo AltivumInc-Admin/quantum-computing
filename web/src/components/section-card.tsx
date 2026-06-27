@@ -46,7 +46,7 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
           </span>
         </div>
 
-        <h3 className="font-display text-xl tracking-tight text-gray-900 dark:text-white leading-snug group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
+        <h3 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
           {title}
         </h3>
 
