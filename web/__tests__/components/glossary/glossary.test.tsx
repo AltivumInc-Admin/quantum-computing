@@ -35,9 +35,9 @@ describe("Glossary", () => {
   it("narrows the visible terms as the user types", async () => {
     const user = userEvent.setup();
     render(<Glossary />);
-    await user.type(screen.getByRole("searchbox"), "qubit");
-    expect(screen.getByRole("heading", { name: "Qubit" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Hadamard gate" })).toBeNull();
+    await user.type(screen.getByRole("searchbox"), "hadamard");
+    expect(screen.getByRole("heading", { name: "Hadamard gate" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Qubit" })).toBeNull();
   });
 
   it("shows an empty state when nothing matches", async () => {
@@ -50,8 +50,8 @@ describe("Glossary", () => {
   it("offers a jump link only for letters that have matches", async () => {
     const user = userEvent.setup();
     render(<Glossary />);
-    await user.type(screen.getByRole("searchbox"), "qubit"); // only "Q" remains
-    expect(screen.getByRole("link", { name: /jump to Q/i })).toBeInTheDocument();
+    await user.type(screen.getByRole("searchbox"), "hadamard"); // only "H" matches
+    expect(screen.getByRole("link", { name: /jump to H/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /jump to A/i })).toBeNull();
   });
 
