@@ -38,10 +38,13 @@ The feature is a new pre-rendered dynamic route plus a small set of focused comp
 | `web/src/components/glossary/copy-link-button.tsx` | client component | copies the page URL to the clipboard; transient "Copied" feedback |
 | `web/src/components/glossary/workspace-cta.tsx` | server component | env-gated (`NEXT_PUBLIC_SIGNUP_URL`) sign-up CTA / "coming soon" teaser |
 | `web/src/lib/glossary.ts` | modify | add `getTermBySlug`, `termsInSection`, export `plainText` |
+| `web/src/lib/site.ts` | create | `export const SITE_URL = "https://quantum.altivum.ai"` — single source for the base URL |
+| `web/src/app/sitemap.ts` | create | static `sitemap.xml`: home, `/glossary`, `/review`, 7 `/learn/{slug}`, and all 92 `/glossary/{termSlug}` |
+| `web/src/app/robots.ts` | create | allow-all `robots.txt` referencing `{SITE_URL}/sitemap.xml` |
 | `web/src/components/glossary/glossary-entry.tsx` | modify | term name → page link; adopt shared `CategoryChip` + `SeeAlsoLinks` |
-| `web/src/app/layout.tsx` | modify | add `metadataBase: new URL(SITE_URL)` |
+| `web/src/app/layout.tsx` | modify | add `metadataBase: new URL(SITE_URL)` (imported from `@/lib/site`) |
 
-`SITE_URL = "https://quantum.altivum.ai"`.
+`SITE_URL` lives in `web/src/lib/site.ts` and is imported by the layout, sitemap, and robots so the base URL is defined once.
 
 ## Data helpers (`web/src/lib/glossary.ts`)
 
@@ -88,6 +91,41 @@ export default function TermPage({ params }) {
 
 > Next 15+ may pass `params` as a Promise; the implementation follows whatever the repo's existing dynamic route (`app/learn/[section]/page.tsx`) does, to stay consistent with the installed Next version.
 
+## Sitemap & robots
+
+App-Router metadata-route files, generated to static `sitemap.xml` / `robots.txt` at build (compatible with `output: "export"`).
+
+```ts
+// web/src/app/sitemap.ts
+import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
+import { getSections } from "@/lib/sections";
+import { GLOSSARY, termSlug } from "@/lib/glossary";
+
+export const dynamic = "force-static"; // required under output: export
+
+export default function sitemap(): MetadataRoute.Sitemap {
+  const top = ["", "/glossary", "/review"].map((p) => ({ url: `${SITE_URL}${p}` }));
+  const lessons = getSections().map((s) => ({ url: `${SITE_URL}/learn/${s.slug}` }));
+  const terms = GLOSSARY.map((t) => ({ url: `${SITE_URL}/glossary/${termSlug(t.term)}` }));
+  return [...top, ...lessons, ...terms];
+}
+```
+
+```ts
+// web/src/app/robots.ts
+import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
+
+export const dynamic = "force-static";
+
+export default function robots(): MetadataRoute.Robots {
+  return { rules: { userAgent: "*", allow: "/" }, sitemap: `${SITE_URL}/sitemap.xml` };
+}
+```
+
+(Per-entry `lastModified`/`changeFrequency`/`priority` are optional and omitted — the curriculum has no per-term timestamps to single-source from, and inventing them adds noise.)
+
 ## Solo page layout (`TermDetail`)
 
 ```
@@ -118,7 +156,8 @@ More in Foundations                           (termsInSection, each → its page
 - **Route (`glossary-term-page.test.tsx`):** `generateStaticParams` returns one entry per `GLOSSARY` term (count + a sample slug); `generateMetadata` for a known term yields the title/description/canonical/OG shape; the page renders the term, definition, chip, see-also, more-in-category, and CTA.
 - **Components:** `TermDetail` (all sections render; see-also + more-in-category hrefs are `/glossary/...`; chip href is `/learn/...`; back link → `/glossary`); `CopyLinkButton` (click copies, feedback appears — mock `navigator.clipboard`); `WorkspaceCta` (renders "coming soon" when env unset; renders the link when `NEXT_PUBLIC_SIGNUP_URL` set — mock `process.env`); `CategoryChip` / `SeeAlsoLinks` href correctness.
 - **Updated `glossary-entry.test.tsx`:** term name links to `/glossary/{slug}`; see-also now asserts `/glossary/entanglement` (was `#entanglement`).
-- **Real-path build:** `npm run build` succeeds and emits `out/glossary/{slug}.html` for sampled terms (e.g. `qubit`, `bell-pair`, `variational-quantum-eigensolver`); each contains the definition, a `rel="canonical"`/`og:` tag, see-also `/glossary/` links, and the CTA markup.
+- **Sitemap/robots (`sitemap.test.ts`):** `sitemap()` includes the home/glossary/review routes, one URL per curriculum section, and one URL per `GLOSSARY` term (count = 3 + sections + terms); every URL is absolute under `SITE_URL`; `robots()` allows `/` and references `{SITE_URL}/sitemap.xml`.
+- **Real-path build:** `npm run build` succeeds and emits `out/glossary/{slug}.html` for sampled terms (e.g. `qubit`, `bell-pair`, `variational-quantum-eigensolver`); each contains the definition, a `rel="canonical"`/`og:` tag, see-also `/glossary/` links, and the CTA markup. The build also emits `out/sitemap.xml` (containing a sampled term URL) and `out/robots.txt`.
 
 ## Accessibility & constraints
 
@@ -130,7 +169,6 @@ More in Foundations                           (termsInSection, each → its page
 ## Out of scope (YAGNI)
 
 - Prev/next term navigation (not selected).
-- `sitemap.xml` (none exists today; an easy follow-up to index term pages).
 - Per-term Open Graph images.
 - The actual Cognito sign-up flow / The Quantum Workspace app.
 
