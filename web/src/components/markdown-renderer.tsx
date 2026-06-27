@@ -7,6 +7,7 @@ import { WidgetFence } from "./quantum/widget-fence";
 import { WIDGET_LANGS } from "./quantum/widget-langs";
 import { CodeBlock } from "./code-block";
 import { buildLineSlugMap } from "@/lib/extract-headings";
+import { KATEX_MACROS } from "@/lib/katex-macros";
 
 interface MarkdownRendererProps {
   content: string;
@@ -17,16 +18,6 @@ interface MarkdownRendererProps {
    */
   lineSlugs?: Map<number, string>;
 }
-
-// Shared bra-ket macros so GUIDE authors write \ket{0} instead of the verbose
-// \left|0\right\rangle. KaTeX renders these to HTML+CSS at build time, which
-// is fully compatible with Next.js static export (output: "export").
-const KATEX_MACROS = {
-  "\\ket": "\\left|#1\\right\\rangle",
-  "\\bra": "\\left\\langle#1\\right|",
-  "\\braket": "\\left\\langle#1\\middle|#2\\right\\rangle",
-  "\\expval": "\\left\\langle#1\\right\\rangle",
-};
 
 // Minimal structural view of a hast node, enough to pull raw text out of a
 // fenced code block without depending on @types/hast being present.
