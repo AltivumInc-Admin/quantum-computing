@@ -1,7 +1,7 @@
 "use client";
 
-import { memo, useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
+import { memo, useMemo, useState } from "react";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 import {
   cutValue,
   qaoaDistribution,
@@ -191,8 +191,6 @@ export function QaoaExplorer({ source }: { source: string }) {
 
   const [gamma, setGamma] = useState(Math.PI / 4);
   const [beta, setBeta] = useState(Math.PI / 8);
-  const gammaId = useId();
-  const betaId = useId();
 
   // Landscape depends only on the graph, so it is memoized on the parse result.
   const landscape = useMemo(() => {
@@ -311,48 +309,36 @@ export function QaoaExplorer({ source }: { source: string }) {
           </p>
 
           {/* gamma slider */}
-          <div className="mt-3 flex items-center gap-3">
-            <label htmlFor={gammaId} className="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
-              &#947;
-            </label>
-            <input
-              id={gammaId}
-              type="range"
-              min={0}
-              max={Math.PI}
-              step={Math.PI / 60}
-              value={gamma}
-              onChange={(e) => setGamma(parseFloat(e.target.value))}
-              className="slider flex-1 focus-ring"
-              aria-label="QAOA cost angle gamma in radians"
-              aria-valuetext={`${gamma.toFixed(2)} radians`}
-            />
-            <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {gamma.toFixed(2)}
-            </span>
-          </div>
+          <LabeledSlider
+            label={<>&#947;</>}
+            value={gamma}
+            min={0}
+            max={Math.PI}
+            step={Math.PI / 60}
+            onChange={setGamma}
+            ariaLabel="QAOA cost angle gamma in radians"
+            ariaValueText={`${gamma.toFixed(2)} radians`}
+            display={gamma.toFixed(2)}
+            rowClassName="mt-3 flex items-center gap-3"
+            labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            valueWidth="w-14"
+          />
 
           {/* beta slider */}
-          <div className="mt-2 flex items-center gap-3">
-            <label htmlFor={betaId} className="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
-              &#946;
-            </label>
-            <input
-              id={betaId}
-              type="range"
-              min={0}
-              max={Math.PI / 2}
-              step={Math.PI / 60}
-              value={beta}
-              onChange={(e) => setBeta(parseFloat(e.target.value))}
-              className="slider flex-1 focus-ring"
-              aria-label="QAOA mixer angle beta in radians"
-              aria-valuetext={`${beta.toFixed(2)} radians`}
-            />
-            <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {beta.toFixed(2)}
-            </span>
-          </div>
+          <LabeledSlider
+            label={<>&#946;</>}
+            value={beta}
+            min={0}
+            max={Math.PI / 2}
+            step={Math.PI / 60}
+            onChange={setBeta}
+            ariaLabel="QAOA mixer angle beta in radians"
+            ariaValueText={`${beta.toFixed(2)} radians`}
+            display={beta.toFixed(2)}
+            rowClassName="mt-2 flex items-center gap-3"
+            labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            valueWidth="w-14"
+          />
 
           {/* distribution bars */}
           <div className="mt-4">

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { simulateSteps, probabilities, zeroState } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial } from "./bloch-dial";
-import { GateChips, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 
 /**
@@ -38,8 +38,6 @@ export function WavefunctionScrubber({ source }: { source: string }) {
   const [theta, setTheta] = useState(Math.PI / 2);
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const sliderId = useId();
-  const thetaId = useId();
   const reduced = usePrefersReducedMotion();
   const webgl = useWebGL();
 
@@ -109,59 +107,49 @@ export function WavefunctionScrubber({ source }: { source: string }) {
       </div>
 
       {/* Scrub timeline */}
-      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        {!reduced && lastStep > 0 && (
-          <button
-            type="button"
-            onClick={togglePlay}
-            aria-label={isPlaying ? "Pause animation" : "Play animation"}
-            aria-pressed={isPlaying}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-accent/10 text-accent-dark hover:bg-accent/20 dark:text-accent-light interactive focus-ring"
-          >
-            <PlayIcon playing={isPlaying} />
-          </button>
-        )}
-        <input
-          id={sliderId}
-          type="range"
-          min={0}
-          max={lastStep}
-          step={1}
-          value={safeStep}
-          onChange={(e) => {
-            setPlaying(false);
-            setStep(parseInt(e.target.value, 10));
-          }}
-          aria-label="Step through the circuit"
-          aria-valuetext={`step ${safeStep} of ${lastStep}`}
-          className="slider flex-1 focus-ring"
-        />
-        <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-          step {safeStep}/{lastStep}
-        </span>
-      </div>
+      <LabeledSlider
+        value={safeStep}
+        min={0}
+        max={lastStep}
+        step={1}
+        parse={(s) => parseInt(s, 10)}
+        onChange={(v) => {
+          setPlaying(false);
+          setStep(v);
+        }}
+        ariaLabel="Step through the circuit"
+        ariaValueText={`step ${safeStep} of ${lastStep}`}
+        display={`step ${safeStep}/${lastStep}`}
+        rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+        leading={
+          !reduced && lastStep > 0 ? (
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={isPlaying ? "Pause animation" : "Play animation"}
+              aria-pressed={isPlaying}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-accent/10 text-accent-dark hover:bg-accent/20 dark:text-accent-light interactive focus-ring"
+            >
+              <PlayIcon playing={isPlaying} />
+            </button>
+          ) : undefined
+        }
+      />
 
       {program.hasTheta && (
-        <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-          <label htmlFor={thetaId} className="font-mono text-sm text-gray-600 dark:text-gray-300">
-            &#952;
-          </label>
-          <input
-            id={thetaId}
-            type="range"
-            min={0}
-            max={2 * Math.PI}
-            step={Math.PI / 60}
-            value={theta}
-            onChange={(e) => setTheta(parseFloat(e.target.value))}
-            aria-label="Rotation angle theta in radians"
-            aria-valuetext={`${theta.toFixed(2)} radians`}
-            className="slider flex-1 focus-ring"
-          />
-          <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            {theta.toFixed(2)} rad
-          </span>
-        </div>
+        <LabeledSlider
+          label={<>&#952;</>}
+          value={theta}
+          min={0}
+          max={2 * Math.PI}
+          step={Math.PI / 60}
+          onChange={setTheta}
+          ariaLabel="Rotation angle theta in radians"
+          ariaValueText={`${theta.toFixed(2)} radians`}
+          display={`${theta.toFixed(2)} rad`}
+          rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+          labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+        />
       )}
     </WidgetCard>
   );

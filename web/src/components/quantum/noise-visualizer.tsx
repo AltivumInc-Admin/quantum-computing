@@ -4,7 +4,7 @@ import { useDeferredValue, useId, useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { noisyRho, stateFidelity, type ChannelName } from "./noise";
-import { ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 
 /**
  * Inline noise-visualizer widget rendered from a ```qnoise fenced block in a
@@ -34,7 +34,6 @@ export function NoiseVisualizer({ source }: { source: string }) {
   const [channel, setChannel] = useState<ChannelName>("depolarizing");
   const [p, setP] = useState(0);
 
-  const sliderId = useId();
   const channelId = useId();
 
   // Slider max depends on channel; clamp p when switching from a higher-max channel.
@@ -184,29 +183,19 @@ export function NoiseVisualizer({ source }: { source: string }) {
         </div>
 
         {/* Error rate slider */}
-        <div className="flex items-center gap-3">
-          <label
-            htmlFor={sliderId}
-            className="shrink-0 text-xs text-gray-600 dark:text-gray-300"
-          >
-            {parameterLabel(channel)}
-          </label>
-          <input
-            id={sliderId}
-            type="range"
-            min={0}
-            max={pMax}
-            step={0.01}
-            value={pClamped}
-            onChange={(e) => setP(parseFloat(e.target.value))}
-            className="slider flex-1 focus-ring"
-            aria-label={parameterLabel(channel)}
-            aria-valuetext={`${(pClamped * 100).toFixed(0)}%`}
-          />
-          <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            {(pClamped * 100).toFixed(0)}%
-          </span>
-        </div>
+        <LabeledSlider
+          label={parameterLabel(channel)}
+          value={pClamped}
+          min={0}
+          max={pMax}
+          step={0.01}
+          onChange={setP}
+          ariaLabel={parameterLabel(channel)}
+          ariaValueText={`${(pClamped * 100).toFixed(0)}%`}
+          display={`${(pClamped * 100).toFixed(0)}%`}
+          labelClassName="shrink-0 text-xs text-gray-600 dark:text-gray-300"
+          valueWidth="w-10"
+        />
       </div>
     </WidgetCard>
   );

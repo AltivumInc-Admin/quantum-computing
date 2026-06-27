@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import { useMemo, useState } from "react";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard } from "./widget-ui";
 import { paramSavedSec, paramTimeNaive, paramTimeReused } from "./hybrid";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { clamp, parseJsonObject, readNumber } from "./parse-utils";
@@ -143,20 +143,14 @@ function TimeBar({
 // Slider row
 // ---------------------------------------------------------------------------
 
+const SLIDER_LABEL = "w-40 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300";
+
 function SliderRow({
-  id,
   label,
   unitLabel,
-  value,
-  min,
-  max,
-  step,
   display,
-  ariaLabel,
-  ariaValueText,
-  onChange,
+  ...rest
 }: {
-  id: string;
   label: string;
   unitLabel: string;
   value: number;
@@ -169,30 +163,19 @@ function SliderRow({
   onChange: (v: number) => void;
 }) {
   return (
-    <div className="mt-3 flex items-center gap-3">
-      <label
-        htmlFor={id}
-        className="w-40 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
-      >
-        {label}
-      </label>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="slider flex-1 focus-ring"
-        aria-label={ariaLabel}
-        aria-valuetext={ariaValueText}
-      />
-      <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-        {display}
-        <span className="ml-1 text-caption">{unitLabel}</span>
-      </span>
-    </div>
+    <LabeledSlider
+      {...rest}
+      label={label}
+      rowClassName="mt-3 flex items-center gap-3"
+      labelClassName={SLIDER_LABEL}
+      valueWidth="w-20"
+      display={
+        <>
+          {display}
+          <span className="ml-1 text-caption">{unitLabel}</span>
+        </>
+      }
+    />
   );
 }
 
@@ -208,9 +191,6 @@ export function ParamCompileExplorer({ source }: { source: string }) {
   const [iterations, setIterations] = useState(base.iterations);
   const [compileSec, setCompileSec] = useState(base.compileSec);
   const [runSec, setRunSec] = useState(base.runSec);
-  const iterId = useId();
-  const compileId = useId();
-  const runId = useId();
 
   const metrics = useMemo(() => {
     const n = clamp(Math.round(iterations), ITER_MIN, ITER_MAX);
@@ -271,7 +251,6 @@ export function ParamCompileExplorer({ source }: { source: string }) {
         {/* Sliders */}
         <div className="mt-4">
           <SliderRow
-            id={iterId}
             label="iterations"
             unitLabel="iter"
             value={iterations}
@@ -284,7 +263,6 @@ export function ParamCompileExplorer({ source }: { source: string }) {
             onChange={(v) => setIterations(clamp(Math.round(v), ITER_MIN, ITER_MAX))}
           />
           <SliderRow
-            id={compileId}
             label="compile / circuit"
             unitLabel="s"
             value={compileSec}
@@ -297,7 +275,6 @@ export function ParamCompileExplorer({ source }: { source: string }) {
             onChange={(v) => setCompileSec(clamp(v, SEC_MIN, SEC_MAX))}
           />
           <SliderRow
-            id={runId}
             label="run / circuit"
             unitLabel="s"
             value={runSec}

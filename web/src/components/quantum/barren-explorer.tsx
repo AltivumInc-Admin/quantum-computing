@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import { gradientVariance, mulberry32, type Cost } from "./barren";
 
 /**
@@ -86,7 +86,6 @@ export function BarrenExplorer({ source }: { source: string }) {
   const samples = parsed.config?.samples ?? 300;
 
   const [depth, setDepth] = useState(initDepth);
-  const depthId = useId();
   const titleId = useId();
 
   // Sweep n = 2..8 for both cost functions. Seeded per-n with mulberry32(n) so
@@ -262,26 +261,20 @@ export function BarrenExplorer({ source }: { source: string }) {
         </p>
 
         {/* Depth control */}
-        <div className="mt-4 flex items-center gap-3">
-          <label htmlFor={depthId} className="shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
-            depth
-          </label>
-          <input
-            id={depthId}
-            type="range"
-            min={1}
-            max={5}
-            step={1}
-            value={depth}
-            onChange={(e) => setDepth(parseInt(e.target.value, 10))}
-            className="slider flex-1 focus-ring"
-            aria-label="Ansatz depth (number of layers)"
-            aria-valuetext={`${depth} layers`}
-          />
-          <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            {depth}
-          </span>
-        </div>
+        <LabeledSlider
+          label="depth"
+          value={depth}
+          min={1}
+          max={5}
+          step={1}
+          parse={(s) => parseInt(s, 10)}
+          onChange={setDepth}
+          ariaLabel="Ansatz depth (number of layers)"
+          ariaValueText={`${depth} layers`}
+          display={depth}
+          rowClassName="mt-4 flex items-center gap-3"
+          valueWidth="w-8"
+        />
 
         {/* Callout */}
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">

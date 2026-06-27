@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Bar, Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import { Bar, Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard } from "./widget-ui";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -55,7 +55,6 @@ export function GroverVisualizer({ source }: { source: string }) {
   const [n, setN] = useState(initN);
   const [marked, setMarked] = useState(initMarked);
   const [iterations, setIterations] = useState<number | null>(null);
-  const sliderId = useId();
   const qubitsId = useId();
   const markedId = useId();
 
@@ -138,28 +137,23 @@ export function GroverVisualizer({ source }: { source: string }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        <label htmlFor={sliderId} className="font-mono text-sm text-gray-600 dark:text-gray-300">
-          iterations
-        </label>
-        <input
-          id={sliderId}
-          type="range"
-          min={0}
-          max={maxSlider}
-          step={1}
-          value={frame}
-          onChange={(e) => setIterations(parseInt(e.target.value, 10))}
-          className="slider flex-1 focus-ring"
-          aria-label="Number of Grover iterations"
-          aria-valuetext={`${frame} iteration${frame === 1 ? "" : "s"}, success ${(
-            success * 100
-          ).toFixed(1)}%`}
-        />
-        <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-          {frame}
-        </span>
-      </div>
+      <LabeledSlider
+        label="iterations"
+        value={frame}
+        min={0}
+        max={maxSlider}
+        step={1}
+        parse={(s) => parseInt(s, 10)}
+        onChange={setIterations}
+        ariaLabel="Number of Grover iterations"
+        ariaValueText={`${frame} iteration${frame === 1 ? "" : "s"}, success ${(
+          success * 100
+        ).toFixed(1)}%`}
+        display={frame}
+        rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+        labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+        valueWidth="w-8"
+      />
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
         <div className="flex items-center gap-2">

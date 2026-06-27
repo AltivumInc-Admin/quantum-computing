@@ -5,7 +5,7 @@ import { cAbs2, type Complex } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
 import { angleState, amplitudeState, iqpState, reducedBloch } from "./encoding";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 
 /**
  * Inline data-encoding explorer rendered from a ```qencode fenced block. Parses a
@@ -94,8 +94,6 @@ export function EncodingExplorer({ source }: { source: string }) {
   const [x0, setX0] = useState(() => clamp(fallback.x[0]));
   const [x1, setX1] = useState(() => clamp(fallback.x[1]));
   const [encoding, setEncoding] = useState<Encoding>(fallback.encoding);
-  const x0Id = useId();
-  const x1Id = useId();
   const encId = useId();
 
   const state = useMemo<Complex[]>(() => {
@@ -173,48 +171,36 @@ export function EncodingExplorer({ source }: { source: string }) {
           </div>
 
           {/* x0 slider */}
-          <div className="mt-3 flex items-center gap-3">
-            <label htmlFor={x0Id} className="w-10 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
-              x&#8320;
-            </label>
-            <input
-              id={x0Id}
-              type="range"
-              min={-PI}
-              max={PI}
-              step={PI / 60}
-              value={x0}
-              onChange={(e) => setX0(parseFloat(e.target.value))}
-              className="slider flex-1 focus-ring"
-              aria-label="Feature x0"
-              aria-valuetext={`x0 = ${x0.toFixed(2)}, norm ${norm.toFixed(3)}`}
-            />
-            <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {x0.toFixed(2)}
-            </span>
-          </div>
+          <LabeledSlider
+            label={<>x&#8320;</>}
+            value={x0}
+            min={-PI}
+            max={PI}
+            step={PI / 60}
+            onChange={setX0}
+            ariaLabel="Feature x0"
+            ariaValueText={`x0 = ${x0.toFixed(2)}, norm ${norm.toFixed(3)}`}
+            display={x0.toFixed(2)}
+            rowClassName="mt-3 flex items-center gap-3"
+            labelClassName="w-10 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            valueWidth="w-14"
+          />
 
           {/* x1 slider */}
-          <div className="mt-2 flex items-center gap-3">
-            <label htmlFor={x1Id} className="w-10 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
-              x&#8321;
-            </label>
-            <input
-              id={x1Id}
-              type="range"
-              min={-PI}
-              max={PI}
-              step={PI / 60}
-              value={x1}
-              onChange={(e) => setX1(parseFloat(e.target.value))}
-              className="slider flex-1 focus-ring"
-              aria-label="Feature x1"
-              aria-valuetext={`x1 = ${x1.toFixed(2)}, norm ${norm.toFixed(3)}`}
-            />
-            <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {x1.toFixed(2)}
-            </span>
-          </div>
+          <LabeledSlider
+            label={<>x&#8321;</>}
+            value={x1}
+            min={-PI}
+            max={PI}
+            step={PI / 60}
+            onChange={setX1}
+            ariaLabel="Feature x1"
+            ariaValueText={`x1 = ${x1.toFixed(2)}, norm ${norm.toFixed(3)}`}
+            display={x1.toFixed(2)}
+            rowClassName="mt-2 flex items-center gap-3"
+            labelClassName="w-10 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            valueWidth="w-14"
+          />
 
           {/* amplitude bars */}
           <div className="mt-4">

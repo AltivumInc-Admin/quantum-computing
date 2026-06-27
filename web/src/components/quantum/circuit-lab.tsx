@@ -1,10 +1,10 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { simulate, probabilities } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial } from "./bloch-dial";
-import { GateChips, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 
 /**
  * Inline, zero-boot quantum readout rendered from a ```qsim fenced block in a
@@ -17,7 +17,6 @@ import { GateChips, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 export function CircuitLab({ source }: { source: string }) {
   const program = useMemo(() => parseProgram(source), [source]);
   const [theta, setTheta] = useState(Math.PI / 2);
-  const sliderId = useId();
 
   const sim = useMemo(() => {
     if (program.error) return { error: program.error };
@@ -54,26 +53,19 @@ export function CircuitLab({ source }: { source: string }) {
       )}
 
       {program.hasTheta && !("error" in sim) && (
-        <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-          <label htmlFor={sliderId} className="font-mono text-sm text-gray-600 dark:text-gray-300">
-            &#952;
-          </label>
-          <input
-            id={sliderId}
-            type="range"
-            min={0}
-            max={2 * Math.PI}
-            step={Math.PI / 60}
-            value={theta}
-            onChange={(e) => setTheta(parseFloat(e.target.value))}
-            className="slider flex-1 focus-ring"
-            aria-label="Rotation angle theta in radians"
-            aria-valuetext={`${theta.toFixed(2)} radians`}
-          />
-          <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            {theta.toFixed(2)} rad
-          </span>
-        </div>
+        <LabeledSlider
+          label={<>&#952;</>}
+          value={theta}
+          min={0}
+          max={2 * Math.PI}
+          step={Math.PI / 60}
+          onChange={setTheta}
+          ariaLabel="Rotation angle theta in radians"
+          ariaValueText={`${theta.toFixed(2)} radians`}
+          display={`${theta.toFixed(2)} rad`}
+          rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+          labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+        />
       )}
     </WidgetCard>
   );

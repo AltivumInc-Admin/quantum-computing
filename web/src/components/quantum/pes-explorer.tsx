@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
+import { useMemo, useState } from "react";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import { H2 as H } from "./h2-data";
 import { h2Energies, oneQubitGroundEnergy } from "./chemistry";
 import { parseJsonObject } from "./parse-utils";
@@ -125,7 +125,6 @@ export function PesExplorer({ source }: { source: string }) {
   const [mark, setMark] = useState(() =>
     parsed.ok ? parsed.mark : H.equilibrium.R
   );
-  const markId = useId();
 
   // Read FCI/HF/gap at the current scrubber position.
   const readout = useMemo(() => {
@@ -315,29 +314,17 @@ export function PesExplorer({ source }: { source: string }) {
         {/* Controls + readout */}
         <div className="min-w-0 sm:w-56 sm:shrink-0">
           {/* scrubber */}
-          <div className="flex items-center gap-3">
-            <label
-              htmlFor={markId}
-              className="shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
-            >
-              R
-            </label>
-            <input
-              id={markId}
-              type="range"
-              min={rMin}
-              max={rMax}
-              step={0.01}
-              value={mark}
-              onChange={(e) => setMark(parseFloat(e.target.value))}
-              className="slider flex-1 focus-ring"
-              aria-label="Bond length scrubber in angstrom"
-              aria-valuetext={`${angstromSR(mark)}; FCI ${hartreeSR(readout.fci, 3)}, Hartree-Fock ${hartreeSR(readout.hf, 3)}, gap ${hartreeSR(readout.gap, 3)}`}
-            />
-            <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {mark.toFixed(2)} &#8491;
-            </span>
-          </div>
+          <LabeledSlider
+            label="R"
+            value={mark}
+            min={rMin}
+            max={rMax}
+            step={0.01}
+            onChange={setMark}
+            ariaLabel="Bond length scrubber in angstrom"
+            ariaValueText={`${angstromSR(mark)}; FCI ${hartreeSR(readout.fci, 3)}, Hartree-Fock ${hartreeSR(readout.hf, 3)}, gap ${hartreeSR(readout.gap, 3)}`}
+            display={<>{mark.toFixed(2)} &#8491;</>}
+          />
 
           {/* readout */}
           <dl className="mt-4 space-y-1.5 font-mono text-xs tabular-nums">
