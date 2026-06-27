@@ -46,7 +46,7 @@ function SidebarItem({
       <span
         className={`shrink-0 w-6 h-6 rounded-md text-[10px] font-bold flex items-center justify-center transition-all duration-300 ${
           complete
-            ? "bg-accent text-white shadow-sm shadow-accent/40"
+            ? "bg-accent-dark text-white shadow-sm shadow-accent/40"
             : isActive
               ? "hue-soft-bg hue-text"
               : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"

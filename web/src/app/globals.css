@@ -17,6 +17,22 @@
   --radius-chip: 0.5rem;
   --radius-control: 0.75rem;
   --radius-card: 1rem;
+
+  /* Fluid display scale for the app chrome (hero, page/section headers, card
+     titles). Continuous clamp() sizing — no breakpoint jumps — mirroring the
+     clamp() the .prose headings already use, so content and chrome share one
+     fluid type system. min/max are in rem so the scale still honours browser
+     zoom and never drops below a legible floor. Tailwind v4 turns each
+     --text-* key into a text-* utility; the --line-height companion pairs the
+     leading so callers no longer hand-tune it. */
+  --text-display-2xl: clamp(2.75rem, 1.9rem + 4.2vw, 4.5rem);
+  --text-display-2xl--line-height: 1.05;
+  --text-display-xl: clamp(1.875rem, 1.4rem + 2.4vw, 3rem);
+  --text-display-xl--line-height: 1.1;
+  --text-display-lg: clamp(1.5rem, 1.25rem + 1.2vw, 2rem);
+  --text-display-lg--line-height: 1.15;
+  --text-display-md: clamp(1.25rem, 1.1rem + 0.7vw, 1.5rem);
+  --text-display-md--line-height: 1.3;
 }
 
 @keyframes fade-up {
@@ -84,10 +100,16 @@
     --surface-1: #ffffff;
     --surface-2: #f1f5f7;
 
-    /* Two-step elevation: ambient + contact shadows from a fixed top-down
-       light. Theme-aware alphas keep depth legible on both surfaces. */
-    --shadow-resting: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 8px -2px oklch(0 0 0 / 0.05);
-    --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.05), 0 12px 20px -6px oklch(0 0 0 / 0.12),
+    /* Two-step elevation modelling a fixed top-down light: a top-edge rim
+       highlight (the light catching the surface) PLUS ambient + contact drop
+       shadows (the light blocked below). The inset rim is near-invisible on the
+       white light surfaces and does its real work on tinted surfaces and the
+       accent button; dark mode (below) is where it most reads. Theme-aware
+       alphas keep depth legible on both surfaces. */
+    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.65),
+      0 1px 2px oklch(0 0 0 / 0.04), 0 4px 8px -2px oklch(0 0 0 / 0.05);
+    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.75),
+      0 2px 4px oklch(0 0 0 / 0.05), 0 12px 20px -6px oklch(0 0 0 / 0.12),
       0 24px 40px -12px oklch(0 0 0 / 0.1);
   }
 
@@ -96,8 +118,10 @@
     --surface-1: #0d1320;
     --surface-2: #0a0f1a;
 
-    --shadow-resting: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 8px -2px oklch(0 0 0 / 0.4);
-    --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.4), 0 12px 24px -6px oklch(0 0 0 / 0.55),
+    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.06),
+      0 1px 2px oklch(0 0 0 / 0.3), 0 4px 8px -2px oklch(0 0 0 / 0.4);
+    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.08),
+      0 2px 4px oklch(0 0 0 / 0.4), 0 12px 24px -6px oklch(0 0 0 / 0.55),
       0 24px 48px -12px oklch(0 0 0 / 0.45);
   }
 
@@ -168,6 +192,26 @@
       oklch(0.72 0.15 var(--hue) / 0.4),
       transparent
     );
+  }
+
+  /* The accessible filled-brand surface for primary CTAs. The body sits on
+     accent-dark so white text clears WCAG AA (5.09:1) in BOTH themes — the flat
+     bg-accent it replaces was only 2.25:1. The top-down rim arrives via
+     --shadow-resting (see @layer base), so the lit sheen and the card elevation
+     model stay one source of truth; hover lifts to --shadow-raised without
+     touching the background, so contrast can never regress on interaction. The
+     lift is scoped to :not(:disabled): several consumers are disabled mid-action
+     (Stream/Optimize/Ask/Run while busy) and Chromium still fires :hover on a
+     disabled <button>, which would otherwise make a dimmed button advertise an
+     interactivity it does not have. (:disabled never matches the one <a>
+     consumer, so the guard is a no-op there.) */
+  .surface-accent {
+    background-color: var(--color-accent-dark);
+    color: #fff;
+    box-shadow: var(--shadow-resting);
+  }
+  .surface-accent:not(:disabled):hover {
+    box-shadow: var(--shadow-raised);
   }
 
   .prose pre {

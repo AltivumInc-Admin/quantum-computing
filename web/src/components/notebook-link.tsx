@@ -71,7 +71,7 @@ export function NotebookLink({
             href={runHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-dark transition-colors interactive focus-ring"
+            className="px-2.5 py-1.5 text-xs font-medium rounded-lg surface-accent interactive focus-ring"
             aria-label={`Run ${label} in browser`}
           >
             Run in browser
