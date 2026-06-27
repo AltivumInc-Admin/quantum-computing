@@ -90,7 +90,7 @@ export function ShotsSampler({ source }: { source: string }) {
             className={[
               "rounded px-2.5 py-1 text-xs font-mono font-medium transition-colors interactive focus-ring",
               shots === n
-                ? "bg-accent text-gray-950"
+                ? "chip-selected"
                 : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
             ].join(" ")}
           >

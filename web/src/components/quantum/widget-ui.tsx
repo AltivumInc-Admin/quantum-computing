@@ -31,7 +31,7 @@ export function GateChip({ label, active = false }: { label: string; active?: bo
     <span
       className={`rounded-chip px-2 py-0.5 text-[11px] font-mono transition-colors duration-150 ${
         active
-          ? "bg-accent text-gray-950"
+          ? "chip-selected"
           : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"
       }`}
     >
