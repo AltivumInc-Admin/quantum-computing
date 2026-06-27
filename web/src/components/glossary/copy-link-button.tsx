@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function CopyLinkButton({ className }: { className?: string }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   const onClick = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard unavailable (older browser / insecure context) — no-op.
     }
