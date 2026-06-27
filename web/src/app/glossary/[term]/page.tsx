@@ -3,6 +3,13 @@ import { notFound } from "next/navigation";
 import { GLOSSARY, getTermBySlug, termSlug, plainText } from "@/lib/glossary";
 import { TermDetail } from "@/components/glossary/term-detail";
 
+function truncateAtWord(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…";
+}
+
 interface PageProps {
   params: Promise<{ term: string }>;
 }
@@ -17,7 +24,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { term: slug } = await params;
   const term = getTermBySlug(slug);
   if (!term) return { title: "Not Found" };
-  const description = plainText(term.definition).slice(0, 155);
+  const description = truncateAtWord(plainText(term.definition), 155);
   const url = `/glossary/${termSlug(term.term)}`;
   return {
     title: `${term.term} — Quantum Glossary`,

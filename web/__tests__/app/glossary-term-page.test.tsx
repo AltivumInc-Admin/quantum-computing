@@ -32,6 +32,7 @@ describe("glossary/[term] route", () => {
     expect(md.alternates?.canonical).toBe("/glossary/qubit");
     expect(md.openGraph?.url).toBe("/glossary/qubit");
     expect(String(md.description)).not.toMatch(/\\ket|\$/);
+    expect(String(md.description).length).toBeLessThanOrEqual(156);
   });
 
   it("renders the term detail for a valid slug", async () => {
