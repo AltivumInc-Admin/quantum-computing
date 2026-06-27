@@ -70,14 +70,18 @@ function normalize(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-function stripMarkup(s: string): string {
-  return s.replace(/\$[^$]*\$/g, " ").replace(/`[^`]*`/g, " ");
+export function plainText(s: string): string {
+  return s
+    .replace(/\$[^$]*\$/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function matchesQuery(term: GlossaryTerm, query: string): boolean {
   const q = normalize(query.trim());
   if (!q) return true;
-  const haystack = [term.term, ...(term.aliases ?? []), stripMarkup(term.definition)].map(normalize);
+  const haystack = [term.term, ...(term.aliases ?? []), plainText(term.definition)].map(normalize);
   return haystack.some((h) => h.includes(q));
 }
 
@@ -367,3 +371,11 @@ export const GLOSSARY: GlossaryTerm[] = [
     definition: "Periodically saving a job's optimizer state so a long run that fails can resume from the last save instead of restarting; `save_job_checkpoint()` and `load_job_checkpoint()` in Braket.",
     seeAlso: ["Amazon Braket Hybrid Jobs", "Optimization loop"] },
 ];
+
+export function getTermBySlug(slug: string): GlossaryTerm | undefined {
+  return GLOSSARY.find((t) => termSlug(t.term) === slug);
+}
+
+export function termsInSection(section: SectionSlug, excludeTerm?: string): GlossaryTerm[] {
+  return sortedTerms(GLOSSARY.filter((t) => t.section === section && t.term !== excludeTerm));
+}

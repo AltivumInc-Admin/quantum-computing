@@ -56,7 +56,12 @@ describe("GlossaryEntry", () => {
   it("renders see-also links to related term anchors", () => {
     render(<GlossaryEntry term={bell} />);
     const seeAlso = screen.getByRole("link", { name: "Entanglement" });
-    expect(seeAlso).toHaveAttribute("href", "#entanglement");
+    expect(seeAlso).toHaveAttribute("href", "/glossary/entanglement");
+  });
+
+  it("links the term name to its own page", () => {
+    render(<GlossaryEntry term={bell} />);
+    expect(screen.getByRole("link", { name: "Bell pair" })).toHaveAttribute("href", "/glossary/bell-pair");
   });
 
   it("omits the see-also row when there are no references", () => {
