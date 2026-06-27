@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Nav } from "@/components/nav";
 import { AskTutor } from "@/components/ask-tutor";
 import { Footer } from "@/components/footer";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -18,6 +19,7 @@ const instrument = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Quantum Computing Workspace",
   description: "A progressive learning path through quantum computing with Amazon Braket",
 };
