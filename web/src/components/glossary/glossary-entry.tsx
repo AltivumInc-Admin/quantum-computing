@@ -31,7 +31,7 @@ export function GlossaryEntry({ term }: { term: GlossaryTerm }) {
         <InlineMarkdown>{term.definition}</InlineMarkdown>
       </p>
       {term.seeAlso && term.seeAlso.length > 0 ? (
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-500">
+        <p className="mt-2 text-xs text-gray-500">
           See also:{" "}
           {term.seeAlso.map((ref, i) => (
             <span key={ref}>

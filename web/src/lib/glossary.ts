@@ -70,10 +70,14 @@ function normalize(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+function stripMarkup(s: string): string {
+  return s.replace(/\$[^$]*\$/g, " ").replace(/`[^`]*`/g, " ");
+}
+
 export function matchesQuery(term: GlossaryTerm, query: string): boolean {
   const q = normalize(query.trim());
   if (!q) return true;
-  const haystack = [term.term, ...(term.aliases ?? []), term.definition].map(normalize);
+  const haystack = [term.term, ...(term.aliases ?? []), stripMarkup(term.definition)].map(normalize);
   return haystack.some((h) => h.includes(q));
 }
 
@@ -246,7 +250,7 @@ export const GLOSSARY: GlossaryTerm[] = [
 
   // ----- 03-algorithms (Algorithms) -----
   { term: "Quantum algorithm", section: "03-algorithms",
-    definition: "A procedure that uses superposition, entanglement, and interference to solve a problem faster than the best classical method for the same task.",
+    definition: "A procedure that uses superposition, entanglement, and interference to solve certain problems with fewer operations than the best known classical method.",
     seeAlso: ["Interference", "Quantum speedup"] },
   { term: "Oracle", section: "03-algorithms", aliases: ["black box"],
     definition: "A black-box reversible gate $U_f$ that encodes a problem's function; a phase oracle marks solutions by flipping their sign, $\\ket{x} \\mapsto (-1)^{f(x)}\\ket{x}$.",

@@ -93,4 +93,17 @@ describe("glossary helpers", () => {
     expect(ALPHABET[0]).toBe("A");
     expect(ALPHABET[25]).toBe("Z");
   });
+
+  it("does not match LaTeX/code source tokens hidden in a definition", () => {
+    const t: GlossaryTerm = {
+      term: "Phase gate",
+      definition: "Applies $e^{i\\theta}$ to $\\ket{1}$ and leaves `state` fixed.",
+      section: "01-foundations",
+    };
+    expect(matchesQuery(t, "ket")).toBe(false);   // \ket is math source, not readable text
+    expect(matchesQuery(t, "theta")).toBe(false); // inside math, stripped
+    expect(matchesQuery(t, "state")).toBe(false); // inside inline code, stripped
+    expect(matchesQuery(t, "phase")).toBe(true);  // term still matches
+    expect(matchesQuery(t, "applies")).toBe(true); // prose still matches
+  });
 });

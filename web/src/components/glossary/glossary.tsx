@@ -51,8 +51,8 @@ export function Glossary() {
         </nav>
       </div>
 
-      <p role="status" aria-live="polite" className="sr-only">
-        {filtered.length} terms
+      <p role="status" className="sr-only">
+        {filtered.length} term{filtered.length === 1 ? "" : "s"}
       </p>
 
       {groups.length === 0 ? (
