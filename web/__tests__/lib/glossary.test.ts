@@ -107,3 +107,45 @@ describe("glossary helpers", () => {
     expect(matchesQuery(t, "applies")).toBe(true); // prose still matches
   });
 });
+
+import {
+  getTermBySlug,
+  termsInSection,
+  plainText,
+} from "@/lib/glossary";
+
+describe("getTermBySlug", () => {
+  it("returns the term for a valid slug", () => {
+    expect(getTermBySlug("qubit")?.term).toBe("Qubit");
+    expect(getTermBySlug("bell-pair")?.term).toBe("Bell pair");
+  });
+  it("returns undefined for an unknown slug", () => {
+    expect(getTermBySlug("not-a-real-term")).toBeUndefined();
+  });
+  it("round-trips every term's slug", () => {
+    for (const t of GLOSSARY) {
+      expect(getTermBySlug(termSlug(t.term))).toBe(t);
+    }
+  });
+});
+
+describe("termsInSection", () => {
+  it("returns only terms in the section, sorted, excluding the named term", () => {
+    const res = termsInSection("01-foundations", "Qubit");
+    expect(res.length).toBeGreaterThan(0);
+    expect(res.every((t) => t.section === "01-foundations")).toBe(true);
+    expect(res.some((t) => t.term === "Qubit")).toBe(false);
+    const names = res.map((t) => t.term);
+    expect(names).toEqual(
+      [...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }))
+    );
+  });
+});
+
+describe("plainText", () => {
+  it("strips inline math and code and collapses whitespace", () => {
+    expect(plainText("A unit vector $\\alpha\\ket{0}$ with `code` here.")).toBe(
+      "A unit vector with here."
+    );
+  });
+});
