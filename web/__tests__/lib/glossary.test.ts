@@ -54,6 +54,10 @@ describe("glossary data integrity", () => {
       expect(getSectionBySlug(s.slug)).toBeDefined(); // label slug is a real section
     }
   });
+
+  it("contains a comprehensive inventory (>= 60 terms)", () => {
+    expect(GLOSSARY.length).toBeGreaterThanOrEqual(60);
+  });
 });
 
 describe("glossary helpers", () => {
