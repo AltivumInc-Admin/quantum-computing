@@ -24,9 +24,9 @@ export function Footer() {
           </a>
         </nav>
       </div>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 text-xs text-gray-400 dark:text-gray-600">
+      <p className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 text-xs text-gray-400 dark:text-gray-600">
         Altivum Inc. — built with Amazon Braket.
-      </div>
+      </p>
     </footer>
   );
 }
