@@ -106,9 +106,9 @@
        white light surfaces and does its real work on tinted surfaces and the
        accent button; dark mode (below) is where it most reads. Theme-aware
        alphas keep depth legible on both surfaces. */
-    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.65),
+    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.35),
       0 1px 2px oklch(0 0 0 / 0.04), 0 4px 8px -2px oklch(0 0 0 / 0.05);
-    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.75),
+    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.45),
       0 2px 4px oklch(0 0 0 / 0.05), 0 12px 20px -6px oklch(0 0 0 / 0.12),
       0 24px 40px -12px oklch(0 0 0 / 0.1);
   }
@@ -212,6 +212,22 @@
   }
   .surface-accent:not(:disabled):hover {
     box-shadow: var(--shadow-raised);
+  }
+
+  /* The single source for a SELECTED/active chip fill (gate pills, shot presets,
+     spin-orbital + creation/annihilation toggles, Pauli factor cells). Vibrant
+     accent with dark text — gray-950 clears AAA on both the accent (~9:1) and the
+     brighter accent-light used in dark mode (~12:1; the lighter fill on dark text
+     is the higher-contrast case AND reads more clearly as "on" against the dark
+     card). Mirrors how .surface-accent single-sources the primary CTA fill,
+     replacing three hand-rolled variants that had drifted (some brightened in
+     dark mode, some did not). */
+  .chip-selected {
+    background-color: var(--color-accent);
+    color: var(--color-gray-950);
+  }
+  .dark .chip-selected {
+    background-color: var(--color-accent-light);
   }
 
   .prose pre {
