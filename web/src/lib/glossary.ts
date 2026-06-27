@@ -103,7 +103,7 @@ export const GLOSSARY: GlossaryTerm[] = [
     definition: "A correlation between qubits with no classical analogue: the joint state cannot be factored into independent single-qubit states.",
     seeAlso: ["Bell pair"] },
   { term: "Hadamard gate", section: "01-foundations", aliases: ["H gate"],
-    definition: "A single-qubit gate that maps $\\ket{0}$ to the equal superposition $(\\ket{0}+\\ket{1})/\\sqrt2$.",
+    definition: "The gate that maps $\\ket{0}$ to $(\\ket{0}+\\ket{1})/\\sqrt{2}$ and $\\ket{1}$ to $(\\ket{0}-\\ket{1})/\\sqrt{2}$; the primary tool for entering superposition.",
     seeAlso: ["Superposition"] },
   { term: "Hamiltonian", section: "05-quantum-chemistry",
     definition: "The operator representing a system's total energy; its lowest eigenvalue is the ground-state energy that algorithms like VQE estimate.",
