@@ -12,6 +12,9 @@ import {
   confirmResetPassword,
 } from "aws-amplify/auth";
 import { mapAuthError, type AuthView } from "@/lib/auth-errors";
+import { allCriteriaMet } from "@/lib/password-policy";
+import { PasswordField } from "./password-field";
+import { PasswordChecklist } from "./password-checklist";
 
 const primaryBtn =
   "w-full surface-accent inline-flex items-center justify-center rounded-control px-4 py-2.5 text-sm font-medium interactive focus-ring disabled:opacity-60";
@@ -26,12 +29,21 @@ export function AuthForm() {
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState<string | null>(
     params.get("error") === "google" ? "Google sign-in didn't complete. Please try again." : null
   );
   const [busy, setBusy] = useState(false);
+
+  // Navigate between views, clearing the confirm field + any error so a confirm
+  // value never carries between the sign-up and reset views.
+  const goTo = (v: AuthView) => {
+    setConfirm("");
+    setError(null);
+    setView(v);
+  };
 
   const handle = (fn: () => Promise<void>) => async (e: FormEvent) => {
     e.preventDefault();
@@ -44,6 +56,7 @@ export function AuthForm() {
       const m = mapAuthError(err);
       setError(m.message);
       if (m.view) {
+        setConfirm("");
         setView(m.view);
         if (m.view === "confirm") {
           try {
@@ -94,6 +107,9 @@ export function AuthForm() {
     reset: "Set a new password",
   };
 
+  const signUpInvalid = !allCriteriaMet(password) || password !== confirm;
+  const resetInvalid = !allCriteriaMet(newPassword) || newPassword !== confirm;
+
   return (
     <div className="mx-auto w-full max-w-sm">
       <h1 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
@@ -109,15 +125,23 @@ export function AuthForm() {
       {view === "signIn" && (
         <form onSubmit={doSignIn} className="mt-6 space-y-4">
           <Field id="email" label="Email" type="email" value={email} onChange={setEmail} />
-          <Field id="password" label="Password" type="password" value={password} onChange={setPassword} />
+          <PasswordField
+            id="password"
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            describedById={password ? "signin-pw-rules" : undefined}
+          />
+          {password && <PasswordChecklist id="signin-pw-rules" password={password} />}
           <button type="submit" disabled={busy} className={primaryBtn}>
             {busy ? "Signing in…" : "Sign in"}
           </button>
           <div className="flex items-center justify-between">
-            <button type="button" className={linkBtn} onClick={() => setView("forgot")}>
+            <button type="button" className={linkBtn} onClick={() => goTo("forgot")}>
               Forgot password?
             </button>
-            <button type="button" className={linkBtn} onClick={() => setView("signUp")}>
+            <button type="button" className={linkBtn} onClick={() => goTo("signUp")}>
               Create account
             </button>
           </div>
@@ -128,15 +152,27 @@ export function AuthForm() {
       {view === "signUp" && (
         <form onSubmit={doSignUp} className="mt-6 space-y-4">
           <Field id="email" label="Email" type="email" value={email} onChange={setEmail} />
-          <Field id="password" label="Password" type="password" value={password} onChange={setPassword} />
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            At least 8 characters, with upper, lower, and a number.
-          </p>
-          <button type="submit" disabled={busy} className={primaryBtn}>
+          <PasswordField
+            id="password"
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            describedById={password ? "signup-pw-rules" : undefined}
+          />
+          <PasswordField
+            id="confirm"
+            label="Confirm password"
+            value={confirm}
+            onChange={setConfirm}
+            autoComplete="new-password"
+          />
+          {password && <PasswordChecklist id="signup-pw-rules" password={password} confirm={confirm} />}
+          <button type="submit" disabled={busy || signUpInvalid} className={primaryBtn}>
             {busy ? "Creating…" : "Create account"}
           </button>
           <div className="text-center">
-            <button type="button" className={linkBtn} onClick={() => setView("signIn")}>
+            <button type="button" className={linkBtn} onClick={() => goTo("signIn")}>
               Already have an account? Sign in
             </button>
           </div>
@@ -168,7 +204,7 @@ export function AuthForm() {
             {busy ? "Sending…" : "Send reset code"}
           </button>
           <div className="text-center">
-            <button type="button" className={linkBtn} onClick={() => setView("signIn")}>
+            <button type="button" className={linkBtn} onClick={() => goTo("signIn")}>
               Back to sign in
             </button>
           </div>
@@ -178,14 +214,23 @@ export function AuthForm() {
       {view === "reset" && (
         <form onSubmit={doReset} className="mt-6 space-y-4">
           <Field id="code" label="Reset code" type="text" value={code} onChange={setCode} />
-          <Field
+          <PasswordField
             id="newPassword"
             label="New password"
-            type="password"
             value={newPassword}
             onChange={setNewPassword}
+            autoComplete="new-password"
+            describedById={newPassword ? "reset-pw-rules" : undefined}
           />
-          <button type="submit" disabled={busy} className={primaryBtn}>
+          <PasswordField
+            id="confirm"
+            label="Confirm new password"
+            value={confirm}
+            onChange={setConfirm}
+            autoComplete="new-password"
+          />
+          {newPassword && <PasswordChecklist id="reset-pw-rules" password={newPassword} confirm={confirm} />}
+          <button type="submit" disabled={busy || resetInvalid} className={primaryBtn}>
             {busy ? "Saving…" : "Set new password"}
           </button>
         </form>
