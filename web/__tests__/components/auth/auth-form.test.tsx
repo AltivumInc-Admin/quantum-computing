@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
+import { StrictMode } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const signUp = jest.fn();
@@ -196,6 +197,27 @@ describe("AuthForm", () => {
     mockSearch = "error=google";
     render(<AuthForm />);
     expect(screen.getByRole("alert")).toHaveTextContent(/google sign-in/i);
+  });
+
+  it("moves focus to the step heading when the flow advances a view", async () => {
+    mockSearch = "mode=signup";
+    signUp.mockResolvedValue({ isSignUpComplete: false });
+    render(<AuthForm />);
+    fill("Email", "new@b.com");
+    fill("Password", "Password1");
+    fill("Confirm password", "Password1");
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+    const heading = await screen.findByRole("heading", { name: /confirm your email/i });
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+
+  it("does not steal focus to the heading on initial mount (even under StrictMode's double-invoke)", () => {
+    render(
+      <StrictMode>
+        <AuthForm />
+      </StrictMode>
+    );
+    expect(screen.getByRole("heading", { name: /^sign in$/i })).not.toHaveFocus();
   });
 
   // Reaches the confirm view via sign-up (which does NOT auto-resend), so the manual

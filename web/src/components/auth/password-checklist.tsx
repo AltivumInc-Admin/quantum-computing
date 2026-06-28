@@ -1,6 +1,7 @@
 "use client";
 
-import { PASSWORD_CRITERIA } from "@/lib/password-policy";
+import { PASSWORD_CRITERIA, allCriteriaMet } from "@/lib/password-policy";
+import { LiveStatus } from "../live-status";
 
 function Row({ met, label }: { met: boolean; label: string }) {
   return (
@@ -36,14 +37,24 @@ export function PasswordChecklist({
   confirm?: string;
   id?: string;
 }) {
+  const allMet = allCriteriaMet(password);
+  const matchMet = confirm === undefined ? true : confirm.length > 0 && confirm === password;
+  // Announce the milestone only on views where the criteria gate submission (sign-up
+  // / reset pass `confirm`); on sign-in the checklist is purely informational. One
+  // concise polite line at the gate-opening point, not a row per keystroke.
+  const announcement =
+    confirm !== undefined && allMet && matchMet ? "Password meets all requirements." : "";
   return (
-    <ul id={id} className="mt-2 space-y-1">
-      {PASSWORD_CRITERIA.map((c) => (
-        <Row key={c.key} met={c.test(password)} label={c.label} />
-      ))}
-      {confirm !== undefined && (
-        <Row met={confirm.length > 0 && confirm === password} label="Passwords match" />
-      )}
-    </ul>
+    <>
+      <ul id={id} className="mt-2 space-y-1">
+        {PASSWORD_CRITERIA.map((c) => (
+          <Row key={c.key} met={c.test(password)} label={c.label} />
+        ))}
+        {confirm !== undefined && (
+          <Row met={confirm.length > 0 && confirm === password} label="Passwords match" />
+        )}
+      </ul>
+      <LiveStatus>{announcement}</LiveStatus>
+    </>
   );
 }

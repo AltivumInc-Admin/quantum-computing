@@ -32,4 +32,18 @@ describe("PasswordChecklist", () => {
     rerender(<PasswordChecklist password="Password1" confirm="Password1" />);
     expect(screen.getByLabelText("Passwords match: met")).toHaveAttribute("data-met", "true");
   });
+
+  it("never announces on the informational (no-confirm) sign-in checklist", () => {
+    const { rerender } = render(<PasswordChecklist password="abc" />);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    rerender(<PasswordChecklist password="Password1" />); // all criteria met, but no confirm field
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("withholds the all-met announcement until confirm also matches", () => {
+    const { rerender } = render(<PasswordChecklist password="Password1" confirm="" />);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    rerender(<PasswordChecklist password="Password1" confirm="Password1" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Password meets all requirements.");
+  });
 });

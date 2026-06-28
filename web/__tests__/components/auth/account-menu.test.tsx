@@ -4,13 +4,18 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 
+// forwardRef so the menuitem `ref` (roving focus + click activation) reaches the <a>,
+// matching next/link's real ref forwarding.
 jest.mock("next/link", () => {
   const React = require("react");
-  return {
-    __esModule: true,
-    default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) =>
-      React.createElement("a", { href, ...props }, children),
-  };
+  const LinkMock = React.forwardRef(
+    (
+      { href, children, ...props }: { href: string; children: React.ReactNode; [k: string]: unknown },
+      ref: React.Ref<HTMLAnchorElement>
+    ) => React.createElement("a", { href, ref, ...props }, children)
+  );
+  LinkMock.displayName = "LinkMock";
+  return { __esModule: true, default: LinkMock };
 });
 
 const signOut = jest.fn();
@@ -26,6 +31,10 @@ let mockAuth = {
 jest.mock("@/components/auth/auth-provider", () => ({ useAuth: () => mockAuth }));
 
 import { AccountMenu } from "@/components/auth/account-menu";
+
+function authed() {
+  mockAuth = { status: "authenticated", email: "a@b.com", signOut };
+}
 
 describe("AccountMenu", () => {
   beforeEach(() => {
@@ -44,33 +53,115 @@ describe("AccountMenu", () => {
     expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute("href", "/login");
   });
 
-  it("renders the email and a menu with Workspace + Sign out when authenticated", () => {
-    mockAuth = { status: "authenticated", email: "a@b.com", signOut };
+  it("exposes a menu-button trigger that toggles aria-expanded", () => {
+    authed();
     render(<AccountMenu />);
     const trigger = screen.getByRole("button", { name: /a@b\.com/i });
-    expect(trigger).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(trigger);
-    expect(screen.getByRole("link", { name: /workspace/i })).toHaveAttribute(
-      "href",
-      "/workspace"
-    );
-    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("calls signOut from the menu", () => {
-    mockAuth = { status: "authenticated", email: "a@b.com", signOut };
+  it("renders a role=menu with Workspace + Sign out menuitems when open", () => {
+    authed();
     render(<AccountMenu />);
     fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
-    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+    expect(screen.getByRole("menu", { name: /account/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /workspace/i })).toHaveAttribute("href", "/workspace");
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it("focuses the first menuitem on open", () => {
+    authed();
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
+    expect(screen.getByRole("menuitem", { name: /workspace/i })).toHaveFocus();
+  });
+
+  it("moves focus with ArrowDown and wraps around", () => {
+    authed();
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
+    const menu = screen.getByRole("menu");
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowDown" }); // wraps to first
+    expect(screen.getByRole("menuitem", { name: /workspace/i })).toHaveFocus();
+  });
+
+  it("closes on Escape and returns focus to the trigger", () => {
+    authed();
+    render(<AccountMenu />);
+    const trigger = screen.getByRole("button", { name: /a@b\.com/i });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("activates Sign out from the menu", () => {
+    authed();
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /sign out/i }));
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("closes the menu on Escape", () => {
-    mockAuth = { status: "authenticated", email: "a@b.com", signOut };
+  it("ArrowUp from the first item wraps to the last", () => {
+    authed();
     render(<AccountMenu />);
     fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
-    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowUp" });
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toHaveFocus();
+  });
+
+  it("Home focuses the first item and End the last", () => {
+    authed();
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
+    const menu = screen.getByRole("menu");
+    fireEvent.keyDown(menu, { key: "End" });
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Home" });
+    expect(screen.getByRole("menuitem", { name: /workspace/i })).toHaveFocus();
+  });
+
+  it("activates the focused item on Enter and Space via its ref", () => {
+    authed();
+    render(<AccountMenu />);
+    fireEvent.click(screen.getByRole("button", { name: /a@b\.com/i }));
+    const menu = screen.getByRole("menu");
+    fireEvent.keyDown(menu, { key: "ArrowDown" }); // focus Sign out
+    fireEvent.keyDown(menu, { key: "Enter" });
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens focused on the first/last item from the trigger's ArrowDown/ArrowUp", () => {
+    authed();
+    const { rerender } = render(<AccountMenu />);
+    const trigger = screen.getByRole("button", { name: /a@b\.com/i });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: /workspace/i })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    rerender(<AccountMenu />);
+    fireEvent.keyDown(screen.getByRole("button", { name: /a@b\.com/i }), { key: "ArrowUp" });
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toHaveFocus();
+  });
+
+  it("closes when focus leaves the menu (Tab-out) without bouncing focus to the trigger", () => {
+    authed();
+    render(<AccountMenu />);
+    const trigger = screen.getByRole("button", { name: /a@b\.com/i });
+    fireEvent.click(trigger);
+    fireEvent.blur(screen.getByRole("menu"), { relatedTarget: document.body });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).not.toHaveFocus();
+  });
+
+  it("renders nothing while the auth state is still 'configuring'", () => {
+    mockAuth = { status: "configuring", email: null, signOut };
+    const { container } = render(<AccountMenu />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

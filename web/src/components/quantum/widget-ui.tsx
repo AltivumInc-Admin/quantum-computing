@@ -226,22 +226,10 @@ export function ErrorCard({
   );
 }
 
-/**
- * Polite screen-reader live region for announcing a recomputed teaching result
- * (a verdict, probability, energy, coefficient, ...) when a select / Run /
- * Optimize / toggle changes it. Visually hidden (sr-only); the node stays
- * mounted so aria-live fires on text change. Keep the announcement to one
- * concise line and pass an empty string when there is nothing to announce
- * (e.g. before the first Run). Polite, never assertive, to avoid drag-spam.
- * Mirrors correlation-demo.tsx / metrics-explorer.tsx / job-explorer.tsx.
- */
-export function LiveStatus({ children }: { children: ReactNode }) {
-  return (
-    <p className="sr-only" role="status" aria-live="polite">
-      {children}
-    </p>
-  );
-}
+// LiveStatus is now single-sourced in ../live-status and shared with the auth
+// surface (password-checklist.tsx). Re-exported here so the explorables keep
+// importing it from "./widget-ui" unchanged.
+export { LiveStatus } from "../live-status";
 
 export const primaryActionClass =
   "rounded-control surface-accent px-4 py-1.5 text-sm font-semibold focus-ring interactive disabled:opacity-60";
