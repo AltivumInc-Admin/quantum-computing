@@ -28,4 +28,9 @@ describe("PasswordField", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "abc" } });
     expect(onChange).toHaveBeenCalledWith("abc");
   });
+
+  it("derives the eyeball label from the field label, so multiple fields stay distinguishable", () => {
+    render(<PasswordField id="confirm" label="Confirm password" value="" onChange={() => {}} />);
+    expect(screen.getByRole("button", { name: "Show confirm password" })).toBeInTheDocument();
+  });
 });
