@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   signUp,
@@ -47,6 +47,19 @@ export function AuthForm() {
     const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+
+  // When the flow advances to a new view, move focus to its heading so the
+  // screen reader announces the new step and keyboard focus doesn't drop to
+  // <body> (the just-clicked submit button unmounts). Comparing the prior view
+  // skips the initial mount — and StrictMode's mount double-invoke — so first
+  // load never steals focus from the email field / browser autofill.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const prevViewRef = useRef(view);
+  useEffect(() => {
+    if (prevViewRef.current === view) return;
+    prevViewRef.current = view;
+    headingRef.current?.focus({ preventScroll: true });
+  }, [view]);
 
   // Navigate between views, clearing the confirm field + any error so a confirm
   // value never carries between the sign-up and reset views.
@@ -134,7 +147,11 @@ export function AuthForm() {
 
   return (
     <div className="mx-auto w-full max-w-sm">
-      <h1 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
+      <h1
+        ref={headingRef}
+        tabIndex={-1}
+        className="font-display text-display-md tracking-tight text-gray-900 dark:text-white outline-none"
+      >
         {title[view]}
       </h1>
 

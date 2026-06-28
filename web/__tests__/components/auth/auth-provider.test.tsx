@@ -4,43 +4,39 @@
 import "@testing-library/jest-dom";
 import { render, screen, act } from "@testing-library/react";
 
-const configure = jest.fn();
-jest.mock("aws-amplify", () => ({ Amplify: { configure: (...a: unknown[]) => configure(...a) } }));
+// Capture the props the provider passes to the (lazily-loaded) bridge so the test
+// can drive state changes the way the real Amplify bridge would.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let bridgeProps: any = null;
+const bridgeRendered = jest.fn();
+jest.mock("@/components/auth/amplify-auth-bridge", () => ({
+  __esModule: true,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  default: (props: any) => {
+    bridgeRendered();
+    bridgeProps = props;
+    return null;
+  },
+}));
 
-let hubCb: ((p: { payload: { event: string } }) => void) | null = null;
-const hubUnsub = jest.fn();
-const tokenStorage = { sentinel: "session-storage" };
-jest.mock("aws-amplify/utils", () => ({
-  Hub: {
-    listen: (_channel: string, cb: (p: { payload: { event: string } }) => void) => {
-      hubCb = cb;
-      return hubUnsub;
+// next/dynamic hands back the (mocked) bridge component synchronously, and records
+// the options it was called with so we can lock the ssr:false code-split contract —
+// a regression to a plain eager `import` (which would leak Amplify back into every
+// page's bundle) would fail the assertion below.
+jest.mock("next/dynamic", () => {
+  const state: { opts?: unknown } = {};
+  return {
+    __esModule: true,
+    default: (_loader: unknown, opts: unknown) => {
+      state.opts = opts;
+      return require("@/components/auth/amplify-auth-bridge").default;
     },
-  },
-  sessionStorage: tokenStorage,
-}));
-
-const setKeyValueStorage = jest.fn();
-jest.mock("aws-amplify/auth/cognito", () => ({
-  cognitoUserPoolsTokenProvider: {
-    setKeyValueStorage: (...a: unknown[]) => setKeyValueStorage(...a),
-  },
-}));
-
-const getCurrentUser = jest.fn();
-const fetchUserAttributes = jest.fn();
-const amplifySignOut = jest.fn();
-jest.mock("aws-amplify/auth", () => ({
-  getCurrentUser: () => getCurrentUser(),
-  fetchUserAttributes: () => fetchUserAttributes(),
-  signOut: () => amplifySignOut(),
-}));
+    __state: state,
+  };
+});
 
 let configured = true;
-jest.mock("@/lib/auth-config", () => ({
-  isAuthConfigured: () => configured,
-  amplifyAuthConfig: () => ({ Auth: { Cognito: {} } }),
-}));
+jest.mock("@/lib/auth-config", () => ({ isAuthConfigured: () => configured }));
 
 import { AuthProvider, useAuth } from "@/components/auth/auth-provider";
 
@@ -58,201 +54,66 @@ function Probe() {
 describe("AuthProvider", () => {
   beforeEach(() => {
     configured = true;
-    hubCb = null;
-    configure.mockClear();
-    setKeyValueStorage.mockClear();
-    hubUnsub.mockClear();
-    getCurrentUser.mockReset();
-    fetchUserAttributes.mockReset();
-    amplifySignOut.mockReset();
+    bridgeProps = null;
+    bridgeRendered.mockClear();
   });
 
-  it("stays unconfigured and never configures Amplify when the gate is off", async () => {
+  it("stays unconfigured and never mounts the Amplify bridge when the gate is off", () => {
     configured = false;
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
     expect(screen.getByTestId("status")).toHaveTextContent("unconfigured");
-    expect(configure).not.toHaveBeenCalled();
+    expect(bridgeRendered).not.toHaveBeenCalled();
   });
 
-  it("configures Amplify and resolves to authenticated with the user email", async () => {
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
+  it("mounts the bridge and starts in 'configuring' when configured", () => {
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    expect(screen.getByTestId("status")).toHaveTextContent("configuring");
+    expect(bridgeRendered).toHaveBeenCalled();
+    expect(bridgeProps).not.toBeNull();
+  });
+
+  it("loads the Amplify bridge lazily via next/dynamic with ssr:false", () => {
+    const { __state } = jest.requireMock("next/dynamic") as {
+      __state: { opts?: unknown };
+    };
+    expect(__state.opts).toEqual({ ssr: false });
+  });
+
+  it("reflects the status + email the bridge reports", () => {
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    act(() => {
+      bridgeProps.onStatus("authenticated");
+      bridgeProps.onEmail("a@b.com");
     });
-    expect(configure).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
     expect(screen.getByTestId("email")).toHaveTextContent("a@b.com");
   });
 
-  it("resolves to unauthenticated when there is no current user", async () => {
-    getCurrentUser.mockRejectedValue(new Error("no user"));
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-  });
-
-  it("re-hydrates on a Hub signedIn event and clears on signedOut", async () => {
-    getCurrentUser.mockRejectedValueOnce(new Error("no user")); // initial: unauthenticated
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "c@d.com" });
-    await act(async () => {
-      hubCb!({ payload: { event: "signedIn" } });
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
-    expect(screen.getByTestId("email")).toHaveTextContent("c@d.com");
-
-    await act(async () => {
-      hubCb!({ payload: { event: "signedOut" } });
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-    expect(screen.getByTestId("email")).toHaveTextContent("");
-  });
-
-  it("signOut delegates to Amplify", async () => {
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
-    amplifySignOut.mockResolvedValue(undefined);
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    await act(async () => {
-      screen.getByText("out").click();
-    });
-    expect(amplifySignOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("scopes Cognito tokens to per-tab sessionStorage after configuring", async () => {
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(setKeyValueStorage).toHaveBeenCalledTimes(1);
-    expect(setKeyValueStorage).toHaveBeenCalledWith(tokenStorage);
-  });
-
-  it("unsubscribes the Hub listener on unmount", async () => {
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
-    let view: ReturnType<typeof render> | null = null;
-    await act(async () => {
-      view = render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(hubUnsub).not.toHaveBeenCalled();
-    view!.unmount();
-    expect(hubUnsub).toHaveBeenCalledTimes(1);
-  });
-
-  it("clears authenticated state on a tokenRefresh_failure event", async () => {
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
-
-    await act(async () => {
-      hubCb!({ payload: { event: "tokenRefresh_failure" } });
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-    expect(screen.getByTestId("email")).toHaveTextContent("");
-  });
-
-  it("a signedIn hydrate resolving after signedOut does not clobber the signed-out state", async () => {
-    getCurrentUser.mockRejectedValueOnce(new Error("no user")); // mount: unauthenticated
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-
-    // signedIn starts a SLOW hydrate we control the resolution of.
-    let releaseGetUser: (v: unknown) => void = () => {};
-    getCurrentUser.mockReturnValueOnce(
-      new Promise((res) => {
-        releaseGetUser = res;
-      })
+  it("delegates signOut to the function the bridge registers", async () => {
+    const registered = jest.fn().mockResolvedValue(undefined);
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
     );
-    fetchUserAttributes.mockResolvedValue({ email: "late@x.com" });
-
-    await act(async () => {
-      hubCb!({ payload: { event: "signedIn" } }); // awaiting the pending getCurrentUser
+    act(() => {
+      bridgeProps.registerSignOut(registered);
     });
-    // sign-out arrives before the slow hydrate resolves.
-    await act(async () => {
-      hubCb!({ payload: { event: "signedOut" } });
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-
-    // the slow hydrate finally resolves — it must NOT flip us back to authenticated.
-    await act(async () => {
-      releaseGetUser({ userId: "u1" });
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-    expect(screen.getByTestId("email")).toHaveTextContent("");
-  });
-
-  it("settles to unauthenticated even when amplify signOut rejects", async () => {
-    getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
-    amplifySignOut.mockRejectedValue(new Error("network"));
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <Probe />
-        </AuthProvider>
-      );
-    });
-    expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
-
     await act(async () => {
       screen.getByText("out").click();
     });
-    expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
-    expect(screen.getByTestId("email")).toHaveTextContent("");
+    expect(registered).toHaveBeenCalledTimes(1);
   });
 });
