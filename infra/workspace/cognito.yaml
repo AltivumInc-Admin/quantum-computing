@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  The Quantum Workspace — Cognito user pool + public SPA app client + hosted
+  domain + Google identity provider. Backs the free account on quantum.altivum.ai
+  (sub-project #1). No app secrets reach the web bundle; the Google client secret
+  lives only here (NoEcho).
+
+Parameters:
+  GoogleClientId:
+    Type: String
+    Description: OAuth 2.0 Web client ID from Google Cloud Console.
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Description: OAuth 2.0 Web client secret from Google Cloud Console.
+  DomainPrefix:
+    Type: String
+    Default: quantum-altivum
+    Description: >
+      Hosted-UI domain prefix -> <prefix>.auth.<region>.amazoncognito.com. Used only
+      for the Google OAuth hop. Must be globally unique within the region.
+  SiteUrl:
+    Type: String
+    Default: https://quantum.altivum.ai
+    Description: Production site origin (for callback/logout URLs).
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    Properties:
+      UserPoolName: quantum-workspace
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      DeletionProtection: ACTIVE
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      UserPoolTags:
+        Project: quantum
+        Feature: workspace-auth
+        CostCategory: auth
+
+  GoogleIdP:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "openid email profile"
+      AttributeMapping:
+        email: email
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    # The client lists Google as a supported IdP, so it must exist first.
+    DependsOn: GoogleIdP
+    Properties:
+      ClientName: quantum-workspace-web
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - !Sub "${SiteUrl}/auth/callback"
+        - http://localhost:3000/auth/callback
+      LogoutURLs:
+        - !Sub "${SiteUrl}/"
+        - http://localhost:3000/
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref DomainPrefix
+      UserPoolId: !Ref UserPool
+
+Outputs:
+  UserPoolId:
+    Description: NEXT_PUBLIC_COGNITO_USER_POOL_ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: NEXT_PUBLIC_COGNITO_CLIENT_ID
+    Value: !Ref UserPoolClient
+  HostedDomain:
+    Description: NEXT_PUBLIC_COGNITO_DOMAIN (host only)
+    Value: !Sub "${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
+  Region:
+    Description: NEXT_PUBLIC_AWS_REGION
+    Value: !Ref AWS::Region
