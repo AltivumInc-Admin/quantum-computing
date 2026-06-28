@@ -30,7 +30,8 @@ jest.mock("next/navigation", () => ({
 
 import { AuthForm } from "@/components/auth/auth-form";
 
-function fill(label: RegExp, value: string) {
+// Exact-label fill avoids the ambiguity between "Password" and "Confirm password".
+function fill(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
@@ -53,21 +54,39 @@ describe("AuthForm", () => {
     expect(screen.getByRole("button", { name: /create account/i })).toBeInTheDocument();
   });
 
-  it("signs in and routes to /workspace", async () => {
+  it("signs in and routes to /workspace (login is NOT gated by the criteria)", async () => {
     signIn.mockResolvedValue({ isSignedIn: true });
     render(<AuthForm />);
-    fill(/email/i, "a@b.com");
-    fill(/password/i, "Password1");
-    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
-    await waitFor(() => expect(signIn).toHaveBeenCalledWith({ username: "a@b.com", password: "Password1" }));
+    fill("Email", "a@b.com");
+    fill("Password", "weak"); // deliberately fails the criteria
+    const btn = screen.getByRole("button", { name: /^sign in$/i });
+    expect(btn).toBeEnabled(); // not gated
+    fireEvent.click(btn);
+    await waitFor(() => expect(signIn).toHaveBeenCalledWith({ username: "a@b.com", password: "weak" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/workspace"));
+  });
+
+  it("shows the password checklist on sign-in once the field has content", () => {
+    render(<AuthForm />);
+    expect(screen.queryByLabelText(/at least 8 characters/i)).toBeNull();
+    fill("Password", "x");
+    expect(screen.getByLabelText(/at least 8 characters/i)).toBeInTheDocument();
+    // no confirm field on sign-in
+    expect(screen.queryByLabelText("Confirm password")).toBeNull();
+  });
+
+  it("toggles password visibility via the eyeball", () => {
+    render(<AuthForm />);
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
   });
 
   it("shows a friendly message on bad credentials", async () => {
     signIn.mockRejectedValue({ name: "NotAuthorizedException" });
     render(<AuthForm />);
-    fill(/email/i, "a@b.com");
-    fill(/password/i, "wrong");
+    fill("Email", "a@b.com");
+    fill("Password", "Password1");
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/incorrect email or password/i);
   });
@@ -76,19 +95,42 @@ describe("AuthForm", () => {
     signIn.mockRejectedValue({ name: "UserNotConfirmedException" });
     resendSignUpCode.mockResolvedValue({});
     render(<AuthForm />);
-    fill(/email/i, "a@b.com");
-    fill(/password/i, "Password1");
+    fill("Email", "a@b.com");
+    fill("Password", "Password1");
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("button", { name: /confirm/i })).toBeInTheDocument();
     await waitFor(() => expect(resendSignUpCode).toHaveBeenCalledWith({ username: "a@b.com" }));
   });
 
-  it("signs up and advances to the confirm view", async () => {
+  it("gates sign-up until the criteria pass AND the confirm matches", () => {
+    mockSearch = "mode=signup";
+    render(<AuthForm />);
+    const btn = screen.getByRole("button", { name: /create account/i });
+    fill("Email", "new@b.com");
+    fill("Password", "Password1"); // meets criteria, confirm still empty
+    expect(btn).toBeDisabled();
+    fill("Confirm password", "Password2"); // mismatch
+    expect(btn).toBeDisabled();
+    fill("Confirm password", "Password1"); // match
+    expect(btn).toBeEnabled();
+  });
+
+  it("keeps sign-up disabled for a too-weak password even if confirm matches", () => {
+    mockSearch = "mode=signup";
+    render(<AuthForm />);
+    fill("Email", "new@b.com");
+    fill("Password", "weak");
+    fill("Confirm password", "weak");
+    expect(screen.getByRole("button", { name: /create account/i })).toBeDisabled();
+  });
+
+  it("signs up with the right args once valid and advances to the confirm view", async () => {
     mockSearch = "mode=signup";
     signUp.mockResolvedValue({ isSignUpComplete: false });
     render(<AuthForm />);
-    fill(/email/i, "new@b.com");
-    fill(/password/i, "Password1");
+    fill("Email", "new@b.com");
+    fill("Password", "Password1");
+    fill("Confirm password", "Password1");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     await waitFor(() =>
       expect(signUp).toHaveBeenCalledWith({
@@ -106,8 +148,9 @@ describe("AuthForm", () => {
     confirmSignUp.mockResolvedValue({ isSignUpComplete: true });
     signIn.mockResolvedValue({ isSignedIn: true });
     render(<AuthForm />);
-    fill(/email/i, "new@b.com");
-    fill(/password/i, "Password1");
+    fill("Email", "new@b.com");
+    fill("Password", "Password1");
+    fill("Confirm password", "Password1");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
     const codeInput = await screen.findByLabelText(/code/i);
     fireEvent.change(codeInput, { target: { value: "123456" } });
@@ -124,14 +167,29 @@ describe("AuthForm", () => {
     expect(signInWithRedirect).toHaveBeenCalledWith({ provider: "Google" });
   });
 
-  it("runs the forgot-password flow into the reset view", async () => {
+  it("runs forgot -> reset and gates the reset submit until valid", async () => {
     resetPassword.mockResolvedValue({});
+    confirmResetPassword.mockResolvedValue({});
     render(<AuthForm />);
     fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
-    fill(/email/i, "a@b.com");
+    fill("Email", "a@b.com");
     fireEvent.click(screen.getByRole("button", { name: /send reset code/i }));
     await waitFor(() => expect(resetPassword).toHaveBeenCalledWith({ username: "a@b.com" }));
-    expect(await screen.findByRole("button", { name: /set new password/i })).toBeInTheDocument();
+
+    const setBtn = await screen.findByRole("button", { name: /set new password/i });
+    fireEvent.change(screen.getByLabelText("Reset code"), { target: { value: "654321" } });
+    fill("New password", "Password1");
+    expect(setBtn).toBeDisabled(); // confirm empty
+    fill("Confirm new password", "Password1");
+    expect(setBtn).toBeEnabled();
+    fireEvent.click(setBtn);
+    await waitFor(() =>
+      expect(confirmResetPassword).toHaveBeenCalledWith({
+        username: "a@b.com",
+        confirmationCode: "654321",
+        newPassword: "Password1",
+      })
+    );
   });
 
   it("surfaces the Google error from ?error=google", () => {

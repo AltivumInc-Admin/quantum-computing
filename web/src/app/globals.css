@@ -12,6 +12,12 @@
   --color-warm: oklch(0.78 0.12 75);
   --color-warm-light: oklch(0.88 0.08 75);
   --color-warm-dark: oklch(0.52 0.12 75);
+  --color-success: oklch(0.72 0.15 150);
+  --color-success-light: oklch(0.82 0.13 150);
+  --color-success-dark: oklch(0.52 0.13 150);
+  --color-danger: oklch(0.62 0.2 25);
+  --color-danger-light: oklch(0.72 0.17 25);
+  --color-danger-dark: oklch(0.5 0.18 25);
   --font-sans: var(--font-jakarta), system-ui, sans-serif;
   --font-display: var(--font-instrument), Georgia, serif;
   --radius-chip: 0.5rem;
