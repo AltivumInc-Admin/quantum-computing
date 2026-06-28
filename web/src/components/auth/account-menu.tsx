@@ -44,7 +44,7 @@ export function AccountMenu() {
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        aria-haspopup="menu"
+        aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
@@ -56,7 +56,6 @@ export function AccountMenu() {
       </button>
       {open && (
         <div
-          role="menu"
           className="absolute right-0 mt-2 w-44 rounded-card border border-gray-200/70 dark:border-white/[0.08] bg-(--surface-1) p-1.5 shadow-(--shadow-resting)"
         >
           <Link

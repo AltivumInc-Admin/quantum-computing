@@ -101,7 +101,7 @@ export function AuthForm() {
       </h1>
 
       {error && (
-        <p role="alert" aria-live="polite" className="mt-4 text-sm text-warm-dark dark:text-warm-light">
+        <p role="alert" className="mt-4 text-sm text-warm-dark dark:text-warm-light">
           {error}
         </p>
       )}
