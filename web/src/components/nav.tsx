@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
 import { ReviewNavBadge } from "./review-nav-badge";
+import { AccountMenu } from "./auth/account-menu";
 
 export function Nav() {
   return (
@@ -22,6 +23,7 @@ export function Nav() {
         </Link>
         <div className="flex items-center gap-1.5">
           <ReviewNavBadge />
+          <AccountMenu />
           <ThemeToggle />
         </div>
       </nav>
