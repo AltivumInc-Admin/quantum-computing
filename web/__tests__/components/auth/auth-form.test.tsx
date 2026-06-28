@@ -197,4 +197,43 @@ describe("AuthForm", () => {
     render(<AuthForm />);
     expect(screen.getByRole("alert")).toHaveTextContent(/google sign-in/i);
   });
+
+  // Reaches the confirm view via sign-up (which does NOT auto-resend), so the manual
+  // resend button starts idle with no cooldown.
+  async function toConfirmView() {
+    mockSearch = "mode=signup";
+    signUp.mockResolvedValue({ isSignUpComplete: false });
+    render(<AuthForm />);
+    fill("Email", "new@b.com");
+    fill("Password", "Password1");
+    fill("Confirm password", "Password1");
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+    return screen.findByRole("button", { name: /^resend code$/i });
+  }
+
+  it("resend: success confirms a code was sent and starts a cooldown", async () => {
+    resendSignUpCode.mockResolvedValue({});
+    const resendBtn = await toConfirmView();
+    fireEvent.click(resendBtn);
+    await waitFor(() =>
+      expect(resendSignUpCode).toHaveBeenCalledWith({ username: "new@b.com" })
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(/code is on its way/i);
+    expect(screen.getByRole("button", { name: /resend code \(\d+s\)/i })).toBeDisabled();
+  });
+
+  it("resend: failure surfaces a mapped error and does not throw", async () => {
+    resendSignUpCode.mockRejectedValue({ name: "LimitExceededException" });
+    const resendBtn = await toConfirmView();
+    fireEvent.click(resendBtn);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/too many attempts/i);
+  });
+
+  it("resend: rapid double-click only sends one code", async () => {
+    resendSignUpCode.mockResolvedValue({});
+    const resendBtn = await toConfirmView();
+    fireEvent.click(resendBtn);
+    fireEvent.click(resendBtn); // immediately again — guarded by sending/cooldown + disabled
+    await waitFor(() => expect(resendSignUpCode).toHaveBeenCalledTimes(1));
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   signUp,
@@ -36,6 +36,17 @@ export function AuthForm() {
     params.get("error") === "google" ? "Google sign-in didn't complete. Please try again." : null
   );
   const [busy, setBusy] = useState(false);
+  // Resend-code feedback + a cooldown that guards rapid re-clicks straight into a
+  // Cognito rate-limit and gives the user explicit confirmation a code was re-sent.
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendCooldown, setResendCooldown] = useState(0); // seconds remaining
+
+  // Tick the cooldown down to zero, one second at a time.
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
 
   // Navigate between views, clearing the confirm field + any error so a confirm
   // value never carries between the sign-up and reset views.
@@ -61,6 +72,7 @@ export function AuthForm() {
         if (m.view === "confirm") {
           try {
             await resendSignUpCode({ username: email });
+            setResendCooldown(30); // reflect the just-sent code on the manual button
           } catch {
             /* best effort — the message already tells them to check email */
           }
@@ -95,8 +107,18 @@ export function AuthForm() {
   const doGoogle = () => {
     void signInWithRedirect({ provider: "Google" });
   };
-  const resend = () => {
-    void resendSignUpCode({ username: email });
+  const resend = async () => {
+    if (resendState === "sending" || resendCooldown > 0) return; // guard double-click + cooldown
+    setResendState("sending");
+    setError(null);
+    try {
+      await resendSignUpCode({ username: email });
+      setResendState("sent");
+      setResendCooldown(30);
+    } catch (err) {
+      setResendState("error");
+      setError(mapAuthError(err).message);
+    }
   };
 
   const title: Record<AuthView, string> = {
@@ -189,10 +211,24 @@ export function AuthForm() {
           <button type="submit" disabled={busy} className={primaryBtn}>
             {busy ? "Confirming…" : "Confirm"}
           </button>
-          <div className="text-center">
-            <button type="button" className={linkBtn} onClick={resend}>
-              Resend code
+          <div className="space-y-1 text-center">
+            <button
+              type="button"
+              className={`${linkBtn} disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline`}
+              onClick={() => void resend()}
+              disabled={resendState === "sending" || resendCooldown > 0}
+            >
+              {resendCooldown > 0
+                ? `Resend code (${resendCooldown}s)`
+                : resendState === "sending"
+                  ? "Sending…"
+                  : "Resend code"}
             </button>
+            {resendState === "sent" && (
+              <p role="status" className="text-xs text-gray-500 dark:text-gray-400">
+                A new code is on its way.
+              </p>
+            )}
           </div>
         </form>
       )}
