@@ -21,6 +21,13 @@ jest.mock("@/components/theme-toggle", () => ({
   },
 }));
 
+jest.mock("@/components/auth/account-menu", () => ({
+  AccountMenu: () => {
+    const React = require("react");
+    return React.createElement("div", { "data-testid": "account-menu" }, "account-menu");
+  },
+}));
+
 describe("Nav", () => {
   it("should render a header element", () => {
     render(<Nav />);
@@ -41,5 +48,10 @@ describe("Nav", () => {
   it("should render the ThemeToggle component", () => {
     render(<Nav />);
     expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
+  });
+
+  it("should render the AccountMenu", () => {
+    render(<Nav />);
+    expect(screen.getByTestId("account-menu")).toBeInTheDocument();
   });
 });
