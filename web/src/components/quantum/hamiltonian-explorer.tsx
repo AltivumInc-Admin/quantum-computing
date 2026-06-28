@@ -6,6 +6,7 @@ import { h2OneQubit, type H2Point } from "./chemistry";
 import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { parseJsonObject } from "./parse-utils";
+import { formatFixed, formatAngstrom, angstromSR, hartreeSR } from "./format";
 
 /**
  * Inline H2 Hamiltonian + symmetry-tapering explorer rendered from a ```qham
@@ -22,7 +23,6 @@ import { parseJsonObject } from "./parse-utils";
  */
 
 const BAR_PRECISION = 4; // signed coefficient digits
-const R_PRECISION = 2; // bond length digits (Angstrom)
 
 // ---------------------------------------------------------------------------
 // Parsing + validation
@@ -104,8 +104,10 @@ function ErrorCard({ message }: { message: string }) {
 // ---------------------------------------------------------------------------
 
 function signed(x: number, digits: number): string {
-  const s = x.toFixed(digits);
-  return x >= 0 && !s.startsWith("-") ? `+${s}` : s;
+  // formatFixed snaps a near-zero/-0 coefficient to "0...", so a tiny negative
+  // term renders "+0.0000" instead of the misleading "-0.0000".
+  const s = formatFixed(x, digits);
+  return s.startsWith("-") ? s : `+${s}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,12 +207,12 @@ export function HamiltonianExplorer({ source }: { source: string }) {
   const animate = !reduced;
 
   const listLabel = tapered
-    ? `Single-qubit tapered H2 Hamiltonian: 3 weighted Pauli terms at bond length ${R.toFixed(
-        R_PRECISION
-      )} Angstrom, largest magnitude ${maxMag.toFixed(BAR_PRECISION)} Hartree.`
-    : `Four-qubit Jordan-Wigner H2 Hamiltonian: 15 weighted Pauli terms at bond length ${R.toFixed(
-        R_PRECISION
-      )} Angstrom, largest magnitude ${maxMag.toFixed(BAR_PRECISION)} Hartree.`;
+    ? `Single-qubit tapered H2 Hamiltonian: 3 weighted Pauli terms at bond length ${angstromSR(
+        R
+      )}, largest magnitude ${hartreeSR(maxMag)}.`
+    : `Four-qubit Jordan-Wigner H2 Hamiltonian: 15 weighted Pauli terms at bond length ${angstromSR(
+        R
+      )}, largest magnitude ${hartreeSR(maxMag)}.`;
 
   return (
     <WidgetCard
@@ -223,9 +225,9 @@ export function HamiltonianExplorer({ source }: { source: string }) {
       }
     >
       <LiveStatus>
-        {`${tapered ? "Tapered 1-qubit" : "4-qubit"} H2 at R = ${R.toFixed(
-          2
-        )} angstrom. Largest term ${shownTerms[0].label} = ${signed(
+        {`${tapered ? "Tapered 1-qubit" : "4-qubit"} H2 at R = ${angstromSR(
+          R
+        )}. Largest term ${shownTerms[0].label} = ${signed(
           shownTerms[0].coeff,
           BAR_PRECISION
         )} hartree.`}
@@ -241,8 +243,8 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           step={stepR}
           onChange={setR}
           ariaLabel="H2 bond length R in Angstrom"
-          ariaValueText={`${R.toFixed(R_PRECISION)} Angstrom`}
-          display={<>{R.toFixed(R_PRECISION)} &#8491;</>}
+          ariaValueText={angstromSR(R)}
+          display={formatAngstrom(R)}
           labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
           valueWidth="w-20"
         />
@@ -259,7 +261,7 @@ export function HamiltonianExplorer({ source }: { source: string }) {
             {tapered ? "Show full 4-qubit Hamiltonian" : "Apply Z2 symmetry tapering"}
           </button>
           <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-            sampled at R = {point.R.toFixed(R_PRECISION)} &#8491;
+            sampled at R = {formatAngstrom(point.R)}
           </span>
         </div>
 

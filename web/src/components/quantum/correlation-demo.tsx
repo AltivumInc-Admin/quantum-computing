@@ -5,6 +5,7 @@ import { simulate, probabilities, basisLabel } from "./math";
 import { opsFor } from "./qsim-dsl";
 import { parseCorrelation, sampleOutcome } from "./correlation";
 import { GateChips, WidgetCard } from "./widget-ui";
+import { formatPercent } from "./format";
 import type { Program } from "./qsim-dsl";
 
 /**
@@ -66,7 +67,7 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
                 {measurements > 0 ? (
                   <>
                     <span className="text-gray-700 dark:text-gray-200">{count}</span>
-                    <span className="text-gray-400 dark:text-gray-600"> / {pct.toFixed(1)}%</span>
+                    <span className="text-gray-400 dark:text-gray-600"> / {formatPercent(pct)}</span>
                   </>
                 ) : (
                   <span>0</span>

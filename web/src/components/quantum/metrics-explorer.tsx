@@ -10,7 +10,7 @@ import {
 } from "./chemistry";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { parseJsonObject } from "./parse-utils";
-import { formatHartree, hartreeSR } from "./format";
+import { formatHartree, formatAngstrom, hartreeSR } from "./format";
 
 /**
  * Inline live-metrics dashboard rendered from a ```qmetrics fenced block in the
@@ -223,7 +223,7 @@ export function MetricsExplorer({ source }: { source: string }) {
       header={
         <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
           <EyebrowLabel>Live job metrics</EyebrowLabel>
-          <Chip>R = {parsed.R.toFixed(2)} &#8491;</Chip>
+          <Chip>R = {formatAngstrom(parsed.R)}</Chip>
           <Chip>metric: energy</Chip>
           <span
             className={

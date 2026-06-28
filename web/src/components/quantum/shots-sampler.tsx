@@ -5,6 +5,7 @@ import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { sampleCounts } from "./shots";
 import { LiveStatus } from "./widget-ui";
+import { formatPercent } from "./format";
 
 /**
  * Inline shots-sampler widget rendered from a ```qshots fenced block in a
@@ -60,9 +61,9 @@ export function ShotsSampler({ source }: { source: string }) {
           ? `Sampled ${total} shots. Most-probable |${basisLabel(
               empiricalArgmax,
               program.n
-            )}⟩: empirical ${((counts[empiricalArgmax] / total) * 100).toFixed(
-              1
-            )}%, exact ${(probs[empiricalArgmax] * 100).toFixed(1)}%.`
+            )}⟩: empirical ${formatPercent(
+              (counts[empiricalArgmax] / total) * 100
+            )}, exact ${formatPercent(probs[empiricalArgmax] * 100)}.`
           : ""}
       </LiveStatus>
 
@@ -116,8 +117,8 @@ export function ShotsSampler({ source }: { source: string }) {
       <div className="px-4 py-4 space-y-2">
         {probs.map((p, idx) => {
           const empirical = total > 0 ? counts![idx] / total : 0;
-          const exactPct = (p * 100).toFixed(1);
-          const empiricalPct = (empirical * 100).toFixed(1);
+          const exactPct = formatPercent(p * 100);
+          const empiricalPct = formatPercent(empirical * 100);
 
           return (
             <div
@@ -125,8 +126,8 @@ export function ShotsSampler({ source }: { source: string }) {
               className="flex items-center gap-2"
               aria-label={
                 total > 0
-                  ? `Basis ${basisLabel(idx, program.n)}: empirical ${empiricalPct}%, exact ${exactPct}%`
-                  : `Basis ${basisLabel(idx, program.n)}: exact ${exactPct}%`
+                  ? `Basis ${basisLabel(idx, program.n)}: empirical ${empiricalPct}, exact ${exactPct}`
+                  : `Basis ${basisLabel(idx, program.n)}: exact ${exactPct}`
               }
             >
               {/* Basis label */}
@@ -145,7 +146,7 @@ export function ShotsSampler({ source }: { source: string }) {
                 <span
                   className="absolute top-0 bottom-0 w-0.5 bg-accent dark:bg-accent-light"
                   style={{ left: `${(p * 100).toFixed(2)}%` }}
-                  title={`Exact: ${exactPct}%`}
+                  title={`Exact: ${exactPct}`}
                 />
               </span>
 
@@ -153,11 +154,11 @@ export function ShotsSampler({ source }: { source: string }) {
               <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
                 {total > 0 ? (
                   <>
-                    <span className="text-gray-700 dark:text-gray-200">{empiricalPct}%</span>
-                    <span className="text-gray-400 dark:text-gray-600"> / {exactPct}%</span>
+                    <span className="text-gray-700 dark:text-gray-200">{empiricalPct}</span>
+                    <span className="text-gray-400 dark:text-gray-600"> / {exactPct}</span>
                   </>
                 ) : (
-                  <span>{exactPct}%</span>
+                  <span>{exactPct}</span>
                 )}
               </span>
             </div>

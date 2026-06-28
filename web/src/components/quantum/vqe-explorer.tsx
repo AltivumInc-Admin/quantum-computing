@@ -13,7 +13,7 @@ import {
 import { H2 } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { parseJsonObject } from "./parse-utils";
-import { formatFixed, formatHartree, formatRadians, hartreeSR, angstromSR } from "./format";
+import { formatFixed, formatHartree, formatAngstrom, formatRadians, hartreeSR, angstromSR } from "./format";
 
 /**
  * Inline single-qubit VQE energy-landscape explorer rendered from a ```qvqe
@@ -203,7 +203,7 @@ export function VqeExplorer({ source }: { source: string }) {
         <>
           <Chip>1q ansatz</Chip>
           <Chip>STO-3G</Chip>
-          <Chip>R = {R.toFixed(2)} &#8491;</Chip>
+          <Chip>R = {formatAngstrom(R)}</Chip>
         </>
       }
     >

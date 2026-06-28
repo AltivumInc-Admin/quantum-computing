@@ -13,6 +13,7 @@ import {
   type Point,
 } from "./kernel";
 import { parseJsonObject } from "./parse-utils";
+import { formatPercent } from "./format";
 
 /**
  * Inline quantum-kernel decision-boundary explorer rendered from a ```qkernel
@@ -208,11 +209,11 @@ export function KernelExplorer({ source }: { source: string }) {
           <div role="status" aria-live="polite">
             <p className="text-sm text-gray-800 dark:text-gray-200">
               quantum-kernel accuracy ={" "}
-              <span className="font-semibold tabular-nums">{(acc * 100).toFixed(0)}%</span>
+              <span className="font-semibold tabular-nums">{formatPercent(acc * 100, 0)}</span>
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               linear baseline ={" "}
-              <span className="font-semibold tabular-nums">{(baseline * 100).toFixed(0)}%</span>
+              <span className="font-semibold tabular-nums">{formatPercent(baseline * 100, 0)}</span>
             </p>
           </div>
 

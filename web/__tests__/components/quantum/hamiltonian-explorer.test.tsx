@@ -46,4 +46,31 @@ describe("HamiltonianExplorer", () => {
     expect(status).toHaveTextContent(/R = /);
     expect(status).toHaveTextContent(/hartree/i);
   });
+
+  it("uses lowercase screen-reader units (angstrom/hartree), never a capitalized unit", () => {
+    const { container } = render(
+      <HamiltonianExplorer source={JSON.stringify({ R: 0.75, tapered: false })} />
+    );
+    const text = container.textContent ?? "";
+    // The SR readout spells the units out in lowercase ("0.75 angstrom ... hartree").
+    expect(text).toMatch(/\bangstrom\b/);
+    expect(text).toMatch(/\bhartree\b/);
+    // The unit is never a number-prefixed capital ("0.75 Angstrom" / "1.1 Hartree").
+    // "Hartree-Fock" (the method, a proper noun) is intentionally still allowed.
+    expect(text).not.toMatch(/\d\s*Angstrom/);
+    expect(text).not.toMatch(/\d\s*Hartree/);
+  });
+
+  it("never renders a negative-zero coefficient (signed() snaps -0 to +0)", () => {
+    // Sweep tapered + full across bond lengths so any near-zero term is exercised.
+    for (const R of [0.5, 0.74, 1.2, 2.0]) {
+      for (const tapered of [false, true]) {
+        const { container, unmount } = render(
+          <HamiltonianExplorer source={JSON.stringify({ R, tapered })} />
+        );
+        expect(container.textContent ?? "").not.toMatch(/-0\.0000/);
+        unmount();
+      }
+    }
+  });
 });

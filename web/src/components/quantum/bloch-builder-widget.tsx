@@ -6,6 +6,7 @@ import { BlochDial } from "./bloch-dial";
 import { stateFromAngles, probsFromAngles } from "./bloch-builder";
 import { GateChip, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
+import { formatRadians } from "./format";
 
 const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
 
@@ -63,7 +64,7 @@ export function BlochBuilder() {
         onChange={setTheta}
         ariaLabel="Polar angle theta in radians"
         ariaValueText={`${theta.toFixed(2)} radians`}
-        display={`${theta.toFixed(2)} rad`}
+        display={formatRadians(theta)}
         rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
         labelClassName="w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
       />
@@ -78,7 +79,7 @@ export function BlochBuilder() {
         onChange={setPhi}
         ariaLabel="Azimuthal angle phi in radians"
         ariaValueText={`${phi.toFixed(2)} radians`}
-        display={`${phi.toFixed(2)} rad`}
+        display={formatRadians(phi)}
         rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
         labelClassName="w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
       />

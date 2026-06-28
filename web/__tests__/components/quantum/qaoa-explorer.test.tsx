@@ -25,4 +25,10 @@ describe("QaoaExplorer", () => {
     expect(screen.getByText(/vertex 0 on the left/i)).toBeInTheDocument();
     expect(screen.getAllByText(/%$/).length).toBeGreaterThanOrEqual(8);
   });
+  it("shows the gamma/beta slider readouts with a 'rad' unit (consistent with the F6 sliders)", () => {
+    render(<QaoaExplorer source={JSON.stringify({ edges: [[0, 1], [1, 2], [2, 0]] })} />);
+    // Both angle sliders now route their visible value through formatRadians,
+    // so each renders "<value> rad" instead of a bare number (doc: F8 was bare).
+    expect(screen.getAllByText(/^\d\.\d{2} rad$/).length).toBeGreaterThanOrEqual(2);
+  });
 });
