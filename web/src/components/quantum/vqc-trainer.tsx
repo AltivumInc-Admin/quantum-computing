@@ -11,6 +11,7 @@ import {
   type Point,
 } from "./vqc";
 import { parseJsonObject } from "./parse-utils";
+import { formatPercent } from "./format";
 
 /**
  * Inline variational-quantum-classifier trainer rendered from a ```qvqc fenced
@@ -271,7 +272,7 @@ export function VqcTrainer({ source }: { source: string }) {
           >
             {`step ${step} · loss ${loss.toFixed(3)} · accuracy `}
             <span className="text-accent dark:text-accent-light">
-              {(acc * 100).toFixed(0)}%
+              {formatPercent(acc * 100, 0)}
             </span>
           </p>
 

@@ -5,6 +5,7 @@ import { simulate, probabilities } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial } from "./bloch-dial";
 import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import { formatRadians } from "./format";
 
 /**
  * Inline, zero-boot quantum readout rendered from a ```qsim fenced block in a
@@ -62,7 +63,7 @@ export function CircuitLab({ source }: { source: string }) {
           onChange={setTheta}
           ariaLabel="Rotation angle theta in radians"
           ariaValueText={`${theta.toFixed(2)} radians`}
-          display={`${theta.toFixed(2)} rad`}
+          display={formatRadians(theta)}
           rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
           labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
         />

@@ -5,7 +5,7 @@ import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from ".
 import { H2 as H } from "./h2-data";
 import { h2Energies, oneQubitGroundEnergy } from "./chemistry";
 import { parseJsonObject } from "./parse-utils";
-import { formatHartree, hartreeSR, angstromSR } from "./format";
+import { formatHartree, formatAngstrom, hartreeSR, angstromSR } from "./format";
 
 /**
  * Inline potential-energy-surface explorer rendered from a ```qpes fenced block.
@@ -323,7 +323,7 @@ export function PesExplorer({ source }: { source: string }) {
             onChange={setMark}
             ariaLabel="Bond length scrubber in angstrom"
             ariaValueText={`${angstromSR(mark)}; FCI ${hartreeSR(readout.fci, 3)}, Hartree-Fock ${hartreeSR(readout.hf, 3)}, gap ${hartreeSR(readout.gap, 3)}`}
-            display={<>{mark.toFixed(2)} &#8491;</>}
+            display={formatAngstrom(mark)}
           />
 
           {/* readout */}
@@ -348,7 +348,7 @@ export function PesExplorer({ source }: { source: string }) {
           <dl className="mt-3 space-y-1.5 border-t border-gray-100 dark:border-gray-800 pt-3 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
             <div className="flex items-center justify-between gap-2">
               <dt>equilibrium R</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{geom.eqR.toFixed(2)} &#8491;</dd>
+              <dd className="text-gray-700 dark:text-gray-200">{formatAngstrom(geom.eqR)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>min FCI</dt>

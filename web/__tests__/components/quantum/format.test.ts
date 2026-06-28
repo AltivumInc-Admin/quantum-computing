@@ -5,6 +5,8 @@ import {
   formatAngstrom,
   angstromSR,
   formatRadians,
+  formatPercent,
+  percentSR,
 } from "../../../src/components/quantum/format";
 
 describe("formatFixed", () => {
@@ -34,4 +36,21 @@ describe("angstromSR", () => {
 describe("formatRadians", () => {
   it("appends rad", () => expect(formatRadians(0.4)).toBe("0.40 rad"));
   it("snaps -0 near zero", () => expect(formatRadians(0)).toBe("0.00 rad"));
+});
+
+describe("formatPercent", () => {
+  it("takes an already-scaled percentage and appends %", () =>
+    expect(formatPercent(42.5)).toBe("42.5%"));
+  it("defaults to 1 digit, identical to a bare toFixed for non-negative", () =>
+    expect(formatPercent(7.5 * 100, 1)).toBe((7.5 * 100).toFixed(1) + "%"));
+  it("honors custom digit counts", () => expect(formatPercent(99.6, 0)).toBe("100%"));
+  it("snaps a noisy negative-zero to 0, not -0.0%", () =>
+    expect(formatPercent(-1e-9)).toBe("0.0%"));
+});
+
+describe("percentSR", () => {
+  it("spells out the unit for screen readers", () =>
+    expect(percentSR(80)).toBe("80.0 percent"));
+  it("honors custom digit counts and snaps -0", () =>
+    expect(percentSR(-0, 0)).toBe("0 percent"));
 });

@@ -5,6 +5,7 @@ import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { noisyRho, stateFidelity, type ChannelName } from "./noise";
 import { ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
+import { formatPercent, percentSR } from "./format";
 
 /**
  * Inline noise-visualizer widget rendered from a ```qnoise fenced block in a
@@ -72,7 +73,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
         mi = i;
       }
     }
-    return `Largest shift at basis ${basisLabel(mi, program.n)}: ideal ${((ideal[mi] ?? 0) * 100).toFixed(0)} percent, noisy ${((noisy[mi] ?? 0) * 100).toFixed(0)} percent.`;
+    return `Largest shift at basis ${basisLabel(mi, program.n)}: ideal ${percentSR((ideal[mi] ?? 0) * 100, 0)}, noisy ${percentSR((noisy[mi] ?? 0) * 100, 0)}.`;
   }, [ideal, noisy, valid, program.n]);
 
   if (program.error) {
@@ -136,7 +137,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
                     />
                   </span>
                   <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                    {(idealP * 100).toFixed(1)}%
+                    {formatPercent(idealP * 100)}
                   </span>
                 </div>
                 {/* Noisy bar */}
@@ -149,7 +150,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
                     />
                   </span>
                   <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                    {(noisyP * 100).toFixed(1)}%
+                    {formatPercent(noisyP * 100)}
                   </span>
                 </div>
               </div>
@@ -191,8 +192,8 @@ export function NoiseVisualizer({ source }: { source: string }) {
           step={0.01}
           onChange={setP}
           ariaLabel={parameterLabel(channel)}
-          ariaValueText={`${(pClamped * 100).toFixed(0)}%`}
-          display={`${(pClamped * 100).toFixed(0)}%`}
+          ariaValueText={formatPercent(pClamped * 100, 0)}
+          display={formatPercent(pClamped * 100, 0)}
           labelClassName="shrink-0 text-xs text-gray-600 dark:text-gray-300"
           valueWidth="w-10"
         />

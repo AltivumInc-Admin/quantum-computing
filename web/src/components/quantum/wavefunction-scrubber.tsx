@@ -7,6 +7,7 @@ import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial } from "./bloch-dial";
 import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
+import { formatRadians } from "./format";
 
 /**
  * Scrubbable, gate-by-gate state-evolution player rendered from a ```qscrub
@@ -146,7 +147,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
           onChange={setTheta}
           ariaLabel="Rotation angle theta in radians"
           ariaValueText={`${theta.toFixed(2)} radians`}
-          display={`${theta.toFixed(2)} rad`}
+          display={formatRadians(theta)}
           rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
           labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
         />

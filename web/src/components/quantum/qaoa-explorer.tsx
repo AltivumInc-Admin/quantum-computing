@@ -11,6 +11,7 @@ import {
   type Edge,
 } from "./qaoa";
 import { parseJsonObject } from "./parse-utils";
+import { formatRadians } from "./format";
 
 /**
  * Inline QAOA / variational-landscape explorer rendered from a ```qoptim fenced
@@ -318,7 +319,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             onChange={setGamma}
             ariaLabel="QAOA cost angle gamma in radians"
             ariaValueText={`${gamma.toFixed(2)} radians`}
-            display={gamma.toFixed(2)}
+            display={formatRadians(gamma)}
             rowClassName="mt-3 flex items-center gap-3"
             labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
             valueWidth="w-14"
@@ -334,7 +335,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             onChange={setBeta}
             ariaLabel="QAOA mixer angle beta in radians"
             ariaValueText={`${beta.toFixed(2)} radians`}
-            display={beta.toFixed(2)}
+            display={formatRadians(beta)}
             rowClassName="mt-2 flex items-center gap-3"
             labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
             valueWidth="w-14"
