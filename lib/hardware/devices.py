@@ -76,8 +76,20 @@ def run_circuit(
     if s3_location is None:
         raise ValueError("s3_location required for AWS devices: (bucket, prefix)")
     provider = _COST_PROVIDER.get(device_name)
-    if provider is not None:
-        print(format_cost_warning(provider, shots=shots))
+    if provider is None:
+        # Fail CLOSED. The cost-awareness rule is only as strong as this lookup, and
+        # DEVICE_ARNS / _COST_PROVIDER are two hand-synced dicts. A billable device with
+        # no known cost provider must NEVER dispatch — raise here, before get_device
+        # constructs any AwsDevice (so we keep the no-network/no-credentials guarantee).
+        if device_name not in DEVICE_ARNS:
+            raise ValueError(
+                f"Unknown device: {device_name}. Known: {['local'] + list(DEVICE_ARNS.keys())}"
+            )
+        raise ValueError(
+            f"Billable device {device_name!r} has no _COST_PROVIDER entry; refusing to "
+            f"dispatch without a cost estimate. Sync DEVICE_ARNS and _COST_PROVIDER."
+        )
+    print(format_cost_warning(provider, shots=shots))
 
     device = get_device(device_name)
     task = device.run(circuit, s3_destination_folder=s3_location, shots=shots)
