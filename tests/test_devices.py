@@ -45,26 +45,34 @@ def test_device_arns_are_valid_format():
         assert arn.startswith("arn:aws:braket:"), f"Invalid ARN for {name}"
 
 
-def test_every_billable_device_has_a_cost_provider():
-    # The fail-closed gate only protects spend if every billable device maps to a priced
-    # provider. Enforce the two hand-synced dicts (+ cost.PRICING) in CI so they can't drift.
-    from lib.hardware.devices import _COST_PROVIDER
+def test_every_device_provider_is_priced():
+    # Single-sourced registry: every device's provider must exist in cost.PRICING so the cost
+    # gate can always produce an estimate (PRICING may carry extra reference-only rows).
+    from lib.hardware.devices import DEVICES
     from lib.utils.cost import PRICING
 
-    assert set(DEVICE_ARNS) == set(_COST_PROVIDER)
-    for provider in _COST_PROVIDER.values():
-        assert provider in PRICING, f"{provider} missing from cost.PRICING"
+    for name, spec in DEVICES.items():
+        assert spec["provider"] in PRICING, (
+            f"{name} -> {spec['provider']} missing from cost.PRICING"
+        )
 
 
-def test_run_circuit_fails_closed_when_provider_missing(monkeypatch):
-    # A billable device added to DEVICE_ARNS but forgotten in _COST_PROVIDER must NOT
-    # dispatch silently — it must raise before any AwsDevice is constructed (no network).
+def test_device_arns_match_the_single_source():
+    # DEVICE_ARNS is a derived backwards-compatible view; it must stay in lockstep with DEVICES.
+    from lib.hardware.devices import DEVICES
+
+    assert DEVICE_ARNS == {name: spec["arn"] for name, spec in DEVICES.items()}
+
+
+def test_run_circuit_fails_closed_on_unpriced_provider(monkeypatch):
+    # A device whose provider has no cost.PRICING entry must NOT dispatch — the cost lookup
+    # raises before any AwsDevice is constructed (no network).
     import lib.hardware.devices as dev
 
-    patched = dict(dev._COST_PROVIDER)
-    patched.pop("sv1")
-    monkeypatch.setattr(dev, "_COST_PROVIDER", patched)
+    patched = dict(dev.DEVICES)
+    patched["mystery"] = {"arn": "arn:aws:braket:::device/qpu/x/Mystery", "provider": "NoPrice"}
+    monkeypatch.setattr(dev, "DEVICES", patched)
 
     circuit = Circuit().h(0)
-    with pytest.raises(ValueError, match="no _COST_PROVIDER entry"):
-        dev.run_circuit(circuit, device_name="sv1", shots=10, s3_location=("b", "p"))
+    with pytest.raises(ValueError, match="Unknown provider"):
+        dev.run_circuit(circuit, device_name="mystery", shots=10, s3_location=("b", "p"))

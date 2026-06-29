@@ -59,6 +59,15 @@ class TestEstimateCost:
         cost = estimate_cost("SV1", shots=1000, estimated_minutes=0)
         assert cost == 0.0
 
+    def test_nonfinite_shots_raises(self):
+        # NaN/inf must fail loudly: a NaN cost makes any `cost > budget` gate check False.
+        with pytest.raises(ValueError, match="shots must be finite"):
+            estimate_cost("IonQ", shots=float("nan"))
+
+    def test_nonfinite_minutes_raises(self):
+        with pytest.raises(ValueError, match="estimated_minutes must be finite"):
+            estimate_cost("SV1", estimated_minutes=float("inf"))
+
 
 class TestFormatCostWarning:
     def test_qpu_format(self):
@@ -76,3 +85,15 @@ class TestFormatCostWarning:
         warning = format_cost_warning("SV1", shots=500, estimated_minutes=2.0)
         assert "$" in warning
         assert "SV1" in warning
+
+    def test_zero_minute_simulator_not_labeled_local(self):
+        # SV1 at 0 minutes costs $0 but is NOT local execution — don't mislabel it.
+        warning = format_cost_warning("SV1", shots=1000, estimated_minutes=0)
+        assert "local execution" not in warning
+        assert "SV1" in warning
+
+    def test_per_minute_warning_omits_shots_and_shows_rate(self):
+        # Per-minute pricing ignores shots; the warning must not quote a misleading shots count.
+        warning = format_cost_warning("TN1", shots=5000, estimated_minutes=3.0)
+        assert "5000 shots" not in warning
+        assert "/min" in warning
