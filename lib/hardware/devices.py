@@ -29,14 +29,27 @@ DEVICE_ARNS = {name: spec["arn"] for name, spec in DEVICES.items()}
 # Guardrail against an accidental huge (expensive) submission on a billable device.
 MAX_SHOTS = 100_000
 
+# AwsDevice construction performs a GetDevice network describe; memoize per short-name so
+# repeated same-device runs reuse one object (populated lazily in get_device).
+_AWS_DEVICE_CACHE: dict = {}
+
 
 def get_device(name: str = "local"):
-    """Get a Braket device by short name."""
+    """Get a Braket device by short name.
+
+    Non-local devices are memoized per process — ``AwsDevice`` construction performs a GetDevice
+    network describe, so repeated same-device runs reuse one object. Call
+    ``device.refresh_metadata()`` if you need fresh status.
+    """
     if name == "local":
         return LocalSimulator()
     if name not in DEVICES:
         raise ValueError(f"Unknown device: {name}. Known: {['local'] + list(DEVICES)}")
-    return AwsDevice(DEVICES[name]["arn"])
+    device = _AWS_DEVICE_CACHE.get(name)
+    if device is None:
+        device = AwsDevice(DEVICES[name]["arn"])  # GetDevice describe — once per device per process
+        _AWS_DEVICE_CACHE[name] = device
+    return device
 
 
 def list_available_devices() -> list[dict]:
@@ -63,24 +76,32 @@ def run_circuit(
     visible cost notice. All gating happens before the AwsDevice is constructed,
     so a bad request fails fast with no network/credentials.
     """
-    if device_name == "local":
-        device = get_device(device_name)
-        task = device.run(circuit, shots=shots)
-        return task.result()
-
-    # Cost-awareness gate (billable devices) — validate first, no network yet.
-    if shots <= 0 or shots > MAX_SHOTS:
-        raise ValueError(f"shots must be in 1..{MAX_SHOTS} for billable devices (got {shots})")
-    if s3_location is None:
-        raise ValueError("s3_location required for AWS devices: (bucket, prefix)")
-    spec = DEVICES.get(device_name)
-    if spec is None:
-        raise ValueError(f"Unknown device: {device_name}. Known: {['local'] + list(DEVICES)}")
-    # The single-sourced provider is always present; format_cost_warning -> estimate_cost still
-    # raises "Unknown provider" (before get_device / any network) if it is somehow unpriced, so
-    # the gate stays fail-closed without a separate hand-synced provider map to drift.
-    print(format_cost_warning(spec["provider"], shots=shots, estimated_minutes=estimated_minutes))
+    run_kwargs: dict = {"shots": shots}
+    if device_name != "local":
+        # Cost-awareness gate (billable devices) — validate everything BEFORE get_device, so a
+        # bad request fails fast with no network/credentials.
+        if shots <= 0 or shots > MAX_SHOTS:
+            raise ValueError(f"shots must be in 1..{MAX_SHOTS} for billable devices (got {shots})")
+        if s3_location is None:
+            raise ValueError("s3_location required for AWS devices: (bucket, prefix)")
+        if not (
+            isinstance(s3_location, tuple)
+            and len(s3_location) == 2
+            and all(isinstance(part, str) and part for part in s3_location)
+        ):
+            raise ValueError(
+                f"s3_location must be a (bucket, prefix) tuple of non-empty strings (got {s3_location!r})"
+            )
+        spec = DEVICES.get(device_name)
+        if spec is None:
+            raise ValueError(f"Unknown device: {device_name}. Known: {['local'] + list(DEVICES)}")
+        # The single-sourced provider is always present; format_cost_warning -> estimate_cost still
+        # raises "Unknown provider" (before get_device / any network) if it is somehow unpriced, so
+        # the gate stays fail-closed without a separate hand-synced provider map to drift.
+        print(
+            format_cost_warning(spec["provider"], shots=shots, estimated_minutes=estimated_minutes)
+        )
+        run_kwargs["s3_destination_folder"] = s3_location
 
     device = get_device(device_name)
-    task = device.run(circuit, s3_destination_folder=s3_location, shots=shots)
-    return task.result()
+    return device.run(circuit, **run_kwargs).result()
