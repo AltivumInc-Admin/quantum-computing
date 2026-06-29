@@ -86,6 +86,8 @@ def test_qft_circuit_matches_analytic_dft():
     # Robust to a global phase (fidelity) and to the omega = e^{+/-2pi i/N} convention (max over
     # conj). A Hadamard-only circuit is a REAL +/-1/sqrt(N) vector and scores far below 1 vs both.
     fidelity = max(abs(np.vdot(dft, sv)) ** 2, abs(np.vdot(np.conj(dft), sv)) ** 2)
-    assert fidelity > 0.999, f"QFT statevector does not match the analytic DFT (fidelity={fidelity:.4f})"
+    assert fidelity > 0.999, (
+        f"QFT statevector does not match the analytic DFT (fidelity={fidelity:.4f})"
+    )
     # The Fourier phases must actually be present (a Hadamard-only circuit is purely real).
     assert np.abs(np.asarray(sv).imag).max() > 0.1
