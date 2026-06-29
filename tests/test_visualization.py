@@ -42,6 +42,14 @@ class TestPlotHistogram:
         ax = fig.axes[0]
         assert ax.get_ylabel() == "Probability"
 
+    def test_rejects_empty_counts(self):
+        with pytest.raises(ValueError, match="at least one shot"):
+            plot_histogram(Counter())
+
+    def test_rejects_zero_total_counts(self):
+        with pytest.raises(ValueError, match="at least one shot"):
+            plot_histogram(Counter({"00": 0}))
+
 
 class TestPlotBlochAngles:
     def test_returns_figure(self):

@@ -46,3 +46,19 @@ def test_expectation_from_counts_z_observable():
 
     exp = expectation_from_counts(counts, z_eigenvalue)
     assert abs(exp - 0.4) < 1e-10
+
+
+def test_expectation_from_counts_rejects_zero_total():
+    # Empty Counter (zero-shot result) and a zero-total Counter both have no distribution —
+    # raise clearly instead of returning a silent 0.0 or a bare ZeroDivisionError.
+    with pytest.raises(ValueError, match="at least one shot"):
+        expectation_from_counts(Counter(), lambda b: 1.0)
+    with pytest.raises(ValueError, match="at least one shot"):
+        expectation_from_counts(Counter({"0": 0}), lambda b: 1.0)
+
+
+def test_parse_counts_empty_measurements_is_empty_counter(mock_result_factory):
+    # The deliberate `if len(measurements) else 0` guard must yield an empty Counter for a
+    # zero-shot / empty result, not an IndexError on measurements[0].
+    result = mock_result_factory([])
+    assert parse_counts(result) == Counter()
