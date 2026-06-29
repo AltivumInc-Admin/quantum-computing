@@ -27,17 +27,16 @@ def test_run_circuit_aws_requires_s3():
         run_circuit(circuit, device_name="sv1", shots=10)
 
 
-def test_run_circuit_rejects_nonpositive_shots_on_billable_device():
+@pytest.mark.parametrize(
+    "device_name, shots",
+    [("sv1", 0), ("ionq_aria", 10_000_000)],
+    ids=["nonpositive", "excessive"],
+)
+def test_run_circuit_rejects_out_of_range_shots(device_name, shots):
     # Cost-awareness gate fails fast (before any AwsDevice construction / network).
     circuit = Circuit().h(0)
     with pytest.raises(ValueError, match="shots must be in 1.."):
-        run_circuit(circuit, device_name="sv1", shots=0, s3_location=("b", "p"))
-
-
-def test_run_circuit_rejects_excessive_shots_on_billable_device():
-    circuit = Circuit().h(0)
-    with pytest.raises(ValueError, match="shots must be in 1.."):
-        run_circuit(circuit, device_name="ionq_aria", shots=10_000_000, s3_location=("b", "p"))
+        run_circuit(circuit, device_name=device_name, shots=shots, s3_location=("b", "p"))
 
 
 def test_device_arns_are_valid_format():
@@ -76,3 +75,45 @@ def test_run_circuit_fails_closed_on_unpriced_provider(monkeypatch):
     circuit = Circuit().h(0)
     with pytest.raises(ValueError, match="Unknown provider"):
         dev.run_circuit(circuit, device_name="mystery", shots=10, s3_location=("b", "p"))
+
+
+def test_get_device_memoizes_aws_device(monkeypatch):
+    # AwsDevice construction is a GetDevice network describe — get_device must build it once per
+    # short-name and reuse it (local stays a fresh LocalSimulator, not cached).
+    import lib.hardware.devices as dev
+
+    calls = {"n": 0}
+
+    class StubAws:
+        def __init__(self, arn):
+            calls["n"] += 1
+            self.arn = arn
+
+    monkeypatch.setattr(dev, "AwsDevice", StubAws)
+    monkeypatch.setattr(dev, "_AWS_DEVICE_CACHE", {})
+    first = dev.get_device("sv1")
+    second = dev.get_device("sv1")
+    assert first is second
+    assert calls["n"] == 1
+
+
+def test_list_available_devices_shape(monkeypatch):
+    # Pins the public dict contract (provider derived from provider_name) without network.
+    import lib.hardware.devices as dev
+
+    class StubDev:
+        def __init__(self, name, provider, status, arn):
+            self.name, self.provider_name, self.status, self.arn = name, provider, status, arn
+
+    stubs = [StubDev("Aria-1", "IonQ", "ONLINE", "arn:aws:braket:::device/qpu/ionq/Aria-1")]
+    monkeypatch.setattr(dev.AwsDevice, "get_devices", staticmethod(lambda: stubs))
+    out = dev.list_available_devices()
+    assert out == [{"name": "Aria-1", "provider": "IonQ", "status": "ONLINE", "arn": stubs[0].arn}]
+
+
+@pytest.mark.parametrize("bad", ["bucket-only", ("b",), ("b", "p", "x"), ("", "p"), ("b", "")])
+def test_run_circuit_rejects_malformed_s3(bad):
+    # A malformed-but-non-None s3_location must fail fast (before AwsDevice), not deep in the SDK.
+    circuit = Circuit().h(0)
+    with pytest.raises(ValueError, match="s3_location must be"):
+        run_circuit(circuit, device_name="sv1", shots=10, s3_location=bad)
