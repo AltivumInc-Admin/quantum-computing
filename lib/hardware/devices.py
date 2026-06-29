@@ -7,27 +7,24 @@ from braket.circuits import Circuit
 from lib.utils.cost import format_cost_warning
 
 
-DEVICE_ARNS = {
-    "sv1": "arn:aws:braket:::device/quantum-simulator/amazon/sv1",
-    "dm1": "arn:aws:braket:::device/quantum-simulator/amazon/dm1",
-    "tn1": "arn:aws:braket:::device/quantum-simulator/amazon/tn1",
-    "ionq_aria": "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1",
-    "ionq_forte": "arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1",
-    "iqm_garnet": "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet",
-    "quera_aquila": "arn:aws:braket:us-east-1::device/qpu/quera/Aquila",
+# Single source of truth for every billable device: its Braket ARN and the cost.py PRICING
+# provider key. The cost gate derives the provider from THIS table, so the device list and
+# its cost provider cannot drift — a billable run can't slip past the cost estimate.
+DEVICES = {
+    "sv1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/sv1", "provider": "SV1"},
+    "dm1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/dm1", "provider": "DM1"},
+    "tn1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/tn1", "provider": "TN1"},
+    "ionq_aria": {"arn": "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1", "provider": "IonQ"},
+    "ionq_forte": {"arn": "arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1", "provider": "IonQ"},
+    "iqm_garnet": {"arn": "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", "provider": "IQM"},
+    "quera_aquila": {
+        "arn": "arn:aws:braket:us-east-1::device/qpu/quera/Aquila",
+        "provider": "QuEra",
+    },
 }
 
-# Bridge the device short names above to the cost.py PRICING provider keys, so
-# run_circuit can surface a cost estimate before any billable execution.
-_COST_PROVIDER = {
-    "sv1": "SV1",
-    "dm1": "DM1",
-    "tn1": "TN1",
-    "ionq_aria": "IonQ",
-    "ionq_forte": "IonQ",
-    "iqm_garnet": "IQM",
-    "quera_aquila": "QuEra",
-}
+# Backwards-compatible view (publicly exported via lib.hardware; used by tests/notebooks).
+DEVICE_ARNS = {name: spec["arn"] for name, spec in DEVICES.items()}
 
 # Guardrail against an accidental huge (expensive) submission on a billable device.
 MAX_SHOTS = 100_000
@@ -37,9 +34,9 @@ def get_device(name: str = "local"):
     """Get a Braket device by short name."""
     if name == "local":
         return LocalSimulator()
-    if name not in DEVICE_ARNS:
-        raise ValueError(f"Unknown device: {name}. Known: {['local'] + list(DEVICE_ARNS.keys())}")
-    return AwsDevice(DEVICE_ARNS[name])
+    if name not in DEVICES:
+        raise ValueError(f"Unknown device: {name}. Known: {['local'] + list(DEVICES)}")
+    return AwsDevice(DEVICES[name]["arn"])
 
 
 def list_available_devices() -> list[dict]:
@@ -56,6 +53,7 @@ def run_circuit(
     device_name: str = "local",
     shots: int = 1000,
     s3_location: tuple | None = None,
+    estimated_minutes: float = 1.0,
 ):
     """Run a circuit on the specified device.
 
@@ -75,21 +73,13 @@ def run_circuit(
         raise ValueError(f"shots must be in 1..{MAX_SHOTS} for billable devices (got {shots})")
     if s3_location is None:
         raise ValueError("s3_location required for AWS devices: (bucket, prefix)")
-    provider = _COST_PROVIDER.get(device_name)
-    if provider is None:
-        # Fail CLOSED. The cost-awareness rule is only as strong as this lookup, and
-        # DEVICE_ARNS / _COST_PROVIDER are two hand-synced dicts. A billable device with
-        # no known cost provider must NEVER dispatch — raise here, before get_device
-        # constructs any AwsDevice (so we keep the no-network/no-credentials guarantee).
-        if device_name not in DEVICE_ARNS:
-            raise ValueError(
-                f"Unknown device: {device_name}. Known: {['local'] + list(DEVICE_ARNS.keys())}"
-            )
-        raise ValueError(
-            f"Billable device {device_name!r} has no _COST_PROVIDER entry; refusing to "
-            f"dispatch without a cost estimate. Sync DEVICE_ARNS and _COST_PROVIDER."
-        )
-    print(format_cost_warning(provider, shots=shots))
+    spec = DEVICES.get(device_name)
+    if spec is None:
+        raise ValueError(f"Unknown device: {device_name}. Known: {['local'] + list(DEVICES)}")
+    # The single-sourced provider is always present; format_cost_warning -> estimate_cost still
+    # raises "Unknown provider" (before get_device / any network) if it is somehow unpriced, so
+    # the gate stays fail-closed without a separate hand-synced provider map to drift.
+    print(format_cost_warning(spec["provider"], shots=shots, estimated_minutes=estimated_minutes))
 
     device = get_device(device_name)
     task = device.run(circuit, s3_destination_folder=s3_location, shots=shots)
