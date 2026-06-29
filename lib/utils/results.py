@@ -2,6 +2,8 @@
 
 from collections import Counter
 
+import numpy as np
+
 
 def parse_counts(result) -> Counter:
     """Extract measurement counts from a Braket result object.
@@ -20,8 +22,10 @@ def parse_counts(result) -> Counter:
             f"parse_counts requires measured_qubits == 0..{n - 1} in order; "
             f"got {list(measured)}. Reorder the measurement columns by measured_qubits first."
         )
-    bitstrings = ["".join(str(bit) for bit in row) for row in measurements]
-    return Counter(bitstrings)
+    # One C-level conversion to native-int lists (also transparently accepts the plain-list
+    # test mocks); str() on native ints + map() avoids per-element numpy-scalar boxing.
+    rows = np.asarray(measurements).tolist()
+    return Counter("".join(map(str, row)) for row in rows)
 
 
 def top_results(counts: Counter, n: int = 5) -> list[tuple[str, int]]:
@@ -32,6 +36,12 @@ def top_results(counts: Counter, n: int = 5) -> list[tuple[str, int]]:
 def expectation_from_counts(counts: Counter, observable_fn) -> float:
     """Compute expectation value of an observable from measurement counts."""
     total_shots = sum(counts.values())
+    if total_shots == 0:
+        # No distribution to average over. A silent 0.0 (empty Counter) or a bare
+        # ZeroDivisionError (zero-total Counter) both mislead — fail clearly instead.
+        raise ValueError(
+            "expectation_from_counts requires at least one shot (got empty/zero-total counts)"
+        )
     expectation = 0.0
     for bitstring, count in counts.items():
         expectation += observable_fn(bitstring) * count / total_shots

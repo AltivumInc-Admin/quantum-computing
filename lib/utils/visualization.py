@@ -8,14 +8,16 @@ from collections import Counter
 def plot_histogram(counts: Counter, title: str = "Measurement Results", figsize=(10, 5)):
     """Plot a histogram of measurement results."""
     sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-    labels = [item[0] for item in sorted_counts]
-    values = [item[1] for item in sorted_counts]
-    total = sum(values)
-    probabilities = [v / total for v in values]
+    total = sum(count for _, count in sorted_counts)
+    if total == 0:
+        raise ValueError("plot_histogram requires non-empty counts with at least one shot")
+    positions = range(len(sorted_counts))
+    labels = [label for label, _ in sorted_counts]
+    probabilities = [count / total for _, count in sorted_counts]
 
     fig, ax = plt.subplots(figsize=figsize)
-    ax.bar(range(len(labels)), probabilities, color="#232f3e")
-    ax.set_xticks(range(len(labels)))
+    ax.bar(positions, probabilities, color="#232f3e")
+    ax.set_xticks(positions)
     ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
     ax.set_ylabel("Probability")
     ax.set_title(title)
