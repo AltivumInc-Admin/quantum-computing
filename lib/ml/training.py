@@ -57,30 +57,33 @@ def train_vqc(
     )
     opt = qml.GradientDescentOptimizer(stepsize=learning_rate)
 
-    def predict(features, p):
-        # <Z> ∈ [-1, 1] → probability ∈ [0, 1]
-        return (1.0 - circuit(features, p)) / 2.0
+    n_samples = len(X_train)
+    # default.qubit / lightning.qubit evaluate a whole (batch, n_qubits) array in ONE broadcast
+    # pass; the braket plugin device may not broadcast, so fall back to the per-sample loop there.
+    # The per-sample form also mirrors the mean-squared-error math the notebook teaches.
+    batched = device_name in ("default.qubit", "lightning.qubit")
+
+    def predict_all(p):
+        # <Z> ∈ [-1, 1] → probability ∈ [0, 1], for every sample.
+        if batched:
+            return (1.0 - circuit(X_train, p)) / 2.0  # shape (n_samples,)
+        return pnp.stack([(1.0 - circuit(x, p)) / 2.0 for x in X_train])
 
     def loss_fn(p):
-        total = 0.0
-        for x, y in zip(X_train, y_train):
-            pred = predict(x, p)
-            total = total + (pred - y) ** 2
-        return total / len(X_train)
+        return pnp.mean((predict_all(p) - y_train) ** 2)
 
     loss_history: list[float] = []
     accuracy_history: list[float] = []
 
     for epoch in range(epochs):
         params, loss_val = opt.step_and_cost(loss_fn, params)
-        correct = sum(int((predict(x, params) > 0.5) == bool(y)) for x, y in zip(X_train, y_train))
+        preds = predict_all(params)
+        correct = int(pnp.sum((preds > 0.5) == (np.asarray(y_train) > 0.5)))
         loss_history.append(float(loss_val))
-        accuracy_history.append(correct / len(X_train))
+        accuracy_history.append(correct / n_samples)
 
         if epoch % 10 == 0:
-            print(
-                f"Epoch {epoch}: loss={float(loss_val):.4f}, accuracy={correct / len(X_train):.2%}"
-            )
+            print(f"Epoch {epoch}: loss={float(loss_val):.4f}, accuracy={correct / n_samples:.2%}")
 
     return {
         "optimal_params": np.asarray(params),

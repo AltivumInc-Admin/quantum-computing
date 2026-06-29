@@ -131,7 +131,7 @@ def vqc_qnode(
     @qml.qnode(dev, interface="autograd", diff_method=diff_method)
     def circuit(features, params):
         for i in range(n_qubits):
-            qml.RY(features[i], wires=i)
+            qml.RY(features[..., i], wires=i)  # broadcasts for a (batch, n_qubits) input
         for layer in range(n_layers):
             for i in range(n_qubits):
                 qml.RY(params[layer, i], wires=i)

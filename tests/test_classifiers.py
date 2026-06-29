@@ -66,3 +66,18 @@ def test_vqc_qnode_flips_under_ry_pi():
     params = np.zeros((n_layers, n_qubits))
     val = qnode(features, params)
     assert abs(float(val) + 1.0) < 1e-10
+
+
+def test_vqc_qnode_broadcasts_over_a_batch():
+    # The batched training path relies on the QNode consuming a (batch, n_qubits) array and
+    # returning one expval per row, identical to per-sample calls.
+    n_qubits, n_layers = 2, 2
+    qnode = vqc_qnode(n_qubits, n_layers)
+    rng = np.random.default_rng(0)
+    X = rng.uniform(-np.pi, np.pi, size=(5, n_qubits))
+    params = rng.uniform(-np.pi, np.pi, size=(n_layers, n_qubits))
+
+    batched = np.asarray(qnode(X, params))
+    assert batched.shape == (5,)
+    per_sample = np.array([float(qnode(x, params)) for x in X])
+    assert np.allclose(batched, per_sample, atol=1e-10)
