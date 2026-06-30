@@ -42,6 +42,13 @@ def train_vqc(
     Returns:
         Dict with ``optimal_params`` (numpy array, shape ``(n_layers, n_qubits)``),
         ``loss_history`` (list[float]), ``accuracy_history`` (list[float]).
+
+    Raises:
+        ImportError: if ``pennylane`` is not installed (it lives in the ``[full]``
+            extras), or if ``amazon-braket-pennylane-plugin`` is missing when
+            ``device_name="braket.local.qubit"`` is requested.
+        ValueError: if ``X_train`` is not a non-empty 2D array, or ``y_train``
+            length does not match ``X_train``.
     """
     import pennylane as qml
     from pennylane import numpy as pnp

@@ -1,15 +1,16 @@
 """Tests for lib/circuits/common.py — runs on local simulator only."""
 
+from collections import Counter
+
 import numpy as np
+import pytest
 from braket.circuits import Circuit
 from braket.devices import LocalSimulator
 from lib.circuits.common import bell_pair, ghz_state, qft_circuit
 
 
-def test_bell_pair_produces_entangled_state():
-    circuit = bell_pair()
-    device = LocalSimulator()
-    result = device.run(circuit, shots=1000).result()
+def test_bell_pair_produces_entangled_state(run_local):
+    result = run_local(bell_pair(), shots=1000)
     measurements = result.measurements
     for row in measurements:
         assert row[0] == row[1], "Bell pair qubits must always agree"
@@ -26,10 +27,13 @@ def test_bell_pair_custom_qubits():
     assert {int(q) for q in circuit.qubits} == {2, 3}
 
 
-def test_ghz_state_all_agree():
-    circuit = ghz_state(n_qubits=4)
-    device = LocalSimulator()
-    result = device.run(circuit, shots=1000).result()
+def test_bell_pair_rejects_identical_qubits():
+    with pytest.raises(ValueError, match="must be distinct"):
+        bell_pair(2, 2)
+
+
+def test_ghz_state_all_agree(run_local):
+    result = run_local(ghz_state(n_qubits=4), shots=1000)
     for row in result.measurements:
         assert all(bit == row[0] for bit in row), "GHZ state qubits must all agree"
     # A dropped Hadamard collapses GHZ to the separable |0000> and still passes the agree
@@ -44,22 +48,31 @@ def test_ghz_state_qubit_count():
     assert circuit.qubit_count == 5
 
 
+def test_ghz_state_rejects_non_positive_qubits():
+    with pytest.raises(ValueError, match="n_qubits must be >= 1"):
+        ghz_state(0)
+
+
 def test_qft_circuit_qubit_count():
     circuit = qft_circuit(n_qubits=3)
     assert circuit.qubit_count == 3
 
 
-def test_qft_circuit_on_known_state():
-    circuit = qft_circuit(n_qubits=3)
-    device = LocalSimulator()
-    result = device.run(circuit, shots=8000).result()
+def test_qft_circuit_rejects_non_positive_qubits():
+    with pytest.raises(ValueError, match="n_qubits must be >= 1"):
+        qft_circuit(0)
+
+
+def test_qft_circuit_on_known_state(run_local):
+    result = run_local(qft_circuit(n_qubits=3), shots=2000)
     measurements = result.measurements
     bitstrings = ["".join(str(bit) for bit in row) for row in measurements]
-    from collections import Counter
-
     counts = Counter(bitstrings)
-    for state in counts.values():
-        assert state > 500, "QFT of |000> should give roughly uniform distribution"
+    # QFT of |000> is uniform over all 8 basis states. At 2000 shots the expected per-bin count
+    # is 250 (sigma ~14.8); require every bin present and each > 150 (~6.7 sigma below the mean).
+    assert len(counts) == 8, "QFT of |000> should populate all 8 basis states"
+    for count in counts.values():
+        assert count > 150, "QFT of |000> should give roughly uniform distribution"
 
 
 def _statevector(circuit):

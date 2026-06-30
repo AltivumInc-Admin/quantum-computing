@@ -12,7 +12,13 @@ def angle_encoding(features: np.ndarray) -> Circuit:
 
     Returns:
         Circuit with Ry rotations encoding each feature.
+
+    Raises:
+        ValueError: if ``features`` is not a non-empty 1D array.
     """
+    features = np.asarray(features)
+    if features.ndim != 1 or features.size == 0:
+        raise ValueError(f"features must be a non-empty 1D array (got shape {features.shape})")
     circuit = Circuit()
     for i, x in enumerate(features):
         circuit.ry(i, x)
@@ -30,7 +36,13 @@ def iqp_encoding(features: np.ndarray, reps: int = 2) -> Circuit:
 
     Returns:
         Circuit implementing IQP encoding.
+
+    Raises:
+        ValueError: if ``features`` is not a non-empty 1D array.
     """
+    features = np.asarray(features)
+    if features.ndim != 1 or features.size == 0:
+        raise ValueError(f"features must be a non-empty 1D array (got shape {features.shape})")
     n_qubits = len(features)
     circuit = Circuit()
 

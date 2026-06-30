@@ -16,7 +16,9 @@ Ry-rotation/CNOT-entangling layers.
 
 import numpy as np
 from braket.circuits import Circuit
-from braket.devices import LocalSimulator
+
+from lib.hardware.devices import run_circuit
+from lib.utils.results import parse_counts
 
 # The VQC device dispatch is intentionally local-only — QPU routing is not exposed here (it would
 # bypass the project's explicit cost-aware QPU entrypoint). Keep in sync with vqc_qnode's docstring.
@@ -48,7 +50,22 @@ def build_vqc_circuit(
 
     Returns:
         Circuit ready for execution.
+
+    Raises:
+        ValueError: if ``params`` is not shaped ``(n_layers, n_qubits)`` or
+            ``features`` is not a 1D array of length >= ``n_qubits``.
     """
+    features = np.asarray(features)
+    params = np.asarray(params)
+    if params.shape != (n_layers, n_qubits):
+        raise ValueError(
+            f"params must have shape {(n_layers, n_qubits)} (n_layers, n_qubits), got {params.shape}"
+        )
+    if features.ndim != 1 or features.shape[0] < n_qubits:
+        raise ValueError(
+            f"features must be a 1D array of length >= n_qubits ({n_qubits}), got shape {features.shape}"
+        )
+
     circuit = Circuit()
 
     # Data encoding
@@ -82,20 +99,22 @@ def quantum_kernel(x1: np.ndarray, x2: np.ndarray, feature_map_fn, shots: int = 
     Returns:
         Kernel value (overlap) between 0 and 1.
     """
-    device = LocalSimulator()
-
     # Compute-uncompute: U(x1)^dagger . U(x2) . |0>
     # If x1 == x2, we get |0> back (kernel = 1)
     circuit_x2 = feature_map_fn(x2)
     circuit_x1_adj = feature_map_fn(x1).adjoint()
 
     combined = circuit_x2.add_circuit(circuit_x1_adj)
-    result = device.run(combined, shots=shots).result()
+    # Route through the library's own seams (run_circuit + parse_counts) rather than a bare
+    # LocalSimulator, so the documented abstraction layer is actually exercised. On the free local
+    # path this is behavior-preserving: run_circuit("local") skips the cost gate, and parse_counts'
+    # measured-qubits guard is a no-op here (all qubits measured, in order).
+    result = run_circuit(combined, device_name="local", shots=shots)
 
     # Probability of measuring all zeros = |<phi(x1)|phi(x2)>|^2. Derive the register width from
     # the circuit actually built, so the key matches for ANY feature map (e.g. amplitude_encoding's
     # log2(N) qubits), not just one-qubit-per-feature.
-    counts = result.measurement_counts
+    counts = parse_counts(result)
     kernel_value = counts.get("0" * combined.qubit_count, 0) / shots
     return kernel_value
 

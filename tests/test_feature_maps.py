@@ -27,6 +27,16 @@ def test_angle_encoding_zero_features_gives_zero_state(run_local):
     assert all(bs == "000" for bs in bitstrings)
 
 
+def test_angle_encoding_rejects_empty():
+    with pytest.raises(ValueError, match="non-empty 1D"):
+        angle_encoding(np.array([]))
+
+
+def test_angle_encoding_rejects_2d():
+    with pytest.raises(ValueError, match="non-empty 1D"):
+        angle_encoding(np.zeros((2, 2)))
+
+
 # ---------------------------------------------------------------------------
 # iqp_encoding
 # ---------------------------------------------------------------------------
@@ -35,6 +45,11 @@ def test_angle_encoding_zero_features_gives_zero_state(run_local):
 def test_iqp_encoding_qubit_count():
     circuit = iqp_encoding(np.array([0.1, 0.2, 0.3]))
     assert circuit.qubit_count == 3
+
+
+def test_iqp_encoding_rejects_empty():
+    with pytest.raises(ValueError, match="non-empty 1D"):
+        iqp_encoding(np.array([]))
 
 
 def test_iqp_encoding_is_unitary(run_local):

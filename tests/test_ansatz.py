@@ -27,6 +27,14 @@ def test_hardware_efficient_ansatz_qubit_count():
     assert circuit.qubit_count == n_qubits
 
 
+def test_hardware_efficient_ansatz_rejects_wrong_param_shape():
+    n_qubits, n_layers = 4, 2
+    # missing the trailing Ry/Rz axis — was a raw numpy IndexError, now fail-loud ValueError
+    params = np.zeros((n_layers, n_qubits))
+    with pytest.raises(ValueError, match="params must have shape"):
+        hardware_efficient_ansatz(n_qubits, n_layers, params)
+
+
 def test_hardware_efficient_ansatz_zero_params_gives_zero_state(run_local):
     # Ry(0) and Rz(0) are identity; CNOTs on |0> stay on |0>.
     n_qubits, n_layers = 4, 2

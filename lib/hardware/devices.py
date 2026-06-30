@@ -1,10 +1,34 @@
 """Device abstraction for running circuits on any Amazon Braket backend."""
 
-from braket.aws import AwsDevice
+import sys
+
 from braket.devices import LocalSimulator
 from braket.circuits import Circuit
 
 from lib.utils.cost import format_cost_warning
+
+
+def __getattr__(name: str):
+    """Resolve ``AwsDevice`` lazily.
+
+    ``braket.aws`` (the cloud SDK) is imported only when a billable device is actually
+    constructed, so this module stays importable where the AWS SDK is absent — notably the
+    browser/qcsim lab bundle, which aliases ``braket.circuits`` and ``braket.devices`` but not
+    ``braket.aws``. Accessing ``lib.hardware.devices.AwsDevice`` (e.g. to monkeypatch it in
+    tests) triggers the import on demand.
+    """
+    if name == "AwsDevice":
+        from braket.aws import AwsDevice
+
+        return AwsDevice
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _aws_device_cls():
+    """Return the ``AwsDevice`` class, honoring a monkeypatched module attribute and otherwise
+    importing it lazily via ``__getattr__``. Constructing one performs a GetDevice network
+    describe, so callers only reach this on the billable (non-local) path."""
+    return getattr(sys.modules[__name__], "AwsDevice")
 
 
 # Single source of truth for every billable device: its Braket ARN and the cost.py PRICING
@@ -47,14 +71,16 @@ def get_device(name: str = "local"):
         raise ValueError(f"Unknown device: {name}. Known: {['local'] + list(DEVICES)}")
     device = _AWS_DEVICE_CACHE.get(name)
     if device is None:
-        device = AwsDevice(DEVICES[name]["arn"])  # GetDevice describe — once per device per process
+        # GetDevice describe — once per device per process. _aws_device_cls() defers the
+        # braket.aws import to here so this module imports without the AWS SDK present.
+        device = _aws_device_cls()(DEVICES[name]["arn"])
         _AWS_DEVICE_CACHE[name] = device
     return device
 
 
 def list_available_devices() -> list[dict]:
     """List all currently available Amazon Braket devices with their status."""
-    devices = AwsDevice.get_devices()
+    devices = _aws_device_cls().get_devices()
     return [
         {"name": d.name, "provider": d.provider_name, "status": d.status, "arn": d.arn}
         for d in devices
