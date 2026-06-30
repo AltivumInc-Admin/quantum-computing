@@ -43,3 +43,16 @@ def test_train_vqc_loss_decreases():
     assert losses[-1] < losses[0] - 0.01, (
         f"loss did not decrease meaningfully: start={losses[0]:.4f}, end={losses[-1]:.4f}"
     )
+
+
+def test_train_vqc_rejects_length_mismatch():
+    # zip() would silently truncate to the shorter sequence and divide by the larger denominator.
+    with pytest.raises(ValueError, match="same length"):
+        train_vqc(np.zeros((4, 2)), np.zeros(3), n_layers=1, epochs=1)
+
+
+def test_train_vqc_rejects_empty_or_1d():
+    with pytest.raises(ValueError, match="non-empty 2D"):
+        train_vqc(np.zeros((0, 2)), np.zeros(0), n_layers=1, epochs=1)
+    with pytest.raises(ValueError, match="non-empty 2D"):
+        train_vqc(np.zeros(4), np.zeros(4), n_layers=1, epochs=1)

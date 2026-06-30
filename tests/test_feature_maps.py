@@ -64,29 +64,25 @@ def test_amplitude_encoding_uniform_features_is_uniform(run_local):
         assert 0.20 <= prob <= 0.30, f"state |{state}> at {prob:.3f}"
 
 
-def test_amplitude_encoding_matches_squared_amplitudes(run_local):
-    # Probabilities must equal |amplitudes|^2 within shot noise.
-    features = np.array([3.0, 1.0, 4.0, 1.0])
+@pytest.mark.parametrize(
+    "features, shots, tol",
+    [
+        (np.array([3.0, 1.0, 4.0, 1.0]), 8000, 0.03),
+        (np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]), 20000, 0.02),
+    ],
+    ids=["4dim", "8dim-recursion"],
+)
+def test_amplitude_encoding_matches_squared_amplitudes(run_local, features, shots, tol):
+    # Probabilities must equal |amplitudes|^2 within shot noise (the 8-dim case exercises the
+    # 3-qubit recursion path).
     expected = (features**2) / np.sum(features**2)
-    result = run_local(amplitude_encoding(features), shots=8000)
+    result = run_local(amplitude_encoding(features), shots=shots)
     counts = result.measurement_counts
-    for idx, state in enumerate(("00", "01", "10", "11")):
-        observed = counts.get(state, 0) / 8000
-        assert abs(observed - expected[idx]) < 0.03, (
-            f"|{state}>: observed={observed:.3f}, expected={expected[idx]:.3f}"
-        )
-
-
-def test_amplitude_encoding_eight_dim(run_local):
-    # Verify the 3-qubit recursion path.
-    features = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
-    expected = (features**2) / np.sum(features**2)
-    result = run_local(amplitude_encoding(features), shots=20000)
-    counts = result.measurement_counts
-    for idx in range(8):
-        state = format(idx, "03b")
-        observed = counts.get(state, 0) / 20000
-        assert abs(observed - expected[idx]) < 0.02, (
+    n_qubits = int(np.log2(len(features)))
+    for idx in range(len(features)):
+        state = format(idx, f"0{n_qubits}b")
+        observed = counts.get(state, 0) / shots
+        assert abs(observed - expected[idx]) < tol, (
             f"|{state}>: observed={observed:.3f}, expected={expected[idx]:.3f}"
         )
 
