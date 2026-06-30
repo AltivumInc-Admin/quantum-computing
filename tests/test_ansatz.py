@@ -15,6 +15,14 @@ def test_uccsd_singles_rejects_wrong_param_length():
         uccsd_singles_circuit(4, 2, np.zeros(5))
 
 
+def test_uccsd_singles_rejects_excess_electrons():
+    # n_electrons > n_qubits would push the HF x(i) loop past n_qubits and collapse
+    # `virtual` to empty (n_excitations == 0), so the length check would vacuously pass.
+    # Guard fails loud before building (and before the param-length check).
+    with pytest.raises(ValueError, match="0 <= n_electrons <= n_qubits"):
+        uccsd_singles_circuit(2, 4, np.zeros(0))
+
+
 # ---------------------------------------------------------------------------
 # hardware_efficient_ansatz
 # ---------------------------------------------------------------------------

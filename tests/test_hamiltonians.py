@@ -56,3 +56,27 @@ def test_lih_hamiltonian_returns_correct_shape():
     assert n_qubits >= 4
     assert n_electrons >= 2
     assert len(qubit_h.terms) > 0
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf")])
+def test_build_h2_rejects_nonphysical_bond_length(bad):
+    # The guard precedes the lazy openfermion/pyscf pipeline, so a bad distance fails
+    # fast with a clear message instead of a deep, cryptic SCF engine error.
+    with pytest.raises(ValueError, match="bond_length must be"):
+        build_h2_hamiltonian(bad)
+
+
+def test_hamiltonian_info_handles_identity_only_and_empty():
+    from openfermion import QubitOperator
+
+    # Identity-only operator: max() over a no-non-identity-terms generator must not crash.
+    info = hamiltonian_info(QubitOperator("", 1.5))
+    assert info["n_terms"] == 1
+    assert info["max_locality"] == 0
+    assert info["identity_coefficient"] == 1.5
+
+    # Empty (zero) operator.
+    empty = hamiltonian_info(QubitOperator())
+    assert empty["n_terms"] == 0
+    assert empty["max_locality"] == 0
+    assert empty["identity_coefficient"] == 0.0
