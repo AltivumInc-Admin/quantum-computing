@@ -22,9 +22,10 @@ def test_build_vqc_circuit_qubit_count():
 def test_build_vqc_circuit_param_shape_mismatch_raises():
     n_qubits, n_layers = 3, 2
     features = np.array([0.1, 0.2, 0.3])
-    # wrong shape: only 1 layer of params for 2 layers
+    # wrong shape: only 1 layer of params for 2 layers — now a fail-loud ValueError
+    # (was a raw IndexError before the lib-wide validation-convention sweep).
     params = np.zeros((1, n_qubits))
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError, match="params must have shape"):
         build_vqc_circuit(n_qubits, n_layers, features, params)
 
 

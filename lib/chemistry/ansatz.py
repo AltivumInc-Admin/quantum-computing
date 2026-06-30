@@ -14,7 +14,16 @@ def hardware_efficient_ansatz(n_qubits: int, n_layers: int, params: np.ndarray) 
 
     Returns:
         Parameterized circuit.
+
+    Raises:
+        ValueError: if ``params`` does not have shape ``(n_layers, n_qubits, 2)``.
     """
+    params = np.asarray(params)
+    expected_shape = (n_layers, n_qubits, 2)
+    if params.shape != expected_shape:
+        raise ValueError(
+            f"params must have shape {expected_shape} (n_layers, n_qubits, 2), got {params.shape}"
+        )
     circuit = Circuit()
 
     for layer in range(n_layers):

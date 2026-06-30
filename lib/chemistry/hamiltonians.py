@@ -11,6 +11,10 @@ def build_h2_hamiltonian(bond_length: float = 0.735):
 
     Returns:
         Tuple of (qubit_hamiltonian, n_qubits, n_electrons).
+
+    Raises:
+        ImportError: if the ``[full]`` extras (``openfermion`` /
+            ``openfermionpyscf``) are not installed.
     """
     from openfermion.chem import MolecularData
     from openfermionpyscf import run_pyscf
@@ -34,6 +38,10 @@ def build_lih_hamiltonian(bond_length: float = 1.546):
 
     Returns:
         Tuple of (qubit_hamiltonian, n_qubits, n_electrons).
+
+    Raises:
+        ImportError: if the ``[full]`` extras (``openfermion`` /
+            ``openfermionpyscf``) are not installed.
     """
     from openfermion.chem import MolecularData
     from openfermionpyscf import run_pyscf
