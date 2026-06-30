@@ -69,6 +69,30 @@ export function extractSectionHeadings(markdown) {
 }
 
 /**
+ * Build one corpus entry from a GUIDE's Markdown — the per-section logic shared by
+ * the corpus builder (`scripts/build_tutor_corpus.mjs`) and the deploy preflight
+ * (`lambda/tutor/deploy-check.mjs`), so a freshness check rebuilds with the exact
+ * same logic that wrote the file. Title is the first H1, falling back to
+ * ``fallbackTitle``. Only headings whose text survived truncation are advertised,
+ * so the grounding prompt never claims to cover a section it has no text for.
+ *
+ * Returns ``{ entry: {title, headings, text}, fullLength, truncated, droppedHeadings }``.
+ */
+export function buildCorpusEntry(markdown, { fallbackTitle = "" } = {}) {
+  const title = (markdown.match(/^#\s+(.+)$/m)?.[1] ?? fallbackTitle).trim();
+  const text = stripGuideForTutor(markdown);
+  const fullLength = stripGuideForTutor(markdown, Infinity).length;
+  const allHeadings = extractSectionHeadings(markdown);
+  const headings = allHeadings.filter((h) => text.includes(h));
+  return {
+    entry: { title, headings, text },
+    fullLength,
+    truncated: fullLength > text.length,
+    droppedHeadings: allHeadings.length - headings.length,
+  };
+}
+
+/**
  * The strict system prompt. The guardrail clauses are the whole point of the
  * feature, so the tests assert their presence: answer only from this lesson,
  * never invent Braket/PennyLane/Qiskit APIs, and prefer a guiding question first.

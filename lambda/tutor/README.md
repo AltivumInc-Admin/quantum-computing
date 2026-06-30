@@ -23,12 +23,15 @@ the site stays a static export; this is the only server-side surface.
    ```bash
    aws bedrock list-inference-profiles --query "inferenceProfileSummaries[].inferenceProfileId"
    ```
-2. AWS CLI v2 configured; Node 20.
+2. AWS CLI v2 configured; Node 22 (matches the function's `nodejs22.x` runtime).
 
 ## Deploy (SAM, recommended)
 
 ```bash
 npm --prefix web run build:tutor-corpus          # writes lambda/tutor/corpus.json
+# Preflight gate: fails early if the corpus is missing/stale or the model id is
+# malformed (so you never ship an empty corpus that answers OUT_OF_SCOPE to everyone).
+TUTOR_MODEL_ID=<inference-profile-arn> node lambda/tutor/deploy-check.mjs
 cd lambda/tutor
 npm install
 sam build
@@ -36,17 +39,23 @@ sam deploy --guided \
   --parameter-overrides \
     ModelId=<inference-profile-arn> \
     FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0 \
-    MaxConcurrency=5
+    MaxConcurrency=5 \
+    LogRetentionInDays=30
 # note the TutorUrl output. MaxConcurrency is the hard cost ceiling (reserved
 # concurrency). FoundationModelId scopes the Bedrock IAM to the model the profile
-# routes to.
+# routes to. LogRetentionInDays sets the (now stack-managed) log group's retention.
 ```
+
+> **First deploy after the log group was added to the template:** the
+> `/aws/lambda/quantum-tutor` group was auto-created by Lambda before it was in
+> `template.yaml`, so a plain `sam deploy` now fails `TutorLogGroup ... already
+> exists`. Resolve it once — see [Log retention (now in the template)](#log-retention).
 
 ## Deploy (raw CLI, fallback)
 
 ```bash
 npm --prefix web run build:tutor-corpus
-cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . -x 'index.test.mjs' && cd ../..
+cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . -x '*.test.mjs' 'deploy-check.mjs' && cd ../..
 
 aws iam create-role --role-name quantum-tutor-role \
   --assume-role-policy-document file://lambda/tutor/trust.json
@@ -79,8 +88,11 @@ import-time corpus read is guarded). `npm install` is required first because
 
 ```bash
 cd lambda/tutor && npm install && npm test
-# node --test: streaming deltas, the <<TUTOR-STREAM-ERROR>> sentinel on failure,
-# and the out-of-scope / oversized-body gate (no model call)
+# node --test discovers all *.test.mjs:
+#  - index.test.mjs       streaming deltas, the <<TUTOR-STREAM-ERROR>> sentinel,
+#                         the out-of-scope / oversized-body gate (no model call)
+#  - tutor-core.test.mjs  strip/heading/system-prompt + corpus-entry logic
+#  - deploy-check.test.mjs the deploy preflight (model-id + corpus-freshness) validators
 ```
 
 Live end-to-end (deployed Function URL):
@@ -108,7 +120,8 @@ curl -N -X POST "<FunctionUrl>" \
   (`index.mjs`, `tutor-core.mjs`, `corpus.json`) scopes what `sam build` packages
   (its Node builder honors npm pack semantics), so `index.test.mjs` and the non-runtime
   `template.yaml`/`policy.json`/`trust.json` are kept out of the function bundle. The raw-CLI
-  `zip` path is a plain archive, so it excludes the test explicitly with `-x 'index.test.mjs'`.
+  `zip` path is a plain archive, so it excludes the test files and the preflight CLI
+  explicitly with `-x '*.test.mjs' 'deploy-check.mjs'`.
 - **Cost / abuse — two layers.**
   1. **Per-IP rate limiting at the edge (`edge.yaml`).** WAF **cannot** attach
      directly to a Lambda Function URL — WAFv2 web ACLs only attach to CloudFront,
@@ -146,12 +159,40 @@ curl -N -X POST "<FunctionUrl>" \
      foundation-model ARNs (least privilege, not `*`) and caps `maxTokens` at 800.
      A CloudWatch alarm `quantum-tutor-high-invocations` (hourly Invocations > 500)
      notifies the `quantum-tutor-alerts` SNS topic (managed separately). Log
-     retention: the auto-created `/aws/lambda/quantum-tutor` log group defaults to
-     never-expire — set it with `aws logs put-retention-policy --log-group-name
-     /aws/lambda/quantum-tutor --retention-in-days 14`.
+     retention is now **stack-managed** by the `TutorLogGroup` resource
+     (`LogRetentionInDays`, default 30) — see [Log retention](#log-retention).
 - **Teardown:** `sam delete` (SAM) or `aws lambda delete-function-url-config` +
   `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`. Also
   delete the application inference profile (below).
+
+## Log retention
+
+The function's CloudWatch log group is declared in `template.yaml`
+(`TutorLogGroup` → `/aws/lambda/quantum-tutor`) with a finite retention
+(`LogRetentionInDays`, default 30) instead of Lambda's never-expire default — so
+log spend is bounded and the policy lives in version control, not a one-off CLI call.
+
+**One-time reconciliation (existing stack only).** Lambda auto-created the group on
+the first deploy, before it was in the template, so a plain `sam deploy` now fails
+`TutorLogGroup ... already exists`. Pick one (region is **us-east-2**; confirm the
+stack name with `aws cloudformation list-stacks`):
+
+- **Preserve existing logs — CloudFormation resource import.** `sam build`, then
+  create an `IMPORT` change set that adopts the existing group into the stack
+  (`ResourceType: AWS::Logs::LogGroup`, `LogicalResourceId: TutorLogGroup`,
+  `ResourceIdentifier: {"LogGroupName": "/aws/lambda/quantum-tutor"}`) against the
+  built `.aws-sam/build/template.yaml`, passing the stack's current parameter
+  values, then execute it. After import, normal `sam deploy` manages the group.
+  (`TutorLogGroup` carries `DeletionPolicy: Retain`, which CloudFormation requires
+  on every resource being imported.)
+- **Simplest, drops existing logs.**
+  ```bash
+  aws logs delete-log-group --region us-east-2 --log-group-name /aws/lambda/quantum-tutor
+  sam deploy   # recreates it under the stack with the LogRetentionInDays retention
+  ```
+
+(The previous manual `aws logs put-retention-policy` step is no longer needed —
+retention is set by the template.)
 
 ## Cost attribution (gen-AI vs free modules)
 
