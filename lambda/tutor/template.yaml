@@ -51,6 +51,18 @@ Parameters:
       CloudFront Origin Access Control in edge.yaml can invoke it — closing the
       public bypass. NONE is used transiently during the cutover (front CloudFront
       first, verify, then flip to AWS_IAM). OAC REQUIRES AWS_IAM.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    # Only the values CloudWatch Logs accepts — constrain here so a bad value fails
+    # fast at `sam validate` / change-set creation rather than mid-deploy with an
+    # InvalidParameterException + rollback.
+    AllowedValues:
+      [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
+    Description: >
+      CloudWatch Logs retention (days) for the function's log group, which is
+      declared explicitly below so it is stack-managed with a finite retention
+      instead of the Lambda-auto-created group's never-expire default.
 
 Resources:
   TutorFunction:
@@ -104,6 +116,24 @@ Resources:
           AllowHeaders:
             - content-type
             - x-amz-content-sha256
+
+  # Stack-managed log group with a finite retention. Lambda otherwise auto-creates
+  # /aws/lambda/<fn> with never-expire retention; declaring it here (the conventional
+  # name) gives CloudFormation ownership + a retention policy.
+  # ‼️ One-time import on the EXISTING stack: this function was deployed before the
+  # group was in the template, so the group already exists and a plain deploy fails
+  # "resource already exists". Do a CloudFormation resource IMPORT (preserves logs) or
+  # delete the auto-created group first. See README → "Log retention (now in the template)".
+  TutorLogGroup:
+    Type: AWS::Logs::LogGroup
+    # Retain the group (and its log history) on stack delete/replacement, AND so the
+    # one-time resource IMPORT documented in the README is accepted: CloudFormation
+    # REQUIRES a DeletionPolicy on every resource being imported.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${TutorFunction}"
+      RetentionInDays: !Ref LogRetentionInDays
 
 Outputs:
   TutorUrl:

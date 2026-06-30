@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripGuideForTutor, extractSectionHeadings } from "../lambda/tutor/tutor-core.mjs";
+import { buildCorpusEntry } from "../lambda/tutor/tutor-core.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "lambda", "tutor", "corpus.json");
@@ -26,21 +26,17 @@ const corpus = {};
 let truncatedCount = 0;
 for (const dir of dirs) {
   const md = fs.readFileSync(path.join(ROOT, dir, "GUIDE.md"), "utf8");
-  const title = (md.match(/^#\s+(.+)$/m)?.[1] ?? dir).trim();
-  const text = stripGuideForTutor(md);
-  const fullLen = stripGuideForTutor(md, Infinity).length;
-  // Only advertise headings whose content actually survived truncation, so the
-  // grounding prompt never claims to cover a section it has no text for.
-  const allHeadings = extractSectionHeadings(md);
-  const headings = allHeadings.filter((h) => text.includes(h));
-  if (fullLen > text.length) {
+  const { entry, fullLength, truncated, droppedHeadings } = buildCorpusEntry(md, {
+    fallbackTitle: dir,
+  });
+  if (truncated) {
     truncatedCount++;
     console.warn(
-      `[tutor-corpus] WARN: ${dir} truncated ${fullLen} -> ${text.length} chars; ` +
-        `${allHeadings.length - headings.length} trailing heading(s) dropped`
+      `[tutor-corpus] WARN: ${dir} truncated ${fullLength} -> ${entry.text.length} chars; ` +
+        `${droppedHeadings} trailing heading(s) dropped`
     );
   }
-  corpus[dir] = { title, headings, text };
+  corpus[dir] = entry;
 }
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
