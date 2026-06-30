@@ -173,17 +173,15 @@ def _gray(n: int) -> int:
 def _mottonen_angle_transform(alphas: list[float]) -> list[float]:
     """Apply the Möttönen M matrix to convert uniformly-controlled angles.
 
-    Entries are ``M_ij = (1/N) * (-1)^<gray(i), bin(j)>`` where the exponent is
-    the parity of the bitwise AND. The transform decorrelates the angles into
-    the basis used by the Ry-CNOT decomposition.
+    Entries are ``M_ij = (1/N) * (-1)^<gray(i), bin(j)>`` where the exponent is the parity of
+    the bitwise AND. The transform decorrelates the angles into the basis used by the Ry-CNOT
+    decomposition. Evaluated as a single sign-matrix @ alphas — N is tiny (a power of 2 up to the
+    encoded vector length), so the O(N^2) sign matrix is cheap and the matmul reads clearly.
     """
     n = len(alphas)
-    thetas: list[float] = []
-    for i in range(n):
-        gi = _gray(i)
-        s = 0.0
-        for j in range(n):
-            parity = bin(gi & j).count("1") & 1
-            s += -alphas[j] if parity else alphas[j]
-        thetas.append(s / n)
-    return thetas
+    idx = np.arange(n)
+    gray = idx ^ (idx >> 1)  # gray(i) for every row i
+    and_bits = gray[:, None] & idx[None, :]  # M[i, j] exponent operand = gray(i) & j
+    parity = np.array([[bin(v).count("1") & 1 for v in row] for row in and_bits])
+    signs = np.where(parity == 1, -1.0, 1.0)  # (-1)^parity
+    return list(signs @ np.asarray(alphas, dtype=float) / n)

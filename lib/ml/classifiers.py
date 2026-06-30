@@ -18,6 +18,20 @@ import numpy as np
 from braket.circuits import Circuit
 from braket.devices import LocalSimulator
 
+# The VQC device dispatch is intentionally local-only — QPU routing is not exposed here (it would
+# bypass the project's explicit cost-aware QPU entrypoint). Keep in sync with vqc_qnode's docstring.
+_ALLOWED_QML_DEVICES = ("default.qubit", "lightning.qubit", "braket.local.qubit")
+
+
+def _vqc_entangler_pairs(n_qubits: int) -> list:
+    """CNOT (control, target) pairs for one VQC entangling layer: a linear chain, plus a
+    ring-closing CNOT for n_qubits > 2 only. Single-sourced so the Braket and PennyLane builders
+    (which the module docstring promises share a gate sequence) cannot drift."""
+    pairs = [(i, i + 1) for i in range(n_qubits - 1)]
+    if n_qubits > 2:
+        pairs.append((n_qubits - 1, 0))
+    return pairs
+
 
 def build_vqc_circuit(
     n_qubits: int, n_layers: int, features: np.ndarray, params: np.ndarray
@@ -47,11 +61,9 @@ def build_vqc_circuit(
         for i in range(n_qubits):
             circuit.ry(i, params[layer, i])
 
-        # Entangling (circular CNOT)
-        for i in range(n_qubits - 1):
-            circuit.cnot(i, i + 1)
-        if n_qubits > 2:
-            circuit.cnot(n_qubits - 1, 0)
+        # Entangling — linear chain + a ring-closer for n_qubits > 2 (single-sourced topology)
+        for control, target in _vqc_entangler_pairs(n_qubits):
+            circuit.cnot(control, target)
 
     return circuit
 
@@ -70,7 +82,6 @@ def quantum_kernel(x1: np.ndarray, x2: np.ndarray, feature_map_fn, shots: int = 
     Returns:
         Kernel value (overlap) between 0 and 1.
     """
-    n_qubits = len(x1)
     device = LocalSimulator()
 
     # Compute-uncompute: U(x1)^dagger . U(x2) . |0>
@@ -81,10 +92,11 @@ def quantum_kernel(x1: np.ndarray, x2: np.ndarray, feature_map_fn, shots: int = 
     combined = circuit_x2.add_circuit(circuit_x1_adj)
     result = device.run(combined, shots=shots).result()
 
-    # Probability of measuring all zeros = |<phi(x1)|phi(x2)>|^2
+    # Probability of measuring all zeros = |<phi(x1)|phi(x2)>|^2. Derive the register width from
+    # the circuit actually built, so the key matches for ANY feature map (e.g. amplitude_encoding's
+    # log2(N) qubits), not just one-qubit-per-feature.
     counts = result.measurement_counts
-    all_zeros = "0" * n_qubits
-    kernel_value = counts.get(all_zeros, 0) / shots
+    kernel_value = counts.get("0" * combined.qubit_count, 0) / shots
     return kernel_value
 
 
@@ -126,6 +138,11 @@ def vqc_qnode(
     """
     import pennylane as qml
 
+    if device_name not in _ALLOWED_QML_DEVICES:
+        raise ValueError(
+            f"device_name must be one of {_ALLOWED_QML_DEVICES} (got {device_name!r}); "
+            "QPU routing is intentionally not exposed here."
+        )
     dev = qml.device(device_name, wires=n_qubits)
 
     @qml.qnode(dev, interface="autograd", diff_method=diff_method)
@@ -135,10 +152,8 @@ def vqc_qnode(
         for layer in range(n_layers):
             for i in range(n_qubits):
                 qml.RY(params[layer, i], wires=i)
-            for i in range(n_qubits - 1):
-                qml.CNOT(wires=[i, i + 1])
-            if n_qubits > 2:
-                qml.CNOT(wires=[n_qubits - 1, 0])
+            for control, target in _vqc_entangler_pairs(n_qubits):
+                qml.CNOT(wires=[control, target])
         return qml.expval(qml.PauliZ(0))
 
     return circuit

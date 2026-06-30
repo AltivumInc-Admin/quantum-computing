@@ -48,6 +48,15 @@ def train_vqc(
 
     from lib.ml.classifiers import vqc_qnode
 
+    X_train = np.asarray(X_train)
+    y_train = np.asarray(y_train)
+    if X_train.ndim != 2 or X_train.shape[0] == 0:
+        raise ValueError(f"X_train must be a non-empty 2D array (got shape {X_train.shape})")
+    if len(y_train) != len(X_train):
+        raise ValueError(
+            f"X_train and y_train must have the same length (got {len(X_train)} and {len(y_train)})"
+        )
+
     n_qubits = X_train.shape[1]
     circuit = vqc_qnode(n_qubits, n_layers, device_name=device_name)
 

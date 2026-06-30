@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from lib.ml.classifiers import build_vqc_circuit, quantum_kernel
+from lib.ml.classifiers import _vqc_entangler_pairs, build_vqc_circuit, quantum_kernel
 from lib.ml.feature_maps import angle_encoding
 
 
@@ -81,3 +81,33 @@ def test_vqc_qnode_broadcasts_over_a_batch():
     assert batched.shape == (5,)
     per_sample = np.array([float(qnode(x, params)) for x in X])
     assert np.allclose(batched, per_sample, atol=1e-10)
+
+
+def test_quantum_kernel_self_overlap_with_amplitude_encoding():
+    # quantum_kernel must derive the register width from the circuit, so it works for a feature
+    # map (amplitude_encoding) that uses log2(N) qubits, not one-qubit-per-feature. On current
+    # main this self-overlap is 1.0; the len(x1) bug would have made it 0.0.
+    from lib.ml.feature_maps import amplitude_encoding
+
+    x = np.array([1.0, 2.0, 3.0, 4.0])  # 4 features -> 2 qubits
+    k = quantum_kernel(x, x, feature_map_fn=amplitude_encoding, shots=2000)
+    assert k >= 0.95, f"self-overlap was {k:.3f}, expected ~1.0"
+
+
+@pytest.mark.parametrize(
+    "n_qubits, expected",
+    [
+        (2, [(0, 1)]),
+        (3, [(0, 1), (1, 2), (2, 0)]),
+        (4, [(0, 1), (1, 2), (2, 3), (3, 0)]),
+    ],
+)
+def test_vqc_entangler_pairs_topology(n_qubits, expected):
+    # Both build_vqc_circuit and vqc_qnode iterate this single source, so pinning it locks the
+    # entangler topology (incl. the n_qubits>2 ring-closer) across both backends.
+    assert _vqc_entangler_pairs(n_qubits) == expected
+
+
+def test_vqc_qnode_rejects_unknown_device():
+    with pytest.raises(ValueError, match="device_name must be one of"):
+        vqc_qnode(2, 1, device_name="ionq.qpu")
