@@ -187,15 +187,19 @@ export function HamiltonianExplorer({ source }: { source: string }) {
       .sort((a, b) => Math.abs(b.coeff) - Math.abs(a.coeff));
   }, [point]);
 
+  // Tapered single-qubit coefficients, kept in fixed c0/cz/cx order for the
+  // slider's aria-valuetext (the sorted term list below reorders by magnitude).
+  const taperedCoeffs = useMemo(() => h2OneQubit(R, H.points), [R]);
+
   // Tapered single-qubit H = c0 I + cz Z + cx X, sorted by |coeff| descending.
   const taperedTerms = useMemo<WeightedTerm[]>(() => {
-    const { c0, cz, cx } = h2OneQubit(R, H.points);
+    const { c0, cz, cx } = taperedCoeffs;
     return [
       { label: "I", coeff: c0 },
       { label: "Z", coeff: cz },
       { label: "X", coeff: cx },
     ].sort((a, b) => Math.abs(b.coeff) - Math.abs(a.coeff));
-  }, [R]);
+  }, [taperedCoeffs]);
 
   // --- all hooks above this line; safe to early-return now ---
   if (!parsed.ok) {
@@ -243,7 +247,22 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           step={stepR}
           onChange={setR}
           ariaLabel="H2 bond length R in Angstrom"
-          ariaValueText={angstromSR(R)}
+          // Tapered mode: valuetext carries the full c0/cz/cx coefficient set the
+          // slider drives — complementary to the LiveStatus, which keeps mode +
+          // largest term. Full mode stays bond-length-only: LiveStatus already
+          // announces the largest of the 15 terms on every step, and repeating it
+          // here would double-announce the same label + coefficient.
+          ariaValueText={
+            tapered
+              ? `${angstromSR(R)}; coefficients c0 ${signed(
+                  taperedCoeffs.c0,
+                  BAR_PRECISION
+                )}, cz ${signed(taperedCoeffs.cz, BAR_PRECISION)}, cx ${signed(
+                  taperedCoeffs.cx,
+                  BAR_PRECISION
+                )} hartree`
+              : angstromSR(R)
+          }
           display={formatAngstrom(R)}
           labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
           valueWidth="w-20"

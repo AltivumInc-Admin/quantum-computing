@@ -8,11 +8,33 @@ import {
   Chip,
   EyebrowLabel,
   ErrorCard,
+  GateChip,
   LiveStatus,
   primaryActionClass,
   ProbBars,
+  StateReadout,
   WidgetCard,
 } from "@/components/quantum/widget-ui";
+import { zeroState } from "@/components/quantum/math";
+
+describe("GateChip", () => {
+  it('marks the active chip with aria-current="step"', () => {
+    render(<GateChip label="H q0" active />);
+    expect(screen.getByText("H q0")).toHaveAttribute("aria-current", "step");
+  });
+
+  it("omits aria-current entirely on inactive chips", () => {
+    render(<GateChip label="H q0" />);
+    expect(screen.getByText("H q0")).not.toHaveAttribute("aria-current");
+  });
+});
+
+describe("StateReadout", () => {
+  it("hides the decorative py badge from assistive tech", () => {
+    render(<StateReadout state={zeroState(1)} n={1} />);
+    expect(screen.getByText("py")).toHaveAttribute("aria-hidden", "true");
+  });
+});
 
 describe("LiveStatus", () => {
   it("renders a polite, visually-hidden status region carrying its children", () => {

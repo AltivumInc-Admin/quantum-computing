@@ -18,10 +18,16 @@ export function BlochDial({
   state,
   vector,
   size = 132,
+  labelPrefix = "",
 }: {
   state?: Complex[];
   vector?: { x: number; y: number; z: number };
   size?: number;
+  /**
+   * Prepended to the accessible name, e.g. "Qubit 0 reduced " — distinguishes
+   * side-by-side dials that would otherwise announce identically.
+   */
+  labelPrefix?: string;
 }) {
   const { x, y, z } = vector ?? blochVector(state ?? zeroState(1));
   const k = size / 132;
@@ -43,7 +49,7 @@ export function BlochDial({
       viewBox={`0 0 ${size} ${size}`}
       className="text-accent shrink-0"
       role="img"
-      aria-label={`Bloch vector x ${x.toFixed(2)}, y ${y.toFixed(2)}, z ${z.toFixed(2)}`}
+      aria-label={`${labelPrefix}Bloch vector x ${x.toFixed(2)}, y ${y.toFixed(2)}, z ${z.toFixed(2)}`}
     >
       <circle cx={c} cy={c} r={r} className="fill-none stroke-gray-300 dark:stroke-gray-600" strokeWidth={1} />
       <line x1={c} y1={c - r} x2={c} y2={c + r} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
