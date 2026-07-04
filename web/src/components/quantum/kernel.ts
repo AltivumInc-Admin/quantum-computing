@@ -17,14 +17,7 @@ export function kernelMatrix(points: [number, number][], map: FeatureMap, scale:
 
 /** Required bias = -mean_j( sum_i y_i K(x_j, x_i) ), centering the decision threshold. */
 export function kernelBias(train: Point[], map: FeatureMap, scale: number): number {
-  const states = train.map((p) => featureState(p.x, map, scale));
-  let total = 0;
-  for (let j = 0; j < train.length; j++) {
-    let s = 0;
-    for (let i = 0; i < train.length; i++) s += train[i].y * fidelity(states[j], states[i]);
-    total += s;
-  }
-  return -total / train.length;
+  return kernelBiasS(train.map((p) => featureState(p.x, map, scale)), train);
 }
 
 /** Like kernelBias but reuses precomputed training feature states. */

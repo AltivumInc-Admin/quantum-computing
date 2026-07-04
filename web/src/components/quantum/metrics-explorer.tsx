@@ -30,6 +30,7 @@ import { formatHartree, formatAngstrom, hartreeSR } from "./format";
  */
 
 const PLOT: Plot = { w: 320, h: 200, padL: 44, padR: 12, padT: 14, padB: 28 };
+const { innerW, innerH } = plotInner(PLOT);
 const START_THETA = 1.0;
 const LR = 0.3;
 const STEPS = 40;
@@ -125,12 +126,35 @@ export function MetricsExplorer({ source }: { source: string }) {
     };
   }, [run]);
 
+  // Per-run geometry: the scales and the full-history preview path are
+  // invariant across streaming ticks — without this memo the preview curve
+  // (and both scales) re-derived on every STREAM_MS setShown re-render.
+  const geom = useMemo(() => {
+    if (!run) return null;
+    const { history, eMin, eMax } = run;
+    const total = history.length;
+    const ePad = (eMax - eMin) * 0.08 || 0.01;
+    const yLo = eMin - ePad;
+    const yHi = eMax + ePad;
+    // The 1e-9 span floor is LIVE, not defensive: START_THETA can sit on a local
+    // maximum of E(theta) (R near 1.82), collapsing the whole history to ~1e-16
+    // float noise — the floor renders that as the flat line it physically is
+    // instead of amplifying noise to full plot height. ePad's `|| 0.01` only
+    // catches eMax === eMin exactly, not a subnormal-but-nonzero span.
+    const ySpan = Math.max(1e-9, yHi - yLo);
+    const sxScale = linearScale(0, total - 1, PLOT.padL, PLOT.padL + innerW);
+    const sx = (i: number) => (total <= 1 ? PLOT.padL : sxScale(i));
+    const sy = (e: number) => PLOT.padT + ((yHi - e) / ySpan) * innerH;
+    const previewPath = linePath(history.map((e, i) => ({ x: sx(i), y: sy(e) })));
+    return { sx, sy, previewPath, yLo, yHi };
+  }, [run]);
+
   // The parse/error early-return happens only AFTER all hooks are declared.
-  if (!parsed.ok || !run) {
+  if (!parsed.ok || !run || !geom) {
     return <ErrorCard message={parsed.ok ? "no run" : parsed.error} />;
   }
 
-  const { history, eMin, eMax } = run;
+  const { history } = run;
   const { threshold } = parsed;
   const total = history.length;
 
@@ -174,25 +198,11 @@ export function MetricsExplorer({ source }: { source: string }) {
     setShown(0);
   };
 
-  // Plot geometry: iteration on x, energy (Ha) on y (lower energy = lower line).
-  const ePad = (eMax - eMin) * 0.08 || 0.01;
-  const yLo = eMin - ePad;
-  const yHi = eMax + ePad;
-  // The 1e-9 span floor is LIVE, not defensive: START_THETA can sit on a local
-  // maximum of E(theta) (R near 1.82), collapsing the whole history to ~1e-16
-  // float noise — the floor renders that as the flat line it physically is
-  // instead of amplifying noise to full plot height. ePad's `|| 0.01` only
-  // catches eMax === eMin exactly, not a subnormal-but-nonzero span.
-  const ySpan = Math.max(1e-9, yHi - yLo);
-  const { innerW, innerH } = plotInner(PLOT);
-  const sxScale = linearScale(0, total - 1, PLOT.padL, PLOT.padL + innerW);
-  const sx = (i: number) => (total <= 1 ? PLOT.padL : sxScale(i));
-  const sy = (e: number) => PLOT.padT + ((yHi - e) / ySpan) * innerH;
+  const { sx, sy, previewPath, yLo, yHi } = geom;
 
   const started = shown > 0;
   const visible = history.slice(0, Math.max(0, shown));
   const visiblePath = linePath(visible.map((e, i) => ({ x: sx(i), y: sy(e) })));
-  const previewPath = linePath(history.map((e, i) => ({ x: sx(i), y: sy(e) })));
 
   const lastIndex = visible.length > 0 ? visible.length - 1 : 0;
   const lastEnergy = visible.length > 0 ? visible[lastIndex] : history[0];
