@@ -85,6 +85,51 @@ describe("Bar", () => {
     const fill = container.querySelector("span[style]");
     expect(fill?.className).toContain("motion-reduce:transition-none");
   });
+
+  it("renders a marker line at its fraction and switches the track to overflow-visible", () => {
+    const { container } = render(
+      <Bar label="0" fraction={0.4} valueText="40%" marker={{ fraction: 1, title: "Exact: 100%" }} />
+    );
+    const track = container.querySelector("span.relative")!;
+    expect(track.className).toContain("overflow-visible");
+    // At fraction 1 the 2px line sits at the clipped edge — overflow-visible is load-bearing.
+    expect(container.querySelector('span[title="Exact: 100%"]')).toHaveStyle({ left: "100.00%" });
+  });
+
+  it("keeps overflow-hidden when no marker is given", () => {
+    const { container } = render(<Bar label="0" fraction={0.4} valueText="x" />);
+    expect(container.querySelector("span.relative")!.className).toContain("overflow-hidden");
+  });
+
+  it("applies valueWidth to the readout column and accepts a ReactNode valueText", () => {
+    render(
+      <Bar
+        label="0"
+        fraction={0.5}
+        valueWidth="w-24"
+        valueText={
+          <>
+            <span>12</span>
+            <span> / 50%</span>
+          </>
+        }
+      />
+    );
+    const first = screen.getByText("12");
+    expect(first.parentElement!.className).toContain("w-24");
+  });
+
+  it("exposes a labelled row as a single named img-role node", () => {
+    render(<Bar label="0" fraction={0.5} valueText="x" ariaLabel="Basis 0: exact 50%" />);
+    // Must be role="img" — an aria-label on the bare div is prohibited naming
+    // (role=generic) and screen readers ignore it.
+    expect(screen.getByRole("img", { name: "Basis 0: exact 50%" })).toBeInTheDocument();
+  });
+
+  it("stays role-less without an ariaLabel", () => {
+    const { container } = render(<Bar label="0" fraction={0.5} valueText="x" />);
+    expect(container.querySelector("[role]")).toBeNull();
+  });
 });
 
 describe("ProbBars", () => {

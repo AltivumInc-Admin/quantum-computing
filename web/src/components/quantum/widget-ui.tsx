@@ -67,27 +67,61 @@ export function Bar({
   fillClass = "bg-accent",
   labelClassName = "text-gray-500 dark:text-gray-400",
   valueClassName = "text-gray-500 dark:text-gray-400",
+  valueWidth = "w-12",
+  marker,
+  ariaLabel,
 }: {
   label: string;
   fraction: number;
-  valueText: string;
+  valueText: ReactNode;
   fillClass?: string;
   labelClassName?: string;
   valueClassName?: string;
+  /** Width class for the right-hand readout column (two-tone readouts use w-24). */
+  valueWidth?: string;
+  /**
+   * Expected-value marker: a thin vertical line inside the track at `fraction`.
+   * Its presence switches the track to overflow-visible — at 100% the 2px line
+   * pokes past the rounded edge and overflow-hidden would clip it.
+   */
+  marker?: { fraction: number; title?: string };
+  /**
+   * When set, the row is exposed as a single named `role="img"` node (children
+   * become presentational). An aria-label on the bare div would be prohibited
+   * naming (ARIA: role=generic) and never reliably reach AT.
+   */
+  ariaLabel?: string;
 }) {
   const pct = Math.max(0, Math.min(1, fraction)) * 100;
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className="flex items-center gap-2"
+      role={ariaLabel ? "img" : undefined}
+      aria-label={ariaLabel}
+    >
       <span className={`w-12 shrink-0 font-mono text-xs ${labelClassName}`}>
         |{label}&#10217;
       </span>
-      <span className="relative h-3 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+      <span
+        className={`relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 ${
+          marker ? "overflow-visible" : "overflow-hidden"
+        }`}
+      >
         <span
           className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-200 motion-reduce:transition-none ${fillClass}`}
           style={{ width: `${pct.toFixed(2)}%` }}
         />
+        {marker && (
+          <span
+            className="absolute top-0 bottom-0 w-0.5 bg-accent dark:bg-accent-light"
+            style={{ left: `${(Math.max(0, Math.min(1, marker.fraction)) * 100).toFixed(2)}%` }}
+            title={marker.title}
+          />
+        )}
       </span>
-      <span className={`w-12 shrink-0 text-right font-mono text-xs tabular-nums ${valueClassName}`}>
+      <span
+        className={`${valueWidth} shrink-0 text-right font-mono text-xs tabular-nums ${valueClassName}`}
+      >
         {valueText}
       </span>
     </div>
