@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import { gradientVariance, type Cost } from "./barren";
 import { mulberry32 } from "./rng";
+import { extent, linearScale, plotInner, polylinePoints, type Plot } from "./chart-utils";
 
 /**
  * Inline barren-plateau explorer rendered from a ```qbarren fenced block in a
@@ -18,7 +19,7 @@ import { mulberry32 } from "./rng";
 
 const N_MIN = 2;
 const N_MAX = 8;
-const SVG = { w: 320, h: 200, padL: 40, padR: 16, padT: 16, padB: 32 };
+const SVG: Plot = { w: 320, h: 200, padL: 40, padR: 16, padT: 16, padB: 32 };
 
 interface ParsedConfig {
   depth: number;
@@ -62,23 +63,20 @@ interface Sweep {
   local: number[];
 }
 
+// Frame + n->x scale are module constants — bound once, not per data point.
+const { innerW, innerH } = plotInner(SVG);
+const nToX = linearScale(N_MIN, N_MAX, SVG.padL, SVG.padL + innerW);
+
 /** Map a (n, log10 variance) point to SVG coordinates. */
 function project(
   n: number,
   logVar: number,
   loLog: number,
   hiLog: number
-): [number, number] {
-  const innerW = SVG.w - SVG.padL - SVG.padR;
-  const innerH = SVG.h - SVG.padT - SVG.padB;
-  const tx = (n - N_MIN) / (N_MAX - N_MIN);
+): { x: number; y: number } {
   const span = Math.max(1e-9, hiLog - loLog);
   const ty = (logVar - loLog) / span;
-  return [SVG.padL + tx * innerW, SVG.padT + (1 - ty) * innerH];
-}
-
-function polyline(points: [number, number][]): string {
-  return points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  return { x: nToX(n), y: SVG.padT + (1 - ty) * innerH };
 }
 
 export function BarrenExplorer({ source }: { source: string }) {
@@ -112,9 +110,9 @@ export function BarrenExplorer({ source }: { source: string }) {
   const FLOOR = 1e-12;
   const logG = sweep.global.map((v) => Math.log10(Math.max(v, FLOOR)));
   const logL = sweep.local.map((v) => Math.log10(Math.max(v, FLOOR)));
-  const allLogs = [...logG, ...logL];
-  const loLog = Math.floor(Math.min(...allLogs));
-  const hiLog = Math.ceil(Math.max(...allLogs));
+  const logExtent = extent([...logG, ...logL]);
+  const loLog = Math.floor(logExtent.min);
+  const hiLog = Math.ceil(logExtent.max);
 
   const globalPts = sweep.ns.map((n, i) => project(n, logG[i], loLog, hiLog));
   const localPts = sweep.ns.map((n, i) => project(n, logL[i], loLog, hiLog));
@@ -163,7 +161,7 @@ export function BarrenExplorer({ source }: { source: string }) {
 
           {/* Y gridlines + decade labels */}
           {ticks.map((d) => {
-            const [, y] = project(N_MIN, d, loLog, hiLog);
+            const { y } = project(N_MIN, d, loLog, hiLog);
             return (
               <g key={d}>
                 <line
@@ -192,7 +190,7 @@ export function BarrenExplorer({ source }: { source: string }) {
 
           {/* X axis labels (qubit count) */}
           {sweep.ns.map((n) => {
-            const [x] = project(n, loLog, loLog, hiLog);
+            const { x } = project(n, loLog, loLog, hiLog);
             return (
               <text
                 key={n}
@@ -208,7 +206,7 @@ export function BarrenExplorer({ source }: { source: string }) {
             );
           })}
           <text
-            x={SVG.padL + (SVG.w - SVG.padL - SVG.padR) / 2}
+            x={SVG.padL + innerW / 2}
             y={SVG.h - 2}
             textAnchor="middle"
             fontSize={7}
@@ -220,25 +218,25 @@ export function BarrenExplorer({ source }: { source: string }) {
 
           {/* Global-cost curve */}
           <polyline
-            points={polyline(globalPts)}
+            points={polylinePoints(globalPts)}
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
             className="text-accent"
           />
-          {globalPts.map(([x, y], i) => (
+          {globalPts.map(({ x, y }, i) => (
             <circle key={`g-${i}`} cx={x} cy={y} r={2} className="fill-accent" />
           ))}
 
           {/* Local-cost curve */}
           <polyline
-            points={polyline(localPts)}
+            points={polylinePoints(localPts)}
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
             className="text-amber-500 dark:text-amber-400"
           />
-          {localPts.map(([x, y], i) => (
+          {localPts.map(({ x, y }, i) => (
             <circle
               key={`l-${i}`}
               cx={x}

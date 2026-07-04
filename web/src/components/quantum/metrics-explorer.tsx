@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
+import { extent, linearScale, linePath, plotInner, type Plot } from "./chart-utils";
 import { H2 as H } from "./h2-data";
 import {
   h2OneQubit,
@@ -28,7 +29,7 @@ import { formatHartree, formatAngstrom, hartreeSR } from "./format";
  * the equilibrium bond length and the threshold to the equilibrium FCI + 0.02 Ha.
  */
 
-const PLOT = { w: 320, h: 200, padL: 44, padR: 12, padT: 14, padB: 28 };
+const PLOT: Plot = { w: 320, h: 200, padL: 44, padR: 12, padT: 14, padB: 28 };
 const START_THETA = 1.0;
 const LR = 0.3;
 const STEPS = 40;
@@ -110,12 +111,7 @@ export function MetricsExplorer({ source }: { source: string }) {
     // Seed the y-extent from the DATA, not the user threshold — an out-of-band
     // threshold must not squeeze the real convergence curve. The threshold LINE
     // is kept on-canvas by clamping it to the plot band (see thresholdY below).
-    let eMin = history[0];
-    let eMax = history[0];
-    for (const e of history) {
-      if (e < eMin) eMin = e;
-      if (e > eMax) eMax = e;
-    }
+    const { min: eMin, max: eMax } = extent(history);
     return { history, eMin, eMax };
   }, [parsed]);
 
@@ -182,21 +178,21 @@ export function MetricsExplorer({ source }: { source: string }) {
   const ePad = (eMax - eMin) * 0.08 || 0.01;
   const yLo = eMin - ePad;
   const yHi = eMax + ePad;
-  const span = Math.max(1e-9, yHi - yLo);
-  const innerW = PLOT.w - PLOT.padL - PLOT.padR;
-  const innerH = PLOT.h - PLOT.padT - PLOT.padB;
-  const sx = (i: number) =>
-    PLOT.padL + (total <= 1 ? 0 : (i / (total - 1)) * innerW);
-  const sy = (e: number) => PLOT.padT + ((yHi - e) / span) * innerH;
+  // The 1e-9 span floor is LIVE, not defensive: START_THETA can sit on a local
+  // maximum of E(theta) (R near 1.82), collapsing the whole history to ~1e-16
+  // float noise — the floor renders that as the flat line it physically is
+  // instead of amplifying noise to full plot height. ePad's `|| 0.01` only
+  // catches eMax === eMin exactly, not a subnormal-but-nonzero span.
+  const ySpan = Math.max(1e-9, yHi - yLo);
+  const { innerW, innerH } = plotInner(PLOT);
+  const sxScale = linearScale(0, total - 1, PLOT.padL, PLOT.padL + innerW);
+  const sx = (i: number) => (total <= 1 ? PLOT.padL : sxScale(i));
+  const sy = (e: number) => PLOT.padT + ((yHi - e) / ySpan) * innerH;
 
   const started = shown > 0;
   const visible = history.slice(0, Math.max(0, shown));
-  const linePath = visible
-    .map((e, i) => `${i === 0 ? "M" : "L"}${sx(i).toFixed(2)},${sy(e).toFixed(2)}`)
-    .join(" ");
-  const previewPath = history
-    .map((e, i) => `${i === 0 ? "M" : "L"}${sx(i).toFixed(2)},${sy(e).toFixed(2)}`)
-    .join(" ");
+  const visiblePath = linePath(visible.map((e, i) => ({ x: sx(i), y: sy(e) })));
+  const previewPath = linePath(history.map((e, i) => ({ x: sx(i), y: sy(e) })));
 
   const lastIndex = visible.length > 0 ? visible.length - 1 : 0;
   const lastEnergy = visible.length > 0 ? visible[lastIndex] : history[0];
@@ -310,10 +306,10 @@ export function MetricsExplorer({ source }: { source: string }) {
             )}
 
             {/* metric line */}
-            {linePath && (
+            {visiblePath && (
               <path
                 data-testid="metric-line"
-                d={linePath}
+                d={visiblePath}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={1.8}

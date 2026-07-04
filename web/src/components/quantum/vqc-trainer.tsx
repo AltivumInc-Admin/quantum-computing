@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
+import { extent, linearScale, linePath } from "./chart-utils";
 import {
   N_PARAMS,
   makeBlobs,
@@ -155,17 +156,14 @@ function BoundaryPlot({
 function LossCurve({ history }: { history: number[] }) {
   const path = useMemo(() => {
     if (history.length < 2) return "";
-    const max = Math.max(...history, 1e-9);
-    const min = Math.min(...history, 0);
-    const span = Math.max(1e-9, max - min);
-    const n = history.length;
-    return history
-      .map((v, i) => {
-        const x = (i / (n - 1)) * LOSS_W;
-        const y = LOSS_H - ((v - min) / span) * LOSS_H;
-        return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .join(" ");
+    // Clamp the raw extent: ceiling at least 1e-9, floor at most 0 — so the
+    // domain max - min >= 1e-9 is never degenerate.
+    const e = extent(history);
+    const max = Math.max(e.max, 1e-9);
+    const min = Math.min(e.min, 0);
+    const toX = linearScale(0, history.length - 1, 0, LOSS_W);
+    const toY = linearScale(min, max, LOSS_H, 0);
+    return linePath(history.map((v, i) => ({ x: toX(i), y: toY(v) })));
   }, [history]);
 
   return (
