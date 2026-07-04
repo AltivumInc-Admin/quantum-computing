@@ -4,7 +4,9 @@
 
 ### A zero-to-production learning path for quantum computing on Amazon Braket — with a math-native web portal and notebooks that run in your browser.
 
-[![CI](https://github.com/thechrisgrey/quantum-computing/actions/workflows/ci.yml/badge.svg)](https://github.com/thechrisgrey/quantum-computing/actions/workflows/ci.yml)
+**The Braket-native learning platform where the code you write runs _unmodified_ — free in your browser, or on real quantum hardware for about $0.30 a task.**
+
+[![CI](https://github.com/AltivumInc-Admin/quantum-computing/actions/workflows/ci.yml/badge.svg)](https://github.com/AltivumInc-Admin/quantum-computing/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![Node](https://img.shields.io/badge/node-20-339933?logo=node.js&logoColor=white)](web/package.json)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](web)
@@ -45,8 +47,20 @@ A single repository that teaches quantum computing **from "I've never seen a com
 
 ---
 
+## 🧭 Who this is for
+
+A **beginner-friendly on-ramp for the self-directed learner who intends to actually _run_ quantum hardware** — not just read about it. Start with no quantum background and no AWS account; the platform is built to carry you the whole way.
+
+The path has three rungs — **Newcomer → Practitioner → Subject-matter expert.** Most platforms stop at "completed the course." Here, mastery is legible and *earned*, and the learners who reach the top rung help shape what the platform teaches next.
+
+- **North-Star — the number we steer on:** _mastery gained_ — skills a learner moves into proven, spaced-repetition-verified retention each week. It rises only with genuine advancement and cannot be crammed.
+- **The destination it points to:** learners who reach practitioner grade, run real circuits on actual QPUs, and go on to shape the platform as subject-matter experts.
+
+---
+
 ## Table of contents
 
+- [Who this is for](#-who-this-is-for)
 - [The learning path](#-the-learning-path)
 - [Quick start](#-quick-start)
 - [Run notebooks in your browser](#-run-notebooks-in-your-browser-jupyterlite--qcsim)
@@ -117,7 +131,7 @@ Open the deployed portal, read a module, and click **Run in browser** on any not
 
 ```bash
 # Python 3.10+ recommended (CI pins 3.12)
-git clone https://github.com/thechrisgrey/quantum-computing.git
+git clone https://github.com/AltivumInc-Admin/quantum-computing.git
 cd quantum-computing
 
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -134,7 +148,7 @@ Everything in `00-prereqs`, `01-foundations`, and the first three `03-algorithms
 ### Path C — Full workspace (AWS Braket, real hardware)
 
 ```bash
-git clone https://github.com/thechrisgrey/quantum-computing.git
+git clone https://github.com/AltivumInc-Admin/quantum-computing.git
 cd quantum-computing
 python -m venv .venv && source .venv/bin/activate
 
@@ -560,7 +574,7 @@ Design specs and implementation plans live in [`docs/`](docs/).
 
 ## 📄 License
 
-No root `LICENSE` file is committed yet. The bundled [`qcsim`](qcsim/pyproject.toml) package declares the **MIT License**. Add a top-level `LICENSE` before any public release to make the terms for the whole workspace explicit.
+This workspace is released under the **MIT License** — see [`LICENSE`](LICENSE). The bundled [`qcsim`](qcsim/) package is MIT-licensed as well.
 
 ---
 
