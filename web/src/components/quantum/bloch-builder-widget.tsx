@@ -2,13 +2,18 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { BlochDial } from "./bloch-dial";
+import { BlochDial, BlochVectorSR } from "./bloch-dial";
 import { stateFromAngles, probsFromAngles } from "./bloch-builder";
 import { GateChip, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 import { formatRadians } from "./format";
 
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
+const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
+  ssr: false,
+  // Reserve the sphere's exact footprint while the lazy three.js chunk loads,
+  // so the first post-hydration dial->3D flip can't collapse the layout.
+  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
+});
 
 /**
  * Interactive "Build a state" playground rendered from a ```qbloch fenced block.
@@ -46,9 +51,13 @@ export function BlochBuilder() {
           <StateReadout state={state} n={1} />
         </div>
 
-        {/* Right column: Bloch sphere or dial */}
+        {/* Right column: Bloch sphere or dial. The 3D canvas is aria-hidden, so
+            it carries the dial's sr-only vector readout alongside. */}
         {show3D ? (
-          <BlochSphere3D state={state} />
+          <div className="shrink-0">
+            <BlochSphere3D state={state} />
+            <BlochVectorSR state={state} />
+          </div>
         ) : (
           <BlochDial state={state} size={180} />
         )}

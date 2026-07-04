@@ -10,7 +10,7 @@ import {
   activeBeatIndex,
   type Beat,
 } from "./scrolly";
-import { BlochDial } from "./bloch-dial";
+import { BlochDial, BlochVectorSR } from "./bloch-dial";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 
 /**
@@ -27,7 +27,12 @@ import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
  * and upgrades after hydration, exactly like the 3D scrubber.
  */
 
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
+const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
+  ssr: false,
+  // Reserve the sphere's exact footprint while the lazy three.js chunk loads —
+  // without it the already-mounted sticky row jumps ~180px when the chunk lands.
+  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
+});
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -102,6 +107,9 @@ function Explorable({ beats }: { beats: Beat[] }) {
       <div className="sticky top-24 flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-10">
         <div className="shrink-0">
           <BlochSphere3D state={state} />
+          {/* the 3D canvas is aria-hidden; keep the vector readout AT-visible
+              (and outside the aria-live beat column) */}
+          <BlochVectorSR state={state} />
         </div>
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
           <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light mb-2">

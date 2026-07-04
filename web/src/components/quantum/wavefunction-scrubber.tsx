@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { simulateSteps, probabilities, zeroState } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
-import { BlochDial } from "./bloch-dial";
+import { BlochDial, BlochVectorSR } from "./bloch-dial";
 import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 import { formatRadians } from "./format";
@@ -18,7 +18,12 @@ import { formatRadians } from "./format";
  */
 
 // three.js is heavy; load it lazily and never on the server (static export).
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), { ssr: false });
+const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
+  ssr: false,
+  // Reserve the sphere's exact footprint while the lazy three.js chunk loads,
+  // so the first post-hydration dial->3D flip can't collapse the layout.
+  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
+});
 
 const STEP_MS = 750;
 
@@ -101,7 +106,12 @@ export function WavefunctionScrubber({ source }: { source: string }) {
 
         {program.n === 1 &&
           (show3D ? (
-            <BlochSphere3D state={current} />
+            // The 3D canvas is aria-hidden; carry the dial's sr-only vector
+            // readout alongside (outside the aria-live column to the left).
+            <div className="shrink-0">
+              <BlochSphere3D state={current} />
+              <BlochVectorSR state={current} />
+            </div>
           ) : (
             <BlochDial state={current} size={180} />
           ))}
