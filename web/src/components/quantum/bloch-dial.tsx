@@ -1,4 +1,23 @@
 import { blochVector, zeroState, clamp, type Complex } from "./math";
+import { blochVectorSR } from "./format";
+
+/**
+ * The dial's ⟨x,y,z⟩ readout as an sr-only span, for the 3D branch: the WebGL
+ * sphere replaces the dial with an aria-hidden canvas, so consumers render this
+ * beside it to keep the text equivalent AT-visible. Lives here (not in the 3D
+ * module) so jsdom tests can exercise it — R3F's Canvas cannot mount in jsdom.
+ * Keep it OUTSIDE any aria-live region or every slider tick would announce it.
+ */
+export function BlochVectorSR({
+  state,
+  vector,
+}: {
+  state?: Complex[];
+  vector?: { x: number; y: number; z: number };
+}) {
+  const v = vector ?? blochVector(state ?? zeroState(1));
+  return <span className="sr-only">{blochVectorSR(v)}</span>;
+}
 
 /**
  * A compact 2D Bloch readout: the single-qubit state projected onto the
@@ -49,7 +68,7 @@ export function BlochDial({
       viewBox={`0 0 ${size} ${size}`}
       className="text-accent shrink-0"
       role="img"
-      aria-label={`${labelPrefix}Bloch vector x ${x.toFixed(2)}, y ${y.toFixed(2)}, z ${z.toFixed(2)}`}
+      aria-label={`${labelPrefix}${blochVectorSR({ x, y, z })}`}
     >
       <circle cx={c} cy={c} r={r} className="fill-none stroke-gray-300 dark:stroke-gray-600" strokeWidth={1} />
       <line x1={c} y1={c - r} x2={c} y2={c + r} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />

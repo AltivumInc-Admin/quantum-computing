@@ -7,6 +7,7 @@ import {
   formatRadians,
   formatPercent,
   percentSR,
+  blochVectorSR,
 } from "../../../src/components/quantum/format";
 
 describe("formatFixed", () => {
@@ -53,4 +54,13 @@ describe("percentSR", () => {
     expect(percentSR(80)).toBe("80.0 percent"));
   it("honors custom digit counts and snaps -0", () =>
     expect(percentSR(-0, 0)).toBe("0 percent"));
+});
+
+describe("blochVectorSR", () => {
+  it("reproduces the dial's historical label byte-for-byte", () =>
+    expect(blochVectorSR({ x: 1, y: 0, z: 0 })).toBe("Bloch vector x 1.00, y 0.00, z 0.00"));
+  it("keeps raw toFixed semantics (no -0 snap) to match the pinned dial label", () =>
+    expect(blochVectorSR({ x: -0.004, y: 0.5, z: -1 })).toBe(
+      "Bloch vector x -0.00, y 0.50, z -1.00"
+    ));
 });
