@@ -52,16 +52,12 @@ export function DjDemo({ source }: { source: string }) {
   }, [config, oracleKey]);
 
   if ("error" in config) {
-    return <SharedErrorCard label="qdj" className="my-8" message={config.error} />;
+    return <SharedErrorCard label="qdj" message={config.error} />;
   }
 
   if (!result || "error" in result) {
     return (
-      <SharedErrorCard
-        label="qdj"
-        className="my-8"
-        message={result?.error ?? "could not evaluate oracle"}
-      />
+      <SharedErrorCard label="qdj" message={result?.error ?? "could not evaluate oracle"} />
     );
   }
 

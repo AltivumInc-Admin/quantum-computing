@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { PRICING, Provider, estimateCost, isPerShot } from "./cost";
-import { EyebrowLabel, WidgetCard } from "./widget-ui";
+import { EyebrowLabel, WidgetCard, fieldClass } from "./widget-ui";
 
 const PROVIDERS = Object.keys(PRICING) as Provider[];
 
@@ -94,7 +94,7 @@ export function CostCalculator({ source }: { source: string }) {
               aria-label="Device"
               value={provider}
               onChange={(e) => setProvider(e.target.value as Provider)}
-              className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+              className={`${fieldClass} px-2 py-1.5 text-sm`}
             >
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
@@ -120,7 +120,7 @@ export function CostCalculator({ source }: { source: string }) {
               value={tasksStr}
               onChange={(e) => setTasksStr(e.target.value)}
               onBlur={() => setTasksStr(String(tasks))}
-              className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+              className={`${fieldClass} px-2 py-1.5 text-sm`}
             />
           </div>
 
@@ -141,7 +141,7 @@ export function CostCalculator({ source }: { source: string }) {
                 value={shotsStr}
                 onChange={(e) => setShotsStr(e.target.value)}
                 onBlur={() => setShotsStr(String(shots))}
-                className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+                className={`${fieldClass} px-2 py-1.5 text-sm`}
               />
             </div>
           ) : (
@@ -161,7 +161,7 @@ export function CostCalculator({ source }: { source: string }) {
                 value={minutesStr}
                 onChange={(e) => setMinutesStr(e.target.value)}
                 onBlur={() => setMinutesStr(String(minutes))}
-                className="rounded-control border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+                className={`${fieldClass} px-2 py-1.5 text-sm`}
               />
             </div>
           )}

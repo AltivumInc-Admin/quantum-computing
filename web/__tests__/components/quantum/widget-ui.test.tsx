@@ -8,6 +8,7 @@ import {
   Chip,
   EyebrowLabel,
   ErrorCard,
+  fieldClass,
   GateChip,
   LiveStatus,
   primaryActionClass,
@@ -248,6 +249,20 @@ describe("ErrorCard", () => {
     expect(outer.className).toContain("rounded-card");
     expect(outer.className).toContain("px-4");
     expect(screen.getByText("qsim error: parse error")).toBeInTheDocument();
+  });
+});
+
+describe("fieldClass", () => {
+  // Sizing baked into the token would silently lose to call-site overrides
+  // (Tailwind conflicts resolve by stylesheet order, not class order) — the
+  // token carries chrome only; each control appends its own px/py/text size.
+  it("carries no padding or text-size utilities", () => {
+    expect(fieldClass).not.toMatch(/\bp[xy]?-\d/);
+    expect(fieldClass).not.toMatch(/\btext-(xs|sm|base|lg)\b/);
+  });
+  it("keeps the control chrome (radius, border, focus ring)", () => {
+    expect(fieldClass).toContain("rounded-control");
+    expect(fieldClass).toContain("focus-ring");
   });
 });
 

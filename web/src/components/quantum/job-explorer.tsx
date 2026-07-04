@@ -182,47 +182,70 @@ function CompareBar({
         <span className="text-[11px] text-caption">{note}</span>
       </div>
 
-      {/* wall-clock */}
-      <div className="mt-2">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">wall-clock</span>
-          <span className="font-mono text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">
-            {formatDuration(wallSec)}
-          </span>
-        </div>
-        <span
-          role="img"
-          aria-label={`${label} wall-clock bar: ${formatDuration(wallSec)}.`}
-          className="mt-1 block h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden"
-        >
-          <span
-            className="block h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
-            style={{ width: `${(wallFrac * 100).toFixed(2)}%`, background: barColor, transition }}
-          />
-        </span>
-      </div>
-
-      {/* cost */}
-      <div className="mt-2.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">total cost</span>
-          <span className="font-mono text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">
-            {formatUsd(cost)}
-          </span>
-        </div>
-        <span
-          role="img"
-          aria-label={`${label} cost bar: ${formatUsd(cost)}.`}
-          className="mt-1 block h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden"
-        >
-          <span
-            className="block h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
-            style={{ width: `${(costFrac * 100).toFixed(2)}%`, background: barColor, transition }}
-          />
-        </span>
-      </div>
+      <SubBar
+        title="wall-clock"
+        valueText={formatDuration(wallSec)}
+        frac={wallFrac}
+        ariaLabel={`${label} wall-clock bar: ${formatDuration(wallSec)}.`}
+        barColor={barColor}
+        transition={transition}
+      />
+      <SubBar
+        title="total cost"
+        valueText={formatUsd(cost)}
+        frac={costFrac}
+        ariaLabel={`${label} cost bar: ${formatUsd(cost)}.`}
+        barColor={barColor}
+        transition={transition}
+        className="mt-2.5"
+      />
 
       <p className="sr-only">{ariaLabel}</p>
+    </div>
+  );
+}
+
+/**
+ * One stacked label-above sub-bar of the compare panel. Not the shared Bar:
+ * that contract is a single |label⟩ row with a class-driven fill; this one is
+ * inline-styled (color-mix background + the JS transition override that
+ * reduced-motion needs for style-driven widths).
+ */
+function SubBar({
+  title,
+  valueText,
+  frac,
+  ariaLabel,
+  barColor,
+  transition,
+  className = "mt-2",
+}: {
+  title: string;
+  valueText: string;
+  frac: number;
+  ariaLabel: string;
+  barColor: string;
+  transition: string | undefined;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">{title}</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+          {valueText}
+        </span>
+      </div>
+      <span
+        role="img"
+        aria-label={ariaLabel}
+        className="mt-1 block h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden"
+      >
+        <span
+          className="block h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
+          style={{ width: `${(frac * 100).toFixed(2)}%`, background: barColor, transition }}
+        />
+      </span>
     </div>
   );
 }

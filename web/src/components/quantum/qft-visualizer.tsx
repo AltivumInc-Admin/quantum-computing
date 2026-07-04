@@ -83,7 +83,7 @@ function parseConfig(source: string): ParseResult {
 const mag = (c: Complex) => Math.hypot(c[0], c[1]);
 
 function ErrorCard({ message }: { message: string }) {
-  return <SharedErrorCard label="qft" className="my-8" message={message} />;
+  return <SharedErrorCard label="qft" message={message} />;
 }
 
 function MagnitudeBars({

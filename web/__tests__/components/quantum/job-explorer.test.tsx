@@ -20,6 +20,11 @@ function mockMatchMedia(reduced: boolean) {
 }
 
 describe("JobExplorer", () => {
+  it("exposes named wall-clock and cost bars for both panels (SubBar extraction lock)", () => {
+    render(<JobExplorer source="" />);
+    expect(screen.getAllByRole("img", { name: /wall-clock bar/i })).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: /cost bar/i })).toHaveLength(2);
+  });
   beforeEach(() => mockMatchMedia(false));
 
   it("renders the header from an empty source (defaults)", () => {

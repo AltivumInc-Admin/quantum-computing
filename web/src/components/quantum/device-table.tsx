@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { DEVICES, sortDevices, type SortKey } from "./devices";
 import { costLabel } from "./cost";
-import { LiveStatus } from "./widget-ui";
+import { LiveStatus, fieldClass } from "./widget-ui";
 
 const TECHNOLOGIES = ["All", "Trapped ion", "Superconducting", "Neutral atom", "Simulator"] as const;
 
@@ -56,7 +56,7 @@ export function DeviceTable() {
             aria-label="Technology"
             value={tech}
             onChange={(e) => setTech(e.target.value)}
-            className="text-xs rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-2 py-1 focus-ring"
+            className={`${fieldClass} px-2 py-1 text-xs`}
           >
             {TECHNOLOGIES.map((t) => (
               <option key={t} value={t}>

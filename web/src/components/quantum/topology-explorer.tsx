@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, WidgetCard, fieldClass } from "./widget-ui";
 import { adjacency, swapCost, type Topology } from "./topology";
 
 const TOPOLOGIES: Topology[] = ["all-to-all", "line", "ring", "grid"];
@@ -344,7 +344,7 @@ export function TopologyExplorer({ source }: { source: string }) {
           <select
             value={safeA}
             onChange={(e) => setQaOverride(Number(e.target.value))}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1 text-xs text-gray-700 dark:text-gray-300 focus-ring"
+            className={`${fieldClass} px-2 py-1 text-xs`}
           >
             {qubitOptions
               .filter((i) => i !== safeB)
@@ -360,7 +360,7 @@ export function TopologyExplorer({ source }: { source: string }) {
           <select
             value={safeB}
             onChange={(e) => setQbOverride(Number(e.target.value))}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1 text-xs text-gray-700 dark:text-gray-300 focus-ring"
+            className={`${fieldClass} px-2 py-1 text-xs`}
           >
             {qubitOptions
               .filter((i) => i !== safeA)

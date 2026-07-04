@@ -4,7 +4,7 @@ import { useDeferredValue, useId, useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { noisyRho, stateFidelity, type ChannelName } from "./noise";
-import { ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
+import { ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard, fieldClass } from "./widget-ui";
 import { formatPercent, percentSR } from "./format";
 
 /**
@@ -173,7 +173,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
             id={channelId}
             value={channel}
             onChange={(e) => handleChannelChange(e.target.value as ChannelName)}
-            className="flex-1 rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-xs text-gray-700 dark:text-gray-200 focus-ring"
+            className={`${fieldClass} flex-1 px-2 py-1 text-xs`}
           >
             {CHANNELS.map((c) => (
               <option key={c.value} value={c.value}>
