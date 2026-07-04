@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { opsFor } from "./qsim-dsl";
 import { parseCorrelation, sampleOutcome } from "./correlation";
-import { GateChips, WidgetCard } from "./widget-ui";
+import { Bar, GateChips, WidgetCard } from "./widget-ui";
 import { formatPercent } from "./format";
 import type { Program } from "./qsim-dsl";
 
@@ -53,27 +53,22 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
           const count = tally[idx] ?? 0;
           const pct = total > 0 ? (count / total) * 100 : 0;
           return (
-            <div key={idx} className="flex items-center gap-2">
-              <span className="w-10 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                |{lbl}&rang;
-              </span>
-              <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <span
-                  className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-150"
-                  style={{ width: `${pct.toFixed(2)}%` }}
-                />
-              </span>
-              <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                {measurements > 0 ? (
+            <Bar
+              key={idx}
+              label={lbl}
+              fraction={pct / 100}
+              valueWidth="w-24"
+              valueText={
+                measurements > 0 ? (
                   <>
                     <span className="text-gray-700 dark:text-gray-200">{count}</span>
                     <span className="text-gray-400 dark:text-gray-600"> / {formatPercent(pct)}</span>
                   </>
                 ) : (
-                  <span>0</span>
-                )}
-              </span>
-            </div>
+                  "0"
+                )
+              }
+            />
           );
         })}
       </div>

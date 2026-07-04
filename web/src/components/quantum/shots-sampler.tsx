@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { sampleCounts } from "./shots";
-import { LiveStatus } from "./widget-ui";
+import { Bar, LiveStatus } from "./widget-ui";
 import { formatPercent } from "./format";
 
 /**
@@ -121,47 +121,29 @@ export function ShotsSampler({ source }: { source: string }) {
           const empiricalPct = formatPercent(empirical * 100);
 
           return (
-            <div
+            <Bar
               key={idx}
-              className="flex items-center gap-2"
-              aria-label={
+              label={basisLabel(idx, program.n)}
+              fraction={empirical}
+              fillClass="bg-accent/70"
+              valueWidth="w-24"
+              marker={{ fraction: p, title: `Exact: ${exactPct}` }}
+              ariaLabel={
                 total > 0
                   ? `Basis ${basisLabel(idx, program.n)}: empirical ${empiricalPct}, exact ${exactPct}`
                   : `Basis ${basisLabel(idx, program.n)}: exact ${exactPct}`
               }
-            >
-              {/* Basis label */}
-              <span className="w-10 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
-                |{basisLabel(idx, program.n)}&#10217;
-              </span>
-
-              {/* Bar track */}
-              <span className="relative h-4 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-visible">
-                {/* Empirical fill */}
-                <span
-                  className="absolute inset-y-0 left-0 rounded-full bg-accent/70"
-                  style={{ width: `${(empirical * 100).toFixed(2)}%` }}
-                />
-                {/* Exact probability marker — a thin vertical line */}
-                <span
-                  className="absolute top-0 bottom-0 w-0.5 bg-accent dark:bg-accent-light"
-                  style={{ left: `${(p * 100).toFixed(2)}%` }}
-                  title={`Exact: ${exactPct}`}
-                />
-              </span>
-
-              {/* Right-hand readout */}
-              <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                {total > 0 ? (
+              valueText={
+                total > 0 ? (
                   <>
                     <span className="text-gray-700 dark:text-gray-200">{empiricalPct}</span>
                     <span className="text-gray-400 dark:text-gray-600"> / {exactPct}</span>
                   </>
                 ) : (
-                  <span>{exactPct}</span>
-                )}
-              </span>
-            </div>
+                  exactPct
+                )
+              }
+            />
           );
         })}
       </div>
