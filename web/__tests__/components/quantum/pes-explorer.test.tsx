@@ -40,4 +40,16 @@ describe("PesExplorer", () => {
     expect(() => render(<PesExplorer source="{not json" />)).not.toThrow();
     expect(screen.getByText(/qpes error:/)).toBeInTheDocument();
   });
+
+  it("distinguishes the HF curve from FCI by dash pattern, not color alone", () => {
+    const { container } = render(<PesExplorer source="" />);
+    // The HF curve carries the "6 3" dash (the "3 3" dash is the asymptote line).
+    const dashed = container.querySelectorAll('path[stroke-dasharray="6 3"]');
+    expect(dashed.length).toBe(1);
+  });
+
+  it("includes an equilibrium entry in the legend", () => {
+    render(<PesExplorer source="" />);
+    expect(screen.getByText("equilibrium")).toBeInTheDocument();
+  });
 });

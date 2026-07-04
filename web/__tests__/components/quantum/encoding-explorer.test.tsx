@@ -31,4 +31,13 @@ describe("EncodingExplorer", () => {
     render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "angle" })} />);
     expect(screen.getAllByText(/%$/).length).toBeGreaterThanOrEqual(4);
   });
+  it("gives the side-by-side Bloch dials distinguishable accessible names", () => {
+    render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "angle" })} />);
+    expect(screen.getByLabelText(/^qubit 0 reduced bloch vector/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^qubit 1 reduced bloch vector/i)).toBeInTheDocument();
+  });
+  it("labels the single amplitude-encoding dial distinctly", () => {
+    render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "amplitude" })} />);
+    expect(screen.getByLabelText(/^single qubit bloch vector/i)).toBeInTheDocument();
+  });
 });

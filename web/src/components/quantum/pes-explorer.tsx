@@ -206,13 +206,15 @@ export function PesExplorer({ source }: { source: string }) {
               className="text-gray-400 dark:text-gray-500"
             />
 
-            {/* HF curve */}
+            {/* HF curve — dashed ("6 3", distinct from the asymptote's "3 3") so the
+                two primary curves differ by more than hue (WCAG 1.4.1) */}
             <path
               d={geom.hfPath}
               fill="none"
               stroke="currentColor"
               strokeWidth={1.6}
               strokeLinejoin="round"
+              strokeDasharray="6 3"
               className="text-gray-500 dark:text-gray-400"
             />
             {/* FCI curve */}
@@ -301,12 +303,28 @@ export function PesExplorer({ source }: { source: string }) {
               STO-3G FCI
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-0.5 w-4 bg-gray-500 dark:bg-gray-400" aria-hidden="true" />
+              {/* mini-SVG swatch mirrors the HF curve's dash pattern */}
+              <svg width="16" height="2" viewBox="0 0 16 2" aria-hidden="true" className="inline-block">
+                <line
+                  x1="0"
+                  y1="1"
+                  x2="16"
+                  y2="1"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeDasharray="6 3"
+                  className="text-gray-500 dark:text-gray-400"
+                />
+              </svg>
               restricted HF
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-2 w-2 rounded-full border border-gray-900 dark:border-white" aria-hidden="true" />
               VQE
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500 dark:bg-amber-400" aria-hidden="true" />
+              equilibrium
             </span>
           </div>
         </div>

@@ -52,6 +52,13 @@ describe("WavefunctionScrubber", () => {
     expect(screen.getByText(/0\.71\|11⟩/)).toBeInTheDocument();
   });
 
+  it("marks exactly one gate chip as the current step after a scrub", () => {
+    const { container } = render(<WavefunctionScrubber source={"H 0\nCNOT 0 1"} />);
+    const slider = screen.getByRole("slider", { name: /step/i });
+    fireEvent.change(slider, { target: { value: "2" } });
+    expect(container.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
+  });
+
   it("renders the fallback Bloch dial at 180px for a single-qubit circuit", () => {
     render(<WavefunctionScrubber source="H 0" />);
     const svg = screen.getByLabelText(/bloch vector/i);

@@ -29,6 +29,9 @@ export function gateLabel(g: ParsedGate): string {
 export function GateChip({ label, active = false }: { label: string; active?: boolean }) {
   return (
     <span
+      // "step" fits the scrubber's gate sequence; React drops the attribute
+      // entirely when undefined, so non-scrubber consumers are unaffected.
+      aria-current={active ? "step" : undefined}
       className={`rounded-chip px-2 py-0.5 text-[11px] font-mono transition-colors duration-150 ${
         active
           ? "chip-selected"
@@ -127,7 +130,8 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
         <CopyButton getText={() => diracString(state, n)} label="Copy state notation" />
         <span className="flex items-center">
           <CopyButton getText={() => toPythonState(state)} label="Copy state as runnable Python" />
-          <span className="-ml-1 rounded bg-accent/10 px-1 py-0.5 font-mono text-[9px] text-accent-dark dark:text-accent-light">py</span>
+          {/* decorative — the copy button already says "runnable Python" to AT */}
+          <span aria-hidden="true" className="-ml-1 rounded bg-accent/10 px-1 py-0.5 font-mono text-[9px] text-accent-dark dark:text-accent-light">py</span>
         </span>
       </div>
     </div>
