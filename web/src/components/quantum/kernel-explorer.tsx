@@ -28,6 +28,10 @@ import { formatPercent } from "./format";
 const GRID = 36;
 const SVG = 240; // viewBox px; plane spans [-1.1, 1.1] in both axes
 const SPAN = 1.1;
+const CELL = SVG / GRID;
+// Map plane coordinates [-SPAN, SPAN] to SVG pixels.
+const px = (x: number) => ((x + SPAN) / (2 * SPAN)) * SVG;
+const py = (y: number) => ((SPAN - y) / (2 * SPAN)) * SVG;
 
 const DATASETS: DatasetName[] = ["circles", "xor"];
 const MAPS: FeatureMap[] = ["angle", "iqp"];
@@ -141,16 +145,52 @@ export function KernelExplorer({ source }: { source: string }) {
     return { cells, acc };
   }, [train, map, deferredScale]);
 
+  // 1296 rects + 60 circles are invariant while deferredScale lags the slider —
+  // stable element references let React bail out per-fiber on the drag renders
+  // (the qaoa heat-memo treatment from WS-6g #64).
+  const boundaryCells = useMemo(() => {
+    if (!result) return null;
+    return result.cells.map((row, gy) =>
+      row.map((sign, gx) => (
+        <rect
+          key={`${gx}-${gy}`}
+          x={gx * CELL}
+          y={gy * CELL}
+          width={CELL + 0.5}
+          height={CELL + 0.5}
+          fill={
+            sign >= 0
+              ? "color-mix(in oklab, var(--accent) 22%, transparent)"
+              : "color-mix(in oklab, var(--accent) 4%, transparent)"
+          }
+        />
+      ))
+    );
+  }, [result]);
+
+  const trainingPoints = useMemo(() => {
+    if (!train) return null;
+    return train.map((p, i) => (
+      <circle
+        key={i}
+        cx={px(p.x[0])}
+        cy={py(p.x[1])}
+        r={3}
+        className={
+          p.y === 1
+            ? "fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900"
+            : "fill-gray-400 dark:fill-gray-500 stroke-white dark:stroke-gray-900"
+        }
+        strokeWidth={0.75}
+      />
+    ));
+  }, [train]);
+
   if (!parsed.ok || !train || !result) {
     return <ErrorCard message={parsed.ok ? "kernel error" : parsed.error} />;
   }
 
-  const { cells, acc } = result;
-  const cell = SVG / GRID;
-
-  // Map plane coordinates [-SPAN, SPAN] to SVG pixels.
-  const px = (x: number) => ((x + SPAN) / (2 * SPAN)) * SVG;
-  const py = (y: number) => ((SPAN - y) / (2 * SPAN)) * SVG;
+  const { acc } = result;
 
   return (
     <WidgetCard eyebrow="Quantum kernel" chips={<Chip>{parsed.dataset}</Chip>}>
@@ -166,38 +206,9 @@ export function KernelExplorer({ source }: { source: string }) {
             aria-busy={scale !== deferredScale}
             className={`w-full max-w-[240px] mx-auto block rounded-control transition-opacity ${scale !== deferredScale ? "opacity-60" : ""}`}
           >
-            {/* boundary regions */}
-            {cells.map((row, gy) =>
-              row.map((sign, gx) => (
-                <rect
-                  key={`${gx}-${gy}`}
-                  x={gx * cell}
-                  y={gy * cell}
-                  width={cell + 0.5}
-                  height={cell + 0.5}
-                  fill={
-                    sign >= 0
-                      ? "color-mix(in oklab, var(--accent) 22%, transparent)"
-                      : "color-mix(in oklab, var(--accent) 4%, transparent)"
-                  }
-                />
-              ))
-            )}
-            {/* training points */}
-            {train.map((p, i) => (
-              <circle
-                key={i}
-                cx={px(p.x[0])}
-                cy={py(p.x[1])}
-                r={3}
-                className={
-                  p.y === 1
-                    ? "fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900"
-                    : "fill-gray-400 dark:fill-gray-500 stroke-white dark:stroke-gray-900"
-                }
-                strokeWidth={0.75}
-              />
-            ))}
+            {/* boundary regions + training points (memoized element arrays) */}
+            {boundaryCells}
+            {trainingPoints}
           </svg>
           <p className="text-center text-[10px] text-caption font-mono">
             +1 region shaded &middot; class points overlaid

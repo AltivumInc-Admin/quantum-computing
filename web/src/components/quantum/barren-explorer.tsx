@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useDeferredValue, useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import { gradientVariance, type Cost } from "./barren";
 import { mulberry32 } from "./rng";
@@ -85,6 +85,10 @@ export function BarrenExplorer({ source }: { source: string }) {
   const samples = parsed.config?.samples ?? 300;
 
   const [depth, setDepth] = useState(initDepth);
+  // Defer the heavy 7-qubit-count x 2-cost sweep so a depth drag stays
+  // responsive; the slider/chip use the immediate value and the plot dims
+  // while it catches up (the kernel-explorer deferral pattern, WS-5c).
+  const deferredDepth = useDeferredValue(depth);
   const titleId = useId();
 
   // Sweep n = 2..8 for both cost functions. Seeded per-n with mulberry32(n) so
@@ -95,12 +99,12 @@ export function BarrenExplorer({ source }: { source: string }) {
     const local: number[] = [];
     for (let n = N_MIN; n <= N_MAX; n++) {
       ns.push(n);
-      const run = (cost: Cost) => gradientVariance(n, depth, cost, samples, mulberry32(n));
+      const run = (cost: Cost) => gradientVariance(n, deferredDepth, cost, samples, mulberry32(n));
       global.push(run("global"));
       local.push(run("local"));
     }
     return { ns, global, local };
-  }, [depth, samples]);
+  }, [deferredDepth, samples]);
 
   if (parsed.error || !parsed.config) {
     return <SharedErrorCard label="barren" message={parsed.error} />;
@@ -151,7 +155,10 @@ export function BarrenExplorer({ source }: { source: string }) {
           height={SVG.h}
           role="img"
           aria-labelledby={titleId}
-          className="w-full max-w-[320px] mx-auto block"
+          aria-busy={depth !== deferredDepth}
+          className={`w-full max-w-[320px] mx-auto block transition-opacity ${
+            depth !== deferredDepth ? "opacity-60" : ""
+          }`}
         >
           <title id={titleId}>
             Variance of the parameter-shift gradient versus qubit count, log10 scale.
