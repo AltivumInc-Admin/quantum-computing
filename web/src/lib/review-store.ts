@@ -99,6 +99,18 @@ export function gradeCard(id: string, rating: Rating, nowMs: number = Date.now()
   return next;
 }
 
+/**
+ * Grade a card ONLY if it is new or currently due. Re-solving a challenge that is
+ * not yet due is practice, not a spaced review, so it must not advance the
+ * schedule (otherwise repeated same-session re-checks would inflate the interval).
+ * Returns the new CardState when it graded, or null when the solve was a no-op.
+ */
+export function gradeCardIfDue(id: string, rating: Rating, nowMs: number = Date.now()): CardState | null {
+  const existing = getCardState(id);
+  if (existing !== null && !isDue(existing, epochDay(nowMs))) return null;
+  return gradeCard(id, rating, nowMs);
+}
+
 /** Every card id that has been reviewed at least once (has stored state). */
 export function getAllCardIds(): string[] {
   try {

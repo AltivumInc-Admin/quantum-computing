@@ -1,8 +1,11 @@
 "use client";
 
-import { useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { parseChallenge } from "@/lib/challenge-schema";
 import { gradeTs, type GradeResult } from "@/lib/challenge-grade";
+import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
+import { challengeCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
+import { nextIntervalDays } from "@/lib/review-schedule";
 
 /**
  * A self-checking coding challenge rendered from a ```qchallenge fenced block.
@@ -70,6 +73,21 @@ export function Challenge({ source }: { source: string }) {
   );
   const editorId = useId();
 
+  const cardId = challengeCardId(spec?.id ?? "invalid");
+  const wrongAttempts = useRef(0);
+  const [scheduled, setScheduled] = useState<number | null>(null);
+
+  // Cache the challenge's content so /review can render it as a recall card (the
+  // schedule is keyed by id only). Mirrors review-card.tsx.
+  useEffect(() => {
+    if (spec) {
+      setCardContent(cardId, {
+        prompt: spec.prompt,
+        answer: challengeReviewAnswer(spec.target.program),
+      });
+    }
+  }, [spec, cardId]);
+
   if (!spec) {
     return (
       <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
@@ -82,7 +100,16 @@ export function Challenge({ source }: { source: string }) {
 
   const apply = (r: GradeResult) => {
     setResult(r);
-    if (r.status === "solved") markSolved();
+    if (r.status === "wrong") {
+      // Only a genuine wrong answer counts toward difficulty; an "error" (parse
+      // or disallowed gate) is a malformed attempt, not a wrong answer.
+      wrongAttempts.current += 1;
+    } else if (r.status === "solved") {
+      const graded = gradeCardIfDue(cardId, ratingForSolve(wrongAttempts.current));
+      if (graded) setScheduled(nextIntervalDays(graded));
+      wrongAttempts.current = 0;
+      markSolved();
+    }
   };
 
   const runPy = async () => {
@@ -172,6 +199,14 @@ export function Challenge({ source }: { source: string }) {
           >
             {result.message}
           </div>
+        )}
+
+        {scheduled !== null && (
+          <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
+            {scheduled <= 1
+              ? "Added to your review — back tomorrow."
+              : `Added to your review — back in ${scheduled} days.`}
+          </p>
         )}
       </div>
     </div>
