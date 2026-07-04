@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
+import { extent, linearScale, linePath, plotInner, type Plot } from "./chart-utils";
 import { H2 as H } from "./h2-data";
 import { h2Energies, oneQubitGroundEnergy } from "./chemistry";
 import { parseJsonObject } from "./parse-utils";
@@ -20,7 +21,8 @@ import { formatHartree, formatAngstrom, hartreeSR, angstromSR } from "./format";
  * scrubber; empty marks the equilibrium bond length. Pure client, no SSR/AWS.
  */
 
-const PLOT = { w: 320, h: 200, padL: 40, padR: 12, padT: 12, padB: 28 };
+const PLOT: Plot = { w: 320, h: 200, padL: 40, padR: 12, padT: 12, padB: 28 };
+const { innerW, innerH } = plotInner(PLOT);
 const VQE_STRIDE = 6; // overlay a VQE dot every Nth fixture point
 
 // ---------------------------------------------------------------------------
@@ -72,21 +74,16 @@ export function PesExplorer({ source }: { source: string }) {
     const rMax = rs[rs.length - 1];
 
     const energies = points.flatMap((p) => [p.fci, p.hf]);
-    const eMin = Math.min(...energies);
-    const eMax = Math.max(...energies);
+    const { min: eMin, max: eMax } = extent(energies);
     const ePad = (eMax - eMin) * 0.06;
     const yLo = eMin - ePad;
     const yHi = eMax + ePad;
 
-    const innerW = PLOT.w - PLOT.padL - PLOT.padR;
-    const innerH = PLOT.h - PLOT.padT - PLOT.padB;
-    const sx = (R: number) => PLOT.padL + ((R - rMin) / (rMax - rMin)) * innerW;
-    const sy = (E: number) => PLOT.padT + ((yHi - E) / (yHi - yLo)) * innerH;
+    const sx = linearScale(rMin, rMax, PLOT.padL, PLOT.padL + innerW);
+    const sy = linearScale(yHi, yLo, PLOT.padT, PLOT.padT + innerH);
 
     const toPath = (vals: number[]) =>
-      points
-        .map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.R).toFixed(2)},${sy(vals[i]).toFixed(2)}`)
-        .join(" ");
+      linePath(points.map((p, i) => ({ x: sx(p.R), y: sy(vals[i]) })));
 
     const fciPath = toPath(points.map((p) => p.fci));
     const hfPath = toPath(points.map((p) => p.hf));
@@ -274,7 +271,7 @@ export function PesExplorer({ source }: { source: string }) {
 
             {/* axis labels (decorative) */}
             <text
-              x={PLOT.padL + (PLOT.w - PLOT.padL - PLOT.padR) / 2}
+              x={PLOT.padL + innerW / 2}
               y={PLOT.h - 6}
               textAnchor="middle"
               fontSize={9}
@@ -285,10 +282,10 @@ export function PesExplorer({ source }: { source: string }) {
             </text>
             <text
               x={10}
-              y={PLOT.padT + (PLOT.h - PLOT.padT - PLOT.padB) / 2}
+              y={PLOT.padT + innerH / 2}
               textAnchor="middle"
               fontSize={9}
-              transform={`rotate(-90 10 ${PLOT.padT + (PLOT.h - PLOT.padT - PLOT.padB) / 2})`}
+              transform={`rotate(-90 10 ${PLOT.padT + innerH / 2})`}
               className="fill-gray-500 dark:fill-gray-400 font-mono"
               aria-hidden="true"
             >

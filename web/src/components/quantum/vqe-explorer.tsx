@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
+import { linearScale, linePath } from "./chart-utils";
 import { BlochDial } from "./bloch-dial";
 import {
   energy1q,
@@ -116,14 +117,15 @@ export function VqeExplorer({ source }: { source: string }) {
       if (e < eMin) eMin = e;
       if (e > eMax) eMax = e;
     }
-    const span = Math.max(1e-9, eMax - eMin);
+    // The sampled cosine landscape always has eMax > eMin for the H2
+    // coefficients, so the scale domain is never degenerate.
     const plotW = SVG.w - 2 * SVG.padX;
     const plotH = SVG.h - 2 * SVG.padY;
-    const thetaToX = (th: number) => SVG.padX + ((th + Math.PI) / TAU) * plotW;
-    const energyToY = (e: number) => SVG.padY + ((eMax - e) / span) * plotH;
-    const curvePath = samples
-      .map((s, i) => `${i === 0 ? "M" : "L"}${thetaToX(s.theta).toFixed(2)},${energyToY(s.energy).toFixed(2)}`)
-      .join(" ");
+    const thetaToX = linearScale(-Math.PI, Math.PI, SVG.padX, SVG.padX + plotW);
+    const energyToY = linearScale(eMax, eMin, SVG.padY, SVG.padY + plotH);
+    const curvePath = linePath(
+      samples.map((s) => ({ x: thetaToX(s.theta), y: energyToY(s.energy) }))
+    );
     const floorY = energyToY(floor);
     return { c0, cz, cx, H, floor, eMin, eMax, thetaToX, energyToY, curvePath, floorY };
   }, [parsed]);
