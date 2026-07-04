@@ -4,6 +4,7 @@
 import {
   getCardState,
   gradeCard,
+  gradeCardIfDue,
   getAllCardIds,
   dueCardIds,
   dueCount,
@@ -78,5 +79,28 @@ describe("review-store", () => {
     });
     expect(() => gradeCard("a", "good", 0)).not.toThrow();
     spy.mockRestore();
+  });
+
+  describe("gradeCardIfDue", () => {
+    it("creates a card when none exists yet", () => {
+      const s = gradeCardIfDue("x", "good", 0);
+      expect(s).not.toBeNull();
+      expect(s!.reps).toBe(1);
+      expect(getCardState("x")).toEqual(s);
+    });
+
+    it("is a no-op while the card is not yet due (returns null, no advance)", () => {
+      gradeCardIfDue("x", "good", 0); // due at day 1
+      const skipped = gradeCardIfDue("x", "good", 0); // same day, not due
+      expect(skipped).toBeNull();
+      expect(getCardState("x")!.reps).toBe(1); // unchanged
+    });
+
+    it("advances the schedule once the card is due again", () => {
+      gradeCardIfDue("x", "good", 0); // reps 1, due day 1
+      const advanced = gradeCardIfDue("x", "good", 1 * DAY);
+      expect(advanced).not.toBeNull();
+      expect(advanced!.reps).toBe(2);
+    });
   });
 });
