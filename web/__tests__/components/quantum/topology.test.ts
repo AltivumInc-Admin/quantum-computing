@@ -16,4 +16,13 @@ describe("topology", () => {
   it("adjacent qubits need 0 SWAPs", () => {
     expect(swapCost("line", 5, 1, 2).swaps).toBe(0);
   });
+  it("grid(9): corner-to-corner costs 3 SWAPs via swapCost", () => {
+    expect(swapCost("grid", 9, 0, 8).swaps).toBe(3);
+  });
+  it("a === b: zero SWAPs and the single-node path", () => {
+    expect(swapCost("ring", 5, 2, 2)).toEqual({ path: [2], swaps: 0 });
+  });
+  it("unreachable target (out-of-range b): swaps -1 and an empty path", () => {
+    expect(swapCost("line", 4, 0, 9)).toEqual({ path: [], swaps: -1 });
+  });
 });

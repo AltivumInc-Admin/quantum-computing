@@ -25,4 +25,12 @@ describe("KernelExplorer", () => {
     render(<KernelExplorer source={"{ not json"} />);
     expect(screen.getByText(/error/i)).toBeInTheDocument();
   });
+  it("rejects an unknown dataset with the exact field error", () => {
+    render(<KernelExplorer source={JSON.stringify({ dataset: "moons" })} />);
+    expect(screen.getByText(/"dataset" must be "circles" or "xor"/)).toBeInTheDocument();
+  });
+  it("rejects an unknown map with the exact field error", () => {
+    render(<KernelExplorer source={JSON.stringify({ map: "zz" })} />);
+    expect(screen.getByText(/"map" must be "angle" or "iqp"/)).toBeInTheDocument();
+  });
 });

@@ -20,4 +20,20 @@ describe("CostCalculator", () => {
     fireEvent.change(screen.getByLabelText(/device/i), { target: { value: "LocalSimulator" } });
     expect(screen.getByText(/\$0\.00/)).toBeInTheDocument();
   });
+  it("applies a valid fenced preset (provider + shots)", () => {
+    render(<CostCalculator source={JSON.stringify({ provider: "IQM", shots: 500 })} />);
+    expect(screen.getByLabelText(/device/i)).toHaveValue("IQM");
+    expect(screen.getByLabelText(/shots/i)).toHaveValue(500);
+  });
+  it("falls back to defaults for unknown provider and non-positive shots (no error card)", () => {
+    render(<CostCalculator source={JSON.stringify({ provider: "Nope", shots: -5 })} />);
+    expect(screen.getByLabelText(/device/i)).toHaveValue("IonQ");
+    expect(screen.getByLabelText(/shots/i)).toHaveValue(1000);
+    expect(screen.queryByText(/error/i)).not.toBeInTheDocument();
+  });
+  it("silently falls back to defaults for malformed JSON (lenient by design)", () => {
+    render(<CostCalculator source={"{not json"} />);
+    expect(screen.getByLabelText(/device/i)).toHaveValue("IonQ");
+    expect(screen.queryByText(/error/i)).not.toBeInTheDocument();
+  });
 });

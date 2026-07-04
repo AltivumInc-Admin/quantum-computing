@@ -1,6 +1,5 @@
 import { type Complex, ry, applyGate1InPlace, zeroState, cAbs2 } from "./math";
 
-export { mulberry32 } from "./rng";
 
 const czEdgeCache = new Map<number, [number, number][]>();
 
