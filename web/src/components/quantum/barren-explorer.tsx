@@ -2,7 +2,8 @@
 
 import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
-import { gradientVariance, mulberry32, type Cost } from "./barren";
+import { gradientVariance, type Cost } from "./barren";
+import { mulberry32 } from "./rng";
 
 /**
  * Inline barren-plateau explorer rendered from a ```qbarren fenced block in a

@@ -56,18 +56,6 @@ export function readNumber(
   return { ok: true, value: clamp(raw, lo, hi) };
 }
 
-/** Read a numeric field, falling back to `fallback` when missing or invalid. */
-export function numberOr(
-  obj: Record<string, unknown>,
-  key: string,
-  fallback: number
-): number {
-  const v = obj[key];
-  if (v === undefined) return fallback;
-  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
-  return v;
-}
-
 /**
  * Parse a whitespace-DSL token as a non-negative integer index. Unlike
  * parseInt, this rejects signs, decimals, and trailing garbage: parseInt("-1")

@@ -1,4 +1,5 @@
-import { gradientVariance, mulberry32 } from "@/components/quantum/barren";
+import { gradientVariance } from "@/components/quantum/barren";
+import { mulberry32 } from "@/components/quantum/rng";
 
 describe("barren", () => {
   it("global-cost gradient variance collapses with qubit count (L=2)", () => {

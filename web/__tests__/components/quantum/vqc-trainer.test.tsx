@@ -12,11 +12,15 @@ describe("VqcTrainer", () => {
     expect(screen.getByText(/vqc/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /train/i })).toBeInTheDocument();
   });
-  it("training updates the step/accuracy readout", () => {
+  it("training advances the step readout past 0 (button runs a synchronous burst)", () => {
     render(<VqcTrainer source={""} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/step 0/);
     fireEvent.click(screen.getByRole("button", { name: /train/i }));
-    // after clicking Train, the step or accuracy readout reflects progress
-    expect(screen.getByText(/accuracy|step|loss/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/step [1-9]/);
+  });
+  it("renders the error card for an unknown dataset", () => {
+    render(<VqcTrainer source={JSON.stringify({ dataset: "moons" })} />);
+    expect(screen.getByText(/unknown dataset "moons"/)).toBeInTheDocument();
   });
   it("announces the step/loss/accuracy readout as a polite live region", () => {
     render(<VqcTrainer source={""} />);

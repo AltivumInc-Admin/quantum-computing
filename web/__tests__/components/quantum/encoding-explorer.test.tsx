@@ -40,4 +40,12 @@ describe("EncodingExplorer", () => {
     render(<EncodingExplorer source={JSON.stringify({ x: [0.6, 0.9], encoding: "amplitude" })} />);
     expect(screen.getByLabelText(/^single qubit bloch vector/i)).toBeInTheDocument();
   });
+  it('rejects a malformed "x" with the exact field error', () => {
+    render(<EncodingExplorer source={JSON.stringify({ x: [1] })} />);
+    expect(screen.getByText(/"x" must be a two-number array/)).toBeInTheDocument();
+  });
+  it("rejects an unknown encoding value", () => {
+    render(<EncodingExplorer source={JSON.stringify({ x: [0.1, 0.2], encoding: "fourier" })} />);
+    expect(screen.getByText(/encoding must be one of/)).toBeInTheDocument();
+  });
 });
