@@ -20,6 +20,10 @@ describe("ShotsSampler", () => {
     render(<ShotsSampler source={"NOTAGATE 0"} />);
     expect(screen.getByText(/parse error/i)).toBeInTheDocument();
   });
+  it("marks the exact probability on each bar (one marker per basis state)", () => {
+    const { container } = render(<ShotsSampler source={"qubits 1\nH 0"} />);
+    expect(container.querySelectorAll('span[title^="Exact:"]')).toHaveLength(2);
+  });
   it("prompts the learner to Run before the first sample", () => {
     render(<ShotsSampler source={"qubits 1\nH 0"} />);
     expect(screen.getByText(/press run to sample/i)).toBeInTheDocument();

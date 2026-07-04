@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { sampleCounts } from "./shots";
-import { Bar, LiveStatus } from "./widget-ui";
+import { Bar, ErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
 import { formatPercent } from "./format";
 
 /**
@@ -34,20 +34,8 @@ export function ShotsSampler({ source }: { source: string }) {
     setTotal(shots);
   }
 
-  // Parse-error card — matches the circuit-lab.tsx pattern exactly
   if (program.error) {
-    return (
-      <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-            Shots sampler
-          </span>
-        </div>
-        <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">
-          qsim parse error: {program.error}
-        </p>
-      </div>
-    );
+    return <ErrorCard label="qsim parse" message={program.error} />;
   }
 
   const empiricalArgmax = counts
@@ -55,7 +43,14 @@ export function ShotsSampler({ source }: { source: string }) {
     : 0;
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <WidgetCard
+      eyebrow="Shots sampler"
+      headerRight={
+        total > 0 ? (
+          <span className="text-xs tabular-nums text-caption">{total} shots</span>
+        ) : undefined
+      }
+    >
       <LiveStatus>
         {total > 0 && counts
           ? `Sampled ${total} shots. Most-probable |${basisLabel(
@@ -66,18 +61,6 @@ export function ShotsSampler({ source }: { source: string }) {
             )}, exact ${formatPercent(probs[empiricalArgmax] * 100)}.`
           : ""}
       </LiveStatus>
-
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
-          Shots sampler
-        </span>
-        {total > 0 && (
-          <span className="text-xs tabular-nums text-caption">
-            {total} shots
-          </span>
-        )}
-      </div>
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
@@ -159,6 +142,6 @@ export function ShotsSampler({ source }: { source: string }) {
           <span className="text-[11px] text-gray-500 dark:text-gray-400">Exact probability</span>
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

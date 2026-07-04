@@ -85,11 +85,20 @@ export function Bar({
    * pokes past the rounded edge and overflow-hidden would clip it.
    */
   marker?: { fraction: number; title?: string };
+  /**
+   * When set, the row is exposed as a single named `role="img"` node (children
+   * become presentational). An aria-label on the bare div would be prohibited
+   * naming (ARIA: role=generic) and never reliably reach AT.
+   */
   ariaLabel?: string;
 }) {
   const pct = Math.max(0, Math.min(1, fraction)) * 100;
   return (
-    <div className="flex items-center gap-2" aria-label={ariaLabel}>
+    <div
+      className="flex items-center gap-2"
+      role={ariaLabel ? "img" : undefined}
+      aria-label={ariaLabel}
+    >
       <span className={`w-12 shrink-0 font-mono text-xs ${labelClassName}`}>
         |{label}&#10217;
       </span>
