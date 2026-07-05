@@ -25,7 +25,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 
 - **A 7-module, 45-notebook curriculum** on [Amazon Braket](https://aws.amazon.com/braket/), strictly numbered and cumulative, with cost-awareness woven through every step.
 - **A statically-exported Next.js learning portal** (`web/`) that renders each module's `GUIDE.md` as a math-native page with **live, interactive circuit widgets** and an **interactive placement quiz**.
-- **In-browser, zero-install notebooks**: 14 of the 45 notebooks run entirely in your browser via **JupyterLite + Pyodide**, with a custom NumPy simulator (`qcsim`) that drop-in replaces the Braket SDK.
+- **In-browser, zero-install notebooks**: 32 of the 45 notebooks run entirely in your browser via **JupyterLite + Pyodide**, with a custom NumPy simulator (`qcsim`) that drop-in replaces the Braket SDK.
 - **A shared Python toolkit** (`lib/`) of circuits, device abstractions, QML, and quantum-chemistry building blocks the notebooks import instead of reinventing.
 - **Production AWS infrastructure as code** (`infra/`) — least-privilege IAM, encrypted result storage with lifecycle cleanup, and a hard monthly budget alarm.
 - **A CI gate and an auto-deploy pipeline** so `main` is always green and the live site is always built from a passing commit.
@@ -39,7 +39,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 | | |
 |---|---|
 | **Truly beginner-first** | `00-prereqs` assumes *no* quantum background and *no* AWS account — just NumPy. Every formal symbol is taught **Plain English → Code first → Notation → Self-check**, with a Dirac↔NumPy "Rosetta stone." |
-| **Notebooks that run anywhere** | 14 notebooks execute in the browser with no install (Pyodide + `qcsim`). The rest run locally on the free Braket `LocalSimulator`. |
+| **Notebooks that run anywhere** | 32 notebooks execute in the browser with no install (Pyodide + `qcsim`). The rest run locally on the free Braket `LocalSimulator`. |
 | **Math-native portal** | KaTeX everywhere, plus `​```qsim` fenced blocks that become **live circuit simulators** (probability bars, Dirac state, Bloch dial, θ slider) right inside the prose. |
 | **Simulator parity, proven** | `qcsim` (Python) and `math.ts` (TypeScript) both mirror Braket's conventions and are **tested for parity** against the real SDK to 4σ / `1e-10`. |
 | **Cost-safe by construction** | Per-provider cost estimators, a `make cost` Cost-Explorer report, and a CloudFormation **budget alarm** at 50 % / 80 % / 100 %. |
@@ -106,12 +106,12 @@ flowchart LR
 |---|--------|:---------:|:----------:|-------|
 | **00** | **Prerequisites: From Zero to Ready-for-Quantum** | 6 | **6/6** | NumPy linear algebra, probability & the Born rule, Dirac notation, the Bloch sphere — **no AWS** |
 | **01** | **Quantum Computing Foundations** | 5 | **5/5** | Qubits, the full single/multi-qubit gate set, entanglement (Bell/GHZ), measurement, the Braket circuit model |
-| **02** | **Quantum Hardware on Amazon Braket** | 6 | 0/6 | IonQ / IQM / QuEra QPUs, SV1 / DM1 / TN1 managed simulators, noise, device selection & cost estimation |
-| **03** | **Quantum Algorithms** | 6 | **3/6** | Deutsch-Jozsa, Grover, QFT, Quantum Phase Estimation, QAOA (MaxCut), amplitude estimation |
-| **04** | **Quantum Machine Learning** | 7 | 0/7 | Data encodings, variational classifiers, quantum kernels, barren plateaus, PennyLane + Braket |
-| **05** | **Quantum Chemistry & Biochemistry** | 8 | 0/8 | Molecular Hamiltonians, fermion→qubit mappings, VQE/SSVQE, ansatz design, active spaces |
+| **02** | **Quantum Hardware on Amazon Braket** | 6 | **4/6** | IonQ / IQM / QuEra QPUs, SV1 / DM1 / TN1 managed simulators, noise, device selection & cost estimation |
+| **03** | **Quantum Algorithms** | 6 | **6/6** | Deutsch-Jozsa, Grover, QFT, Quantum Phase Estimation, QAOA (MaxCut), amplitude estimation |
+| **04** | **Quantum Machine Learning** | 7 | **5/7** | Data encodings, variational classifiers, quantum kernels, barren plateaus, PennyLane + Braket |
+| **05** | **Quantum Chemistry & Biochemistry** | 8 | **6/8** | Molecular Hamiltonians, fermion→qubit mappings, VQE/SSVQE, ansatz design, active spaces |
 | **06** | **Production Hybrid Quantum-Classical Jobs** | 7 | 0/7 | Braket Hybrid Jobs, parametric compilation, checkpointing, custom containers, monitoring & cost controls |
-| | **Total** | **45** | **14** | |
+| | **Total** | **45** | **32** | |
 
 Each module's `GUIDE.md` follows the same shape: **Learning Objectives → Prerequisites → Concepts → Hands-On Exercises (numbered notebooks, each with a Scripts subsection) → References.** Reusable helper scripts (`scripts/`) keep shared logic out of the lessons. `00-prereqs` is the exception — it adds a Setup section and a Self-Assessment, and ends with a **10-question placement quiz** (rendered interactively in the portal): pass ≥ 7 unaided and skip straight to `01-foundations`.
 
@@ -167,7 +167,7 @@ Configure AWS via `~/.aws` and the variables in [`.env.example`](.env.example) (
 
 ## 🌐 Run notebooks in your browser (JupyterLite + qcsim)
 
-The headline feature: **14 notebooks run with zero install**, directly in the browser. There's no backend — it's all static assets plus a WebAssembly Python kernel.
+The headline feature: **32 notebooks run with zero install**, directly in the browser. There's no backend — it's all static assets plus a WebAssembly Python kernel.
 
 ### How it works
 
