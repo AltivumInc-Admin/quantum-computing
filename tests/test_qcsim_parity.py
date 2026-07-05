@@ -22,7 +22,11 @@ from qcsim import LocalSimulator as QSimulator  # noqa: E402
 
 
 SHOTS = 1000
-SIGMA_TOL = 4.0  # be generous; finite-sample noise + numpy RNG vs Braket RNG
+# qcsim's seeded empirical sample is compared against Braket's EXACT distribution
+# (one finite sample against a deterministic ground truth), so this tolerance
+# guards only qcsim's own shot noise — there is no second random sample to double
+# the variance, and with a fixed seed the result is fully reproducible.
+SIGMA_TOL = 4.0
 
 
 def _run_qcsim(builder, shots: int = SHOTS, seed: int = 0):
@@ -36,22 +40,58 @@ def _run_braket(builder, shots: int = SHOTS):
     return BraketSimulator().run(circuit, shots=shots).result()
 
 
-def _assert_distributions_close(qcounts, bcounts, shots: int):
-    """Compare two empirical bitstring distributions with a 4-sigma allowance."""
-    keys = set(qcounts) | set(bcounts)
-    for k in keys:
+def _braket_analytic(builder):
+    """Braket's EXACT state vector and probability distribution (shots=0, analytic).
+
+    Using the analytic result instead of a second finite sample is what makes the
+    parity comparison deterministic: the only randomness left is qcsim's own seeded
+    sampler, so a passing circuit can never flake on RNG luck. (The previous version
+    compared two independent random samples and flaked ~occasionally.)
+    """
+    circuit = builder(BraketCircuit)
+    circuit.state_vector()
+    circuit.probability()
+    result = BraketSimulator().run(circuit, shots=0).result()
+    state_vector = np.asarray(result.values[0], dtype=np.complex128)
+    probs = np.asarray(result.values[1], dtype=float)
+    n = int(round(math.log2(len(probs))))
+    dist = {format(i, f"0{n}b"): float(p) for i, p in enumerate(probs)}
+    return state_vector, dist
+
+
+def _assert_state_vectors_equal(sv_q, sv_b):
+    """qcsim and Braket must agree on the exact state, up to an unobservable global phase."""
+    sv_q = np.asarray(sv_q, dtype=np.complex128)
+    sv_b = np.asarray(sv_b, dtype=np.complex128)
+    overlap = abs(np.vdot(sv_q, sv_b))
+    assert abs(overlap - 1.0) < 1e-9, (
+        f"state vectors differ: |<qcsim|braket>| = {overlap:.12f}\n"
+        f"  qcsim  = {np.round(sv_q, 4)}\n  braket = {np.round(sv_b, 4)}"
+    )
+
+
+def _assert_sampling_matches_distribution(qcounts, exact, shots: int):
+    """qcsim's seeded empirical counts must match Braket's EXACT distribution.
+
+    Deterministic bins (p ~ 0 or 1) must match exactly; probabilistic bins must fall
+    within SIGMA_TOL sigma of the expected count. Because qcsim is seeded and ``exact``
+    is analytic, the outcome is fully reproducible — no RNG flake.
+    """
+    for k in set(qcounts) | set(exact):
         q = qcounts.get(k, 0)
-        b = bcounts.get(k, 0)
-        p_avg = (q + b) / (2 * shots)
-        if p_avg < 1e-9 or p_avg > 1 - 1e-9:
-            # Deterministic outcome — must match exactly.
-            assert q == b, f"deterministic bin {k!r}: qcsim={q}, braket={b}"
+        p = exact.get(k, 0.0)
+        expected = p * shots
+        if p < 1e-9 or p > 1 - 1e-9:
+            # Deterministic outcome — must match the analytic result exactly.
+            assert q == round(expected), (
+                f"deterministic bin {k!r}: qcsim={q}, expected={round(expected)}"
+            )
             continue
-        sigma = math.sqrt(shots * p_avg * (1 - p_avg))
-        diff = abs(q - b)
+        sigma = math.sqrt(shots * p * (1 - p))
+        diff = abs(q - expected)
         assert diff <= SIGMA_TOL * sigma + 5, (
-            f"distribution mismatch on bin {k!r}: qcsim={q}, braket={b}, "
-            f"diff={diff}, {SIGMA_TOL}-sigma={SIGMA_TOL * sigma:.1f}"
+            f"sampling mismatch on bin {k!r}: qcsim={q}, exact_expected={expected:.1f}, "
+            f"diff={diff:.1f}, {SIGMA_TOL}-sigma={SIGMA_TOL * sigma:.1f}"
         )
 
 
@@ -152,16 +192,21 @@ CIRCUITS = [
 ]
 
 
-@pytest.mark.parametrize("name,builder,_probabilistic", CIRCUITS, ids=[c[0] for c in CIRCUITS])
-def test_qcsim_matches_braket(name, builder, _probabilistic):
-    """For each reference circuit, measurement distributions must agree."""
-    q_result = _run_qcsim(builder, shots=SHOTS, seed=0)
-    b_result = _run_braket(builder, shots=SHOTS)
-    _assert_distributions_close(
-        q_result.measurement_counts,
-        b_result.measurement_counts,
-        SHOTS,
-    )
+@pytest.mark.parametrize("_name,builder,_probabilistic", CIRCUITS, ids=[c[0] for c in CIRCUITS])
+def test_qcsim_matches_braket(_name, builder, _probabilistic):
+    """qcsim must agree with real Braket on both the exact state and the sampled distribution.
+
+    Deterministic by construction: the state vectors are compared analytically, and
+    qcsim's sampler is seeded and checked against Braket's EXACT distribution — so a
+    passing circuit can never flake on finite-sample RNG luck the way the old
+    sample-vs-sample comparison did.
+    """
+    sv_b, exact = _braket_analytic(builder)
+    sv_q = builder(QCircuit).state_vector()
+    _assert_state_vectors_equal(sv_q, sv_b)
+
+    q_counts = _run_qcsim(builder, shots=SHOTS, seed=0).measurement_counts
+    _assert_sampling_matches_distribution(q_counts, exact, SHOTS)
 
 
 def test_state_vector_bell():
