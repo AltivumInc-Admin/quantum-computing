@@ -50,6 +50,11 @@ export function parseBlochTarget(source: string): ParsedBlochTarget {
   if (data.toleranceDeg != null && !Number.isFinite(data.toleranceDeg)) {
     return { error: 'bloch-target "toleranceDeg" must be a number (degrees of Bloch arc)' };
   }
+  // Same for blind: silently coercing "true" (a string) to false would quietly
+  // hand the pure-recall variant its ghost back.
+  if (data.blind != null && typeof data.blind !== "boolean") {
+    return { error: 'bloch-target "blind" must be a boolean' };
+  }
 
   return {
     spec: {

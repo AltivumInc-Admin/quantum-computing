@@ -90,7 +90,7 @@ describe("BlochTargetWidget", () => {
     expect(getCardState(blochCardId("t-bloch-plus"))).not.toBeNull();
   });
 
-  it("blind mode hides the ghost until solved", () => {
+  it("blind mode hides the ghost AND the target ket (the amplitudes are the answer) until solved", () => {
     const blind = JSON.stringify({
       id: "t-blind",
       prompt: "Place |+> without the ghost.",
@@ -100,9 +100,29 @@ describe("BlochTargetWidget", () => {
     const { container } = render(<BlochTargetWidget source={blind} />);
     expect(screen.getByText(/from memory/i)).toBeInTheDocument(); // the blind-mode chip
     expect(ghostMarkers(container)).toBe(0);
+    expect(screen.queryByText(/Target 0\.71/)).not.toBeInTheDocument(); // no answer leak
     setTheta(Math.PI / 2);
     check();
     expect(ghostMarkers(container)).toBeGreaterThan(0); // revealed for comparison
+    expect(screen.getByText(/Target 0\.71/)).toBeInTheDocument();
+  });
+
+  it("moving a slider clears the stale miss readout but keeps the earned hint", () => {
+    render(<BlochTargetWidget source={plusTarget} />);
+    check(); // miss at |0>
+    expect(screen.getByText(/off by 90\.0°/i)).toBeInTheDocument();
+    setTheta(Math.PI / 2); // position changed — the readout no longer describes it
+    expect(screen.queryByText(/off by/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/it sits on the equator/i)).toBeInTheDocument();
+  });
+
+  it("moves focus to the announced outcome when the Check button unmounts on solve", () => {
+    render(<BlochTargetWidget source={plusTarget} />);
+    screen.getByRole("button", { name: /check position/i }).focus();
+    setTheta(Math.PI / 2);
+    check();
+    expect(document.activeElement).toHaveAttribute("role", "status");
+    expect(document.activeElement!.textContent).toMatch(/on target/i);
   });
 
   it("writes no card for a multi-qubit target and shows the error", () => {

@@ -29,9 +29,9 @@ describe("parseBlochTarget", () => {
     expect(spec!.blind).toBe(true);
   });
 
-  it("treats a non-true blind as false (default-safe)", () => {
-    const { spec } = parseBlochTarget(JSON.stringify({ ...valid, blind: "yes" }));
-    expect(spec!.blind).toBe(false);
+  it("rejects a mistyped blind loudly instead of silently handing the ghost back", () => {
+    expect(parseBlochTarget(JSON.stringify({ ...valid, blind: "true" })).error).toMatch(/"blind"/);
+    expect(parseBlochTarget(JSON.stringify({ ...valid, blind: 1 })).error).toMatch(/"blind"/);
   });
 
   it("rejects invalid JSON", () => {

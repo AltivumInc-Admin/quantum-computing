@@ -36,6 +36,31 @@ describe("blochTargetTruth", () => {
   it("rejects a multi-qubit target (the Bloch sphere shows one qubit)", () => {
     expect(blochTargetTruth(spec("H 0\nCNOT 0 1")).error).toMatch(/single-qubit/);
   });
+
+  describe("degenerate |0>-start targets (would auto-solve with zero interaction)", () => {
+    it("rejects a comment-only program (gates = [], truth would be |0>)", () => {
+      expect(blochTargetTruth(spec("# TODO write circuit")).error).toMatch(/\|0⟩ start/);
+    });
+
+    it("rejects a directive-only program", () => {
+      expect(blochTargetTruth(spec("qubits 1")).error).toMatch(/\|0⟩ start/);
+    });
+
+    it("rejects identity-on-|0> circuits (phase gates leave |0> fixed)", () => {
+      expect(blochTargetTruth(spec("Z 0")).error).toMatch(/\|0⟩ start/);
+      expect(blochTargetTruth(spec("H 0\nH 0")).error).toMatch(/\|0⟩ start/);
+    });
+
+    it("rejects a rotation that lands inside the tolerance of |0>", () => {
+      // 0.05 rad = 2.9 degrees of arc, inside the default 5-degree tolerance.
+      expect(blochTargetTruth(spec("RY 0 0.05")).error).toMatch(/\|0⟩ start/);
+    });
+
+    it("accepts a target just outside the tolerance", () => {
+      // 0.2 rad = 11.5 degrees — a legitimate (if tight) target.
+      expect(blochTargetTruth(spec("RY 0 0.2")).error).toBeUndefined();
+    });
+  });
 });
 
 describe("gradeBlochTarget", () => {

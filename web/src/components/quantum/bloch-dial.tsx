@@ -79,30 +79,38 @@ export function BlochDial({
       <circle cx={c} cy={c} r={r} className="fill-none stroke-gray-300 dark:stroke-gray-600" strokeWidth={1} />
       <line x1={c} y1={c - r} x2={c} y2={c + r} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
       <line x1={c - r} y1={c} x2={c + r} y2={c} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
-      {/* target ghost — dashed, under the live vector so the tip stays on top */}
-      {ghostVector && (
-        <g opacity={0.45}>
-          <line
-            x1={c}
-            y1={c}
-            x2={c + r * ghostVector.x}
-            y2={c - r * ghostVector.z}
-            stroke={axis}
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeDasharray={`${3 * k} ${3 * k}`}
-          />
-          <circle
-            cx={c + r * ghostVector.x}
-            cy={c - r * ghostVector.z}
-            r={4.5 * k}
-            fill="none"
-            stroke={axis}
-            strokeWidth={1.5}
-            strokeDasharray={`${2.5 * k} ${2.5 * k}`}
-          />
-        </g>
-      )}
+      {/* target ghost — dashed, under the live vector so the tip stays on top.
+          The ghost gets the SAME Y-depth encoding as the live tip (radius and
+          opacity scale with y), otherwise an out-of-plane target like |i⟩ would
+          render identically to its antipode |−i⟩ and the dial could show the
+          learner visually "on" a target that grades 180° away. */}
+      {ghostVector &&
+        (() => {
+          const gyc = clamp(ghostVector.y, -1, 1);
+          return (
+            <g opacity={0.3 + 0.3 * ((gyc + 1) / 2)}>
+              <line
+                x1={c}
+                y1={c}
+                x2={c + r * ghostVector.x}
+                y2={c - r * ghostVector.z}
+                stroke={axis}
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeDasharray={`${3 * k} ${3 * k}`}
+              />
+              <circle
+                cx={c + r * ghostVector.x}
+                cy={c - r * ghostVector.z}
+                r={4.5 * k * (1 + 0.45 * gyc)}
+                fill="none"
+                stroke={axis}
+                strokeWidth={1.5}
+                strokeDasharray={`${2.5 * k} ${2.5 * k}`}
+              />
+            </g>
+          );
+        })()}
       {/* state vector */}
       <line x1={c} y1={c} x2={px} y2={py} stroke={axis} strokeWidth={2} strokeLinecap="round" />
       <circle cx={px} cy={py} r={markerR} fill={axis} opacity={markerOpacity} />

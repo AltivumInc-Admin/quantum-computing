@@ -59,4 +59,16 @@ describe("BlochDial target ghost", () => {
     );
     expect(getByLabelText(/bloch vector x 0\.00, y 0\.00, z 1\.00/i)).toBeInTheDocument();
   });
+
+  it("gives the ghost the same Y-depth encoding as the live tip (|i> target != |-i> target)", () => {
+    const ghostRadius = (container: HTMLElement) =>
+      parseFloat(container.querySelector("circle[stroke-dasharray]")!.getAttribute("r")!);
+    const toward = render(
+      <BlochDial vector={{ x: 0, y: 0, z: 1 }} ghostVector={{ x: 0, y: 1, z: 0 }} />
+    );
+    const away = render(
+      <BlochDial vector={{ x: 0, y: 0, z: 1 }} ghostVector={{ x: 0, y: -1, z: 0 }} />
+    );
+    expect(ghostRadius(toward.container)).toBeGreaterThan(ghostRadius(away.container));
+  });
 });

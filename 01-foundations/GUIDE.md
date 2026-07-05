@@ -124,7 +124,7 @@ RY 0 theta
 ```
 
 You have watched rotations sweep the arrow; now place a state yourself. Drive $\theta$ and
-$\phi$ until your vector sits on the dashed target, then press Check — your placement is graded
+$\phi$ until your vector sits on the target marker, then press Check — your placement is graded
 by how many degrees of arc separate you from it, and a clean hit schedules this skill for
 spaced review:
 

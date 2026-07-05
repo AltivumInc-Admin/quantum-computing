@@ -28,6 +28,11 @@ export interface BlochTruthResult {
   error?: string;
 }
 
+const ZERO_STATE: Complex[] = [
+  [1, 0],
+  [0, 0],
+];
+
 /** Compute the target state, or an error if the spec isn't gradeable. */
 export function blochTargetTruth(spec: BlochTargetSpec): BlochTruthResult {
   const program = parseProgram(spec.target.program);
@@ -43,7 +48,17 @@ export function blochTargetTruth(spec: BlochTargetSpec): BlochTruthResult {
   if (program.n > 1) {
     return { error: "This Rep's target must be a single-qubit circuit (the Bloch sphere shows one qubit)." };
   }
-  return { truth: { targetState: simulate(opsFor(program, 0), 1) } };
+  const targetState = simulate(opsFor(program, 0), 1);
+  // The sliders start at |0⟩, so a target within tolerance of |0⟩ solves with
+  // zero interaction and mints a free "good" card. This catches the whole
+  // degenerate class from an authoring slip: a comment-only or directive-only
+  // program (gates=[]), identity-on-|0⟩ circuits ("Z 0", "T 0", "H 0\nH 0"),
+  // and near-|0⟩ rotations.
+  const tolRad = (clampToleranceDeg(spec.toleranceDeg) * Math.PI) / 180;
+  if (blochAngle(targetState, ZERO_STATE) <= tolRad) {
+    return { error: "This Rep's target sits at the |0⟩ start position — there is nothing to drive to." };
+  }
+  return { truth: { targetState } };
 }
 
 export interface BlochGrade {
