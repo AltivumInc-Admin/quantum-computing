@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   getCardStateRaw,
-  gradeCard,
+  gradeCardIfDue,
   setCardContent,
   PROGRESS_EVENT_NAME,
 } from "@/lib/review-store";
@@ -100,6 +100,7 @@ export function ReviewCard({ source }: { source: string }) {
   const state = useCardState(spec?.id ?? "");
   const [revealed, setRevealed] = useState(false);
   const [justGraded, setJustGraded] = useState<CardState | null>(null);
+  const [regradeNoop, setRegradeNoop] = useState(false);
   const answerId = useId();
 
   // Cache the card's content so the /review page can re-render it from the
@@ -118,9 +119,17 @@ export function ReviewCard({ source }: { source: string }) {
     );
   }
 
+  // Due-gated like the graded Reps: re-rating a card that is no longer due
+  // (already graded this due window) must not advance the schedule — repeated
+  // "Good" clicks would otherwise compound the interval toward the 365-day cap.
   const onGrade = (rating: Rating) => {
-    const next = gradeCard(spec.id, rating);
-    setJustGraded(next);
+    const next = gradeCardIfDue(spec.id, rating);
+    if (next) {
+      setJustGraded(next);
+      setRegradeNoop(false);
+    } else {
+      setRegradeNoop(true);
+    }
     setRevealed(false);
   };
 
@@ -189,14 +198,16 @@ export function ReviewCard({ source }: { source: string }) {
           </>
         )}
 
-        {feedback && (
+        {(feedback || regradeNoop) && (
           <p
             role="status"
             className="mt-3 text-sm text-gray-500 dark:text-gray-400 animate-fade-up"
           >
-            {nextIntervalDays(feedback) === 1
-              ? "Next review tomorrow."
-              : `Next review in ${nextIntervalDays(feedback)} days.`}
+            {regradeNoop
+              ? "Schedule unchanged — this card was already reviewed and isn't due again yet."
+              : nextIntervalDays(feedback!) === 1
+                ? "Next review tomorrow."
+                : `Next review in ${nextIntervalDays(feedback!)} days.`}
           </p>
         )}
       </div>

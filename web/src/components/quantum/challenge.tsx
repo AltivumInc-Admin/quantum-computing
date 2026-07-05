@@ -61,7 +61,19 @@ const VERDICT_STYLES: Record<GradeResult["status"], string> = {
     "border-l-2 border-gray-300 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300",
 };
 
-export function Challenge({ source }: { source: string }) {
+export function Challenge({
+  source,
+  surface = "lesson",
+}: {
+  source: string;
+  /**
+   * "review" when mounted on /review: the persistent solved-once-ever badge is
+   * suppressed (this surface is asking for a fresh re-attempt, so "Solved"
+   * would claim the review is already done) and the schedule note drops the
+   * "Added to your review" phrasing — the card is already there.
+   */
+  surface?: "lesson" | "review";
+}) {
   const parsed = useMemo(() => parseChallenge(source), [source]);
   const spec = parsed.spec;
 
@@ -77,16 +89,19 @@ export function Challenge({ source }: { source: string }) {
   const wrongAttempts = useRef(0);
   const [scheduled, setScheduled] = useState<number | null>(null);
 
-  // Cache the challenge's content so /review can render it as a recall card (the
-  // schedule is keyed by id only). Mirrors review-card.tsx.
+  // Cache the challenge's content — including the raw fence source — so /review
+  // can re-mount this exact challenge as a LIVE re-attempt (falling back to a
+  // recall card for content cached before `kind`/`source` existed).
   useEffect(() => {
     if (spec) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: challengeReviewAnswer(spec.target.program),
+        kind: "challenge",
+        source,
       });
     }
-  }, [spec, cardId]);
+  }, [spec, cardId, source]);
 
   if (!spec) {
     return (
@@ -133,7 +148,7 @@ export function Challenge({ source }: { source: string }) {
     apply(gradeTs(code, spec));
   };
 
-  const showSolved = solved || result?.status === "solved";
+  const showSolved = (surface !== "review" && solved) || result?.status === "solved";
 
   return (
     <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
@@ -203,9 +218,13 @@ export function Challenge({ source }: { source: string }) {
 
         {scheduled !== null && (
           <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
-            {scheduled <= 1
-              ? "Added to your review — back tomorrow."
-              : `Added to your review — back in ${scheduled} days.`}
+            {surface === "review"
+              ? scheduled <= 1
+                ? "Reviewed — next review tomorrow."
+                : `Reviewed — next review in ${scheduled} days.`
+              : scheduled <= 1
+                ? "Added to your review — back tomorrow."
+                : `Added to your review — back in ${scheduled} days.`}
           </p>
         )}
       </div>

@@ -55,7 +55,14 @@ const TONE = {
     "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
 };
 
-export function PredictWidget({ source }: { source: string }) {
+export function PredictWidget({
+  source,
+  surface = "lesson",
+}: {
+  source: string;
+  /** "review" when mounted on /review — the schedule note drops the "Added to your review" phrasing. */
+  surface?: "lesson" | "review";
+}) {
   const parsed = useMemo(() => parsePredict(source), [source]);
   const spec = parsed.spec;
 
@@ -72,15 +79,18 @@ export function PredictWidget({ source }: { source: string }) {
   const [correct, setCorrect] = useState(false);
   const [scheduled, setScheduled] = useState<number | null>(null);
 
-  // Cache content so /review can render this Rep as a recall card.
+  // Cache content — including the raw fence source — so /review can re-mount
+  // this Rep as a LIVE re-attempt (fresh mount = fresh prediction).
   useEffect(() => {
     if (spec && truth) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: predictReviewAnswer(truth, spec.mode),
+        kind: "predict",
+        source,
       });
     }
-  }, [spec, truth, cardId]);
+  }, [spec, truth, cardId, source]);
 
   if (!spec) return <ErrorCard message={parsed.error ?? "invalid predict block"} />;
   if (!program || program.error || !truth) {
@@ -198,9 +208,13 @@ export function PredictWidget({ source }: { source: string }) {
 
             {scheduled !== null && (
               <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
-                {scheduled <= 1
-                  ? "Added to your review — back tomorrow."
-                  : `Added to your review — back in ${scheduled} days.`}
+                {surface === "review"
+                  ? scheduled <= 1
+                    ? "Reviewed — next review tomorrow."
+                    : `Reviewed — next review in ${scheduled} days.`
+                  : scheduled <= 1
+                    ? "Added to your review — back tomorrow."
+                    : `Added to your review — back in ${scheduled} days.`}
               </p>
             )}
           </>

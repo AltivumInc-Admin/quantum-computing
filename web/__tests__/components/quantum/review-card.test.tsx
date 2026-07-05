@@ -38,6 +38,23 @@ describe("ReviewCard", () => {
     expect(localStorage.getItem("qc:card:test-card-1")).not.toBeNull();
   });
 
+  it("re-grading a card that is no longer due is a no-op (interval-inflation guard)", () => {
+    render(<ReviewCard source={CARD} />);
+    fireEvent.click(screen.getByText("Show answer"));
+    fireEvent.click(screen.getByText("Good"));
+    const first = JSON.parse(localStorage.getItem("qc:card:test-card-1")!);
+    expect(first.reps).toBe(1);
+
+    // The card can still be revealed for practice, but a second rating in the
+    // same due window must not advance the schedule.
+    fireEvent.click(screen.getByText("Show answer"));
+    fireEvent.click(screen.getByText("Good"));
+    const second = JSON.parse(localStorage.getItem("qc:card:test-card-1")!);
+    expect(second.reps).toBe(1);
+    expect(second.dueEpochDay).toBe(first.dueEpochDay);
+    expect(screen.getByText(/schedule unchanged/i)).toBeInTheDocument();
+  });
+
   it("renders an error card for malformed JSON", () => {
     render(<ReviewCard source={"{ not json"} />);
     expect(screen.getByText(/card error:/i)).toBeInTheDocument();

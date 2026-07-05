@@ -27,9 +27,20 @@ const cardKey = (id: string) => `${CARD_PREFIX}${id}`;
 const CONTENT_PREFIX = "qc:card-content:";
 const contentKey = (id: string) => `${CONTENT_PREFIX}${id}`;
 
+/** The graded-Rep kinds /review can re-mount as LIVE widgets (see review-dashboard). */
+export type CardKind = "challenge" | "predict" | "bloch";
+
 export interface CardContent {
   prompt: string;
   answer: string;
+  /**
+   * Rep kind + the raw fence source, cached by the graded widgets so /review
+   * can re-mount the LIVE widget for a genuine re-attempt instead of a text
+   * recall card. Absent for authored qcards and for content cached before
+   * these fields existed — readers must treat them as optional and fall back.
+   */
+  kind?: CardKind;
+  source?: string;
 }
 
 /**

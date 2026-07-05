@@ -69,7 +69,14 @@ const fmtDegFloor = (deg: number) => `${formatFixed(Math.floor(deg * 10 + 1e-7) 
 const SLIDER_ROW = "flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3";
 const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300";
 
-export function BlochTargetWidget({ source }: { source: string }) {
+export function BlochTargetWidget({
+  source,
+  surface = "lesson",
+}: {
+  source: string;
+  /** "review" when mounted on /review — the schedule note drops the "Added to your review" phrasing. */
+  surface?: "lesson" | "review";
+}) {
   const parsed = useMemo(() => parseBlochTarget(source), [source]);
   const spec = parsed.spec;
   const truthResult = useMemo<ReturnType<typeof blochTargetTruth>>(
@@ -98,15 +105,18 @@ export function BlochTargetWidget({ source }: { source: string }) {
   const learnerState = useMemo(() => singleQubitState(theta, phi), [theta, phi]);
   const probs = useMemo(() => probabilities(learnerState), [learnerState]);
 
-  // Cache content so /review can render this Rep as a recall card.
+  // Cache content — including the raw fence source — so /review can re-mount
+  // this Rep as a LIVE re-attempt (fresh mount = fresh placement).
   useEffect(() => {
     if (spec && targetState) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: blochTargetReviewAnswer(targetState),
+        kind: "bloch",
+        source,
       });
     }
-  }, [spec, targetState, cardId]);
+  }, [spec, targetState, cardId, source]);
 
   // Solving unmounts the focused Check button; move focus to the outcome so
   // keyboard users land on the announced result instead of falling to <body>.
@@ -243,9 +253,13 @@ export function BlochTargetWidget({ source }: { source: string }) {
               </p>
               {scheduled !== null && (
                 <p className="mt-1 text-xs text-caption animate-fade-up">
-                  {scheduled <= 1
-                    ? "Added to your review — back tomorrow."
-                    : `Added to your review — back in ${scheduled} days.`}
+                  {surface === "review"
+                    ? scheduled <= 1
+                      ? "Reviewed — next review tomorrow."
+                      : `Reviewed — next review in ${scheduled} days.`
+                    : scheduled <= 1
+                      ? "Added to your review — back tomorrow."
+                      : `Added to your review — back in ${scheduled} days.`}
                 </p>
               )}
             </>

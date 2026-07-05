@@ -63,4 +63,11 @@ describe("PredictWidget", () => {
     expect(screen.getByText(/predict error/i)).toBeInTheDocument();
     expect(Object.keys(localStorage).some((k) => k.startsWith("qc:card:predict:"))).toBe(false);
   });
+
+  it("caches its kind + raw fence source so /review can re-mount the live widget", () => {
+    render(<PredictWidget source={bellNonzero} />);
+    const content = JSON.parse(localStorage.getItem("qc:card-content:predict:t-bell")!);
+    expect(content.kind).toBe("predict");
+    expect(content.source).toBe(bellNonzero);
+  });
 });
