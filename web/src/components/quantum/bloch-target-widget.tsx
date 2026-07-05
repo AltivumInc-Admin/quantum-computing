@@ -98,15 +98,18 @@ export function BlochTargetWidget({ source }: { source: string }) {
   const learnerState = useMemo(() => singleQubitState(theta, phi), [theta, phi]);
   const probs = useMemo(() => probabilities(learnerState), [learnerState]);
 
-  // Cache content so /review can render this Rep as a recall card.
+  // Cache content — including the raw fence source — so /review can re-mount
+  // this Rep as a LIVE re-attempt (fresh mount = fresh placement).
   useEffect(() => {
     if (spec && targetState) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: blochTargetReviewAnswer(targetState),
+        kind: "bloch",
+        source,
       });
     }
-  }, [spec, targetState, cardId]);
+  }, [spec, targetState, cardId, source]);
 
   // Solving unmounts the focused Check button; move focus to the outcome so
   // keyboard users land on the announced result instead of falling to <body>.

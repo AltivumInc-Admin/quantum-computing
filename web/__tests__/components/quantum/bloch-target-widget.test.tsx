@@ -125,6 +125,15 @@ describe("BlochTargetWidget", () => {
     expect(document.activeElement!.textContent).toMatch(/on target/i);
   });
 
+  it("caches its kind + raw fence source so /review can re-mount the live widget", () => {
+    render(<BlochTargetWidget source={plusTarget} />);
+    const content = JSON.parse(
+      localStorage.getItem("qc:card-content:bloch:t-bloch-plus")!
+    );
+    expect(content.kind).toBe("bloch");
+    expect(content.source).toBe(plusTarget);
+  });
+
   it("writes no card for a multi-qubit target and shows the error", () => {
     const bad = JSON.stringify({
       id: "t-bad",

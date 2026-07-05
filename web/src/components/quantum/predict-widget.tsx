@@ -72,15 +72,18 @@ export function PredictWidget({ source }: { source: string }) {
   const [correct, setCorrect] = useState(false);
   const [scheduled, setScheduled] = useState<number | null>(null);
 
-  // Cache content so /review can render this Rep as a recall card.
+  // Cache content — including the raw fence source — so /review can re-mount
+  // this Rep as a LIVE re-attempt (fresh mount = fresh prediction).
   useEffect(() => {
     if (spec && truth) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: predictReviewAnswer(truth, spec.mode),
+        kind: "predict",
+        source,
       });
     }
-  }, [spec, truth, cardId]);
+  }, [spec, truth, cardId, source]);
 
   if (!spec) return <ErrorCard message={parsed.error ?? "invalid predict block"} />;
   if (!program || program.error || !truth) {

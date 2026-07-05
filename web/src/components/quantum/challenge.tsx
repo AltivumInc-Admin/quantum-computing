@@ -77,16 +77,19 @@ export function Challenge({ source }: { source: string }) {
   const wrongAttempts = useRef(0);
   const [scheduled, setScheduled] = useState<number | null>(null);
 
-  // Cache the challenge's content so /review can render it as a recall card (the
-  // schedule is keyed by id only). Mirrors review-card.tsx.
+  // Cache the challenge's content — including the raw fence source — so /review
+  // can re-mount this exact challenge as a LIVE re-attempt (falling back to a
+  // recall card for content cached before `kind`/`source` existed).
   useEffect(() => {
     if (spec) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: challengeReviewAnswer(spec.target.program),
+        kind: "challenge",
+        source,
       });
     }
-  }, [spec, cardId]);
+  }, [spec, cardId, source]);
 
   if (!spec) {
     return (

@@ -102,4 +102,15 @@ describe("Challenge", () => {
     fireEvent.click(screen.getByRole("button", { name: /check/i }));
     expect(challengeCardKey()).toBeUndefined();
   });
+
+  it("caches its kind + raw fence source so /review can re-mount the live widget", () => {
+    render(<Challenge source={bell} />);
+    const key = Object.keys(localStorage).find((k) =>
+      k.startsWith("qc:card-content:challenge:")
+    );
+    expect(key).toBeDefined();
+    const content = JSON.parse(localStorage.getItem(key!)!);
+    expect(content.kind).toBe("challenge");
+    expect(content.source).toBe(bell);
+  });
 });
