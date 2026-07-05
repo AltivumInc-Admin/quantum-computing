@@ -123,6 +123,21 @@ qubits 1
 RY 0 theta
 ```
 
+You have watched rotations sweep the arrow; now place a state yourself. Drive $\theta$ and
+$\phi$ until your vector sits on the dashed target, then press Check — your placement is graded
+by how many degrees of arc separate you from it, and a clean hit schedules this skill for
+spaced review:
+
+```qblochtarget
+{
+  "id": "found-bloch-plus-1",
+  "prompt": "Drive the Bloch vector to |+⟩ = (|0⟩ + |1⟩)/√2 — the state H prepares from |0⟩.",
+  "target": { "program": "H 0" },
+  "toleranceDeg": 5,
+  "hint": "θ tilts the arrow away from |0⟩ at the north pole; φ swings it around the equator. |+⟩ sits on the equator (θ = π/2) at φ = 0, pointing along +X."
+}
+```
+
 With the geometry in hand, the named gates are just memorable special rotations. Here is the
 reference card — but you now know what each one *does* before you read its matrix:
 

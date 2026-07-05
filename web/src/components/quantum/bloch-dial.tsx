@@ -32,12 +32,17 @@ export function BlochVectorSR({
  *
  * `size` (default 132) scales the whole disc; all geometry derives from the
  * 132px reference design, so size={132} is unchanged for existing callers.
+ *
+ * `ghostVector` (optional) draws a faint dashed target marker in the same
+ * projection — the qblochtarget Rep's aim point. Purely decorative inside this
+ * role="img" (the widget names the target in text); absent, nothing changes.
  */
 export function BlochDial({
   state,
   vector,
   size = 132,
   labelPrefix = "",
+  ghostVector,
 }: {
   state?: Complex[];
   vector?: { x: number; y: number; z: number };
@@ -47,6 +52,7 @@ export function BlochDial({
    * side-by-side dials that would otherwise announce identically.
    */
   labelPrefix?: string;
+  ghostVector?: { x: number; y: number; z: number };
 }) {
   const { x, y, z } = vector ?? blochVector(state ?? zeroState(1));
   const k = size / 132;
@@ -73,6 +79,30 @@ export function BlochDial({
       <circle cx={c} cy={c} r={r} className="fill-none stroke-gray-300 dark:stroke-gray-600" strokeWidth={1} />
       <line x1={c} y1={c - r} x2={c} y2={c + r} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
       <line x1={c - r} y1={c} x2={c + r} y2={c} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
+      {/* target ghost — dashed, under the live vector so the tip stays on top */}
+      {ghostVector && (
+        <g opacity={0.45}>
+          <line
+            x1={c}
+            y1={c}
+            x2={c + r * ghostVector.x}
+            y2={c - r * ghostVector.z}
+            stroke={axis}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeDasharray={`${3 * k} ${3 * k}`}
+          />
+          <circle
+            cx={c + r * ghostVector.x}
+            cy={c - r * ghostVector.z}
+            r={4.5 * k}
+            fill="none"
+            stroke={axis}
+            strokeWidth={1.5}
+            strokeDasharray={`${2.5 * k} ${2.5 * k}`}
+          />
+        </g>
+      )}
       {/* state vector */}
       <line x1={c} y1={c} x2={px} y2={py} stroke={axis} strokeWidth={2} strokeLinecap="round" />
       <circle cx={px} cy={py} r={markerR} fill={axis} opacity={markerOpacity} />

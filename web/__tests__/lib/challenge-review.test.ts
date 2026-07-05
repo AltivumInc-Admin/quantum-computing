@@ -4,6 +4,7 @@ import {
   challengeReviewAnswer,
   predictCardId,
   ratingForPrediction,
+  blochCardId,
 } from "@/lib/challenge-review";
 
 describe("challenge-review adapter", () => {
@@ -65,6 +66,14 @@ describe("challenge-review adapter", () => {
     it("maps a correct commit to good and a miss to an again lapse", () => {
       expect(ratingForPrediction(true)).toBe("good");
       expect(ratingForPrediction(false)).toBe("again");
+    });
+  });
+
+  describe("blochCardId", () => {
+    it("namespaces under bloch: and never collides with the other Rep namespaces", () => {
+      expect(blochCardId("x")).toBe("bloch:x");
+      expect(blochCardId("x")).not.toBe(challengeCardId("x"));
+      expect(blochCardId("x")).not.toBe(predictCardId("x"));
     });
   });
 });

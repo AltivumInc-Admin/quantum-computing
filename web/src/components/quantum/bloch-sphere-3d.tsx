@@ -126,8 +126,17 @@ const KetLabels = memo(function KetLabels() {
   return <>{KET_LABELS.map((l) => <Label key={l.text} position={l.pos}>{l.text}</Label>)}</>;
 });
 
-function Scene({ state, accent }: { state: Complex[]; accent: string }) {
+function Scene({ state, ghost, accent }: { state: Complex[]; ghost?: Complex[]; accent: string }) {
   const target = useMemo(() => blochToThree(state), [state]);
+  // The target ghost is static (no lerp): the live vector visibly chases it.
+  const ghostPts = useMemo<[number, number, number][] | null>(() => {
+    if (!ghost) return null;
+    const g = blochToThree(ghost);
+    return [
+      [0, 0, 0],
+      [g.x, g.y, g.z],
+    ];
+  }, [ghost]);
   const invalidate = useThree((s) => s.invalidate);
   return (
     <>
@@ -146,6 +155,25 @@ function Scene({ state, accent }: { state: Complex[]; accent: string }) {
       <Line points={AXIS_Z} color={RING} lineWidth={1} transparent opacity={0.5} />
 
       <KetLabels />
+
+      {/* target ghost — a reticle (wireframe shell + micro-dot core) at the aim
+          point, plus a faint solid shaft for direction. Distinct from the live
+          vector by FORM (open shell vs solid tip), not just opacity, so it stays
+          legible at 180px. No dashed Line here: LineMaterial dashing silently
+          renders as all-gap in this stack. */}
+      {ghostPts && (
+        <>
+          <Line points={ghostPts} color={accent} lineWidth={1} transparent opacity={0.3} />
+          <mesh position={ghostPts[1]}>
+            <sphereGeometry args={[0.09, 12, 8]} />
+            <meshBasicMaterial color={accent} wireframe transparent opacity={0.9} />
+          </mesh>
+          <mesh position={ghostPts[1]}>
+            <sphereGeometry args={[0.03, 8, 8]} />
+            <meshBasicMaterial color={accent} />
+          </mesh>
+        </>
+      )}
 
       <StateVector target={target} color={accent} />
       <OrbitControls enablePan={false} enableZoom={false} rotateSpeed={0.6} onChange={() => invalidate()} />
@@ -170,7 +198,7 @@ function resolveAccent(): string {
   }
 }
 
-export default function BlochSphere3D({ state }: { state: Complex[] }) {
+export default function BlochSphere3D({ state, ghost }: { state: Complex[]; ghost?: Complex[] }) {
   const [accent] = useState(resolveAccent);
 
   return (
@@ -179,7 +207,7 @@ export default function BlochSphere3D({ state }: { state: Complex[] }) {
       aria-hidden="true"
     >
       <Canvas frameloop="demand" camera={{ position: [1.6, 1.2, 2.2], fov: 45 }} dpr={[1, 2]}>
-        <Scene state={state} accent={accent} />
+        <Scene state={state} ghost={ghost} accent={accent} />
       </Canvas>
     </div>
   );

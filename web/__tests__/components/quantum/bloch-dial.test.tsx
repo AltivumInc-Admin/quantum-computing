@@ -36,3 +36,27 @@ describe("BlochDial Y-axis encoding", () => {
     expect(container.querySelector("svg")).toBeInTheDocument();
   });
 });
+
+describe("BlochDial target ghost", () => {
+  it("renders no dashed geometry by default (existing callers unchanged)", () => {
+    const { container } = render(<BlochDial vector={{ x: 0, y: 0, z: 1 }} />);
+    expect(container.querySelectorAll("[stroke-dasharray]")).toHaveLength(0);
+  });
+
+  it("draws a dashed ghost line and open marker when ghostVector is set", () => {
+    const { container } = render(
+      <BlochDial vector={{ x: 0, y: 0, z: 1 }} ghostVector={{ x: 1, y: 0, z: 0 }} />
+    );
+    const dashed = container.querySelectorAll("[stroke-dasharray]");
+    expect(dashed).toHaveLength(2); // shaft line + open-circle tip
+    const marker = container.querySelector("circle[stroke-dasharray]")!;
+    expect(marker.getAttribute("fill")).toBe("none");
+  });
+
+  it("keeps the accessible name pinned to the LIVE vector, not the ghost", () => {
+    const { getByLabelText } = render(
+      <BlochDial vector={{ x: 0, y: 0, z: 1 }} ghostVector={{ x: 1, y: 0, z: 0 }} />
+    );
+    expect(getByLabelText(/bloch vector x 0\.00, y 0\.00, z 1\.00/i)).toBeInTheDocument();
+  });
+});
