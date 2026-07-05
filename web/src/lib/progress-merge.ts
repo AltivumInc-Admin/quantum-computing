@@ -28,7 +28,7 @@
 // Within a session, keys the learner explicitly deleted on THIS device are
 // tombstoned so the next sync doesn't silently re-add them under the click.
 
-import { epochDay, isValidCardState, type CardState } from "./review-schedule";
+import { epochDay, isValidCardState, MAX_INTERVAL, type CardState } from "./review-schedule";
 
 export type ProgressSnapshot = Record<string, string>;
 
@@ -81,7 +81,21 @@ function parseCard(raw: string): CardState | null {
 }
 
 function plausible(card: CardState, todayEpochDay: number): boolean {
-  return card.lastEpochDay <= todayEpochDay + CLOCK_SKEW_GRACE_DAYS;
+  // Two invariants the real scheduler always upholds:
+  //  (a) lastEpochDay is at most today (+ a grace window for UTC-boundary
+  //      grading) — a far-future lastEpochDay is a fast clock;
+  //  (b) dueEpochDay = lastEpochDay + interval with interval in
+  //      [0, MAX_INTERVAL] — a dueEpochDay outside that band is a corrupt or
+  //      hand-crafted item that would freeze the card out of review (isDue is
+  //      dueEpochDay <= today, so an absurd dueEpochDay never comes due).
+  // A copy violating either loses the merge to any plausible copy and is
+  // refused by applySnapshot, so poison never propagates or freezes a card.
+  const interval = card.dueEpochDay - card.lastEpochDay;
+  return (
+    card.lastEpochDay <= todayEpochDay + CLOCK_SKEW_GRACE_DAYS &&
+    interval >= 0 &&
+    interval <= MAX_INTERVAL
+  );
 }
 
 /** Symmetric, deterministic tie-break — both sides pick the same winner. */

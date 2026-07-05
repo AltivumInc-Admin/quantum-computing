@@ -109,10 +109,29 @@ describe("mergeSnapshots", () => {
       mergeSnapshots({ "qc:card:x": poisoned }, { "qc:card:x": legit }, TODAY)["qc:card:x"]
     ).toBe(legit);
     // Within the grace window (UTC-boundary grading) recency still wins.
-    const nearFuture = card({ lastEpochDay: TODAY + CLOCK_SKEW_GRACE_DAYS });
+    const nearFuture = card({
+      lastEpochDay: TODAY + CLOCK_SKEW_GRACE_DAYS,
+      dueEpochDay: TODAY + CLOCK_SKEW_GRACE_DAYS + 6,
+    });
     expect(
       mergeSnapshots({ "qc:card:x": legit }, { "qc:card:x": nearFuture }, TODAY)["qc:card:x"]
     ).toBe(nearFuture);
+  });
+
+  it("quarantines a corrupt dueEpochDay (plausible lastEpochDay, absurd due) that would freeze the card", () => {
+    // isDue is dueEpochDay <= today, so a card 100 years out never comes due —
+    // it would be frozen from review. The real scheduler can never produce
+    // dueEpochDay > lastEpochDay + MAX_INTERVAL (365).
+    const frozen = card({ lastEpochDay: TODAY - 1, dueEpochDay: TODAY + 40000, reps: 9 });
+    const legit = card({ lastEpochDay: TODAY - 1, dueEpochDay: TODAY + 5 });
+    expect(
+      mergeSnapshots({ "qc:card:x": legit }, { "qc:card:x": frozen }, TODAY)["qc:card:x"]
+    ).toBe(legit);
+    // A legal long interval (up to a year out) is NOT quarantined.
+    const legitLong = card({ lastEpochDay: TODAY, dueEpochDay: TODAY + 365 });
+    expect(
+      mergeSnapshots({ "qc:card:x": legit }, { "qc:card:x": legitLong }, TODAY)["qc:card:x"]
+    ).toBe(legitLong); // more recent lastEpochDay wins, not quarantined
   });
 
   it("keeps tombstoned keys IN the merged snapshot (the push must preserve the server copy)", () => {
@@ -155,6 +174,12 @@ describe("applySnapshot", () => {
   it("refuses to write a clock-skewed CardState even from an already-poisoned snapshot", () => {
     const poisoned = card({ lastEpochDay: TODAY + 366 });
     expect(applySnapshot({ "qc:card:x": poisoned }, TODAY)).toBe(0);
+    expect(localStorage.getItem("qc:card:x")).toBeNull();
+  });
+
+  it("refuses to write a card with a corrupt (frozen) dueEpochDay", () => {
+    const frozen = card({ lastEpochDay: TODAY - 1, dueEpochDay: TODAY + 40000 });
+    expect(applySnapshot({ "qc:card:x": frozen }, TODAY)).toBe(0);
     expect(localStorage.getItem("qc:card:x")).toBeNull();
   });
 });
