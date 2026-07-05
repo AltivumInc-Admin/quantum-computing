@@ -5,6 +5,7 @@ import {
   predictCardId,
   ratingForPrediction,
   blochCardId,
+  costCardId,
 } from "@/lib/challenge-review";
 
 describe("challenge-review adapter", () => {
@@ -74,6 +75,15 @@ describe("challenge-review adapter", () => {
       expect(blochCardId("x")).toBe("bloch:x");
       expect(blochCardId("x")).not.toBe(challengeCardId("x"));
       expect(blochCardId("x")).not.toBe(predictCardId("x"));
+    });
+  });
+
+  describe("costCardId", () => {
+    it("namespaces under cost: and never collides with the other Rep namespaces", () => {
+      expect(costCardId("x")).toBe("cost:x");
+      for (const other of [challengeCardId("x"), predictCardId("x"), blochCardId("x")]) {
+        expect(costCardId("x")).not.toBe(other);
+      }
     });
   });
 });

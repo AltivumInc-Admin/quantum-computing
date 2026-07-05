@@ -169,6 +169,22 @@ run:
 This is exactly why the workflow above exists, and why the project's rule is *local simulator
 first, QPU only when validated, always with a cost estimate.*
 
+Now do the discipline itself: price a run in your head and commit before the breakdown is
+revealed. Remember what the shots are for — each one is a sample, and the statistical error of
+your histogram shrinks like $1/\sqrt{N}$ (the shot-noise story from Foundations) — so every
+extra digit of precision is bought with real dollars:
+
+```qcostestimate
+{
+  "id": "hw-cost-estimate-1",
+  "prompt": "You submit one task of 2,000 shots to IonQ. What does it cost?",
+  "provider": "IonQ",
+  "shots": 2000,
+  "tasks": 1,
+  "hint": "Two meters run at once: a flat $0.30 the moment you submit the task, plus $0.01 for each of the 2,000 shots inside it."
+}
+```
+
 ## Choosing a device
 
 Putting it together, a quick decision flow:
