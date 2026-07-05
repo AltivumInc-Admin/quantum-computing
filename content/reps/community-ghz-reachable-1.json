@@ -1,0 +1,8 @@
+{
+  "kind": "predict",
+  "id": "community-ghz-reachable-1",
+  "prompt": "The Bell recipe, extended by one qubit: H then a CNOT chain. Which basis states can this three-qubit GHZ circuit produce on measurement?",
+  "program": "H 0\nCNOT 0 1\nCNOT 1 2",
+  "mode": "nonzero-states",
+  "hint": "The first CNOT ties qubit 1 to qubit 0; the second ties qubit 2 to qubit 1 — all three qubits always agree, so only the two all-agree outcomes survive."
+}
