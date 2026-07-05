@@ -134,7 +134,7 @@ A Hybrid Job's cost is two streams added together: the classical **instance** (b
 - `ml.m5.xlarge` — more memory for larger problems
 - `ml.p3.2xlarge` / `ml.g4dn.xlarge` — GPU, for classical ML components or CUDA-Q simulation
 
-Control spend with `max_runtime` to cap duration, a `stopping_condition` to halt on a metric (the threshold you saw in the dashboard above), CloudWatch alarms, and AWS Budget alerts (templates in `infra/`). As a rule of thumb the instance runs **\$0.10–\$3.00/hour** depending on type, and the quantum charges are unchanged from standalone — so the cheapest job is the one that converges fast and shuts down promptly.
+Control spend with `max_runtime` to cap duration, a `stopping_condition` to halt on a metric (the threshold you saw in the dashboard above), CloudWatch alarms, and AWS Budget alerts (templates in `infra/`). As a rule of thumb the instance runs **\$0.10–\$3.85/hour** depending on type, and the quantum charges are unchanged from standalone — so the cheapest job is the one that converges fast and shuts down promptly.
 
 ## PennyLane and CUDA-Q
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseCostEstimate } from "@/lib/cost-estimate-schema";
 import {
   costEstimateTruth,
@@ -51,6 +51,12 @@ const TONE = {
   wrong: "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
 };
 
+// Two significant figures below 1%, one decimal above — a fixed one-decimal
+// display would round 1,000,000 shots' 0.05% up to "0.1%", overstating the
+// error 2x in the note whose whole point is honesty.
+const fmtSePercent = (v: number): string =>
+  v >= 1 ? formatFixed(v, 1) : String(parseFloat(v.toPrecision(2)));
+
 export function CostEstimateWidget({
   source,
   surface = "lesson",
@@ -72,6 +78,14 @@ export function CostEstimateWidget({
   const [committed, setCommitted] = useState(false);
   const [correct, setCorrect] = useState(false);
   const [scheduled, setScheduled] = useState<number | null>(null);
+  // One persistent live region announces the verdict: swapping text in a
+  // mounted region is reliably announced, mounting a new region is not. Focus
+  // moves here when the commit unmounts the focused Lock button.
+  const outcomeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (committed) outcomeRef.current?.focus();
+  }, [committed]);
 
   // Cache content — including the raw fence source — so /review can re-mount
   // this Rep as a LIVE re-attempt (fresh mount = fresh estimate).
@@ -92,6 +106,12 @@ export function CostEstimateWidget({
   const rates = PRICING[spec.provider];
   const perTask = "perShot" in rates ? rates.perTask : 0;
   const perShot = "perShot" in rates ? rates.perShot : 0;
+  // Hints may reference the live rates via placeholders so authored prose can
+  // never drift from the pricing table the grading actually uses.
+  const hintText = spec.hint
+    ?.replaceAll("{perTask}", fmtUsd(perTask))
+    .replaceAll("{perShot}", `$${perShot}`)
+    .replaceAll("{shots}", spec.shots.toLocaleString("en-US"));
 
   const commit = () => {
     if (committed || selected === null) return;
@@ -138,15 +158,18 @@ export function CostEstimateWidget({
           <Chip>{costLabel(spec.provider)}</Chip>
         </div>
 
+        {/* Toggle buttons, not fake radios: role=radio without the roving-
+            tabindex arrow-key contract contradicts what a screen reader
+            announces. aria-pressed keeps native button keyboard behavior and
+            the fieldset legend names the group. */}
         <fieldset className="mt-4 m-0 border-0 p-0" disabled={committed}>
           <legend className="mb-1.5 text-[11px] text-caption">What does this run cost?</legend>
-          <div className="flex flex-wrap gap-2" role="radiogroup">
+          <div className="flex flex-wrap gap-2">
             {truth.options.map((v, i) => (
               <button
                 key={i}
                 type="button"
-                role="radio"
-                aria-checked={selected === i}
+                aria-pressed={selected === i}
                 onClick={() => !committed && setSelected(i)}
                 disabled={committed}
                 className={`${OPTION_BASE} ${optionTone(i)}`}
@@ -198,28 +221,46 @@ export function CostEstimateWidget({
               <p className="mt-2.5 text-xs leading-relaxed text-caption">
                 What those shots buy: at p = 0.5 the standard error of an estimated
                 probability is 1/(2&#8730;N) — {spec.shots.toLocaleString("en-US")} shots per task pin
-                an outcome to about &#177;{formatFixed(truth.sePercentPerTask, 1)}%. Shots purchase
+                an outcome to about &#177;{fmtSePercent(truth.sePercentPerTask)}%. Shots purchase
                 statistical precision, not hardware fidelity.
               </p>
             </div>
 
-            {spec.hint && !correct && (
-              <p className="mt-3 text-sm leading-relaxed text-warm-dark dark:text-warm-light">{spec.hint}</p>
-            )}
-
-            {scheduled !== null && (
-              <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
-                {surface === "review"
-                  ? scheduled <= 1
-                    ? "Reviewed — next review tomorrow."
-                    : `Reviewed — next review in ${scheduled} days.`
-                  : scheduled <= 1
-                    ? "Added to your review — back tomorrow."
-                    : `Added to your review — back in ${scheduled} days.`}
-              </p>
+            {hintText && !correct && (
+              <p className="mt-3 text-sm leading-relaxed text-warm-dark dark:text-warm-light">{hintText}</p>
             )}
           </>
         )}
+
+        {/* Persistent outcome region: the verdict is announced by a text swap
+            in an always-mounted role=status node, and focus lands here when
+            the commit unmounts the Lock button (matching bloch-target). */}
+        <div ref={outcomeRef} role="status" tabIndex={-1} className="focus:outline-none">
+          {committed && (
+            <p
+              className={`mt-3 text-sm font-medium tabular-nums animate-fade-up ${
+                correct
+                  ? "text-accent-dark dark:text-accent-light"
+                  : "text-warm-dark dark:text-warm-light"
+              }`}
+            >
+              {correct
+                ? `Correct — this run costs ${fmtUsd(truth.correct)}.`
+                : `Not quite — this run costs ${fmtUsd(truth.correct)}.`}
+            </p>
+          )}
+          {committed && scheduled !== null && (
+            <p className="mt-1 text-xs text-caption animate-fade-up">
+              {surface === "review"
+                ? scheduled <= 1
+                  ? "Reviewed — next review tomorrow."
+                  : `Reviewed — next review in ${scheduled} days.`
+                : scheduled <= 1
+                  ? "Added to your review — back tomorrow."
+                  : `Added to your review — back in ${scheduled} days.`}
+            </p>
+          )}
+        </div>
       </div>
     </WidgetCard>
   );

@@ -22,10 +22,13 @@ export interface ParsedCostEstimate {
   error?: string;
 }
 
-// Below 10 shots the distractor set collapses (the per-shot misconception
-// distractor equals the true cost at shots=1); above a million the Rep stops
-// being arithmetic a learner can do in their head.
-export const MIN_SHOTS = 10;
+// The floor clears the bottom collision band: on the cheapest per-shot rate
+// (Rigetti, $0.00035) the true cost stays within a display-cent of the bare
+// task fee up to 14 shots, so a spec at the old floor of 10 parsed cleanly and
+// then failed the grader's collision guard. 15 is the first shots value valid
+// on every per-shot provider (mid-range collisions — e.g. IonQ at exactly 30 —
+// are still caught loudly by the grader). The ceiling keeps the Rep head-math.
+export const MIN_SHOTS = 15;
 export const MAX_SHOTS = 1_000_000;
 export const MAX_TASKS = 1000;
 

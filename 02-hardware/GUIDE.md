@@ -181,7 +181,7 @@ extra digit of precision is bought with real dollars:
   "provider": "IonQ",
   "shots": 2000,
   "tasks": 1,
-  "hint": "Two meters run at once: a flat $0.30 the moment you submit the task, plus $0.01 for each of the 2,000 shots inside it."
+  "hint": "Two meters run at once: a flat {perTask} the moment you submit the task, plus {perShot} for each of the {shots} shots inside it."
 }
 ```
 

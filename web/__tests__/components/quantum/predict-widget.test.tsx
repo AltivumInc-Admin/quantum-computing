@@ -31,7 +31,7 @@ describe("PredictWidget", () => {
     fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
 
     expect(screen.getByLabelText(/simulated outcome/i)).toBeInTheDocument();
-    expect(screen.getByText(/correct/i)).toBeInTheDocument();
+    expect(screen.getByText("Correct")).toBeInTheDocument(); // the header chip
     const card = getCardState(predictCardId("t-bell"));
     expect(card).not.toBeNull();
     expect(card!.reps).toBe(1);
@@ -46,7 +46,7 @@ describe("PredictWidget", () => {
     const card = getCardState(predictCardId("t-bell"))!;
     expect(card.reps).toBe(0);
     expect(card.lapses).toBe(1);
-    expect(screen.getByText(/not quite/i)).toBeInTheDocument();
+    expect(screen.getByText("Not quite")).toBeInTheDocument(); // the header chip
   });
 
   it("locks the selection after commit", () => {
@@ -69,5 +69,16 @@ describe("PredictWidget", () => {
     const content = JSON.parse(localStorage.getItem("qc:card-content:predict:t-bell")!);
     expect(content.kind).toBe("predict");
     expect(content.source).toBe(bellNonzero);
+  });
+
+  it("announces the verdict in a persistent status region and moves focus to it", () => {
+    render(<PredictWidget source={bellNonzero} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "|00⟩" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "|11⟩" }));
+    screen.getByRole("button", { name: /lock in prediction/i }).focus();
+    fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
+
+    expect(document.activeElement).toHaveAttribute("role", "status");
+    expect(document.activeElement!.textContent).toMatch(/correct prediction/i);
   });
 });

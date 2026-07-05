@@ -26,14 +26,48 @@ describe("costEstimateTruth", () => {
     expect(truth!.shotFee).toBeCloseTo(20.0, 10);
   });
 
-  it("builds four distinct options, sorted ascending, containing the misconceptions", () => {
+  it("builds four distinct options containing the misconceptions, with correct flagged", () => {
     const { truth } = costEstimateTruth(spec());
     expect(truth!.options).toHaveLength(4);
-    const sorted = [...truth!.options].sort((a, b) => a - b);
-    expect(truth!.options).toEqual(sorted);
     // forgot-task-fee (20.00), forgot-shots (0.30), fee-per-shot (2000 x 0.31 = 620), correct.
-    expect(truth!.options.map((v) => fmtUsd(v))).toEqual(["$0.30", "$20.00", "$20.30", "$620.00"]);
+    expect(new Set(truth!.options.map((v) => fmtUsd(v)))).toEqual(
+      new Set(["$0.30", "$20.00", "$20.30", "$620.00"])
+    );
     expect(truth!.options[truth!.correctIndex]).toBeCloseTo(20.3, 2);
+  });
+
+  it("varies the correct option's position across Rep ids (no structural leak)", () => {
+    // Ascending order put the correct total third of four for EVERY spec —
+    // "always pick the second-largest" solved the Rep without arithmetic.
+    const positions = new Set(
+      ["a", "b", "c", "d", "e", "f", "g", "h"].map(
+        (id) => costEstimateTruth(spec({ id })).truth!.correctIndex
+      )
+    );
+    expect(positions.size).toBeGreaterThan(1);
+    // And the order is stable for a given id (deterministic re-renders).
+    expect(costEstimateTruth(spec({ id: "a" })).truth!.options).toEqual(
+      costEstimateTruth(spec({ id: "a" })).truth!.options
+    );
+  });
+
+  it("settles money in cents so the itemized rows always sum to the total", () => {
+    // IQM at 100 shots lands on a half cent: three independently-rounded
+    // doubles rendered "$0.30 + $0.15 = Total $0.44". Cent settlement fixes it.
+    const iqm = costEstimateTruth(spec({ provider: "IQM", shots: 100 })).truth!;
+    expect(fmtUsd(iqm.taskFee)).toBe("$0.30");
+    expect(fmtUsd(iqm.shotFee)).toBe("$0.15");
+    expect(fmtUsd(iqm.correct)).toBe("$0.45");
+    expect(iqm.taskFee + iqm.shotFee).toBeCloseTo(iqm.correct, 10);
+
+    const rigetti = costEstimateTruth(spec({ provider: "Rigetti", shots: 2300 })).truth!;
+    expect(rigetti.taskFee + rigetti.shotFee).toBeCloseTo(rigetti.correct, 10);
+  });
+
+  it("accepts every per-shot provider at the schema floor (no unrenderable valid spec)", () => {
+    for (const provider of ["IonQ", "IQM", "QuEra", "Rigetti"]) {
+      expect(costEstimateTruth(spec({ provider, shots: 15 })).truth).toBeDefined();
+    }
   });
 
   it("scales by tasks", () => {

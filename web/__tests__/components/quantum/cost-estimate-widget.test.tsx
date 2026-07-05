@@ -12,7 +12,7 @@ const ionq2000 = JSON.stringify({
   prompt: "One task of 2,000 shots on IonQ — what does it cost?",
   provider: "IonQ",
   shots: 2000,
-  hint: "The flat task fee runs alongside the per-shot meter.",
+  hint: "The flat {perTask} task fee runs alongside the {perShot} for each shot meter.",
 });
 
 describe("CostEstimateWidget", () => {
@@ -26,7 +26,7 @@ describe("CostEstimateWidget", () => {
 
   it("a correct estimate reveals the breakdown and schedules the card as good", () => {
     render(<CostEstimateWidget source={ionq2000} />);
-    fireEvent.click(screen.getByRole("radio", { name: "$20.30" }));
+    fireEvent.click(screen.getByRole("button", { name: "$20.30" }));
     fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
 
     expect(screen.getByText("Correct")).toBeInTheDocument();
@@ -37,13 +37,25 @@ describe("CostEstimateWidget", () => {
     expect(card.lapses).toBe(0);
   });
 
-  it("a miss is an again lapse, reveals the truth, and shows the hint", () => {
+  it("announces the verdict in a persistent status region and moves focus to it", () => {
     render(<CostEstimateWidget source={ionq2000} />);
-    fireEvent.click(screen.getByRole("radio", { name: "$20.00" })); // forgot the task fee
+    fireEvent.click(screen.getByRole("button", { name: "$20.30" }));
+    screen.getByRole("button", { name: /lock in estimate/i }).focus();
+    fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
+
+    expect(document.activeElement).toHaveAttribute("role", "status");
+    expect(document.activeElement!.textContent).toMatch(/correct — this run costs \$20\.30/i);
+  });
+
+  it("a miss is an again lapse, reveals the truth, and shows the rate-substituted hint", () => {
+    render(<CostEstimateWidget source={ionq2000} />);
+    fireEvent.click(screen.getByRole("button", { name: "$20.00" })); // forgot the task fee
     fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
 
     expect(screen.getByText("Not quite")).toBeInTheDocument();
-    expect(screen.getByText(/flat task fee/i)).toBeInTheDocument();
+    // The {perTask}/{perShot} placeholders resolve from the live PRICING table.
+    expect(screen.getByText(/flat \$0\.30 task fee/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.01 for each/i)).toBeInTheDocument();
     const card = getCardState(costCardId("t-cost"))!;
     expect(card.reps).toBe(0);
     expect(card.lapses).toBe(1);
@@ -51,9 +63,9 @@ describe("CostEstimateWidget", () => {
 
   it("locks the options after commit", () => {
     render(<CostEstimateWidget source={ionq2000} />);
-    fireEvent.click(screen.getByRole("radio", { name: "$20.30" }));
+    fireEvent.click(screen.getByRole("button", { name: "$20.30" }));
     fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
-    expect(screen.getByRole("radio", { name: "$0.30" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "$0.30" })).toBeDisabled();
   });
 
   it("caches its kind + raw fence source so /review can re-mount the live widget", () => {
@@ -73,7 +85,7 @@ describe("CostEstimateWidget", () => {
 
   it("uses review-voiced copy on the review surface", () => {
     render(<CostEstimateWidget source={ionq2000} surface="review" />);
-    fireEvent.click(screen.getByRole("radio", { name: "$20.30" }));
+    fireEvent.click(screen.getByRole("button", { name: "$20.30" }));
     fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
     expect(screen.getByText(/reviewed — next review/i)).toBeInTheDocument();
     expect(screen.queryByText(/added to your review/i)).not.toBeInTheDocument();
