@@ -154,6 +154,35 @@ The deep fact hiding here: every single-qubit gate factors as
 $U = R_z(\alpha)\,R_y(\beta)\,R_z(\gamma)$ up to global phase. Three rotations reach anywhere
 on the sphere — which is why those few gates are enough.
 
+The phase gates $S$ and $Z$ in that table look inert — apply one and neither probability bar
+moves. On the sphere they are anything but: each swings the arrow around the vertical axis.
+Prove it twice. First, reach $\ket{i} = (\ket{0} + i\ket{1})/\sqrt{2}$ — the state $S$ makes
+from $\ket{+}$, a quarter of the way around the equator:
+
+```qblochtarget
+{
+  "id": "found-bloch-i-1",
+  "prompt": "Drive the Bloch vector to |i⟩ = (|0⟩ + i|1⟩)/√2 — the state S makes from |+⟩.",
+  "target": { "program": "H 0\nS 0" },
+  "toleranceDeg": 5,
+  "hint": "Probabilities pin only θ: |i⟩ still splits 50/50, so θ = π/2. The i is a relative phase — swing φ to π/2, a quarter turn around the equator."
+}
+```
+
+Now from memory — no marker to chase. $\ket{-} = (\ket{0} - \ket{1})/\sqrt{2}$ is what $Z$
+makes of $\ket{+}$: the same 50/50 split, the opposite relative phase. Place it:
+
+```qblochtarget
+{
+  "id": "found-bloch-minus-1",
+  "prompt": "From memory: place |−⟩ = (|0⟩ − |1⟩)/√2 — the state Z makes from |+⟩.",
+  "target": { "program": "H 0\nZ 0" },
+  "toleranceDeg": 5,
+  "blind": true,
+  "hint": "A minus sign on |1⟩ is a relative phase of e^{iπ}: the equator again (θ = π/2), but half-way around — φ = π."
+}
+```
+
 ## The circuit model
 
 Strung together, gates form a **circuit**, and the rules of the game are simple enough to state
