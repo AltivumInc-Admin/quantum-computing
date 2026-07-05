@@ -132,7 +132,6 @@ export function mergeSnapshots(
   for (const key of new Set([...Object.keys(local), ...Object.keys(remote)])) {
     const l = local[key];
     const r = remote[key];
-    if (l === undefined && sessionTombstones.has(key)) continue;
     if (l === undefined || r === undefined || l === r) {
       merged[key] = (l ?? r)!;
     } else if (key.startsWith("qc:card-content:")) {
@@ -162,6 +161,12 @@ export function applySnapshot(
   let changed = 0;
   try {
     for (const [key, value] of Object.entries(merged)) {
+      // Session tombstones gate ONLY the local write — the key stays in the
+      // merged snapshot that gets pushed, so the server copy is preserved. If
+      // the tombstone removed it from the push instead, that "local-only"
+      // deletion would delete server-side, another device would re-add it,
+      // and the pair would flip the key forever (confirmed non-convergence).
+      if (sessionTombstones.has(key)) continue;
       if (key.startsWith("qc:card:")) {
         const card = parseCard(value);
         if (card && !plausible(card, todayEpochDay)) continue;

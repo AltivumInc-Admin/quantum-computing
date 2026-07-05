@@ -8,7 +8,12 @@
 
 import { fetchAuthSession } from "aws-amplify/auth";
 import { isAuthConfigured } from "./auth-config";
-import { exportSnapshot, mergeSnapshots, applySnapshot } from "./progress-merge";
+import {
+  exportSnapshot,
+  mergeSnapshots,
+  applySnapshot,
+  resetLocalDeletions,
+} from "./progress-merge";
 
 export const SYNC_META_KEY = "qc-sync:meta"; // outside qc:* so it never syncs
 
@@ -138,6 +143,22 @@ export async function syncNow(options?: { accountChange?: AccountChange }): Prom
   if (boundSub && boundSub !== sub) {
     if (options?.accountChange === "reset") resetLocalProgress();
     else if (options?.accountChange !== "adopt") throw new SyncAccountMismatchError();
+    // The old account's session tombstones must not push deletions into the
+    // NEW account's server snapshot.
+    resetLocalDeletions();
+  }
+  // Bind at ATTEMPT, not success: a failed push must not leave the device
+  // bound to the previous account (the next auto-sync would then merge this
+  // account's freshly-applied data into the OLD account's item — the deferred
+  // bleed), and a signed-in user whose syncs all fail must still fence the
+  // next account's arrival.
+  try {
+    localStorage.setItem(
+      SYNC_META_KEY,
+      JSON.stringify({ lastSyncedAt: readMeta().lastSyncedAt, sub }),
+    );
+  } catch {
+    /* storage unavailable */
   }
 
   let applied = 0;
