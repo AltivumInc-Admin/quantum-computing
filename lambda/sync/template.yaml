@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  quantum-workspace-sync: cross-device progress sync for the Quantum Workspace.
+  A dumb, versioned KV — one DynamoDB item per user holding their qc:* progress
+  snapshot — behind an HTTP API whose Cognito JWT authorizer validates tokens
+  from the existing quantum-workspace user pool. ALL merge intelligence lives
+  in the web client (web/src/lib/progress-merge.ts); the server only enforces
+  optimistic concurrency (version check -> 409 on conflict), so the domain
+  rules exist in exactly one place. Deploy in us-east-2 (the pool's region).
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Default: us-east-2_aRydPmAjj
+    Description: The existing quantum-workspace Cognito user pool.
+  UserPoolClientId:
+    Type: String
+    Default: 2sg8nejrf2j8p28j6khjil99ir
+    Description: The quantum-workspace-web app client (JWT audience).
+  SiteOrigin:
+    Type: String
+    Default: https://quantum.altivum.ai
+    Description: Production origin allowed by CORS.
+  MaxConcurrency:
+    Type: Number
+    Default: 10
+    Description: Reserved concurrency — a hard ceiling on cost and abuse.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+
+Resources:
+  ProgressTable:
+    Type: AWS::DynamoDB::Table
+    # Learner progress is the crown jewels — never delete with the stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: quantum-workspace-progress
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - { Key: Project, Value: quantum }
+        - { Key: Feature, Value: workspace-sync }
+        - { Key: CostCategory, Value: workspace }
+
+  SyncApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref SiteOrigin
+          - http://localhost:3000
+        AllowMethods: [GET, PUT, OPTIONS]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+
+  SyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-workspace-sync
+      Runtime: nodejs22.x
+      Handler: index.handler
+      MemorySize: 256
+      Timeout: 10
+      ReservedConcurrentExecutions: !Ref MaxConcurrency
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ProgressTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem]
+              Resource: !GetAtt ProgressTable.Arn
+      Events:
+        GetProgress:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SyncApi
+            Method: GET
+            Path: /progress
+        PutProgress:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SyncApi
+            Method: PUT
+            Path: /progress
+      Tags:
+        Project: quantum
+        Feature: workspace-sync
+        CostCategory: workspace
+
+  SyncLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SyncFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+Outputs:
+  SyncUrl:
+    Description: Set as NEXT_PUBLIC_SYNC_URL in the Amplify app environment.
+    Value: !Sub https://${SyncApi}.execute-api.${AWS::Region}.amazonaws.com
+  TableName:
+    Value: !Ref ProgressTable

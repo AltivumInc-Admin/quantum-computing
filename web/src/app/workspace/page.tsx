@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getSections } from "@/lib/sections";
@@ -53,13 +53,19 @@ export default function WorkspacePage() {
       </p>
 
       <div className="mt-6 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 shadow-(--shadow-resting)">
-        <p className="text-sm text-gray-700 dark:text-gray-200">
-          {done} of {sections.length} sections complete on this device — not yet synced.
-        </p>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Your progress and review cards will sync to your account in a coming release,
-          so they follow you across devices.
-        </p>
+        {process.env.NEXT_PUBLIC_SYNC_URL ? (
+          <SyncPanel done={done} total={sections.length} />
+        ) : (
+          <>
+            <p className="text-sm text-gray-700 dark:text-gray-200">
+              {done} of {sections.length} sections complete on this device — not yet synced.
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Your progress and review cards will sync to your account in a coming release,
+              so they follow you across devices.
+            </p>
+          </>
+        )}
       </div>
 
       <button
@@ -76,5 +82,64 @@ export default function WorkspacePage() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">{children}</div>
+  );
+}
+
+/**
+ * The live sync affordance (rendered only when NEXT_PUBLIC_SYNC_URL is set).
+ * The sync client — and with it aws-amplify — is imported dynamically on
+ * demand, preserving the auth layer's code-split contract. Background syncs
+ * run via <ProgressSync/>; this panel adds visibility and a manual trigger.
+ */
+function SyncPanel({ done, total }: { done: number; total: number }) {
+  const [state, setState] = useState<"idle" | "syncing" | "error">("idle");
+  const [lastSynced, setLastSynced] = useState<number | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    const read = () => {
+      void import("@/lib/sync-client").then(({ lastSyncedAt }) => {
+        if (!disposed) setLastSynced(lastSyncedAt());
+      });
+    };
+    read();
+    window.addEventListener("qc-sync", read);
+    return () => {
+      disposed = true;
+      window.removeEventListener("qc-sync", read);
+    };
+  }, []);
+
+  const handleSync = () => {
+    setState("syncing");
+    void import("@/lib/sync-client")
+      .then(({ syncNow }) => syncNow())
+      .then(() => setState("idle"))
+      .catch(() => setState("error"));
+  };
+
+  return (
+    <>
+      <p className="text-sm text-gray-700 dark:text-gray-200">
+        {done} of {total} sections complete.
+      </p>
+      <p role="status" className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        {state === "syncing"
+          ? "Syncing…"
+          : state === "error"
+            ? "Sync failed — check your connection and try again."
+            : lastSynced
+              ? `Synced to your account — last synced ${new Date(lastSynced).toLocaleString()}.`
+              : "Your progress and review cards sync to your account across devices."}
+      </p>
+      <button
+        type="button"
+        onClick={handleSync}
+        disabled={state === "syncing"}
+        className="mt-4 inline-flex items-center rounded-control border border-accent/30 bg-accent/5 px-4 py-2 text-sm font-medium text-accent-dark dark:text-accent-light interactive focus-ring disabled:opacity-60"
+      >
+        Sync now
+      </button>
+    </>
   );
 }

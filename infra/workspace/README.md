@@ -82,3 +82,25 @@ Then unset the four env vars in Amplify and remove the Google OAuth client.
 Cognito's monthly-active-user free tier covers expected volume. `COGNITO_DEFAULT`
 email has a low daily cap and a generic sender — fine to start; SES (verified domain,
 higher limits, branded sender) is the production upgrade and requires no app changes.
+
+## Progress sync (quantum-workspace-sync)
+
+Cross-device sync for the `qc:*` progress families. The stack is a versioned
+per-user KV (DynamoDB) behind an HTTP API whose Cognito JWT authorizer trusts
+the pool above; ALL merge rules live in `web/src/lib/progress-merge.ts` — the
+server only enforces optimistic concurrency (409 on version conflict).
+
+Deploy (from `lambda/sync/`): `npm install && npm test` (9 offline handler
+tests), then `sam build` and `sam deploy --guided` with
+`--stack-name quantum-workspace-sync --region us-east-2
+--capabilities CAPABILITY_IAM
+--tags Project=quantum Feature=workspace-sync CostCategory=workspace`.
+
+Then set the `SyncUrl` stack output as **`NEXT_PUBLIC_SYNC_URL`** in the
+Amplify app environment (alongside the four Cognito vars) and redeploy. The
+site is unaffected while the var is absent: the workspace keeps its
+"not yet synced" copy and the background sync component stays inert.
+
+The DynamoDB table (`quantum-workspace-progress`) carries
+`DeletionPolicy: Retain` + point-in-time recovery — learner progress survives
+stack deletion.
