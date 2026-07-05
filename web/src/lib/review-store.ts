@@ -28,7 +28,7 @@ const CONTENT_PREFIX = "qc:card-content:";
 const contentKey = (id: string) => `${CONTENT_PREFIX}${id}`;
 
 /** The graded-Rep kinds /review can re-mount as LIVE widgets (see review-dashboard). */
-export type CardKind = "challenge" | "predict" | "bloch";
+export type CardKind = "challenge" | "predict" | "bloch" | "cost";
 
 export interface CardContent {
   prompt: string;

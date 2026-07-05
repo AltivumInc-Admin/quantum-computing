@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parsePredict } from "@/lib/predict-schema";
 import { predictionTruth, gradePrediction, predictReviewAnswer } from "@/lib/predict-grade";
 import { predictCardId, ratingForPrediction } from "@/lib/challenge-review";
@@ -78,6 +78,14 @@ export function PredictWidget({
   const [committed, setCommitted] = useState(false);
   const [correct, setCorrect] = useState(false);
   const [scheduled, setScheduled] = useState<number | null>(null);
+  // Persistent live region + focus target for the commit outcome — mounting a
+  // new role=status with its text announces inconsistently, and the commit
+  // unmounts the focused Lock button (same pattern as bloch-target).
+  const outcomeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (committed) outcomeRef.current?.focus();
+  }, [committed]);
 
   // Cache content — including the raw fence source — so /review can re-mount
   // this Rep as a LIVE re-attempt (fresh mount = fresh prediction).
@@ -161,13 +169,18 @@ export function PredictWidget({
           <legend className="text-[11px] text-caption mb-1.5">
             {single ? "Which single outcome is most likely?" : "Which basis states are reachable?"}
           </legend>
-          <div className="flex flex-wrap gap-2" role={single ? "radiogroup" : "group"}>
+          {/* Single mode uses aria-pressed toggle buttons, not fake radios:
+              role=radio without the roving-tabindex arrow-key contract
+              contradicts what a screen reader announces. Multi mode keeps
+              checkbox semantics — independent tab stops are correct there. */}
+          <div className="flex flex-wrap gap-2" role={single ? undefined : "group"}>
             {options.map((i) => (
               <button
                 key={i}
                 type="button"
-                role={single ? "radio" : "checkbox"}
-                aria-checked={selected.has(i)}
+                role={single ? undefined : "checkbox"}
+                aria-checked={single ? undefined : selected.has(i)}
+                aria-pressed={single ? selected.has(i) : undefined}
                 onClick={() => toggle(i)}
                 disabled={committed}
                 className={`${OPTION_BASE} ${optionTone(i)}`}
@@ -205,20 +218,37 @@ export function PredictWidget({
             {spec.hint && !correct && (
               <p className="mt-3 text-sm leading-relaxed text-warm-dark dark:text-warm-light">{spec.hint}</p>
             )}
-
-            {scheduled !== null && (
-              <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
-                {surface === "review"
-                  ? scheduled <= 1
-                    ? "Reviewed — next review tomorrow."
-                    : `Reviewed — next review in ${scheduled} days.`
-                  : scheduled <= 1
-                    ? "Added to your review — back tomorrow."
-                    : `Added to your review — back in ${scheduled} days.`}
-              </p>
-            )}
           </>
         )}
+
+        {/* Persistent outcome region — verdict announced by text swap, focus
+            lands here when the commit unmounts the Lock button. */}
+        <div ref={outcomeRef} role="status" tabIndex={-1} className="focus:outline-none">
+          {committed && (
+            <p
+              className={`mt-3 text-sm font-medium animate-fade-up ${
+                correct
+                  ? "text-accent-dark dark:text-accent-light"
+                  : "text-warm-dark dark:text-warm-light"
+              }`}
+            >
+              {correct
+                ? "Correct prediction."
+                : "Not quite — compare the simulated outcome above."}
+            </p>
+          )}
+          {committed && scheduled !== null && (
+            <p className="mt-1 text-xs text-caption animate-fade-up">
+              {surface === "review"
+                ? scheduled <= 1
+                  ? "Reviewed — next review tomorrow."
+                  : `Reviewed — next review in ${scheduled} days.`
+                : scheduled <= 1
+                  ? "Added to your review — back tomorrow."
+                  : `Added to your review — back in ${scheduled} days.`}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

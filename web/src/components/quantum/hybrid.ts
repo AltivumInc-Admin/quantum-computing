@@ -16,7 +16,7 @@ import { PRICING, type Provider } from "./cost";
 /**
  * Representative on-demand price (USD/hour) for the SageMaker ML instances a
  * Braket Hybrid Job can run its classical code on. Illustrative — check current
- * AWS pricing for exact figures. Matches the GUIDE's ~$0.10–$3.00/hour range.
+ * AWS pricing for exact figures. Matches the GUIDE's ~$0.10–$3.85/hour range (ml.p3.2xlarge is the ceiling).
  */
 export const INSTANCES = {
   "ml.m5.large": 0.115,

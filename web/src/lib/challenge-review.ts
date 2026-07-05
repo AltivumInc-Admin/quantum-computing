@@ -68,3 +68,13 @@ export function ratingForPrediction(correct: boolean): Rating {
 export function blochCardId(id: string): string {
   return `bloch:${id}`;
 }
+
+/**
+ * Review-card id for a cost-estimate Rep, namespaced under `cost:`. Like a
+ * prediction, a cost estimate is one irreversible commit — once the breakdown
+ * is revealed a retry is trivially correct — so it rates through
+ * ratingForPrediction (correct "good", miss an "again" lapse).
+ */
+export function costCardId(id: string): string {
+  return `cost:${id}`;
+}

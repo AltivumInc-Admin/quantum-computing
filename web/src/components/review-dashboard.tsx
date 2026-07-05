@@ -61,6 +61,10 @@ const BlochLive = dynamic(() => import("@/components/quantum/bloch-target-widget
   ssr: false,
   loading: liveSkeleton,
 });
+const CostLive = dynamic(() => import("@/components/quantum/cost-estimate-widget").then((m) => ({ default: m.CostEstimateWidget })), {
+  ssr: false,
+  loading: liveSkeleton,
+});
 
 type SourceWidget = ComponentType<{ source: string }>;
 
@@ -77,12 +81,16 @@ const LIVE_WIDGETS: Record<CardKind, SourceWidget> = {
   bloch: function BlochReview({ source }) {
     return <BlochLive source={source} surface="review" />;
   },
+  cost: function CostReview({ source }) {
+    return <CostLive source={source} surface="review" />;
+  },
 };
 
 const KIND_LABELS: Record<CardKind, string> = {
   challenge: "Circuit challenge",
   predict: "Prediction",
   bloch: "Bloch target",
+  cost: "Cost estimate",
 };
 
 interface RosterEntry {
