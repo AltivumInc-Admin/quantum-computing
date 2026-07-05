@@ -16,6 +16,9 @@ file to this directory.
 3. Maintainers review the pedagogy (placement, prompt clarity, hint quality).
    Accepted Reps are promoted into the matching lesson GUIDE, where they render
    as the live widget and start scheduling reviews for every learner.
+   **Promotion is a move, not a copy**: the promotion PR pastes the fence into
+   the GUIDE and deletes the file here in the same commit — the id travels with
+   the Rep, and the uniqueness gate enforces exactly that.
 
 ## Format
 
@@ -34,10 +37,13 @@ One JSON object per file: the widget's fence spec plus a `kind` envelope.
 
 | `kind` | Renders as | Spec fields (see the lesson widgets for details) |
 |---|---|---|
-| `challenge` | ```` ```qchallenge ```` | `id`, `prompt`, `target.program`, `qubits?`, `starter?`, `allowedGates?`, `hint?` |
-| `predict` | ```` ```qpredict ```` | `id`, `prompt`, `program`, `mode` (`top-outcome` \| `nonzero-states`), `hint?` |
+| `challenge` | ```` ```qchallenge ```` | `id`, `prompt`, `target.program`, `qubits?`, `starter?`, `allowedGates?`, `hint?` — contributions are TS-graded only (no `tier` field) |
+| `predict` | ```` ```qpredict ```` | `id`, `prompt`, `program`, `mode?` (`top-outcome` \| `nonzero-states`, defaults `top-outcome`), `hint?` |
 | `blochtarget` | ```` ```qblochtarget ```` | `id`, `prompt`, `target.program` (single qubit), `toleranceDeg?`, `blind?`, `hint?` |
 | `costestimate` | ```` ```qcostestimate ```` | `id`, `prompt`, `provider` (per-shot QPU), `shots`, `tasks?`, `hint?` — hints may use `{perTask}`/`{perShot}`/`{shots}` placeholders, which resolve from the live pricing table |
+
+Unknown or misspelled keys are rejected loudly (the widgets would silently
+ignore them), and a Rep file is capped at 64 KB.
 
 ## Rules CI enforces
 
@@ -48,7 +54,9 @@ One JSON object per file: the widget's fence spec plus a `kind` envelope.
 - **Unique everywhere**: no collision with any other contributed Rep or any
   Rep/card id already authored in a lesson GUIDE.
 - **Gradeable, not just parseable**: a challenge's reference program must solve
-  itself; a bloch target must be a reachable single-qubit state outside the
-  |0⟩ start tolerance; a cost estimate's four options must be distinct dollars.
+  itself — and the *untouched editor must not* (no identity targets, no starter
+  equal to the solution); a top-outcome prediction must have a real answer (not
+  an all-outcomes tie); a bloch target must sit outside the |0⟩ start
+  tolerance; a cost estimate's four options must be distinct dollars.
 
-Run the same validation locally: `cd web && npx jest reps-corpus`.
+Run the same validation locally: `cd web && npm ci && npx jest reps-corpus`.

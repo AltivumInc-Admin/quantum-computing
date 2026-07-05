@@ -56,6 +56,64 @@ describe("validateRep", () => {
     expect(validateRep(JSON.stringify(bad)).error).toMatch(/does not solve itself/);
   });
 
+  it("rejects non-object JSON without throwing (null, scalars, arrays)", () => {
+    for (const bad of ["null", "true", "[1,2]", '"rep"']) {
+      expect(validateRep(bad).error).toMatch(/single JSON object/);
+    }
+  });
+
+  it("rejects tier outright — contributions are TS-graded only", () => {
+    expect(validateRep(JSON.stringify({ ...reps.challenge, tier: "py" })).error).toMatch(
+      /TS-graded only/
+    );
+    expect(validateRep(JSON.stringify({ ...reps.challenge, tier: "ts" })).error).toMatch(
+      /TS-graded only/
+    );
+  });
+
+  it("rejects unknown/misspelled keys the fence parsers would silently drop", () => {
+    expect(
+      validateRep(JSON.stringify({ ...reps.blochtarget, tolerence: 10 })).error
+    ).toMatch(/unknown key "tolerence"/);
+    expect(
+      validateRep(
+        JSON.stringify({ ...reps.challenge, target: { program: "H 0", solution: "H 0" } })
+      ).error
+    ).toMatch(/target\.solution/);
+  });
+
+  it("rejects zero-effort challenges (untouched editor already solves)", () => {
+    // Identity-on-|0⟩ target: an empty editor parses to |0⟩ and Z 0 |0⟩ = |0⟩.
+    expect(
+      validateRep(
+        JSON.stringify({ ...reps.challenge, target: { program: "Z 0" }, prompt: "Do nothing." })
+      ).error
+    ).toMatch(/untouched editor/);
+    // Starter equal to the solution: the answer is pre-filled.
+    expect(
+      validateRep(JSON.stringify({ ...reps.challenge, starter: "H 0" })).error
+    ).toMatch(/untouched editor/);
+  });
+
+  it("rejects a top-outcome prediction where every basis state ties (any answer grades correct)", () => {
+    expect(
+      validateRep(
+        JSON.stringify({
+          kind: "predict",
+          id: "community-coin-1",
+          prompt: "Most likely?",
+          program: "H 0",
+          mode: "top-outcome",
+        })
+      ).error
+    ).toMatch(/every basis state ties/);
+  });
+
+  it("caps the Rep size", () => {
+    const big = JSON.stringify({ ...reps.predict, hint: "x".repeat(70_000) });
+    expect(validateRep(big).error).toMatch(/exceeds/);
+  });
+
   it("rejects ungradeable specs through each kind's real truth kernel", () => {
     expect(
       validateRep(JSON.stringify({ ...reps.predict, program: "RY 0 theta" })).error

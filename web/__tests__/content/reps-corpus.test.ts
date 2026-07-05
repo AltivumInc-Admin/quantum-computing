@@ -15,6 +15,16 @@ const REPS_DIR = path.join(REPO_ROOT, "content/reps");
 
 const repFiles = readdirSync(REPS_DIR).filter((f) => f.endsWith(".json"));
 
+// Directory hygiene: a `community-x.JSON`, `.jsonc`, or nested directory would
+// silently escape the `.json` filter above — a maintainer promoting it would
+// trust a validation that never ran. Everything in content/reps/ must be
+// either the README or a validated lowercase-.json Rep.
+it("content/reps contains only README.md and lowercase .json Reps", () => {
+  for (const entry of readdirSync(REPS_DIR)) {
+    expect(entry === "README.md" || /^[a-z0-9-]+\.json$/.test(entry) ? "" : entry).toBe("");
+  }
+});
+
 /**
  * Every id authored in a lesson GUIDE. The GUIDEs only use `"id":` inside
  * widget fence specs (qcard/qchallenge/qpredict/qblochtarget/qcostestimate
@@ -48,12 +58,16 @@ describe("contributed Rep corpus (content/reps)", () => {
       expect(rep).toBeDefined();
     });
 
+    // The follow-on checks skip when validation failed — the failure above is
+    // the actionable message; TypeError noise on rep!.id would bury it.
     it("is named after its id", () => {
-      expect(file).toBe(`${rep!.id}.json`);
+      if (!rep) return;
+      expect(file).toBe(`${rep.id}.json`);
     });
 
-    it("uses the community id convention (permanent storage keys)", () => {
-      expect(rep!.id).toMatch(/^community-[a-z0-9]+(-[a-z0-9]+)*$/);
+    it("uses the community-<topic>-<n> id convention (permanent storage keys)", () => {
+      if (!rep) return;
+      expect(rep.id).toMatch(/^community-[a-z][a-z0-9]*(-[a-z0-9]+)*-\d+$/);
     });
   });
 
