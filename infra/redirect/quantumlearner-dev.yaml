@@ -1,0 +1,314 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Redirect quantumlearner.dev and www.quantumlearner.dev to
+  https://quantum.altivum.ai/ (HTTP 301) via a CloudFront Function at
+  viewer-request. TLS by a DNS-validated ACM cert (required: .dev is HSTS-
+  preloaded). Includes fail-loud origin + CloudWatch alarms + an SNS email +
+  a lean Lambda canary so every silent-break mode becomes an email. Deploy in
+  us-east-1 (CloudFront certs AND CloudFront/function metrics live there;
+  CloudFront and Route 53 are global). Requires CAPABILITY_IAM (canary role).
+
+Parameters:
+  RedirectTarget:
+    Type: String
+    Default: quantum.altivum.ai
+    Description: Host to 301-redirect all requests to (scheme is always https).
+  HostedZoneId:
+    Type: String
+    Default: Z0634247WVFEYFGO8EVF
+    Description: Route 53 zone id for quantumlearner.dev (bare Zxxxx, NOT /hostedzone/Zxxxx).
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues: [PriceClass_100, PriceClass_200, PriceClass_All]
+    Description: CloudFront price class (PriceClass_100 = NA/EU edges, cheapest).
+  AlarmEmail:
+    Type: String
+    Description: Email to receive redirect health/alarm notifications (must confirm the SNS subscription).
+    AllowedPattern: "[^@]+@[^@]+\\.[^@]+"
+
+Resources:
+  # --- TLS: DNS-validated cert for apex + www. CloudFormation creates the Route
+  # --- 53 validation CNAMEs itself and blocks until ACM issues the cert.
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: quantumlearner.dev
+      SubjectAlternativeNames: [www.quantumlearner.dev]
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: quantumlearner.dev
+          HostedZoneId: !Ref HostedZoneId
+        - DomainName: www.quantumlearner.dev
+          HostedZoneId: !Ref HostedZoneId
+
+  # --- The redirect itself: a viewer-request function returns the 301 before
+  # --- CloudFront ever contacts an origin. Preserves path + query string.
+  RedirectFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: quantumlearner-dev-redirect
+      AutoPublish: true
+      FunctionConfig:
+        Comment: 301 quantumlearner.dev + www to the platform (path/query preserved)
+        Runtime: cloudfront-js-2.0
+      FunctionCode: !Sub |
+        function handler(event) {
+          var req = event.request;
+          var qs = '';
+          for (var k in req.querystring) {
+            qs += (qs ? '&' : '?') + k;
+            if (req.querystring[k].value) { qs += '=' + req.querystring[k].value; }
+          }
+          return {
+            statusCode: 301,
+            statusDescription: 'Moved Permanently',
+            headers: { location: { value: 'https://${RedirectTarget}' + req.uri + qs } }
+          };
+        }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Redirect quantumlearner.dev -> quantum.altivum.ai (CF Function)
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: !Ref PriceClass
+        Aliases: [quantumlearner.dev, www.quantumlearner.dev]
+        ViewerCertificate:
+          AcmCertificateArn: !Ref Certificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        # FAIL-LOUD origin: intentionally a non-existent host so that if the
+        # function association is ever removed, requests 502 (loud, alarmed via
+        # 5xxErrorRate) instead of silently proxying a broken clone of the site.
+        # In normal operation the function short-circuits and this is never hit.
+        Origins:
+          - Id: FailLoudOrigin
+            DomainName: origin-disabled.quantumlearner.dev
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: FailLoudOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6   # Managed-CachingOptimized (inert; function precedes cache)
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt RedirectFunction.FunctionMetadata.FunctionARN
+
+  # --- DNS: apex + www, A + AAAA, aliased to the distribution.
+  # --- Z2FDTNDATAQYW2 is the fixed hosted-zone id for ALL CloudFront distributions.
+  DnsRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - { Name: quantumlearner.dev, Type: A,    AliasTarget: { DNSName: !GetAtt Distribution.DomainName, HostedZoneId: Z2FDTNDATAQYW2, EvaluateTargetHealth: false } }
+        - { Name: quantumlearner.dev, Type: AAAA, AliasTarget: { DNSName: !GetAtt Distribution.DomainName, HostedZoneId: Z2FDTNDATAQYW2, EvaluateTargetHealth: false } }
+        - { Name: www.quantumlearner.dev, Type: A,    AliasTarget: { DNSName: !GetAtt Distribution.DomainName, HostedZoneId: Z2FDTNDATAQYW2, EvaluateTargetHealth: false } }
+        - { Name: www.quantumlearner.dev, Type: AAAA, AliasTarget: { DNSName: !GetAtt Distribution.DomainName, HostedZoneId: Z2FDTNDATAQYW2, EvaluateTargetHealth: false } }
+
+  # --- Alerting: one SNS topic, email subscription (needs manual confirmation).
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: quantumlearner.dev redirect health
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+
+  # --- Native CloudFront alarms (free/default metrics; namespace AWS/CloudFront,
+  # --- Region dimension is the literal 'Global'; these must live in us-east-1).
+  FunctionExecutionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantumlearner-redirect-function-execution-errors
+      AlarmDescription: The redirect CloudFront Function threw an execution error.
+      Namespace: AWS/CloudFront
+      MetricName: FunctionExecutionErrors
+      Dimensions:
+        - { Name: FunctionName, Value: quantumlearner-dev-redirect }
+        - { Name: Region, Value: Global }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  FunctionValidationErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantumlearner-redirect-function-validation-errors
+      AlarmDescription: The redirect function returned a malformed response object.
+      Namespace: AWS/CloudFront
+      MetricName: FunctionValidationErrors
+      Dimensions:
+        - { Name: FunctionName, Value: quantumlearner-dev-redirect }
+        - { Name: Region, Value: Global }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  Distribution5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantumlearner-redirect-5xx
+      AlarmDescription: >
+        Sustained 5xx at the edge — most likely the function association was
+        removed and requests are hitting the fail-loud origin (502).
+      Namespace: AWS/CloudFront
+      MetricName: 5xxErrorRate
+      Dimensions:
+        - { Name: DistributionId, Value: !Ref Distribution }
+        - { Name: Region, Value: Global }
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  # --- Synthetic canary: the catch-all for "runs but 301s to the WRONG place",
+  # --- cert/DNS breakage, or a fully-down domain (no requests -> no native
+  # --- metrics). A tiny Node Lambda HEADs both hostnames every 15 min and emits
+  # --- a custom Healthy=1/0 metric; the alarm below pages on 0 or missing data.
+  CanaryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: put-redirect-metric
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: QuantumLearner/Redirect
+
+  CanaryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: quantumlearner-redirect-canary
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 20
+      Role: !GetAtt CanaryRole.Arn
+      Code:
+        ZipFile: |
+          const { CloudWatchClient, PutMetricDataCommand } = require("@aws-sdk/client-cloudwatch");
+          const https = require("https");
+          const cw = new CloudWatchClient({});
+          const TARGET_PREFIX = "https://quantum.altivum.ai";
+          const HOSTS = ["quantumlearner.dev", "www.quantumlearner.dev"];
+
+          function check(host) {
+            return new Promise((resolve) => {
+              const req = https.request(
+                { host, path: "/", method: "HEAD", timeout: 5000 },
+                (res) => {
+                  const loc = res.headers.location || "";
+                  resolve({
+                    host,
+                    ok: res.statusCode === 301 && loc.indexOf(TARGET_PREFIX) === 0,
+                    status: res.statusCode,
+                    location: loc,
+                  });
+                  res.resume();
+                }
+              );
+              req.on("error", (e) => resolve({ host, ok: false, error: e.message }));
+              req.on("timeout", () => { req.destroy(); resolve({ host, ok: false, error: "timeout" }); });
+              req.end();
+            });
+          }
+
+          exports.handler = async () => {
+            const results = await Promise.all(HOSTS.map(check));
+            const healthy = results.every((r) => r.ok) ? 1 : 0;
+            await cw.send(new PutMetricDataCommand({
+              Namespace: "QuantumLearner/Redirect",
+              MetricData: [{ MetricName: "Healthy", Value: healthy, Unit: "Count" }],
+            }));
+            if (!healthy) console.error("redirect UNHEALTHY " + JSON.stringify(results));
+            else console.log("redirect healthy " + JSON.stringify(results));
+            return { healthy, results };
+          };
+
+  CanarySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: quantumlearner-redirect-canary-15min
+      ScheduleExpression: rate(15 minutes)
+      State: ENABLED
+      Targets:
+        - Id: canary
+          Arn: !GetAtt CanaryFunction.Arn
+
+  CanaryInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CanaryFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CanarySchedule.Arn
+
+  RedirectHealthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantumlearner-redirect-health
+      AlarmDescription: >
+        The canary saw the redirect return something other than a 301 to
+        quantum.altivum.ai (wrong location / cert / DNS / down), or the canary
+        itself stopped reporting.
+      Namespace: QuantumLearner/Redirect
+      MetricName: Healthy
+      Statistic: Minimum
+      Period: 900
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+Outputs:
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
+  DistributionId:
+    Value: !Ref Distribution
+  CertificateArn:
+    Value: !Ref Certificate
+  AlertTopicArn:
+    Value: !Ref AlertTopic
