@@ -60,3 +60,4 @@ web/src/lib/tutor-core.generated.ts
 06-hybrid-jobs/notebooks/vqe_monitored_job.py
 06-hybrid-jobs/notebooks/results.json
 06-hybrid-jobs/notebooks/qml_job_src/
+lambda/sync/.aws-sam/
