@@ -7,6 +7,8 @@
 // back to "incomplete", writes silently no-op. Sections are the unit of progress;
 // completion is an explicit learner action ("Mark as complete").
 
+import { registerLocalDeletion, clearLocalDeletion } from "./progress-merge";
+
 const PROGRESS_EVENT = "qc-progress";
 
 const sectionKey = (slug: string) => `qc:section:${slug}`;
@@ -21,8 +23,15 @@ function readFlag(key: string): boolean {
 
 function writeFlag(key: string, value: boolean): void {
   try {
-    if (value) localStorage.setItem(key, "1");
-    else localStorage.removeItem(key);
+    if (value) {
+      localStorage.setItem(key, "1");
+      clearLocalDeletion(key);
+    } else {
+      localStorage.removeItem(key);
+      // Tombstone the deletion for this session so the next sync merge does
+      // not silently re-adopt the server's copy under the learner's click.
+      registerLocalDeletion(key);
+    }
     window.dispatchEvent(new Event(PROGRESS_EVENT));
   } catch {
     /* storage unavailable — progress just isn't remembered this session */

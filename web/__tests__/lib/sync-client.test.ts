@@ -1,11 +1,17 @@
 /**
  * @jest-environment jsdom
  */
-import { syncNow, lastSyncedAt, isSyncConfigured } from "@/lib/sync-client";
+import {
+  syncNow,
+  lastSyncedAt,
+  isSyncConfigured,
+  SyncAccountMismatchError,
+  SYNC_META_KEY,
+} from "@/lib/sync-client";
 
 jest.mock("aws-amplify/auth", () => ({
   fetchAuthSession: jest.fn(async () => ({
-    tokens: { idToken: { toString: () => "JWT" } },
+    tokens: { idToken: { toString: () => "JWT", payload: { sub: "user-1" } } },
   })),
 }));
 jest.mock("@/lib/auth-config", () => ({ isAuthConfigured: () => true }));
@@ -85,6 +91,44 @@ describe("syncNow", () => {
     // The other device's more recent review won the merge locally too.
     expect(localStorage.getItem("qc:card:x")).toBe(card(20594));
     expect(JSON.parse(String(calls[3].init?.body)).baseVersion).toBe(2);
+  });
+
+  it("binds the device to the account on first sync", async () => {
+    mockFetch([{ status: 200, body: { version: 0, data: {} } }]);
+    await syncNow();
+    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
+  });
+
+  it("refuses to merge under a DIFFERENT account without an explicit choice", async () => {
+    // The cross-account bleed repro: sibling A synced this device; B signs in.
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    localStorage.setItem("qc:section:a", "1");
+    const calls = mockFetch([]);
+    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
+    expect(calls).toHaveLength(0); // nothing left the device
+  });
+
+  it("accountChange 'adopt' merges the device's progress into the new account and rebinds", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    localStorage.setItem("qc:section:mine", "1");
+    const calls = mockFetch([
+      { status: 200, body: { version: 0, data: {} } },
+      { status: 200, body: { version: 1 } },
+    ]);
+    await syncNow({ accountChange: "adopt" });
+    expect(JSON.parse(String(calls[1].init?.body)).data).toEqual({ "qc:section:mine": "1" });
+    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
+  });
+
+  it("accountChange 'reset' wipes local qc:* and takes the account's data only", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    localStorage.setItem("qc:section:theirs", "1");
+    mockFetch([{ status: 200, body: { version: 4, data: { "qc:section:account": "1" } } }]);
+    const result = await syncNow({ accountChange: "reset" });
+    expect(localStorage.getItem("qc:section:theirs")).toBeNull();
+    expect(localStorage.getItem("qc:section:account")).toBe("1");
+    expect(result.pushed).toBe(false); // merged equals the account copy exactly
+    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
   });
 
   it("surfaces a persistent conflict as an error after one retry", async () => {

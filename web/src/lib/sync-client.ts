@@ -12,6 +12,22 @@ import { exportSnapshot, mergeSnapshots, applySnapshot } from "./progress-merge"
 
 export const SYNC_META_KEY = "qc-sync:meta"; // outside qc:* so it never syncs
 
+/**
+ * The device's qc:* data is bound to the Cognito account it last synced as.
+ * Without this, a shared computer (or one person with two accounts) silently
+ * cross-contaminates both accounts' server snapshots: signing in as B would
+ * merge A's device progress into B's item. On mismatch, syncNow throws this
+ * and the caller must resolve with an explicit accountChange choice.
+ */
+export class SyncAccountMismatchError extends Error {
+  constructor() {
+    super("this device's progress was synced by a different account");
+    this.name = "SyncAccountMismatch";
+  }
+}
+
+export type AccountChange = "adopt" | "reset";
+
 export function syncUrl(): string | null {
   return process.env.NEXT_PUBLIC_SYNC_URL || null;
 }
@@ -32,11 +48,12 @@ interface Remote {
   data: Record<string, string>;
 }
 
-async function authHeader(): Promise<string> {
+async function session(): Promise<{ auth: string; sub: string }> {
   const { tokens } = await fetchAuthSession();
   const token = tokens?.idToken?.toString();
-  if (!token) throw new Error("not signed in");
-  return `Bearer ${token}`;
+  const sub = tokens?.idToken?.payload?.sub;
+  if (!token || typeof sub !== "string") throw new Error("not signed in");
+  return { auth: `Bearer ${token}`, sub };
 }
 
 async function pull(base: string, auth: string): Promise<Remote> {
@@ -66,9 +83,23 @@ function snapshotsEqual(a: Record<string, string>, b: Record<string, string>): b
   return ka.length === Object.keys(b).length && ka.every((k) => b[k] === a[k]);
 }
 
-function recordSynced(): void {
+interface SyncMeta {
+  lastSyncedAt?: number;
+  sub?: string;
+}
+
+function readMeta(): SyncMeta {
   try {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: Date.now() }));
+    const raw = localStorage.getItem(SYNC_META_KEY);
+    return raw ? (JSON.parse(raw) as SyncMeta) : {};
+  } catch {
+    return {};
+  }
+}
+
+function recordSynced(sub: string): void {
+  try {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: Date.now(), sub }));
     window.dispatchEvent(new Event("qc-sync"));
   } catch {
     /* metadata only */
@@ -76,20 +107,38 @@ function recordSynced(): void {
 }
 
 export function lastSyncedAt(): number | null {
+  const t = readMeta().lastSyncedAt;
+  return typeof t === "number" ? t : null;
+}
+
+/** Wipe this device's qc:* progress (the "use account data only" choice). */
+function resetLocalProgress(): void {
   try {
-    const raw = localStorage.getItem(SYNC_META_KEY);
-    if (!raw) return null;
-    const t = (JSON.parse(raw) as { lastSyncedAt?: number }).lastSyncedAt;
-    return typeof t === "number" ? t : null;
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith("qc:")) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    if (keys.length > 0) window.dispatchEvent(new Event("qc-progress"));
   } catch {
-    return null;
+    /* storage unavailable */
   }
 }
 
-export async function syncNow(): Promise<SyncResult> {
+export async function syncNow(options?: { accountChange?: AccountChange }): Promise<SyncResult> {
   const base = syncUrl();
   if (!base || !isAuthConfigured()) throw new Error("sync not configured");
-  const auth = await authHeader();
+  const { auth, sub } = await session();
+
+  // Account binding: first-ever sync adopts the device's progress (the normal
+  // "studied anonymously, then signed up" flow); a CHANGED account requires an
+  // explicit choice before anything merges.
+  const boundSub = readMeta().sub;
+  if (boundSub && boundSub !== sub) {
+    if (options?.accountChange === "reset") resetLocalProgress();
+    else if (options?.accountChange !== "adopt") throw new SyncAccountMismatchError();
+  }
 
   let applied = 0;
   let pushed = false;
@@ -99,13 +148,13 @@ export async function syncNow(): Promise<SyncResult> {
     const merged = mergeSnapshots(exportSnapshot(), remote.data);
     applied += applySnapshot(merged);
     if (snapshotsEqual(merged, remote.data)) {
-      recordSynced();
+      recordSynced(sub);
       return { applied, pushed };
     }
     const result = await push(base, auth, remote.version, merged);
     if (result === "ok") {
       pushed = true;
-      recordSynced();
+      recordSynced(sub);
       return { applied, pushed };
     }
   }

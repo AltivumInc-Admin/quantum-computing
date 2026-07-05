@@ -31,7 +31,12 @@ export function ProgressSync() {
     const run = () => {
       void import("@/lib/sync-client").then(({ syncNow, isSyncConfigured }) => {
         if (disposed || !isSyncConfigured()) return;
-        syncNow().catch((e) => console.warn("progress sync failed:", e));
+        syncNow().catch((e: Error) => {
+          // A different account synced this device before: never auto-resolve —
+          // the workspace SyncPanel owns the explicit adopt-vs-reset choice.
+          if (e?.name === "SyncAccountMismatch") return;
+          console.warn("progress sync failed:", e);
+        });
       });
     };
     const debounced = () => {

@@ -93,6 +93,26 @@ test("PUT validates body shape, namespace, and size", async () => {
   );
 });
 
+test("size cap counts UTF-8 BYTES, not UTF-16 code units", async () => {
+  const core = createHandlerCore({ ddb: stubDdb(), tableName: TABLE });
+  // 3-byte math glyphs: ~100k code units but ~300KB of UTF-8 — the old
+  // .length check admitted this past DynamoDB's 400KB item limit.
+  const glyphs = "⟩".repeat(100_000);
+  const res = await core(
+    makeEvent({ method: "PUT", body: { baseVersion: 0, data: { "qc:x": glyphs } } })
+  );
+  assert.equal(res.statusCode, 413);
+});
+
+test("a DynamoDB ValidationException surfaces as 413, not an unhandled 500", async () => {
+  const validation = new Error("Item size has exceeded the maximum allowed size");
+  validation.name = "ValidationException";
+  const ddb = stubDdb({ PutItemCommand: validation });
+  const core = createHandlerCore({ ddb, tableName: TABLE });
+  const res = await core(makeEvent({ method: "PUT", body: { baseVersion: 0, data: {} } }));
+  assert.equal(res.statusCode, 413);
+});
+
 test("invalidSnapshotReason accepts a clean snapshot", () => {
   assert.equal(invalidSnapshotReason({ "qc:section:a": "1", "qc:card:b": "{}" }), null);
 });

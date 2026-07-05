@@ -92,7 +92,7 @@ function Shell({ children }: { children: React.ReactNode }) {
  * run via <ProgressSync/>; this panel adds visibility and a manual trigger.
  */
 function SyncPanel({ done, total }: { done: number; total: number }) {
-  const [state, setState] = useState<"idle" | "syncing" | "error">("idle");
+  const [state, setState] = useState<"idle" | "syncing" | "error" | "mismatch">("idle");
   const [lastSynced, setLastSynced] = useState<number | null>(null);
 
   useEffect(() => {
@@ -110,13 +110,42 @@ function SyncPanel({ done, total }: { done: number; total: number }) {
     };
   }, []);
 
-  const handleSync = () => {
+  const handleSync = (accountChange?: "adopt" | "reset") => {
     setState("syncing");
     void import("@/lib/sync-client")
-      .then(({ syncNow }) => syncNow())
+      .then(({ syncNow }) => syncNow(accountChange ? { accountChange } : undefined))
       .then(() => setState("idle"))
-      .catch(() => setState("error"));
+      .catch((e: Error) => setState(e?.name === "SyncAccountMismatch" ? "mismatch" : "error"));
   };
+
+  const buttonClass =
+    "inline-flex items-center rounded-control border border-accent/30 bg-accent/5 px-4 py-2 text-sm font-medium text-accent-dark dark:text-accent-light interactive focus-ring disabled:opacity-60";
+
+  if (state === "mismatch") {
+    return (
+      <>
+        <p className="text-sm text-gray-700 dark:text-gray-200">
+          This device holds progress synced by a different account.
+        </p>
+        <p role="status" className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          Choose whether to merge this device&apos;s progress into the account you are
+          signed in as, or replace it with the account&apos;s own data.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" onClick={() => handleSync("adopt")} className={buttonClass}>
+            Merge this device&apos;s progress
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSync("reset")}
+            className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 interactive focus-ring"
+          >
+            Use account data only
+          </button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -134,9 +163,9 @@ function SyncPanel({ done, total }: { done: number; total: number }) {
       </p>
       <button
         type="button"
-        onClick={handleSync}
+        onClick={() => handleSync()}
         disabled={state === "syncing"}
-        className="mt-4 inline-flex items-center rounded-control border border-accent/30 bg-accent/5 px-4 py-2 text-sm font-medium text-accent-dark dark:text-accent-light interactive focus-ring disabled:opacity-60"
+        className={`mt-4 ${buttonClass}`}
       >
         Sync now
       </button>

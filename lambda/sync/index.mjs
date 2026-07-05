@@ -66,7 +66,11 @@ export function createHandlerCore({ ddb, tableName }) {
       const reason = invalidSnapshotReason(data);
       if (reason) return json(400, { error: reason });
       const serialized = JSON.stringify(data);
-      if (serialized.length > MAX_SNAPSHOT_BYTES) {
+      // Byte length, not string length: card-content is full of 3-byte math
+      // glyphs (ψ, ⟩, ×), so counting UTF-16 code units would admit ~780KB of
+      // UTF-8 — past DynamoDB's 400KB item limit, turning this 413 into an
+      // unhandled ValidationException 500 and a permanently wedged sync.
+      if (Buffer.byteLength(serialized, "utf8") > MAX_SNAPSHOT_BYTES) {
         return json(413, { error: `snapshot exceeds ${MAX_SNAPSHOT_BYTES} bytes` });
       }
 
@@ -93,6 +97,10 @@ export function createHandlerCore({ ddb, tableName }) {
       } catch (err) {
         if (err?.name === "ConditionalCheckFailedException") {
           return json(409, { error: "version-conflict" });
+        }
+        // Backstop for anything that still exceeds a DynamoDB limit.
+        if (err?.name === "ValidationException") {
+          return json(413, { error: "snapshot exceeds storage limits" });
         }
         throw err;
       }

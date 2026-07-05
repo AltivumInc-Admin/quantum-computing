@@ -5,7 +5,12 @@ import {
   exportSnapshot,
   mergeSnapshots,
   applySnapshot,
+  registerLocalDeletion,
+  resetLocalDeletions,
+  CLOCK_SKEW_GRACE_DAYS,
 } from "@/lib/progress-merge";
+
+const TODAY = 20600;
 
 const card = (over: Partial<Record<string, number>> = {}) =>
   JSON.stringify({
@@ -76,8 +81,46 @@ describe("mergeSnapshots", () => {
     ).toBe(live);
   });
 
-  it("falls back to the local copy for unknown-family differences", () => {
-    expect(mergeSnapshots({ "qc:future:x": "a" }, { "qc:future:x": "b" })["qc:future:x"]).toBe("a");
+  it("resolves unknown-family differences symmetrically (lexicographic)", () => {
+    expect(mergeSnapshots({ "qc:future:x": "a" }, { "qc:future:x": "b" })["qc:future:x"]).toBe("b");
+    expect(mergeSnapshots({ "qc:future:x": "b" }, { "qc:future:x": "a" })["qc:future:x"]).toBe("b");
+  });
+
+  it("is COMMUTATIVE on every genuine tie, so the two-device protocol converges", () => {
+    // The exact non-convergence repro: same card graded 'good' on A and 'hard'
+    // on B the same day — lastEpochDay, lapses, and reps all tie, values differ.
+    const good = card({ reps: 3, lapses: 1, lastEpochDay: 20594, dueEpochDay: 20606 });
+    const hard = card({ reps: 3, lapses: 1, lastEpochDay: 20594, dueEpochDay: 20601 });
+    const liveA = JSON.stringify({ prompt: "p", answer: "a", kind: "challenge", source: "A" });
+    const liveB = JSON.stringify({ prompt: "p", answer: "a", kind: "challenge", source: "B" });
+    const a = { "qc:card:x": good, "qc:card-content:x": liveA, "qc:future:x": "va" };
+    const b = { "qc:card:x": hard, "qc:card-content:x": liveB, "qc:future:x": "vb" };
+    expect(mergeSnapshots(a, b, TODAY)).toEqual(mergeSnapshots(b, a, TODAY));
+  });
+
+  it("quarantines clock-skewed cards: an implausibly future copy loses to any plausible one", () => {
+    // A device with a year-fast clock graded this card "more recently" — forever.
+    const poisoned = card({ lastEpochDay: TODAY + 366, dueEpochDay: TODAY + 372, reps: 9 });
+    const legit = card({ lastEpochDay: TODAY - 1, dueEpochDay: TODAY + 5 });
+    expect(
+      mergeSnapshots({ "qc:card:x": legit }, { "qc:card:x": poisoned }, TODAY)["qc:card:x"]
+    ).toBe(legit);
+    expect(
+      mergeSnapshots({ "qc:card:x": poisoned }, { "qc:card:x": legit }, TODAY)["qc:card:x"]
+    ).toBe(legit);
+    // Within the grace window (UTC-boundary grading) recency still wins.
+    const nearFuture = card({ lastEpochDay: TODAY + CLOCK_SKEW_GRACE_DAYS });
+    expect(
+      mergeSnapshots({ "qc:card:x": legit }, { "qc:card:x": nearFuture }, TODAY)["qc:card:x"]
+    ).toBe(nearFuture);
+  });
+
+  it("skips re-adopting keys the learner deleted on this device this session", () => {
+    resetLocalDeletions();
+    registerLocalDeletion("qc:section:undone");
+    const merged = mergeSnapshots({}, { "qc:section:undone": "1", "qc:section:other": "1" });
+    expect(merged).toEqual({ "qc:section:other": "1" });
+    resetLocalDeletions();
   });
 });
 
@@ -104,5 +147,33 @@ describe("applySnapshot", () => {
     expect(applySnapshot({ "qc:section:a": "1" })).toBe(0);
     window.removeEventListener("qc-progress", listener);
     expect(events).toHaveLength(0);
+  });
+
+  it("refuses to write a clock-skewed CardState even from an already-poisoned snapshot", () => {
+    const poisoned = card({ lastEpochDay: TODAY + 366 });
+    expect(applySnapshot({ "qc:card:x": poisoned }, TODAY)).toBe(0);
+    expect(localStorage.getItem("qc:card:x")).toBeNull();
+  });
+});
+
+describe("un-complete does not self-revert (progress-store tombstone wiring)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLocalDeletions();
+  });
+
+  it("a section toggled off stays off through a subsequent merge", async () => {
+    // The exact repro: un-complete -> 20s later the debounced sync pulls the
+    // server's "1" back and the checkbox flips on under the learner's click.
+    const { setSectionComplete } = await import("@/lib/progress-store");
+    setSectionComplete("qubits", true);
+    setSectionComplete("qubits", false); // registers the session tombstone
+    const merged = mergeSnapshots(exportSnapshot(), { "qc:section:qubits": "1" });
+    expect(merged["qc:section:qubits"]).toBeUndefined();
+    // Re-completing clears the tombstone so the flag syncs again.
+    setSectionComplete("qubits", true);
+    expect(
+      mergeSnapshots(exportSnapshot(), { "qc:section:qubits": "1" })["qc:section:qubits"]
+    ).toBe("1");
   });
 });
