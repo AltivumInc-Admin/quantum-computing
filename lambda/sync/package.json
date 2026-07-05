@@ -1,0 +1,12 @@
+{
+  "name": "quantum-workspace-sync",
+  "private": true,
+  "type": "module",
+  "files": ["index.mjs"],
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0"
+  }
+}

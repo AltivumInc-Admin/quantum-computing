@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, Instrument_Serif } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Nav } from "@/components/nav";
 import { AskTutor } from "@/components/ask-tutor";
+import { ProgressSync } from "@/components/progress-sync";
 import { Footer } from "@/components/footer";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { SITE_URL } from "@/lib/site";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </main>
             <Footer />
             <AskTutor />
+            <ProgressSync />
           </AuthProvider>
         </ThemeProvider>
       </body>
