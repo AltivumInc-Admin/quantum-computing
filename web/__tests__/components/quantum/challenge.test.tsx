@@ -103,6 +103,22 @@ describe("Challenge", () => {
     expect(challengeCardKey()).toBeUndefined();
   });
 
+  it("suppresses the persistent solved-once-ever badge on the review surface", () => {
+    const first = render(<Challenge source={bell} />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "H 0\nCNOT 0 1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    first.unmount(); // qc:challenge:<id> = "1" is now persisted
+    // A fresh LESSON mount shows the persistent badge...
+    const lesson = render(<Challenge source={bell} />);
+    expect(screen.getByText("Solved")).toBeInTheDocument();
+    lesson.unmount();
+    // ...but a fresh REVIEW mount must not claim the re-attempt is already done.
+    render(<Challenge source={bell} surface="review" />);
+    expect(screen.queryByText("Solved")).not.toBeInTheDocument();
+  });
+
   it("caches its kind + raw fence source so /review can re-mount the live widget", () => {
     render(<Challenge source={bell} />);
     const key = Object.keys(localStorage).find((k) =>

@@ -55,7 +55,14 @@ const TONE = {
     "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
 };
 
-export function PredictWidget({ source }: { source: string }) {
+export function PredictWidget({
+  source,
+  surface = "lesson",
+}: {
+  source: string;
+  /** "review" when mounted on /review — the schedule note drops the "Added to your review" phrasing. */
+  surface?: "lesson" | "review";
+}) {
   const parsed = useMemo(() => parsePredict(source), [source]);
   const spec = parsed.spec;
 
@@ -201,9 +208,13 @@ export function PredictWidget({ source }: { source: string }) {
 
             {scheduled !== null && (
               <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
-                {scheduled <= 1
-                  ? "Added to your review — back tomorrow."
-                  : `Added to your review — back in ${scheduled} days.`}
+                {surface === "review"
+                  ? scheduled <= 1
+                    ? "Reviewed — next review tomorrow."
+                    : `Reviewed — next review in ${scheduled} days.`
+                  : scheduled <= 1
+                    ? "Added to your review — back tomorrow."
+                    : `Added to your review — back in ${scheduled} days.`}
               </p>
             )}
           </>

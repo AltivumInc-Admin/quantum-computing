@@ -69,7 +69,14 @@ const fmtDegFloor = (deg: number) => `${formatFixed(Math.floor(deg * 10 + 1e-7) 
 const SLIDER_ROW = "flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3";
 const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300";
 
-export function BlochTargetWidget({ source }: { source: string }) {
+export function BlochTargetWidget({
+  source,
+  surface = "lesson",
+}: {
+  source: string;
+  /** "review" when mounted on /review — the schedule note drops the "Added to your review" phrasing. */
+  surface?: "lesson" | "review";
+}) {
   const parsed = useMemo(() => parseBlochTarget(source), [source]);
   const spec = parsed.spec;
   const truthResult = useMemo<ReturnType<typeof blochTargetTruth>>(
@@ -246,9 +253,13 @@ export function BlochTargetWidget({ source }: { source: string }) {
               </p>
               {scheduled !== null && (
                 <p className="mt-1 text-xs text-caption animate-fade-up">
-                  {scheduled <= 1
-                    ? "Added to your review — back tomorrow."
-                    : `Added to your review — back in ${scheduled} days.`}
+                  {surface === "review"
+                    ? scheduled <= 1
+                      ? "Reviewed — next review tomorrow."
+                      : `Reviewed — next review in ${scheduled} days.`
+                    : scheduled <= 1
+                      ? "Added to your review — back tomorrow."
+                      : `Added to your review — back in ${scheduled} days.`}
                 </p>
               )}
             </>
