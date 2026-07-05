@@ -554,6 +554,7 @@ Because `main` is protected by the CI gate, **only CI-green commits ever deploy.
 3. **Notebooks** are committed **output-stripped** automatically via the `nbstripout` git filter (installed by `make setup`) — keep diffs clean.
 4. **Making a notebook browser-runnable?** Add `<!-- browser-runnable -->` to its first markdown cell, ensure it imports only the qcsim-supported Braket surface, then run `python scripts/validate_runnable.py --write-manifest` and commit the updated `runnable-manifest.json`. CI will reject drift.
 5. **Python** is `ruff`-formatted (line length 100, target py310); notebooks are excluded from linting and validated by `test_notebook_contract.py` instead.
+6. **Contribute a Rep** — a graded exercise is one JSON file in [`content/reps/`](content/reps/); CI validates it with the same parsers and graders the live widgets use, and maintainers promote accepted Reps into the lessons. See [`content/reps/README.md`](content/reps/README.md).
 
 Design specs and implementation plans live in [`docs/`](docs/).
 
