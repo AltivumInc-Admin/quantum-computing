@@ -23,13 +23,15 @@ const nbUrl = (path: string) =>
  * Open a notebook, Run All Cells, and record every cross-origin request. Returns the
  * external-request log so the caller can assert the run is fully same-origin (it must
  * stay empty — Pyodide, its wheels, and comm are all self-hosted). chrome-extension://
- * and data: URLs are ignored; only http(s) to a non-localhost host counts.
+ * and data: URLs are ignored; only http(s) outside the served origin counts — an
+ * EXACT-origin compare, not a loopback prefix, so a stray dev server on another
+ * port (or a "localhost.evil.example" host) can never be silently exempted.
  */
-async function runAllCells(page: Page, notebookPath: string): Promise<string[]> {
+async function runAllCells(page: Page, origin: string, notebookPath: string): Promise<string[]> {
   const external: string[] = [];
   page.on("request", (req) => {
     const u = req.url();
-    if (/^https?:/.test(u) && !/^https?:\/\/(127\.0\.0\.1|localhost)/.test(u)) {
+    if (/^https?:/.test(u) && new URL(u).origin !== origin) {
       external.push(`${req.method()} ${u}`);
     }
   });
@@ -57,8 +59,13 @@ const assertSameOrigin = (external: string[]) =>
 
 test("01-first-circuit: real Pyodide, deterministic stdout, fully same-origin", async ({
   page,
+  baseURL,
 }) => {
-  const external = await runAllCells(page, "01-foundations/notebooks/01-first-circuit.ipynb");
+  const external = await runAllCells(
+    page,
+    new URL(baseURL!).origin,
+    "01-foundations/notebooks/01-first-circuit.ipynb"
+  );
 
   // Deterministic output of the H-circuit cell (output TEXT, not a cell index, not
   // shot-dependent counts) — proves Pyodide booted and the qcsim wheel installed.
@@ -81,10 +88,15 @@ test("01-first-circuit: real Pyodide, deterministic stdout, fully same-origin", 
 
 test("06-bloch-playground: matplotlib renders + ipywidgets degrades gracefully, fully same-origin", async ({
   page,
+  baseURL,
 }) => {
   // The heaviest browser path: loads numpy + the full matplotlib wheel closure
   // (pillow/fonttools/kiwisolver/contourpy/…) same-origin and renders inline plots.
-  const external = await runAllCells(page, "00-prereqs/notebooks/06-bloch-sphere-playground.ipynb");
+  const external = await runAllCells(
+    page,
+    new URL(baseURL!).origin,
+    "00-prereqs/notebooks/06-bloch-sphere-playground.ipynb"
+  );
 
   // Deterministic stdout from the famous-states table (f-string formatting, so it is
   // robust to numpy print options). Confirms numpy loaded and the notebook executed.

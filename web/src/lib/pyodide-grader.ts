@@ -2,18 +2,20 @@
 // Pyodide + the qcsim wheel, then verify the resulting state vector against the
 // challenge's reference circuit (computed in TS) up to global phase.
 //
-// This is the advanced, free-form path. It loads a standalone Pyodide runtime
-// from CDN on first use and installs the same qcsim wheel the in-browser lab
-// ships (single-sourced via the content manifest), so `from braket.circuits
-// import Circuit` resolves to qcsim exactly as it does in the lab. The module is
-// imported lazily (only when a tier:"py" challenge is checked) so it never
-// touches the main bundle.
+// This is the advanced, free-form path. On first use it boots the shared
+// SAME-ORIGIN self-hosted Pyodide runtime (/pyodide/; the CDN is only an
+// SRI-protected fallback — see pyodide-runtime.ts) and installs the same qcsim
+// wheel the in-browser lab ships (single-sourced via the content manifest), so
+// `from braket.circuits import Circuit` resolves to qcsim exactly as it does in
+// the lab. The module is imported lazily (only when a tier:"py" challenge is
+// checked) so it never touches the main bundle.
 //
-// NOTE: requires a live browser (Pyodide/WebAssembly + network for the CDN
-// runtime); it cannot run under jsdom. All shipped challenges currently use the
-// instant Tier-A TS grader; this path is wired and ready for free-form Python
-// challenges and should be verified end-to-end in a browser before authoring
-// tier:"py" content.
+// NOTE: requires a live browser (Pyodide/WebAssembly); it cannot run under
+// jsdom. All shipped challenges currently use the instant Tier-A TS grader.
+// This path IS verified end-to-end in a real browser by
+// web/e2e/challenge-py-grader.e2e.ts (solved / wrong / fresh-namespace error,
+// same-origin boot) against the fixture page at /e2e-fixtures/py-challenge —
+// keep that spec in lockstep when changing grading semantics here.
 
 import { simulate, statesApproxEqual, type Complex } from "@/components/quantum/math";
 import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";

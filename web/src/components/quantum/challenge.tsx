@@ -64,6 +64,7 @@ const VERDICT_STYLES: Record<GradeResult["status"], string> = {
 export function Challenge({
   source,
   surface = "lesson",
+  persist = true,
 }: {
   source: string;
   /**
@@ -73,6 +74,14 @@ export function Challenge({
    * "Added to your review" phrasing — the card is already there.
    */
   surface?: "lesson" | "review";
+  /**
+   * false for non-curriculum mounts (the /e2e-fixtures pages): grading still
+   * works, but NOTHING is written to localStorage — no card content on mount,
+   * no FSRS card or solved flag on solve. Without this, anyone who visits or
+   * solves a fixture gets phantom qc:* keys that the additive cross-device
+   * sync then replicates to every device forever (there is no card deletion).
+   */
+  persist?: boolean;
 }) {
   const parsed = useMemo(() => parseChallenge(source), [source]);
   const spec = parsed.spec;
@@ -93,7 +102,7 @@ export function Challenge({
   // can re-mount this exact challenge as a LIVE re-attempt (falling back to a
   // recall card for content cached before `kind`/`source` existed).
   useEffect(() => {
-    if (spec) {
+    if (spec && persist) {
       setCardContent(cardId, {
         prompt: spec.prompt,
         answer: challengeReviewAnswer(spec.target.program),
@@ -101,7 +110,7 @@ export function Challenge({
         source,
       });
     }
-  }, [spec, cardId, source]);
+  }, [spec, cardId, source, persist]);
 
   if (!spec) {
     return (
@@ -120,10 +129,12 @@ export function Challenge({
       // or disallowed gate) is a malformed attempt, not a wrong answer.
       wrongAttempts.current += 1;
     } else if (r.status === "solved") {
-      const graded = gradeCardIfDue(cardId, ratingForSolve(wrongAttempts.current));
-      if (graded) setScheduled(nextIntervalDays(graded));
+      if (persist) {
+        const graded = gradeCardIfDue(cardId, ratingForSolve(wrongAttempts.current));
+        if (graded) setScheduled(nextIntervalDays(graded));
+        markSolved();
+      }
       wrongAttempts.current = 0;
-      markSolved();
     }
   };
 
