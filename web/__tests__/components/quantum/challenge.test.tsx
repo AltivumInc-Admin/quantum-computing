@@ -129,4 +129,21 @@ describe("Challenge", () => {
     expect(content.kind).toBe("challenge");
     expect(content.source).toBe(bell);
   });
+
+  // persist={false} is the /e2e-fixtures contract: grading works end to end,
+  // but NOTHING touches localStorage — no card content on mount, no FSRS card
+  // or solved flag on solve. Without it, anyone visiting or solving a fixture
+  // would mint phantom qc:* keys that the additive cross-device sync then
+  // replicates to every device forever (there is no card deletion).
+  it("persist={false}: grades normally but writes zero qc:* keys on mount or solve", () => {
+    render(<Challenge source={bell} persist={false} />);
+    expect(Object.keys(localStorage)).toHaveLength(0); // no card-content on mount
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "H 0\nCNOT 0 1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(screen.getByText(/correct/i)).toBeInTheDocument(); // grading still works
+    expect(Object.keys(localStorage)).toHaveLength(0); // no card, flag, or content
+    expect(screen.queryByText(/added to your review/i)).not.toBeInTheDocument();
+  });
 });
