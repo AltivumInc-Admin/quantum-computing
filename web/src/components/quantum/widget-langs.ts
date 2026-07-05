@@ -8,6 +8,7 @@ export const WIDGET_LANGS = new Set<string>([
   "qsim",
   "qscrub",
   "qchallenge",
+  "qpredict",
   "quiz",
   "runnable",
   "qbloch",

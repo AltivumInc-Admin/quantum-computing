@@ -2,6 +2,8 @@ import {
   challengeCardId,
   ratingForSolve,
   challengeReviewAnswer,
+  predictCardId,
+  ratingForPrediction,
 } from "@/lib/challenge-review";
 
 describe("challenge-review adapter", () => {
@@ -49,6 +51,20 @@ describe("challenge-review adapter", () => {
       expect(challengeReviewAnswer("   \n  ")).toBe(
         "See the lesson for the target circuit."
       );
+    });
+  });
+
+  describe("predictCardId", () => {
+    it("namespaces under predict: and never collides with a challenge card", () => {
+      expect(predictCardId("x")).toBe("predict:x");
+      expect(predictCardId("x")).not.toBe(challengeCardId("x"));
+    });
+  });
+
+  describe("ratingForPrediction", () => {
+    it("maps a correct commit to good and a miss to an again lapse", () => {
+      expect(ratingForPrediction(true)).toBe("good");
+      expect(ratingForPrediction(false)).toBe("again");
     });
   });
 });

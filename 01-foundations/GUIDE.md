@@ -259,6 +259,18 @@ independence):
 }
 ```
 
+Predict before you run. You have seen the recipe and the correlation — now commit to an answer *before* the simulator reveals it: which measurement outcomes can the entangling circuit actually produce?
+
+```qpredict
+{
+  "id": "found-bell-reachable-1",
+  "prompt": "Which basis states can the Bell circuit (H 0; CNOT 0 1) produce on measurement? Commit your prediction, then reveal the simulation.",
+  "program": "H 0\nCNOT 0 1",
+  "mode": "nonzero-states",
+  "hint": "The Hadamard superposes qubit 0; the CNOT ties qubit 1 to it — the two qubits always agree, so the odd-parity outcomes never appear."
+}
+```
+
 The four maximally-entangled two-qubit states — the **Bell basis** — are
 $\ket{\Phi^\pm} = \tfrac{1}{\sqrt{2}}(\ket{00}\pm\ket{11})$ and
 $\ket{\Psi^\pm} = \tfrac{1}{\sqrt{2}}(\ket{01}\pm\ket{10})$. They are the raw fuel of quantum

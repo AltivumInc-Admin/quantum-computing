@@ -39,3 +39,21 @@ export function challengeReviewAnswer(program: string): string {
     ? "One correct circuit: `" + steps.join("; ") + "`"
     : "See the lesson for the target circuit.";
 }
+
+/**
+ * Review-card id for a predict-then-run Rep, namespaced under `predict:` so it
+ * can never collide with a `challenge:` card (or an authored qcard) of the same id.
+ */
+export function predictCardId(id: string): string {
+  return `predict:${id}`;
+}
+
+/**
+ * Map a predict-then-run commit to a rating. Unlike a challenge, a prediction is
+ * one irreversible shot — once the outcome is revealed a retry is trivially
+ * correct — so ratingForSolve's retry model does not apply: a correct prediction
+ * is "good", and a genuine miss is exactly an FSRS lapse ("again").
+ */
+export function ratingForPrediction(correct: boolean): Rating {
+  return correct ? "good" : "again";
+}
