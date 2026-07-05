@@ -50,6 +50,7 @@ const WIDGETS: Record<string, SourceWidget> = {
   qscrub: lazyWidget(() => import("./wavefunction-scrubber").then((m) => ({ default: m.WavefunctionScrubber })), tall),
   qchallenge: lazyWidget(() => import("./challenge").then((m) => ({ default: m.Challenge })), tall),
   qpredict: lazyWidget(() => import("./predict-widget").then((m) => ({ default: m.PredictWidget })), tall),
+  qblochtarget: lazyWidget(() => import("./bloch-target-widget").then((m) => ({ default: m.BlochTargetWidget })), tall),
   quiz: lazyWidget(() => import("./quiz").then((m) => ({ default: m.Quiz })), tall),
   runnable: lazyWidget(() => import("./runnable-editor").then((m) => ({ default: m.RunnableEditor })), tall),
   qbloch: () => <BlochBuilder source="" />,

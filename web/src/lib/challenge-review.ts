@@ -57,3 +57,14 @@ export function predictCardId(id: string): string {
 export function ratingForPrediction(correct: boolean): Rating {
   return correct ? "good" : "again";
 }
+
+/**
+ * Review-card id for a Bloch-target Rep, namespaced under `bloch:` so it can
+ * never collide with a `challenge:`/`predict:` card (or an authored qcard) of
+ * the same id. A Bloch-target solve is retryable like a challenge — the learner
+ * adjusts and Checks again — so it maps to a rating through the same
+ * ratingForSolve (clean first Check "good", any miss first "hard").
+ */
+export function blochCardId(id: string): string {
+  return `bloch:${id}`;
+}

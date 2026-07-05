@@ -14,6 +14,8 @@ import {
   rz,
   probabilities,
   blochVector,
+  blochAngle,
+  singleQubitState,
   simulate,
   basisLabel,
 } from "@/components/quantum/math";
@@ -152,5 +154,45 @@ describe("quantum/math derived quantities", () => {
   it("basisLabel is big-endian (qubit 0 leftmost)", () => {
     expect(basisLabel(2, 2)).toBe("10");
     expect(basisLabel(1, 3)).toBe("001");
+  });
+});
+
+describe("quantum/math blochAngle", () => {
+  const zero = simulate([], 1); // |0>
+  const one = simulate([{ gate: "X", target: 0 }], 1); // |1>
+  const plus = simulate([{ gate: "H", target: 0 }], 1); // |+>
+
+  it("is zero between identical states", () => {
+    expect(blochAngle(plus, plus)).toBeCloseTo(0, 10);
+  });
+
+  it("is pi between antipodal states |0> and |1>", () => {
+    expect(blochAngle(zero, one)).toBeCloseTo(Math.PI, 10);
+  });
+
+  it("is pi/2 between |0> and |+>", () => {
+    expect(blochAngle(zero, plus)).toBeCloseTo(Math.PI / 2, 10);
+  });
+
+  it("is invariant under a global phase on either argument", () => {
+    // e^{i*0.7} |+> — physically the same point on the sphere.
+    const c = Math.cos(0.7);
+    const s = Math.sin(0.7);
+    const phased = plus.map(([re, im]) => [re * c - im * s, re * s + im * c] as [number, number]);
+    expect(blochAngle(zero, phased)).toBeCloseTo(blochAngle(zero, plus), 10);
+    expect(blochAngle(phased, plus)).toBeCloseTo(0, 10);
+  });
+
+  it("matches the slider parameterization: theta IS the polar angle from |0>", () => {
+    for (const theta of [0.3, 1.1, 2.5]) {
+      expect(blochAngle(zero, singleQubitState(theta, 0.9))).toBeCloseTo(theta, 10);
+    }
+  });
+
+  it("never returns NaN when float drift pushes the dot product past 1", () => {
+    // Two H-applications reconstruct |0> with ~1e-16 drift; dot may exceed 1.
+    const roundTrip = simulate([{ gate: "H", target: 0 }, { gate: "H", target: 0 }], 1);
+    expect(Number.isNaN(blochAngle(zero, roundTrip))).toBe(false);
+    expect(blochAngle(zero, roundTrip)).toBeCloseTo(0, 6);
   });
 });

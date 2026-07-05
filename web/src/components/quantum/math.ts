@@ -151,6 +151,21 @@ export function singleQubitState(theta: number, phi: number): Complex[] {
   ];
 }
 
+/**
+ * Great-circle angle (radians) between two single-qubit pure states on the
+ * Bloch sphere: acos of the dot product of their (unit) Bloch vectors, clamped
+ * against float drift past ±1. Global-phase-invariant because blochVector is.
+ * This is the graded distance for the ```qblochtarget Rep — a slider-driven
+ * state lands near but never bit-exactly on a target, so the challenge grader's
+ * statesApproxEqual (eps 1e-9) is the wrong yardstick there.
+ */
+export function blochAngle(a: Complex[], b: Complex[]): number {
+  const u = blochVector(a);
+  const v = blochVector(b);
+  const dot = u.x * v.x + u.y * v.y + u.z * v.z;
+  return Math.acos(clamp(dot, -1, 1));
+}
+
 // --- a tiny circuit runner for the inline lab DSL -------------------------
 
 export interface Op {
