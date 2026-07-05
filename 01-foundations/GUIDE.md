@@ -337,6 +337,23 @@ control a flip:
 }
 ```
 
+Building a circuit from scratch is one skill; reading someone else's and spotting why it
+misbehaves is another — and it is the one you will use most on real code. The circuit below
+was *meant* to prepare that same Bell state, but its two qubits come out completely
+unentangled. Find the bug and fix it:
+
+```qdebug
+{
+  "id": "found-debug-bell-1",
+  "prompt": "This circuit was meant to prepare the Bell state |Φ+⟩ = (|00⟩ + |11⟩)/√2, but measuring it shows qubit 1 stuck at 0 while qubit 0 flips freely — the qubits never entangle. Fix the circuit.",
+  "qubits": 2,
+  "broken": { "program": "H 0\nCNOT 1 0" },
+  "target": { "program": "H 0\nCNOT 0 1" },
+  "allowedGates": ["H", "X", "CNOT"],
+  "hint": "Trace it: H puts qubit 0 into superposition — but which qubit does this CNOT use as the control? A control that is always |0⟩ never fires."
+}
+```
+
 ## Check yourself
 
 Five questions that tie the module together. Try each before revealing the hint or answer.

@@ -2,7 +2,7 @@
 // (lambda/sync) is a deliberately dumb versioned KV; these pure rules decide,
 // key by key, which of two qc:* snapshots wins:
 //
-//   qc:section:* / qc:challenge:*  set-once flags -> union ("1" wins)
+//   qc:section:* / qc:challenge:* / qc:debug:*  set-once flags -> union ("1" wins)
 //   qc:card:*                      CardState wins AS A UNIT by schedule
 //                                  recency (lastEpochDay, then lapses — the
 //                                  only monotonic counter — then reps); the

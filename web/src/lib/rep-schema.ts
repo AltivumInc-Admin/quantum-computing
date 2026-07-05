@@ -29,8 +29,10 @@ import { parseBlochTarget } from "./bloch-target-schema";
 import { blochTargetTruth } from "./bloch-target-grade";
 import { parseCostEstimate } from "./cost-estimate-schema";
 import { costEstimateTruth } from "./cost-estimate-grade";
+import { parseDebugCircuit } from "./debug-circuit-schema";
+import { debugTruth } from "./debug-circuit-grade";
 
-export const REP_KINDS = ["challenge", "predict", "blochtarget", "costestimate"] as const;
+export const REP_KINDS = ["challenge", "predict", "blochtarget", "costestimate", "debug"] as const;
 export type RepKind = (typeof REP_KINDS)[number];
 
 /** The fence token a maintainer uses when promoting the Rep into a GUIDE. */
@@ -39,6 +41,7 @@ export const FENCE_TOKENS: Record<RepKind, string> = {
   predict: "qpredict",
   blochtarget: "qblochtarget",
   costestimate: "qcostestimate",
+  debug: "qdebug",
 };
 
 // Every key a contribution may carry, per kind. NOTE: challenge deliberately
@@ -48,6 +51,7 @@ const ALLOWED_KEYS: Record<RepKind, readonly string[]> = {
   predict: ["kind", "id", "prompt", "program", "mode", "hint"],
   blochtarget: ["kind", "id", "prompt", "target", "toleranceDeg", "blind", "hint"],
   costestimate: ["kind", "id", "prompt", "provider", "shots", "tasks", "hint"],
+  debug: ["kind", "id", "prompt", "qubits", "broken", "target", "allowedGates", "hint"],
 };
 
 // A Rep is authored prose + a short program; anything near this ceiling is a
@@ -111,6 +115,12 @@ export function validateRep(source: string): RepValidation {
       if (key !== "program") return { error: `unknown key "target.${key}" — target takes only "program"` };
     }
   }
+  const broken = data.broken as Record<string, unknown> | undefined;
+  if (broken && typeof broken === "object" && !Array.isArray(broken)) {
+    for (const key of Object.keys(broken)) {
+      if (key !== "program") return { error: `unknown key "broken.${key}" — broken takes only "program"` };
+    }
+  }
 
   // The `kind` field is the envelope; the fence parsers see the bare spec.
   const spec: Record<string, unknown> = { ...data };
@@ -165,6 +175,16 @@ export function validateRep(source: string): RepValidation {
       const parsed = parseCostEstimate(fenceSource);
       if (parsed.error) return { error: parsed.error };
       error = costEstimateTruth(parsed.spec!).error;
+      break;
+    }
+    case "debug": {
+      const parsed = parseDebugCircuit(fenceSource);
+      if (parsed.error) return { error: parsed.error };
+      // debugTruth owns every degenerate guard this gate needs: parseability
+      // and concreteness of BOTH programs, allowedGates self-consistency, the
+      // qubit cap, broken != target (nothing to fix), and the |0...0> target
+      // (delete-everything solves it).
+      error = debugTruth(parsed.spec!).error;
       break;
     }
   }

@@ -41,6 +41,7 @@ One JSON object per file: the widget's fence spec plus a `kind` envelope.
 | `predict` | ```` ```qpredict ```` | `id`, `prompt`, `program`, `mode?` (`top-outcome` \| `nonzero-states`, defaults `top-outcome`), `hint?` |
 | `blochtarget` | ```` ```qblochtarget ```` | `id`, `prompt`, `target.program` (single qubit), `toleranceDeg?`, `blind?`, `hint?` |
 | `costestimate` | ```` ```qcostestimate ```` | `id`, `prompt`, `provider` (per-shot QPU), `shots`, `tasks?`, `hint?` — hints may use `{perTask}`/`{perShot}`/`{shots}` placeholders, which resolve from the live pricing table |
+| `debug` | ```` ```qdebug ```` | `id`, `prompt`, `broken` (`{ "program": "..." }` — the buggy circuit prefilled in the editor), `target` (`{ "program": "..." }`), `qubits?`, `allowedGates?`, `hint?` — the broken circuit must NOT already prepare the target (nothing to fix), and the target must not be the |0…0⟩ start state (deleting every gate would solve it) |
 
 Unknown or misspelled keys are rejected loudly (the widgets would silently
 ignore them), and a Rep file is capped at 64 KB.

@@ -78,3 +78,14 @@ export function blochCardId(id: string): string {
 export function costCardId(id: string): string {
   return `cost:${id}`;
 }
+
+/**
+ * Review-card id for a debug-a-circuit Rep, namespaced under `debug:`. A debug
+ * solve is retryable like a challenge — the learner edits the broken circuit
+ * and Checks again — so it rates through the same ratingForSolve (clean first
+ * Check "good", any genuine miss first "hard"). Its recall answer reuses
+ * challengeReviewAnswer: for a debug Rep too, "the answer" is a correct circuit.
+ */
+export function debugCardId(id: string): string {
+  return `debug:${id}`;
+}

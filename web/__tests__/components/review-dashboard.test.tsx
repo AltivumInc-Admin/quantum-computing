@@ -93,6 +93,33 @@ describe("ReviewDashboard live re-attempt dispatch", () => {
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 
+  it("re-mounts a debug card as the LIVE Fix-the-circuit widget and grades a fix", async () => {
+    const debugSource = JSON.stringify({
+      id: "d1-debug",
+      prompt: "The Bell prep below never entangles the qubits. Fix it.",
+      qubits: 2,
+      broken: { program: "H 0\nCNOT 1 0" },
+      target: { program: "H 0\nCNOT 0 1" },
+    });
+    localStorage.setItem("qc:debug:d1-debug", "1"); // fixed once, in the lesson
+    seedDueCard("debug:d1-debug", {
+      prompt: "The Bell prep below never entangles the qubits. Fix it.",
+      answer: "One correct circuit: `H 0; CNOT 0 1`",
+      kind: "debug",
+      source: debugSource,
+    });
+    render(<ReviewDashboard />);
+    // The DEBUG widget specifically: editor seeded with the BROKEN circuit.
+    expect(await screen.findByRole("textbox")).toHaveValue("H 0\nCNOT 1 0");
+    // surface="review" reached the widget: persistent Fixed badge suppressed.
+    expect(screen.queryByText("Fixed")).not.toBeInTheDocument();
+    // Solving grades the due card (reps 1 -> 2) with review-voiced copy.
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "H 0\nCNOT 0 1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^check$/i }));
+    expect(getCardState("debug:d1-debug")!.reps).toBe(2);
+    expect(screen.getByText(/reviewed — next review/i)).toBeInTheDocument();
+  });
+
   it("re-mounts a bloch card as the LIVE Bloch-target widget", async () => {
     seedDueCard("bloch:d1-bloch", {
       prompt: "Place |+>.",
