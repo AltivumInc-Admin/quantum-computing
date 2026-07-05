@@ -52,6 +52,7 @@ const WIDGETS: Record<string, SourceWidget> = {
   qpredict: lazyWidget(() => import("./predict-widget").then((m) => ({ default: m.PredictWidget })), tall),
   qblochtarget: lazyWidget(() => import("./bloch-target-widget").then((m) => ({ default: m.BlochTargetWidget })), tall),
   qcostestimate: lazyWidget(() => import("./cost-estimate-widget").then((m) => ({ default: m.CostEstimateWidget })), compact),
+  qdebug: lazyWidget(() => import("./debug-circuit-widget").then((m) => ({ default: m.DebugCircuitWidget })), tall),
   quiz: lazyWidget(() => import("./quiz").then((m) => ({ default: m.Quiz })), tall),
   runnable: lazyWidget(() => import("./runnable-editor").then((m) => ({ default: m.RunnableEditor })), tall),
   qbloch: () => <BlochBuilder source="" />,

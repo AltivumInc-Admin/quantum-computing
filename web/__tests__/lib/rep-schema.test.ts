@@ -29,6 +29,14 @@ const reps: Record<string, object> = {
     provider: "IonQ",
     shots: 2000,
   },
+  debug: {
+    kind: "debug",
+    id: "community-t-5",
+    prompt: "The Bell prep never entangles. Fix it.",
+    qubits: 2,
+    broken: { program: "H 0\nCNOT 1 0" },
+    target: { program: "H 0\nCNOT 0 1" },
+  },
 };
 
 describe("validateRep", () => {
@@ -124,5 +132,28 @@ describe("validateRep", () => {
     expect(validateRep(JSON.stringify({ ...reps.costestimate, shots: 30 })).error).toMatch(
       /collide/
     );
+    // Debug's own degenerate classes, via the same debugTruth the widget runs:
+    expect(
+      validateRep(
+        JSON.stringify({ ...reps.debug, broken: { program: "H 0\nCNOT 0 1" } })
+      ).error
+    ).toMatch(/nothing to fix/);
+    expect(
+      validateRep(
+        JSON.stringify({
+          ...reps.debug,
+          broken: { program: "X 0" },
+          target: { program: "X 0\nX 0" },
+        })
+      ).error
+    ).toMatch(/start state/);
+  });
+
+  it("rejects unknown broken.* subkeys the debug fence parser would silently drop", () => {
+    expect(
+      validateRep(
+        JSON.stringify({ ...reps.debug, broken: { program: "H 0", programm: "H 0" } })
+      ).error
+    ).toMatch(/broken\.programm/);
   });
 });

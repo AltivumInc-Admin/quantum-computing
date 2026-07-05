@@ -50,6 +50,22 @@ oracle algorithm opens with.
 }
 ```
 
+The same opener, written by someone in a hurry — and it silently does *nothing*. The bug
+hinges on the very fact Deutsch–Jozsa exploits below: $H$ is its own inverse, so the second
+$H^{\otimes n}$ un-computes the first unless the oracle intervenes. Spot it and fix it:
+
+```qdebug
+{
+  "id": "algo-debug-hh-1",
+  "prompt": "This circuit was meant to spread two qubits over all four basis states, but every measurement returns 00 — as if no gate ran at all. Fix the circuit.",
+  "qubits": 2,
+  "broken": { "program": "H 0\nH 0" },
+  "target": { "program": "H 0\nH 1" },
+  "allowedGates": ["H"],
+  "hint": "Count which qubit each H touches. Two Hadamards on the SAME qubit cancel (H² = I) — the second one un-computes the first, exactly the interference trick DJ uses on purpose."
+}
+```
+
 ## Deutsch–Jozsa: one query is enough
 
 The cleanest proof that interference buys speedup. You're handed $f:\{0,1\}^n\to\{0,1\}$ promised

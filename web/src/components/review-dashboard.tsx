@@ -17,7 +17,7 @@ import { ReviewCard } from "@/components/quantum/review-card";
  * so the static export prerenders the empty shell and the list hydrates from
  * localStorage on the client.
  *
- * Graded Reps (challenge/predict/bloch) whose content cached a `kind` + raw
+ * Graded Reps whose content cached a `kind` + raw
  * fence `source` are re-mounted as their LIVE widgets — a due review is a
  * genuine re-attempt, objectively graded through each widget's own
  * gradeCardIfDue (the card is due by construction, so the solve advances the
@@ -65,6 +65,10 @@ const CostLive = dynamic(() => import("@/components/quantum/cost-estimate-widget
   ssr: false,
   loading: liveSkeleton,
 });
+const DebugLive = dynamic(() => import("@/components/quantum/debug-circuit-widget").then((m) => ({ default: m.DebugCircuitWidget })), {
+  ssr: false,
+  loading: liveSkeleton,
+});
 
 type SourceWidget = ComponentType<{ source: string }>;
 
@@ -84,6 +88,9 @@ const LIVE_WIDGETS: Record<CardKind, SourceWidget> = {
   cost: function CostReview({ source }) {
     return <CostLive source={source} surface="review" />;
   },
+  debug: function DebugReview({ source }) {
+    return <DebugLive source={source} surface="review" />;
+  },
 };
 
 const KIND_LABELS: Record<CardKind, string> = {
@@ -91,6 +98,7 @@ const KIND_LABELS: Record<CardKind, string> = {
   predict: "Prediction",
   bloch: "Bloch target",
   cost: "Cost estimate",
+  debug: "Fix the circuit",
 };
 
 interface RosterEntry {
