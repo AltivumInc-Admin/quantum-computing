@@ -108,6 +108,27 @@ describe("syncNow", () => {
     expect(calls).toHaveLength(0); // nothing left the device
   });
 
+  it("binds at ATTEMPT, not success — a fully-failed sync still fences the next account", async () => {
+    mockFetch([{ status: 500 }]);
+    await expect(syncNow()).rejects.toThrow(/pull failed/);
+    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
+  });
+
+  it("a FAILED adopt still rebinds immediately — no deferred bleed into the old account", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    localStorage.setItem("qc:section:mine", "1");
+    mockFetch([
+      { status: 200, body: { version: 1, data: {} } },
+      { status: 409 },
+      { status: 200, body: { version: 2, data: {} } },
+      { status: 409 },
+    ]);
+    await expect(syncNow({ accountChange: "adopt" })).rejects.toThrow(/conflict/);
+    // Bound to the NEW account despite the failure: the next auto-sync can no
+    // longer push this device's freshly-merged data into the OLD account.
+    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
+  });
+
   it("accountChange 'adopt' merges the device's progress into the new account and rebinds", async () => {
     localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
     localStorage.setItem("qc:section:mine", "1");

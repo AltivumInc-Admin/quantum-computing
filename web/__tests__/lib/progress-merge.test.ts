@@ -115,11 +115,14 @@ describe("mergeSnapshots", () => {
     ).toBe(nearFuture);
   });
 
-  it("skips re-adopting keys the learner deleted on this device this session", () => {
+  it("keeps tombstoned keys IN the merged snapshot (the push must preserve the server copy)", () => {
+    // If the tombstone removed the key from the push, that "local-only"
+    // deletion would delete server-side and flip-flop forever against a
+    // device that still holds it (confirmed non-convergence).
     resetLocalDeletions();
     registerLocalDeletion("qc:section:undone");
     const merged = mergeSnapshots({}, { "qc:section:undone": "1", "qc:section:other": "1" });
-    expect(merged).toEqual({ "qc:section:other": "1" });
+    expect(merged).toEqual({ "qc:section:undone": "1", "qc:section:other": "1" });
     resetLocalDeletions();
   });
 });
@@ -162,18 +165,20 @@ describe("un-complete does not self-revert (progress-store tombstone wiring)", (
     resetLocalDeletions();
   });
 
-  it("a section toggled off stays off through a subsequent merge", async () => {
+  it("a section toggled off stays off locally through a subsequent merge-apply", async () => {
     // The exact repro: un-complete -> 20s later the debounced sync pulls the
     // server's "1" back and the checkbox flips on under the learner's click.
+    // The tombstone gates the LOCAL apply only; the merged (pushed) snapshot
+    // still carries the server copy so other devices never see a deletion.
     const { setSectionComplete } = await import("@/lib/progress-store");
     setSectionComplete("qubits", true);
     setSectionComplete("qubits", false); // registers the session tombstone
     const merged = mergeSnapshots(exportSnapshot(), { "qc:section:qubits": "1" });
-    expect(merged["qc:section:qubits"]).toBeUndefined();
-    // Re-completing clears the tombstone so the flag syncs again.
+    expect(merged["qc:section:qubits"]).toBe("1"); // preserved for the push
+    expect(applySnapshot(merged)).toBe(0); // but never rewritten locally
+    expect(localStorage.getItem("qc:section:qubits")).toBeNull();
+    // Re-completing clears the tombstone so the flag applies + syncs again.
     setSectionComplete("qubits", true);
-    expect(
-      mergeSnapshots(exportSnapshot(), { "qc:section:qubits": "1" })["qc:section:qubits"]
-    ).toBe("1");
+    expect(localStorage.getItem("qc:section:qubits")).toBe("1");
   });
 });
