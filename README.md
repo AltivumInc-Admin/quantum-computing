@@ -526,7 +526,7 @@ flowchart TB
 | **Local simulator** (`LocalSimulator`) | **Free** |
 | SV1 / DM1 (managed) | $0.075 / minute |
 | TN1 (tensor-network) | $0.275 / minute |
-| IonQ (Aria 25q · Forte 36q) | $0.30 / task + $0.01 / shot |
+| IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |
 | IQM (Garnet 20q) | $0.30 / task + $0.00145 / shot |
 | QuEra (Aquila 256q) | $0.30 / task + $0.01 / shot |
 | Rigetti | $0.30 / task + $0.00035 / shot |

@@ -38,7 +38,8 @@ DEVICES = {
     "sv1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/sv1", "provider": "SV1"},
     "dm1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/dm1", "provider": "DM1"},
     "tn1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/tn1", "provider": "TN1"},
-    "ionq_aria": {"arn": "arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1", "provider": "IonQ"},
+    # IonQ Aria is retired; Forte-1 is the live IonQ device (per-shot billed via the
+    # "IonQ" provider key in cost.py PRICING, now the current $0.08/shot Forte rate).
     "ionq_forte": {"arn": "arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1", "provider": "IonQ"},
     "iqm_garnet": {"arn": "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", "provider": "IQM"},
     "quera_aquila": {

@@ -29,7 +29,7 @@ def test_run_circuit_aws_requires_s3():
 
 @pytest.mark.parametrize(
     "device_name, shots",
-    [("sv1", 0), ("ionq_aria", 10_000_000)],
+    [("sv1", 0), ("ionq_forte", 10_000_000)],
     ids=["nonpositive", "excessive"],
 )
 def test_run_circuit_rejects_out_of_range_shots(device_name, shots):
@@ -105,10 +105,10 @@ def test_list_available_devices_shape(monkeypatch):
         def __init__(self, name, provider, status, arn):
             self.name, self.provider_name, self.status, self.arn = name, provider, status, arn
 
-    stubs = [StubDev("Aria-1", "IonQ", "ONLINE", "arn:aws:braket:::device/qpu/ionq/Aria-1")]
+    stubs = [StubDev("Forte-1", "IonQ", "ONLINE", "arn:aws:braket:::device/qpu/ionq/Forte-1")]
     monkeypatch.setattr(dev.AwsDevice, "get_devices", staticmethod(lambda: stubs))
     out = dev.list_available_devices()
-    assert out == [{"name": "Aria-1", "provider": "IonQ", "status": "ONLINE", "arn": stubs[0].arn}]
+    assert out == [{"name": "Forte-1", "provider": "IonQ", "status": "ONLINE", "arn": stubs[0].arn}]
 
 
 @pytest.mark.parametrize("bad", ["bucket-only", ("b",), ("b", "p", "x"), ("", "p"), ("b", "")])

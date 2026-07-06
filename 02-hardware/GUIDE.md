@@ -126,8 +126,8 @@ With those two trade-offs in hand, the devices on Braket sort into three physica
 sitting at a different point in the space.
 
 **IonQ — trapped ions.** Individual charged atoms held in electromagnetic fields; qubits encoded
-in their energy levels, gates driven by laser pulses. *Aria* (25 qubits) and *Forte* (36) are on
-Braket, with native gates GPi, GPi2, and the Mølmer–Sørensen (MS) entangler. Their superpower is
+in their energy levels, gates driven by laser pulses. *Forte* (36 qubits) is on Braket — its
+predecessor *Aria* (25 qubits) is now retired — with native gates GPi, GPi2, and the Mølmer–Sørensen (MS) entangler. Their superpower is
 **all-to-all connectivity** (no SWAP tax) and high fidelity (single-qubit >99.5%, two-qubit
 >97%) with coherence measured in *seconds*. The cost: slow, microsecond-scale gates, and fewer
 qubits. Best for circuits where connectivity and fidelity matter more than raw speed.
@@ -152,7 +152,7 @@ technology. Note that Aquila is the lone non-gate-model row:
 ```
 
 One way to feel the difference: an entangling chain that hops qubit to qubit. On Garnet's
-lattice every link below needs adjacent qubits; on Aria the same gates land anywhere for free.
+lattice every link below needs adjacent qubits; on Forte the same gates land anywhere for free.
 Either way, the machine is graded against the same ideal output — name it:
 
 ```qpredict
@@ -211,15 +211,15 @@ run on a QPU only when the algorithm is proven.** Skipping rungs is how you burn
 ## Cost — the discipline
 
 That last rung is metered, and the model has two shapes. QPUs charge **per task** (a flat fee each
-time you submit a circuit, $0.30) plus **per shot** (each repetition; e.g. $0.01 on IonQ). Managed
+time you submit a circuit, $0.30) plus **per shot** (each repetition; e.g. $0.08 on IonQ). Managed
 simulators charge **per minute** of compute. The local simulator is free.
 
 ```qcard
-{"id":"hw-cost-model-1","prompt":"How do QPUs charge for running a circuit on Amazon Braket, versus managed simulators?","answer":"QPUs charge per task (a flat fee each time you submit a circuit, e.g. $0.30) plus per shot (each repetition, e.g. $0.01 on IonQ). Managed simulators instead charge per minute of compute."}
+{"id":"hw-cost-model-1","prompt":"How do QPUs charge for running a circuit on Amazon Braket, versus managed simulators?","answer":"QPUs charge per task (a flat fee each time you submit a circuit, e.g. $0.30) plus per shot (each repetition, e.g. $0.08 on IonQ). Managed simulators instead charge per minute of compute."}
 ```
 
-The arithmetic matters: 1,000 shots on IonQ is $0.30 + 1{,}000 \times \$0.01 = \$10.30$ — per
-task. Submit a 100-point parameter sweep and that's over a thousand dollars. Estimate before you
+The arithmetic matters: 1,000 shots on IonQ (Forte) is $0.30 + 1{,}000 \times \$0.08 = \$80.30$ — per
+task. Submit a 100-point parameter sweep and that's over eight thousand dollars. Estimate before you
 run:
 
 ```qcost
@@ -335,7 +335,7 @@ Check yourself:
     {
       "q": "Your algorithm is QAOA on a dense graph where almost every qubit must interact with every other. Which hardware family fits best, and why?",
       "hint": "Dense interaction means many two-qubit gates between arbitrary pairs. Which connectivity avoids inserting SWAP chains for distant pairs?",
-      "a": "A trapped-ion machine (IonQ Aria/Forte). Its all-to-all connectivity means any pair entangles directly — no SWAP overhead — which a dense interaction graph would otherwise incur heavily on a lattice device."
+      "a": "A trapped-ion machine (IonQ Forte). Its all-to-all connectivity means any pair entangles directly — no SWAP overhead — which a dense interaction graph would otherwise incur heavily on a lattice device."
     },
     {
       "q": "Why develop and debug on the Local simulator before anything else?",

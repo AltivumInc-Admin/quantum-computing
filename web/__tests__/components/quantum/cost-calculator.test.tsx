@@ -6,9 +6,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { CostCalculator } from "@/components/quantum/cost-calculator";
 
 describe("CostCalculator", () => {
-  it("defaults to IonQ and shows the $10.30 total", () => {
+  it("defaults to IonQ and shows the $80.30 total", () => {
     render(<CostCalculator source={""} />);
-    expect(screen.getByText(/\$10\.30/)).toBeInTheDocument();
+    expect(screen.getByText(/\$80\.30/)).toBeInTheDocument();
   });
   it("shows USD header in breakdown table", () => {
     render(<CostCalculator source={""} />);

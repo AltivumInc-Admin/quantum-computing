@@ -1,9 +1,11 @@
 // Mirrors lib/utils/cost.py PRICING exactly (single source of truth for rates).
+// Verified against https://aws.amazon.com/braket/pricing/ (2026-07-06). IonQ is the
+// live Forte device ($0.08/shot); Aria is retired (its old $0.01 under-quoted ~8x).
 export const PRICING = {
-  IonQ: { perTask: 0.3, perShot: 0.01 },
-  IQM: { perTask: 0.3, perShot: 0.00145 },
-  QuEra: { perTask: 0.3, perShot: 0.01 },
-  Rigetti: { perTask: 0.3, perShot: 0.00035 },
+  IonQ: { perTask: 0.3, perShot: 0.08 }, // IonQ Forte (Aria retired)
+  IQM: { perTask: 0.3, perShot: 0.00145 }, // IQM Garnet
+  QuEra: { perTask: 0.3, perShot: 0.01 }, // QuEra Aquila (analog only)
+  Rigetti: { perTask: 0.3, perShot: 0.000425 }, // Rigetti Cepheus
   SV1: { perMinute: 0.075 },
   DM1: { perMinute: 0.075 },
   TN1: { perMinute: 0.275 },

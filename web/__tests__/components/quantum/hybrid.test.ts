@@ -32,7 +32,7 @@ describe("hybrid cost models", () => {
     // IonQ: perTask 0.30 + perShot 0.01; 10 iters * 1000 shots
     const expected = 10 * (PRICING.IonQ.perTask + PRICING.IonQ.perShot * 1000);
     expect(qpuCost("IonQ", 10, 1000)).toBeCloseTo(expected, 10);
-    expect(qpuCost("IonQ", 10, 1000)).toBeCloseTo(103, 10); // 10*(0.3+10)
+    expect(qpuCost("IonQ", 10, 1000)).toBeCloseTo(803, 10); // 10*(0.3+80) — Forte $0.08/shot
   });
   it("qpuCost is 0 for per-minute simulators (no per-task/shot rate)", () => {
     expect(qpuCost("SV1", 10, 1000)).toBe(0);

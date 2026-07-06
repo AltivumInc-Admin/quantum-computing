@@ -7,7 +7,7 @@ from lib.utils.cost import estimate_cost, format_cost_warning
 class TestEstimateCost:
     def test_ionq_cost(self):
         cost = estimate_cost("IonQ", shots=1000)
-        assert cost == 0.30 + 0.01 * 1000
+        assert cost == 0.30 + 0.08 * 1000  # IonQ Forte, $0.08/shot
 
     def test_iqm_cost(self):
         cost = estimate_cost("IQM", shots=1000)
@@ -19,7 +19,7 @@ class TestEstimateCost:
 
     def test_rigetti_cost(self):
         cost = estimate_cost("Rigetti", shots=1000)
-        assert cost == 0.30 + 0.00035 * 1000
+        assert cost == 0.30 + 0.000425 * 1000  # Rigetti Cepheus
 
     def test_sv1_cost(self):
         cost = estimate_cost("SV1", shots=1000, estimated_minutes=2.0)

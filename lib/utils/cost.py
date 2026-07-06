@@ -2,13 +2,17 @@
 
 import math
 
+# On-demand rates verified against https://aws.amazon.com/braket/pricing/ (2026-07-06).
+# The IonQ figure is the LIVE device, Forte ($0.08/shot): Aria is retired and its old
+# $0.01 rate under-quoted a real IonQ run by ~8x. Keep this in lockstep with the web
+# mirror in web/src/components/quantum/cost.ts (the pricing single source of truth).
 PRICING = {
-    "IonQ": {"per_task": 0.30, "per_shot": 0.01},
-    "IQM": {"per_task": 0.30, "per_shot": 0.00145},
-    "QuEra": {"per_task": 0.30, "per_shot": 0.01},
+    "IonQ": {"per_task": 0.30, "per_shot": 0.08},  # IonQ Forte (Aria retired)
+    "IQM": {"per_task": 0.30, "per_shot": 0.00145},  # IQM Garnet
+    "QuEra": {"per_task": 0.30, "per_shot": 0.01},  # QuEra Aquila (analog only)
     # Rigetti is reference pricing only — no Rigetti device is currently dispatchable via
     # lib.hardware.DEVICES (kept for the cost estimator script / teaching reference).
-    "Rigetti": {"per_task": 0.30, "per_shot": 0.00035},
+    "Rigetti": {"per_task": 0.30, "per_shot": 0.000425},  # Rigetti Cepheus
     "SV1": {"per_minute": 0.075},
     "DM1": {"per_minute": 0.075},
     "TN1": {"per_minute": 0.275},

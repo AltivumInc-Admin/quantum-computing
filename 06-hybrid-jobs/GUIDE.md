@@ -181,7 +181,7 @@ Control spend with `max_runtime` to cap duration, a `stopping_condition` to halt
 One more lever sits outside the job entirely: which QPU you point it at. The flat task fee is the same everywhere, so re-targeting a job moves only the per-shot stream — sometimes dramatically:
 
 ```qcostestimate
-{"id":"hybrid-cost-provider-swap-1","prompt":"The same 300-task job — 25 iterations of a 6-parameter ansatz, 200 shots per task — costs $690.00 on IonQ. Before submission you re-target it at IQM: same circuits, same shots, only the per-shot rate changes. What does the IQM run cost?","provider":"IQM","shots":200,"tasks":300,"hint":"The flat task fee is identical on every provider ({perTask} × 300 = $90.00); the entire difference is per-shot: {shots} shots × {perShot} is $0.29 per task on IQM, so the shot stream drops from $600.00 to $87.00. Provider choice moves the shot bill, never the task bill."}
+{"id":"hybrid-cost-provider-swap-1","prompt":"The same 300-task job — 25 iterations of a 6-parameter ansatz, 200 shots per task — costs $4,890.00 on IonQ. Before submission you re-target it at IQM: same circuits, same shots, only the per-shot rate changes. What does the IQM run cost?","provider":"IQM","shots":200,"tasks":300,"hint":"The flat task fee is identical on every provider ({perTask} × 300 = $90.00); the entire difference is per-shot: {shots} shots × {perShot} is $0.29 per task on IQM, so the shot stream drops from $4,800.00 to $87.00. Provider choice moves the shot bill, never the task bill."}
 ```
 
 ## PennyLane and CUDA-Q
