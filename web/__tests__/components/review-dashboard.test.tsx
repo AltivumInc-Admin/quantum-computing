@@ -120,6 +120,28 @@ describe("ReviewDashboard live re-attempt dispatch", () => {
     expect(screen.getByText(/reviewed — next review/i)).toBeInTheDocument();
   });
 
+  it("re-mounts an expect card as the LIVE Expectation widget and grades a commit", async () => {
+    const expectSource = JSON.stringify({
+      id: "d1-expect",
+      prompt: "What is the expectation of Z on |+>?",
+      program: "H 0",
+      observable: "Z 0",
+    });
+    seedDueCard("expect:d1-expect", {
+      prompt: "What is the expectation of Z on |+>?",
+      answer: "⟨Z₀⟩ = 0.00 for `H 0`",
+      kind: "expect",
+      source: expectSource,
+    });
+    render(<ReviewDashboard />);
+    // The EXPECT widget specifically: value options + the lock button.
+    expect(await screen.findByRole("button", { name: /lock in prediction/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "0.00" }));
+    fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
+    expect(getCardState("expect:d1-expect")!.reps).toBe(2);
+    expect(screen.getByText(/reviewed — next review/i)).toBeInTheDocument();
+  });
+
   it("re-mounts a bloch card as the LIVE Bloch-target widget", async () => {
     seedDueCard("bloch:d1-bloch", {
       prompt: "Place |+>.",

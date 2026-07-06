@@ -31,8 +31,10 @@ import { parseCostEstimate } from "./cost-estimate-schema";
 import { costEstimateTruth } from "./cost-estimate-grade";
 import { parseDebugCircuit } from "./debug-circuit-schema";
 import { debugTruth } from "./debug-circuit-grade";
+import { parseExpectation } from "./expectation-schema";
+import { expectationTruth } from "./expectation-grade";
 
-export const REP_KINDS = ["challenge", "predict", "blochtarget", "costestimate", "debug"] as const;
+export const REP_KINDS = ["challenge", "predict", "blochtarget", "costestimate", "debug", "expect"] as const;
 export type RepKind = (typeof REP_KINDS)[number];
 
 /** The fence token a maintainer uses when promoting the Rep into a GUIDE. */
@@ -42,6 +44,7 @@ export const FENCE_TOKENS: Record<RepKind, string> = {
   blochtarget: "qblochtarget",
   costestimate: "qcostestimate",
   debug: "qdebug",
+  expect: "qexpect",
 };
 
 // Every key a contribution may carry, per kind. NOTE: challenge deliberately
@@ -52,6 +55,7 @@ const ALLOWED_KEYS: Record<RepKind, readonly string[]> = {
   blochtarget: ["kind", "id", "prompt", "target", "toleranceDeg", "blind", "hint"],
   costestimate: ["kind", "id", "prompt", "provider", "shots", "tasks", "hint"],
   debug: ["kind", "id", "prompt", "qubits", "broken", "target", "allowedGates", "hint"],
+  expect: ["kind", "id", "prompt", "program", "observable", "qubits", "hint"],
 };
 
 // A Rep is authored prose + a short program; anything near this ceiling is a
@@ -185,6 +189,15 @@ export function validateRep(source: string): RepValidation {
       // qubit cap, broken != target (nothing to fix), and the |0...0> target
       // (delete-everything solves it).
       error = debugTruth(parsed.spec!).error;
+      break;
+    }
+    case "expect": {
+      const parsed = parseExpectation(fenceSource);
+      if (parsed.error) return { error: parsed.error };
+      // expectationTruth owns the guards: concrete circuit, well-formed Pauli
+      // string within the qubit cap, and four distinct options on the display
+      // grid (distractor-collision rejection).
+      error = expectationTruth(parsed.spec!).error;
       break;
     }
   }

@@ -12,6 +12,7 @@ export const WIDGET_LANGS = new Set<string>([
   "qblochtarget",
   "qcostestimate",
   "qdebug",
+  "qexpect",
   "quiz",
   "runnable",
   "qbloch",
