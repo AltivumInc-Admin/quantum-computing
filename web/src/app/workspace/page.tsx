@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getSections } from "@/lib/sections";
 import { completedCount } from "@/lib/progress-store";
+import { CredentialsWorkspaceTeaser } from "@/components/credentials-wall";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -92,6 +93,8 @@ export default function WorkspacePage() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </Link>
+
+      <CredentialsWorkspaceTeaser />
 
       <button
         type="button"
