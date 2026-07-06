@@ -24,7 +24,7 @@ import {
  * never by color alone.
  */
 
-const SERVER_SNAPSHOT = "0|0|0|0";
+const SERVER_SNAPSHOT = "0|0|0|0|0";
 
 // One enamel hue per group — the wall reads as a collection of distinct medal
 // types (an oklch hue angle; earned seals only, locked stay neutral).
@@ -51,7 +51,13 @@ function snapshot(): string {
     let stabilitySum = 0;
     for (const s of states) stabilitySum += s.stability;
     const done = getSections().reduce((n, s) => (isSectionComplete(s.slug) ? n + 1 : n), 0);
-    return `${today}|${states.length}|${stabilitySum}|${done}`;
+    // activeDays().length is load-bearing: the Consistency medals derive from
+    // the streak, and the not-due re-practice path logs an active day WITHOUT
+    // changing any card state — so without this term the wall would miss a
+    // streak that crosses a tier boundary (the Runbook fingerprint carries it
+    // for the same reason). `done` also guards a section completed on an
+    // already-logged day.
+    return `${today}|${activeDays().length}|${states.length}|${stabilitySum}|${done}`;
   } catch {
     return SERVER_SNAPSHOT;
   }
@@ -151,7 +157,7 @@ function Medal({ cred, hue }: { cred: Credential; hue: number }) {
             className={`shrink-0 rounded-chip px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide ${
               cred.earned
                 ? "bg-accent/12 text-accent-dark dark:text-accent-light"
-                : "bg-gray-200/70 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400"
+                : "bg-gray-200/70 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400"
             }`}
           >
             {cred.earned ? "Earned" : "Locked"}

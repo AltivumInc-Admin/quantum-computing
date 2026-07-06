@@ -62,6 +62,21 @@ describe("CredentialsWall", () => {
     expect(consistency).toHaveTextContent(/4-week streak/);
   });
 
+  it("lights a consistency medal live when a logged active day extends the streak", () => {
+    seedRetained("challenge:x", 1);
+    // Three consecutive prior weeks (NOT this week) → longest streak 3, below the 4-week tier.
+    for (const w of [1, 2, 3]) localStorage.setItem(`qc:log:day:${today - w * 7}`, "1");
+    render(<CredentialsWall />);
+    expect(screen.getByLabelText("Consistency")).not.toHaveTextContent("Earned");
+    // Logging THIS week extends the run to 4 — but it writes no card state, so the
+    // fingerprint must carry the active-day count or this update would be missed.
+    act(() => {
+      localStorage.setItem(`qc:log:day:${today}`, "1");
+      window.dispatchEvent(new Event("qc-progress"));
+    });
+    expect(screen.getByLabelText("Consistency")).toHaveTextContent("Earned");
+  });
+
   it("updates live on the qc-progress channel", () => {
     render(<CredentialsWall />);
     // The summary ("N of M earned") is split across nodes — read the paragraph.

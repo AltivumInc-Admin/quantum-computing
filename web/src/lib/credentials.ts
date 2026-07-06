@@ -77,7 +77,9 @@ export function computeCredentials(input: CredentialInput): Credential[] {
       title: t.title,
       requirement: `Hold ${t.n} skill${t.n === 1 ? "" : "s"} in proven retention`,
       earned,
-      evidence: earned ? `${input.mastery} skills in proven retention` : "",
+      evidence: earned
+        ? `${input.mastery} skill${input.mastery === 1 ? "" : "s"} in proven retention`
+        : "",
     });
   }
 

@@ -53,6 +53,12 @@ describe("computeCredentials", () => {
     }
   });
 
+  it("singularizes the first mastery medal's evidence (1 skill, not 1 skills)", () => {
+    const first = computeCredentials({ ...base, mastery: 1 }).find((c) => c.id === "mastery:1")!;
+    expect(first.earned).toBe(true);
+    expect(first.evidence).toBe("1 skill in proven retention");
+  });
+
   it("locked medals carry their requirement text and no evidence", () => {
     const creds = computeCredentials(base); // nothing earned
     for (const c of creds.filter((x) => !x.earned)) {
