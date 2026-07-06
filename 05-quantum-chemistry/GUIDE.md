@@ -76,7 +76,32 @@ That chain of $Z$ operators is the antisymmetry made concrete: it reads the pari
 { "modes": 4, "electrons": 2, "mode": 0, "dagger": true }
 ```
 
+The other half of the dictionary is the states themselves — and it is simpler than the operators. A Hartree-Fock reference is a definite occupation pattern, so preparing it takes nothing but $X$ gates on the occupied orbitals (the Z-strings only contribute a global phase on a basis state). Build the smallest one:
+
+```qchallenge
+{
+  "id": "chem-hf-reference-1",
+  "prompt": "One electron in two spin-orbitals: prepare the Hartree-Fock reference |10⟩ — orbital 0 occupied, orbital 1 empty — using X gates only.",
+  "qubits": 2,
+  "target": { "program": "X 0" },
+  "allowedGates": ["X"],
+  "hint": "Under Jordan-Wigner, occupied means flipped: qubit p holds orbital p, so occupying orbital 0 is a single X on qubit 0. The trap is flipping qubit 1 because a little-endian habit puts qubit 0 on the right of |10⟩, handing the leftmost 1 to qubit 1 — read the string left to right, orbital 0 first."
+}
+```
+
 The mapping is exact but it has a cost: an operator on orbital $p$ now touches every qubit beneath it, so its Pauli weight grows with the system. The **Bravyi-Kitaev transformation** is a cleverer ledger that stores occupation and parity together, trading the linear $Z$-string for operators of weight $O(\log n)$ — less intuitive, but cheaper for large molecules. **Parity mapping** stores cumulative parity directly and, because it makes two symmetries (total electron number and spin) explicit, lets you delete two qubits outright. For the small molecules in this section, Jordan-Wigner is the natural starting point; the others are optimizations you reach for when qubit count bites.
+
+However the ledger is kept, reading it back out is a measurement. Under Jordan-Wigner the number operator is $n_p = (I - Z_p)/2$, which makes $Z_p$ the occupation meter itself: $+1$ on an empty orbital, $-1$ on an occupied one. Create an electron and take the reading:
+
+```qexpect
+{
+  "id": "chem-jw-number-occupied-1",
+  "prompt": "X on qubit 0 creates an electron in orbital 0 — the JW occupied state |1⟩. What is ⟨Z₀⟩, the expectation the number operator n₀ = (I − Z₀)/2 is built from?",
+  "program": "X 0",
+  "observable": "Z 0",
+  "hint": "An occupied orbital is the |1⟩ eigenstate of Z with eigenvalue −1, so every shot reads −1 and the long-run average is exactly −1 — giving n₀ = (1 − (−1))/2 = 1 electron. The trap is +1, which is the empty orbital's reading, or 0, which would mean a half-occupied superposition rather than a definite occupation."
+}
+```
 
 ## The Molecule as a Matrix
 
@@ -86,6 +111,18 @@ Run hydrogen through this pipeline in the minimal STO-3G basis and something con
 { "R": 0.74, "tapered": false }
 ```
 
+Every one of those fifteen strings is estimated the same way: prepare a state, measure the string, average over shots. The $ZZ$ terms are occupation-parity meters — they ask whether two orbitals agree. Put a single electron in a two-orbital pair and commit to the reading:
+
+```qexpect
+{
+  "id": "chem-zz-parity-1",
+  "prompt": "X 1 puts one electron in orbital 1, preparing the two-orbital configuration |01⟩. The Hamiltonian's ZZ terms read occupation parity: what is ⟨Z₀Z₁⟩ in this state?",
+  "program": "X 1",
+  "observable": "Z 0 Z 1",
+  "hint": "Multiply the two occupation meters: orbital 0 is empty (Z₀ reads +1) and orbital 1 is occupied (Z₁ reads −1), so every shot of Z₀Z₁ reads (+1)(−1) = −1. Disagreeing occupations mean odd parity, −1; the trap is +1, which would say the orbitals agree — both empty or both occupied."
+}
+```
+
 Now the payoff. Those four qubits carry redundancy — the symmetries that parity mapping exposes mean the real problem is far smaller than it looks. Tapering away the conserved quantities collapses the four-qubit, fifteen-term operator down to a **single qubit** with just three terms:
 
 $$
@@ -93,6 +130,20 @@ H_{\text{H}_2} \approx -0.33\, I + 0.79\, Z + 0.18\, X
 $$
 
 That is the entire ground-state problem for a hydrogen molecule, living on one qubit. Flip the taper toggle above and watch fifteen terms fold into three. The lesson generalizes: the naive qubit count is almost never the real one, and choosing the right symmetries and active orbitals is the difference between a calculation that fits on today's hardware and one that does not.
+
+None of those terms can be measured until the register holds the state they are meant to probe — and for H2 the reference is fixed by counting: two electrons fill the two lowest spin-orbitals, $\ket{1100}$. The circuit below was meant to prepare exactly that and flipped the wrong orbital. Diagnose it from the state it actually made:
+
+```qdebug
+{
+  "id": "chem-hf-debug-1",
+  "prompt": "This circuit was meant to prepare H2's Hartree-Fock reference |1100⟩ — electrons in the two lowest spin-orbitals — but it produced |1010⟩, a configuration with one electron promoted too high. Fix it.",
+  "qubits": 4,
+  "broken": { "program": "X 0\nX 2" },
+  "target": { "program": "X 0\nX 1" },
+  "allowedGates": ["X"],
+  "hint": "Hartree-Fock fills from the bottom: orbitals 0 and 1 occupied, 2 and 3 empty. The stray X 2 creates its electron one orbital too high, producing a singly-excited configuration instead of the reference. Move that X down to qubit 1."
+}
+```
 
 ## Minimizing the Energy
 
@@ -106,6 +157,19 @@ The expected energy of any state you can prepare is an upper bound on the true g
 
 ```qcard
 {"id":"chem-vqe-variational-bound","prompt":"What variational-principle fact lets VQE turn ground-state finding into a minimization problem?","answer":"For any trial state, the expected energy `<psi|H|psi>` is an upper bound on the true ground energy `E_ground` — you can never measure below the floor, only approach it. So VQE prepares a parameterized state, measures `<H>`, and lets a classical optimizer push that bound down."}
+```
+
+"Measure $\expval{H}$" hides a bill. A Hamiltonian is a sum of Pauli strings; the identity string is a classical constant that costs nothing, and the naive protocol measures each of the other 14 as its own hardware task (grouping commuting strings can shrink that to about five settings — but price the naive run first):
+
+```qcostestimate
+{
+  "id": "chem-vqe-cost-1",
+  "prompt": "One VQE energy evaluation for four-qubit H2 naively measures each of the Hamiltonian's 14 non-identity Pauli strings as its own IonQ task of 1,000 shots. What does that single evaluation of ⟨H⟩ cost?",
+  "provider": "IonQ",
+  "shots": 1000,
+  "tasks": 14,
+  "hint": "Fourteen meters run at once: 14 tasks at {perTask} each, plus {perShot} for every one of the {shots} shots inside each task. The classic slip is pricing one task and forgetting the ×14 — and remember, this buys a single point on the energy landscape; the optimizer will ask for hundreds."
+}
 ```
 
 For tapered H2 the whole landscape fits in one picture. The ansatz is a single rotation $R_Y(\theta)\ket{0}$, the energy is $E(\theta) = c_0 + c_z\cos\theta + c_x\sin\theta$, and the variational floor sits exactly at the minimum of that curve. Drag $\theta$ and try to push the energy below the line — you cannot. Then let the optimizer find the bottom:
@@ -126,6 +190,18 @@ One geometry gives one energy. Sweep the geometry and you get chemistry. Move th
 
 The minimum sits near $0.74$ Angstrom at $-1.137$ Hartree, and the well is about $0.20$ Hartree deep — that is the bond. But the most instructive feature is the gap between the two curves. Hartree-Fock, the workhorse mean-field method, hugs the exact curve near equilibrium where electrons are weakly correlated. Pull the bond apart and it peels away, rising far above the truth: restricted Hartree-Fock simply cannot describe two atoms drifting toward independent radicals. That widening gap is the **correlation energy**, and it is the precise quantitative statement of why strongly correlated chemistry needs more than mean-field — the exact regime where quantum computers are meant to earn their keep.
 
+There is a circuit-level picture of what those two stretched atoms are sharing. In occupation language, a covalent bond is one electron split across two orbitals — the superposition $(\ket{01} + \ket{10})/\sqrt{2}$ — and under Jordan-Wigner the hopping term $a_0^\dagger a_1 + a_1^\dagger a_0$ that stitches it together becomes $(X_0 X_1 + Y_0 Y_1)/2$. Measure its first half on the shared-electron state:
+
+```qexpect
+{
+  "id": "chem-hopping-xx-1",
+  "prompt": "H 0, CNOT 0 1, X 1 prepares (|01⟩ + |10⟩)/√2 — one electron shared between two orbitals. What is ⟨X₀X₁⟩, the hopping-term expectation, in this state?",
+  "program": "H 0\nCNOT 0 1\nX 1",
+  "observable": "X 0 X 1",
+  "hint": "X₀X₁ swaps the two configurations, |01⟩ ↔ |10⟩, and this state is their symmetric combination — the swap returns it unchanged, so it is a +1 eigenstate and ⟨X₀X₁⟩ = +1. The trap is 0: each qubit alone reads like a coin flip, but the joint readout is perfectly definite — exactly the correlation a bond is made of."
+}
+```
+
 ## Designing the Ansatz
 
 VQE is only as good as the states its ansatz can reach. The trial circuit $U(\theta)$ is the whole ballgame, and there are two philosophies for building it.
@@ -135,6 +211,18 @@ VQE is only as good as the states its ansatz can reach. The trial circuit $U(\th
 $$U(\theta) = e^{T - T^\dagger}, \quad T = T_1 + T_2$$
 
 where $T_1$ promotes one electron at a time (singles) and $T_2$ promotes pairs (doubles). It is chemically motivated — every parameter corresponds to a physical excitation — so it converges to the right answer. The cost is depth: each excitation is a string of CNOTs, and on noisy hardware that depth is expensive.
+
+What a double excitation actually does to the register is worth seeing once in basis states: acting on the H2 reference, $T_2$ moves the *pair* — both electrons leave orbitals 0, 1 and land in orbitals 2, 3 together, leaving a coherent superposition of the two configurations. Trace this doubles-style circuit and commit:
+
+```qpredict
+{
+  "id": "chem-ucc-double-support-1",
+  "prompt": "This circuit applies a doubles-style excitation to four spin-orbitals, superposing the H2 reference with the configuration where both electrons moved up together. Which basis states appear with nonzero probability?",
+  "program": "H 0\nCNOT 0 1\nX 2\nCNOT 0 2\nX 3\nCNOT 0 3",
+  "mode": "nonzero-states",
+  "hint": "Follow qubit 0's two branches. In its 0-branch no CNOT fires, so the X gates fill orbitals 2 and 3: |0011⟩. In its 1-branch CNOT 0 1 fills orbital 1 and the later CNOTs undo both X fills: |1100⟩. The pair moves as one — no configuration with a split pair survives."
+}
+```
 
 **Hardware-Efficient Ansatz (HEA)** abandons chemical meaning for shallowness: just layers of single-qubit rotations and the entangling gates your device happens to support. A single layer is one rotation followed by one entangler. Drag $\theta$ to sweep the parameter and scrub to watch the two-qubit state evolve — this is the elementary motif VQE's optimizer searches:
 
@@ -146,11 +234,35 @@ CNOT 0 1
 
 HEA runs on any topology and stays shallow, but it pays for it: it can wander into regions with no chemical relevance, and stacking layers invites the barren plateaus from the previous module. **ADAPT-VQE** splits the difference — it grows the ansatz one operator at a time, each round adding whichever excitation has the steepest energy gradient. It spends more measurements during optimization but ends with a compact, problem-specific circuit. The choice among them is the recurring NISQ trade-off: accuracy against depth against trainability.
 
+"No chemical relevance" has a concrete face. A molecule has a fixed electron count, but nothing in a hardware-efficient layer knows that — a bare Hadamard on an orbital qubit happily superposes *different numbers of electrons*. Predict where this HEA-style fragment puts its amplitude:
+
+```qpredict
+{
+  "id": "chem-hea-number-leak-1",
+  "prompt": "An HEA-style fragment: X occupies orbital 0, then H acts on orbital 1. Which two-orbital basis states appear with nonzero probability?",
+  "program": "X 0\nH 1",
+  "mode": "nonzero-states",
+  "hint": "X pins orbital 0 at occupied; H splits orbital 1 evenly between empty and occupied. The support is |10⟩ and |11⟩ — one branch holds one electron, the other two. A molecule cannot superpose electron numbers, and this is exactly how an unconstrained ansatz wanders out of chemistry."
+}
+```
+
 ## Scaling Up: Basis Sets and Active Space
 
 Two knobs decide how big the problem gets. The **basis set** is how finely you approximate each atomic orbital with Gaussian functions: STO-3G is minimal and fast but crude (it is what produced the H2 curve above, and why that curve is qualitatively right but quantitatively loose); 6-31G splits the valence shell; cc-pVDZ and cc-pVTZ climb a systematic ladder toward the basis-set limit. Richer basis means more orbitals — and more orbitals means more qubits.
 
 The **active space** is how you cope when the full count is hopeless. You cannot put all eighty spin-orbitals of a medium molecule on a quantum computer, but you do not have to. Run a cheap classical Hartree-Fock to get the molecular orbitals, keep only the handful near the Fermi level where the action is, freeze the rest into an averaged background, and hand just that active window to VQE. A molecule with 20 electrons in 40 orbitals nominally needs 80 qubits; an active space of 4 electrons in 4 orbitals needs 8 — tractable today. It is the same move as the symmetry tapering that shrank H2 to one qubit, applied with chemical judgment: spend your scarce qubits only where correlation actually matters.
+
+Freezing an orbital is safe precisely because its measurements are foregone conclusions: an orbital that never receives an electron reads the same value on every shot, so every Hamiltonian term that touches only frozen orbitals collapses to a constant you add classically. Confirm the ledger entry for a frozen virtual:
+
+```qexpect
+{
+  "id": "chem-frozen-empty-z-1",
+  "prompt": "A frozen virtual orbital never receives an electron — the circuit leaves it untouched (identity). What is ⟨Z₀⟩ for this permanently empty orbital?",
+  "program": "I 0",
+  "observable": "Z 0",
+  "hint": "Empty means |0⟩, the +1 eigenstate of Z: every shot reads +1 and the average is exactly +1, so n₀ = (1 − ⟨Z₀⟩)/2 = 0 electrons. Because that reading can never change, a frozen orbital contributes only a classical constant — which is why freezing it costs nothing but an energy offset. The trap is −1, the occupied orbital's reading."
+}
+```
 
 ## Where This Matters
 
@@ -159,6 +271,20 @@ The molecules quantum computers can treat accurately today — H2, LiH, BeH2, wa
 - **Drug binding.** How tightly a candidate molecule grips a protein pocket is a difference of large energies, and the binding interface is often strongly correlated — exactly where mean-field errors of a few kcal/mol decide whether a drug works.
 - **Reaction mechanisms.** Mapping energy along a reaction coordinate means resolving transition states, which carry strong multireference character. Get the barrier height wrong and you mispredict the rate by orders of magnitude.
 - **Materials by design.** Catalysts, battery electrolytes, and candidate superconductors are correlated-electron problems where first-principles accuracy would replace decades of trial and error.
+
+That last bullet has a two-qubit toy you can already build. Superconductivity runs on electron pairing — configurations where two orbitals empty *together* or fill *together*, superposed. A mean-field product state cannot hold that correlation; your register can:
+
+```qchallenge
+{
+  "id": "chem-pairing-state-1",
+  "prompt": "Prepare the toy pairing state (|00⟩ + |11⟩)/√2 — two orbitals that are always empty together or occupied together, in superposition.",
+  "qubits": 2,
+  "starter": "H 0\nH 1",
+  "target": { "program": "H 0\nCNOT 0 1" },
+  "allowedGates": ["H", "CNOT"],
+  "hint": "Two independent Hadamards give every configuration equal weight — including the broken-pair states |01⟩ and |10⟩. Pairing is a correlation, so it needs a two-qubit gate: superpose orbital 0 with H, then let CNOT copy its occupation onto orbital 1 so the pair fills or empties as one."
+}
+```
 
 The throughline of this entire module is the one move we made with hydrogen: a molecule is an operator, the operator is a matrix, and the matrix has a lowest eigenvalue you can chase by minimizing an expectation value. Everything else — better mappings, better ansatze, active spaces — is engineering in service of pushing that one idea up to molecules that matter.
 

@@ -111,6 +111,21 @@ We will simulate weighted coin flips in NumPy until this feels obvious. Then in 
 notebook we will reinterpret quantum measurement as nothing more than sampling from a
 distribution computed from a state vector.
 
+Here is that reinterpretation in miniature, one section early. The observable `Z` is just a
+scoring rule: outcome `0` scores `+1`, outcome `1` scores `-1`, and the expectation value is
+the weighted average of those scores. A qubit nobody has touched gives outcome `0` every
+single time — so this average takes no computing at all. Commit to it:
+
+```qexpect
+{
+  "id": "prereq-expect-certain-1",
+  "prompt": "A fresh qubit starts in |0⟩ and nothing touches it (the circuit applies only the identity). The observable Z scores outcome 0 as +1 and outcome 1 as −1. What is the expectation value ⟨Z⟩?",
+  "program": "I 0",
+  "observable": "Z 0",
+  "hint": "An expectation value is a weighted average: (+1)·P(0) + (−1)·P(1). Here the distribution is certain — P(0) = 1, P(1) = 0 — so the average equals the only score ever produced. Certainty is the one case where the long-run average and a single sample agree."
+}
+```
+
 ### 4. What is a qubit, in words
 
 Most introductions jump straight to `|psi> = alpha|0> + beta|1>` and lose people. We will
@@ -129,6 +144,34 @@ not. The progression is:
 That is it. The rest of the module builds the math machinery to make this precise. The
 intuition stays the same all the way to the end of the curriculum.
 
+One move is available before any spinning, and classical intuition already covers it: the
+gate `X` flips the coin over without spinning it — heads-up becomes tails-up, `|0>` becomes
+`|1>`. Predict what stopping the coin reads:
+
+```qpredict
+{
+  "id": "prereq-predict-flip-1",
+  "prompt": "A qubit starts as the coin lying heads-up: |0⟩. The gate X flips it over without spinning it. Which outcome does measurement read?",
+  "program": "X 0",
+  "mode": "top-outcome",
+  "hint": "X swaps the two amplitudes: (1, 0) becomes (0, 1). All the probability now sits on the |1⟩ outcome — no randomness involved, because a flipped coin is still a definite coin."
+}
+```
+
+Reading someone else's flip is one thing; writing it is another. This is your first circuit
+— one gate, one line:
+
+```qchallenge
+{
+  "id": "prereq-challenge-flip-1",
+  "prompt": "Prepare |1⟩ — the coin lying tails-up — starting from |0⟩.",
+  "qubits": 1,
+  "target": { "program": "X 0" },
+  "allowedGates": ["X"],
+  "hint": "You only have the flip. A single X turns the amplitudes (1, 0) into (0, 1), which is exactly |1⟩ — one line is enough."
+}
+```
+
 Watch the spin happen. Below, qubit 0 starts as the coin lying flat — `|0>`, heads-up with
 certainty. Apply a Hadamard (`H`) and it becomes the perfectly balanced spin `|+>`: stop it
 now and the bars say heads or tails with equal odds. This is the whole story of section 4 in
@@ -137,6 +180,19 @@ one gate — read the probabilities for yourself.
 ```qsim
 qubits 1
 H 0
+```
+
+The simulator just handed you the bars. Now own the claim yourself — commit to a graded
+prediction of which faces a spun coin can actually land on:
+
+```qpredict
+{
+  "id": "prereq-predict-spun-coin-1",
+  "prompt": "Spin the coin: apply H to a qubit starting in |0⟩. Which measurement outcomes have nonzero probability?",
+  "program": "H 0",
+  "mode": "nonzero-states",
+  "hint": "H turns the amplitudes (1, 0) into (1/√2, 1/√2). Both amplitudes are nonzero, so both outcomes can happen — each with probability |1/√2|² = 1/2. A spun coin can land either way."
+}
 ```
 
 ### 5. Dirac notation, decoded
@@ -157,8 +213,36 @@ Dirac notation is just compact NumPy. We will build a one-to-one translation tab
 {"id":"prereq-inner-product-1","prompt":"In Dirac-to-NumPy translation, how do you write the inner product `<a|b>`, and what kind of object does it produce?","answer":"Write it as `a.conj() @ b`, which produces a single complex number."}
 ```
 
+One sandwich built from that table deserves special billing: `<psi|Z|psi>` — bra, matrix,
+ket — is how every expectation value in quantum mechanics is written, and it is nothing but
+`psi.conj() @ Z @ psi`. Evaluate it for the flipped coin:
+
+```qexpect
+{
+  "id": "prereq-expect-sandwich-1",
+  "prompt": "Evaluate the sandwich ⟨ψ|Z|ψ⟩ for |ψ⟩ = |1⟩, prepared by applying X to |0⟩. Z scores outcome 0 as +1 and outcome 1 as −1. What is the expectation value?",
+  "program": "X 0",
+  "observable": "Z 0",
+  "hint": "In NumPy this is psi.conj() @ Z @ psi with psi = [0, 1]. Z flips the sign of the |1⟩ amplitude, so Z|ψ⟩ = −|ψ⟩ and the inner product gives −1 — the mirror image of ⟨0|Z|0⟩ = +1. Both are certainties, sitting at opposite ends of the scale."
+}
+```
+
 By the end of this notebook you will read `<0|H|+>` and immediately reach for
 `zero.conj() @ H @ plus` without thinking.
+
+That expression is worth a prediction of its own. `<0|H|+> = 1` says that applying `H` to
+`|+>` lands exactly on `|0>` — overlap one, certainty. Run the two-gate sequence in your
+head, then commit:
+
+```qpredict
+{
+  "id": "prereq-predict-double-h-1",
+  "prompt": "Apply H twice in a row to a qubit starting in |0⟩. Which single outcome does measurement read?",
+  "program": "H 0\nH 0",
+  "mode": "top-outcome",
+  "hint": "The first H makes |+⟩ = (|0⟩ + |1⟩)/√2; the second sends |+⟩ straight back to |0⟩ — that is exactly what ⟨0|H|+⟩ = 1 says. H is its own inverse, so the result is outcome 0 with certainty, not a second 50/50 spin."
+}
+```
 
 ### 6. Bloch-sphere playground
 
@@ -177,11 +261,51 @@ This notebook is where intuition consolidates. If you walk away believing that
 {"id":"prereq-bloch-poles-1","prompt":"On the Bloch sphere, which single-qubit states sit at the north pole, the south pole, and the equator?","answer":"The north pole is `|0>`, the south pole is `|1>`, and the equator represents maximum superposition."}
 ```
 
+Prove the second of those poles to yourself. On the sphere, the flip gate `X` is a
+half-turn that carries the north pole to the south pole. Drive the vector there and check
+your placement:
+
+```qblochtarget
+{
+  "id": "prereq-bloch-south-1",
+  "prompt": "Drive the Bloch vector to the south pole — |1⟩, the state X prepares from |0⟩.",
+  "target": { "program": "X 0" },
+  "toleranceDeg": 5,
+  "hint": "The polar angle θ measures how far the arrow has tilted away from |0⟩ at the north pole. The south pole is all the way down: θ = π — and φ does not matter, because every meridian meets at a pole."
+}
+```
+
 Drag $\theta$ below and watch the Bloch vector swing from the north pole ($\ket{0}$) toward the equator — this is exactly what $R_y(\theta)$ does. Drag the sphere itself to rotate your view, or press play to sweep the rotation:
 
 ```qscrub
 qubits 1
 RY 0 theta
+```
+
+Stop that sweep at $\theta = \pi/2$ and the arrow rests on the equator — the exact state
+the Hadamard produced back in section 4. Land on it precisely:
+
+```qblochtarget
+{
+  "id": "prereq-bloch-equator-1",
+  "prompt": "Drive the Bloch vector to |+⟩ = (|0⟩ + |1⟩)/√2 — the equator point where the spun coin from section 4 lives.",
+  "target": { "program": "H 0" },
+  "toleranceDeg": 5,
+  "hint": "Maximum superposition means equal odds, which pins the arrow to the equator: θ = π/2. The plus sign picks the meridian: φ = 0, pointing along the +X axis."
+}
+```
+
+Gates do not have to go all the way to a pole or the equator — any tilt of the arrow is a
+legal state. Dial a partial rotation:
+
+```qblochtarget
+{
+  "id": "prereq-bloch-angle-1",
+  "prompt": "Place the state RY(π/3) prepares from |0⟩: one third of the way to the south pole, where P(0) = 3/4.",
+  "target": { "program": "RY 0 1.0472" },
+  "toleranceDeg": 5,
+  "hint": "RY(θ) tilts the arrow θ radians away from the north pole in the φ = 0 plane, so set θ = π/3 and leave φ = 0. Mind the halving trap: P(0) = cos²(θ/2) = cos²(π/6) = 3/4, not cos²(π/3)."
+}
 ```
 
 …then you are ready for `01-foundations`.
@@ -191,6 +315,22 @@ its state, read off its probabilities, and find it on the sphere. `01-foundation
 the **verbs** — how to *act* on that state with gates, *combine* two qubits into one
 inseparable whole, and *read* the answer back out as a measurement. Same spun coin you met
 here, now set in motion.
+
+One capstone before you go. The Placement Quiz below asks why `|+>` and `|->` measure
+identically; here you build the `|->` half of that pair. The starter spins the coin the
+plain way and lands on `|+>` — your job is to work the minus sign in:
+
+```qchallenge
+{
+  "id": "prereq-challenge-minus-1",
+  "prompt": "Prepare |−⟩ = (|0⟩ − |1⟩)/√2 — the spun coin whose minus sign measurement alone cannot see. The starter lands on |+⟩; fix it.",
+  "qubits": 1,
+  "target": { "program": "X 0\nH 0" },
+  "starter": "H 0",
+  "allowedGates": ["X", "H"],
+  "hint": "Order matters: adding X after H gets you nowhere, because X leaves |+⟩ unchanged. Flip first, then spin — H applied to |1⟩ puts the minus sign on the |1⟩ amplitude: (|0⟩ − |1⟩)/√2."
+}
+```
 
 ---
 

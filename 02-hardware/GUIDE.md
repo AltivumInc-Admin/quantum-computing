@@ -66,6 +66,21 @@ against this decay.
 {"id":"hw-nisq-noise-1","prompt":"In the NISQ era, what happens to a circuit's ideal probability peaks as the circuit gets deeper, and why?","answer":"They smear out toward flat random noise. Real gates are slightly wrong, qubits leak their state to the environment (decoherence), and measurement can misread, so errors accumulate and grow worse the deeper the circuit runs."}
 ```
 
+Decay needs a yardstick, and the Bell pair above is the classic one: its two-qubit correlation
+has an exact ideal value, and how far a device falls short of it is one of the simplest
+witnesses of lost fidelity. Compute the number the hardware is chasing:
+
+```qexpect
+{
+  "id": "hw-readout-zz-1",
+  "prompt": "An ideal device runs the Bell circuit (H 0, CNOT 0 1) many times and averages the product of the two ±1 readings. What is the ideal correlation ⟨Z₀Z₁⟩ it reports?",
+  "program": "H 0\nCNOT 0 1",
+  "observable": "Z 0 Z 1",
+  "qubits": 2,
+  "hint": "Every ideal shot reads 00 or 11 — never a disagreement. The product of the two ±1 readings is (+1)(+1) or (−1)(−1), which is +1 either way, so the shot average is exactly +1. Noise is what drags a real device's number below that ceiling."
+}
+```
+
 ## Connectivity — the wiring constraint
 
 The second tax is geometric. A two-qubit gate needs the two qubits to be physically adjacent. If
@@ -88,6 +103,22 @@ qubit is already connected to every other: **zero** SWAPs.
 
 Connectivity is why an algorithm that looks shallow on paper can balloon in depth on real
 hardware — and why all-to-all machines are prized for densely connected problems.
+
+Routing has one more sharp edge: a CNOT is not symmetric. Control and target are distinct
+roles, and a gate wired backwards runs without complaint — it just computes the wrong thing.
+Here is that failure on a chain like the one above; fix the wiring to match the intent:
+
+```qdebug
+{
+  "id": "hw-debug-chain-cnot-1",
+  "prompt": "On a nearest-neighbor chain 0–1–2, this circuit was meant to entangle the far ends through the middle qubit and produce the GHZ state (|000⟩ + |111⟩)/√2. Instead qubit 2 never budges — shots show only 000 and 110. One CNOT is wired against the intent. Fix it.",
+  "qubits": 3,
+  "broken": { "program": "H 0\nCNOT 0 1\nCNOT 2 1" },
+  "target": { "program": "H 0\nCNOT 0 1\nCNOT 1 2" },
+  "allowedGates": ["H", "CNOT"],
+  "hint": "Read each CNOT as control first, target second. The last gate uses qubit 2 — still |0⟩ — as its control, so it never fires. The entanglement has to hop down the chain 0 → 1 → 2: the middle qubit must control the far one."
+}
+```
 
 ## The three hardware families
 
@@ -120,6 +151,20 @@ technology. Note that Aquila is the lone non-gate-model row:
 ```qdevices
 ```
 
+One way to feel the difference: an entangling chain that hops qubit to qubit. On Garnet's
+lattice every link below needs adjacent qubits; on Aria the same gates land anywhere for free.
+Either way, the machine is graded against the same ideal output — name it:
+
+```qpredict
+{
+  "id": "hw-predict-ghz-1",
+  "prompt": "A four-qubit entangling chain — H 0, then CNOT 0 1, CNOT 1 2, CNOT 2 3 — runs on an ideal machine. Which basis states appear with nonzero probability? (These are the peaks a noisy device only approximates.)",
+  "program": "H 0\nCNOT 0 1\nCNOT 1 2\nCNOT 2 3",
+  "mode": "nonzero-states",
+  "hint": "Each CNOT passes the leading qubit's value one link down the chain, so all four bits always agree. Only the two unanimous states carry probability — the other fourteen are exactly zero, and any counts you see there on real hardware are pure error."
+}
+```
+
 ## The simulator ladder — your defense
 
 Given all of the above, you almost never start on a QPU. You climb a ladder of classical
@@ -136,6 +181,20 @@ simulators, each a defense against wasting time and money on real hardware:
 
 ```qcard
 {"id":"hw-dm1-noise-sim-1","prompt":"Which managed Braket simulator can model noise, and why can it when SV1 cannot?","answer":"`DM1`, the density-matrix simulator. A density matrix can represent mixed (noisy) states, so DM1 can apply noise channels like depolarizing and amplitude damping. `SV1` is an exact, noiseless state-vector simulator."}
+```
+
+The ladder only works if you know the clean answer before noise ever touches it — that is what
+the local rung hands you for free. Prove it on a lopsided circuit: predict the ideal histogram
+that DM1 would then show you decaying:
+
+```qpredict
+{
+  "id": "hw-predict-biased-1",
+  "prompt": "Run ideally, this circuit produces a lopsided histogram; a noisy QPU only approximates it. Which single outcome sits on top?",
+  "program": "X 0\nRY 1 1.0472",
+  "mode": "top-outcome",
+  "hint": "X pins qubit 0 — the leftmost bit — to 1. RY(π/3) tilts qubit 1 only partway: it stays |0⟩ with probability cos²(π/6) = 3/4. So three shots in four read 10. Noise flattens that peak toward the others, but it does not move it."
+}
 ```
 
 The Bell pair you debug locally costs nothing and returns instantly:
@@ -185,6 +244,48 @@ extra digit of precision is bought with real dollars:
 }
 ```
 
+Keep straight what those shots are buying: not certainty, an average. Each shot returns ±1,
+and the shot mean converges to the expectation value the device is estimating. For the
+simplest superposition, work out where that average lands:
+
+```qexpect
+{
+  "id": "hw-readout-plus-1",
+  "prompt": "You pay for 1,000 shots of the one-gate circuit H 0 and average the ±1 readings of Z₀. What ideal value ⟨Z₀⟩ is that shot average converging to?",
+  "program": "H 0",
+  "observable": "Z 0",
+  "hint": "H|0⟩ gives 0 and 1 with equal probability, so the +1 and −1 readings cancel in the long run: the expectation is 0, even though no single shot ever reads 0. Your finite-shot average just scatters around it, shrinking like 1/√N — that scatter is what more shots (and more dollars) buy down."
+}
+```
+
+Now change providers. The task fee is universal, but the shot meter is not — and assuming
+every QPU bills like IonQ is how estimates go wrong:
+
+```qcostestimate
+{
+  "id": "hw-cost-iqm-1",
+  "prompt": "You submit one task of 1,000 shots to IQM Garnet. What does it cost?",
+  "provider": "IQM",
+  "shots": 1000,
+  "tasks": 1,
+  "hint": "The per-shot rate is provider-specific: IQM charges {perShot} per shot, roughly a seventh of IonQ's rate. One flat {perTask} for the task, plus {shots} × {perShot}."
+}
+```
+
+And the parameter sweep from above — the way budgets actually burn. Every point in a sweep is
+its own task, and the flat fee rides along every single time:
+
+```qcostestimate
+{
+  "id": "hw-cost-ionq-sweep-1",
+  "prompt": "A 20-point parameter sweep on IonQ: 20 separate tasks of 100 shots each. What does the whole sweep cost?",
+  "provider": "IonQ",
+  "shots": 100,
+  "tasks": 20,
+  "hint": "The flat {perTask} is charged per task, not per experiment — twenty submissions pay it twenty times. Each point costs {perTask} + {shots} × {perShot}; the sweep is twenty of those."
+}
+```
+
 ## Choosing a device
 
 Putting it together, a quick decision flow:
@@ -198,6 +299,33 @@ Putting it together, a quick decision flow:
 6. **Real hardware, local structure, speed matters?** IQM.
 7. **Optimization or simulation with geometric structure (e.g. Maximum Independent Set)?** QuEra
    Aquila (analog).
+
+Steps 5–7 all end at a metered machine, so close the loop with two more pricing calls you can
+make cold. First IQM — where *how you batch the shots* changes the bill:
+
+```qcostestimate
+{
+  "id": "hw-cost-iqm-batch-1",
+  "prompt": "You split an IQM run into 5 tasks of 2,000 shots each. What do the 5 tasks cost in total?",
+  "provider": "IQM",
+  "shots": 2000,
+  "tasks": 5,
+  "hint": "Only the flat {perTask} cares how you split the run — five tasks pay it five times, while the shot meter ({shots} × {perShot} per task) tracks total shots. The same 10,000 shots in a single task would save four task fees: $1.20."
+}
+```
+
+And QuEra — analog, no gate circuits, but the meter neither knows nor cares:
+
+```qcostestimate
+{
+  "id": "hw-cost-quera-1",
+  "prompt": "One task of 400 shots on QuEra Aquila (an analog run). What does it cost?",
+  "provider": "QuEra",
+  "shots": 400,
+  "tasks": 1,
+  "hint": "Analog is a different computing model, not a different billing model: Aquila meters exactly like the gate QPUs — one flat {perTask} at submission, plus {perShot} for each of the {shots} shots."
+}
+```
 
 Check yourself:
 
