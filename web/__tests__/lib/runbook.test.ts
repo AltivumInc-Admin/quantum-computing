@@ -91,6 +91,18 @@ describe("streak", () => {
     const days = [0, 1, 5, 6, 7, 8].map(dayIn);
     expect(streak(days, today, 5).longestWeeks).toBe(4);
   });
+
+  it("does NOT spend a phantom freeze on a gapless run down to the earliest active week", () => {
+    // A flawless streak that reaches the learner's first active week must not
+    // report a freeze as "holding a missed week" — there is no gap.
+    expect(streak([0, 1].map(dayIn), today, 1).freezesUsed).toBe(0);
+    // A one-week-old account with an earned freeze and no misses: still 0.
+    expect(streak([today], today, 1)).toEqual({
+      currentWeeks: 1,
+      longestWeeks: 1,
+      freezesUsed: 0,
+    });
+  });
 });
 
 describe("mastery + earned freezes", () => {

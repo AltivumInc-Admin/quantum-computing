@@ -61,6 +61,7 @@ interface Ledger {
   sectionsDone: number;
   sectionsTotal: number;
   activeThisWeek: number;
+  activeInWindow: number;
   totalActiveDays: number;
   cardCount: number;
   cells: ContributionCell[];
@@ -68,12 +69,16 @@ interface Ledger {
 
 function readLedger(today: number): Ledger {
   const states = getAllCardStates();
-  const days = activeDays();
+  // Drop any future-dated day flag (a fast-clock device) before it reaches the
+  // streak / graph math — the qc:log:day family has no clock-skew quarantine of
+  // its own, unlike qc:card. A day cannot be "active" before it happens.
+  const days = activeDays().filter((d) => d <= today);
   const sections = getSections();
   const mastery = masteryCount(states);
   const earned = freezesEarned(mastery);
   const s = streak(days, today, earned);
   const curWeek = weekOf(today);
+  const cells = contributionCells(days, today, WEEKS);
   return {
     mastery,
     reinforcedThisWeek: masteredThisWeek(states, today),
@@ -85,9 +90,12 @@ function readLedger(today: number): Ledger {
     sectionsDone: completedCount(sections.map((sec) => sec.slug)),
     sectionsTotal: sections.length,
     activeThisWeek: days.filter((d) => weekOf(d) === curWeek).length,
+    // In-window count for the "of the last 182 days" copy (the all-time
+    // totalActiveDays would print a numerator larger than 182 for a veteran).
+    activeInWindow: cells.filter((c) => c.active).length,
     totalActiveDays: days.length,
     cardCount: states.length,
-    cells: contributionCells(days, today, WEEKS),
+    cells,
   };
 }
 
@@ -225,11 +233,11 @@ function Ledger({ data }: { data: Ledger }) {
           </h2>
           <p className="text-xs tabular-nums text-caption">
             {hasActivity
-              ? `active ${data.totalActiveDays} of the last ${WEEKS * 7} days`
+              ? `active ${data.activeInWindow} of the last ${WEEKS * 7} days`
               : "no activity yet"}
           </p>
         </div>
-        <ContributionGraph cells={data.cells} weeks={WEEKS} totalActive={data.totalActiveDays} />
+        <ContributionGraph cells={data.cells} weeks={WEEKS} totalActive={data.activeInWindow} />
       </section>
     </div>
   );
@@ -378,10 +386,38 @@ function ContributionGraph({
       <div className="mt-3 flex items-center gap-1.5 text-[0.6rem] text-caption">
         <span>Inactive</span>
         <span className="h-[11px] w-[11px] rounded-[2px] bg-gray-200/80 dark:bg-white/[0.05]" />
-        <span className="h-[11px] w-[11px] rounded-[2px] bg-accent" />
+        <span className="h-[11px] w-[11px] rounded-[2px] bg-accent-dark dark:bg-accent" />
         <span>Active</span>
       </div>
+
+      {/* Keyboard/touch/screen-reader equivalent of the mouse-only cell tooltips:
+          the <summary> is focusable and the list is exposed to AT. */}
+      <ActiveDayList cells={cells} />
     </div>
+  );
+}
+
+function ActiveDayList({ cells }: { cells: ContributionCell[] }) {
+  const active = cells.filter((c) => c.active && !c.future);
+  if (active.length === 0) return null;
+  return (
+    <details className="mt-3 text-xs text-caption">
+      <summary className="inline-flex cursor-pointer rounded-control px-1 py-0.5 focus-ring">
+        View active days
+      </summary>
+      <ul className="mt-2 grid grid-cols-2 gap-x-6 gap-y-0.5 sm:grid-cols-3">
+        {active.map((c) => (
+          <li key={c.epochDay} className="tabular-nums">
+            {new Date(c.epochDay * 86_400_000).toLocaleDateString("en-US", {
+              timeZone: "UTC",
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -396,8 +432,11 @@ function Cell({ cell }: { cell: ContributionCell }) {
   if (cell.future) {
     return <span aria-hidden="true" className={`${base} bg-transparent`} />;
   }
+  // Light-mode active fill uses accent-dark so active/inactive clears WCAG 1.4.11
+  // non-text contrast (~5:1 vs the card, ~4.3:1 vs the inactive gray); dark mode
+  // keeps the brighter accent (already ~8:1).
   const cls = cell.active
-    ? "bg-accent shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]"
+    ? "bg-accent-dark dark:bg-accent shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]"
     : "bg-gray-200/80 dark:bg-white/[0.05]";
   return (
     <span

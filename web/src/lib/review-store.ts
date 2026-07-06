@@ -120,7 +120,13 @@ export function gradeCard(id: string, rating: Rating, nowMs: number = Date.now()
  */
 export function gradeCardIfDue(id: string, rating: Rating, nowMs: number = Date.now()): CardState | null {
   const existing = getCardState(id);
-  if (existing !== null && !isDue(existing, epochDay(nowMs))) return null;
+  if (existing !== null && !isDue(existing, epochDay(nowMs))) {
+    // Re-practicing a not-yet-due card must not advance the schedule, but it is
+    // still the learner showing up — log the active day for the Runbook graph.
+    recordActivity(nowMs);
+    window.dispatchEvent(new Event(PROGRESS_EVENT_NAME));
+    return null;
+  }
   return gradeCard(id, rating, nowMs);
 }
 

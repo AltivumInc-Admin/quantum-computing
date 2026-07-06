@@ -4,7 +4,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, act } from "@testing-library/react";
 import { RunbookDashboard } from "@/components/runbook-dashboard";
-import { gradeCard } from "@/lib/review-store";
+import { gradeCard, gradeCardIfDue } from "@/lib/review-store";
 import { setSectionComplete } from "@/lib/progress-store";
 import { epochDay } from "@/lib/review-schedule";
 import { RETENTION_STABILITY, weekStartDay, weekOf } from "@/lib/runbook";
@@ -87,6 +87,28 @@ describe("RunbookDashboard", () => {
   it("grading a card also logs the day (wiring through review-store)", () => {
     act(() => gradeCard("challenge:x", "good"));
     expect(localStorage.getItem(`qc:log:day:${today}`)).toBe("1");
+  });
+
+  it("re-practicing a not-due card logs the active day but leaves the schedule untouched", () => {
+    const stored = JSON.stringify({
+      reps: 2, lapses: 0, stability: 10, difficulty: 5, dueEpochDay: today + 10, lastEpochDay: today - 1,
+    });
+    localStorage.setItem("qc:card:challenge:y", stored);
+    act(() => {
+      expect(gradeCardIfDue("challenge:y", "good")).toBeNull(); // not due → no grade
+    });
+    expect(localStorage.getItem(`qc:log:day:${today}`)).toBe("1"); // but the day is logged
+    expect(localStorage.getItem("qc:card:challenge:y")).toBe(stored); // schedule unchanged
+  });
+
+  it("windowed active-day copy never exceeds 182 even with all-time activity beyond the graph", () => {
+    seedCard("m", RETENTION_STABILITY, today);
+    seedActive(today);
+    seedActive(today - 26 * 7 - 5); // an active day OLDER than the 26-week window
+    render(<RunbookDashboard />);
+    // The "of the last 182 days" copy counts only in-window days (here: 1),
+    // never the all-time total (2) — a numerator > 182 would be nonsensical.
+    expect(screen.getByText(/active 1 of the last 182 days/i)).toBeInTheDocument();
   });
 
   // Guard the calendar helpers the test itself relies on stay consistent.

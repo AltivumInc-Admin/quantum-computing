@@ -6,7 +6,8 @@
  *   - active days come from set-once `qc:log:day:*` flags (union-merged like
  *     section flags — see activity-log.ts / progress-merge.ts),
  *   - mastery and freezes derive from CardState (merged as a unit).
- * So there is nothing here that a fast-clock or a concurrent device can corrupt.
+ * So a concurrent device cannot corrupt this kernel; the caller drops any
+ * future-dated day flag (a fast clock) before it reaches these functions.
  */
 
 import type { CardState } from "./review-schedule";
@@ -52,7 +53,9 @@ export function streak(activeDays: number[], today: number, freezesEarned: numbe
   const cur = weekOf(today);
   // An inactive current week is grace: start the walk one week back without breaking.
   let w = activeWeeks.has(cur) ? cur : cur - 1;
-  const floor = Math.min(...activeWeeks) - 1; // defensive lower bound
+  // Stop AT the earliest active week: there is nothing below it to bridge to, so
+  // descending past it would spend a freeze on a gap that does not exist.
+  const floor = Math.min(...activeWeeks);
   let currentWeeks = 0;
   let freezesUsed = 0;
   let lastWasBridge = false;
