@@ -185,6 +185,7 @@ export function DebugCircuitWidget({
     setCode(spec.broken.program);
     setResult(null);
     setResetNote(true);
+    setSolvedGates(null); // clear the "Fixed in N gates" caption with the verdict
   };
 
   const showSolved =
@@ -232,6 +233,7 @@ export function DebugCircuitWidget({
             // the learner types (mirrors bloch-target's stale-readout clear).
             if (result !== null) setResult(null);
             if (resetNote) setResetNote(false);
+            if (solvedGates !== null) setSolvedGates(null); // clear the stale "Fixed in N" caption
           }}
           rows={Math.max(3, code.split("\n").length + 1)}
           className="mt-3 w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:text-gray-200 focus-ring resize-y"

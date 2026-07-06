@@ -18,7 +18,14 @@ const MEASURE_PREFIX = "qc:measure:";
 const measureKey = (id: string) => `${MEASURE_PREFIX}${id}`;
 
 export interface Measurement {
-  /** Fewest gates the learner has used to solve this Rep (lower is better). */
+  /**
+   * Fewest gates the learner has used to solve this Rep (lower is better). A
+   * first-order complexity proxy: every gate counts equally, so it does NOT
+   * distinguish a two-qubit CNOT from a single-qubit H. Good enough to reward
+   * "don't add redundant gates"; a hardware-fidelity-weighted metric is a
+   * later refinement. (Free-form tier:"py" solves carry no gate count and are
+   * simply not measured.)
+   */
   gates: number;
 }
 
