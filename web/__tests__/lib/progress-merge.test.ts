@@ -43,6 +43,21 @@ describe("mergeSnapshots", () => {
     });
   });
 
+  it("keeps the FEWER-gates personal best (the case a lexicographic merge gets wrong)", () => {
+    const g2 = JSON.stringify({ gates: 2 });
+    const g8 = JSON.stringify({ gates: 8 });
+    // lexMax(g2, g8) picks g8 ('8' > '2') — the WORSE 8-gate solution. The
+    // numeric rule must keep g2 regardless of argument order (convergence).
+    expect(mergeSnapshots({ "qc:measure:x": g2 }, { "qc:measure:x": g8 })["qc:measure:x"]).toBe(g2);
+    expect(mergeSnapshots({ "qc:measure:x": g8 }, { "qc:measure:x": g2 })["qc:measure:x"]).toBe(g2);
+  });
+
+  it("a corrupt qc:measure record loses to a valid one", () => {
+    const ok = JSON.stringify({ gates: 4 });
+    expect(mergeSnapshots({ "qc:measure:x": "{broken" }, { "qc:measure:x": ok })["qc:measure:x"]).toBe(ok);
+    expect(mergeSnapshots({ "qc:measure:x": ok }, { "qc:measure:x": "{}" })["qc:measure:x"]).toBe(ok);
+  });
+
   it("unions Runbook qc:log:day activity flags across devices (no merge rule needed)", () => {
     // The Runbook models each active day as a set-once "1" flag, so it rides the
     // exact additive-union path as section flags — device A's days and device B's

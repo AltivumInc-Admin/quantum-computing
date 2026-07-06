@@ -11,6 +11,8 @@ export type GradeStatus = "solved" | "wrong" | "error";
 export interface GradeResult {
   status: GradeStatus;
   message: string;
+  /** On a solve, the size of the learner's circuit — the raw skill measurement. */
+  metrics?: { gates: number; qubits: number };
 }
 
 export function gradeTs(learnerSource: string, spec: ChallengeSpec): GradeResult {
@@ -58,7 +60,11 @@ export function gradeTs(learnerSource: string, spec: ChallengeSpec): GradeResult
   const learnerState = simulate(opsFor(learner, 0), n);
 
   if (statesApproxEqual(learnerState, targetState)) {
-    return { status: "solved", message: "Correct — your circuit prepares the target state." };
+    return {
+      status: "solved",
+      message: "Correct — your circuit prepares the target state.",
+      metrics: { gates: learner.gates.length, qubits: n },
+    };
   }
   return {
     status: "wrong",

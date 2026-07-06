@@ -120,7 +120,11 @@ export function gradeDebug(
     n === truth.n ? truth.brokenState : simulate(opsFor(parseProgram(spec.broken.program), 0), n);
 
   if (statesApproxEqual(learnerState, targetState)) {
-    return { status: "solved", message: "Correct — your fix prepares the target state." };
+    return {
+      status: "solved",
+      message: "Correct — your fix prepares the target state.",
+      metrics: { gates: learner.gates.length, qubits: n },
+    };
   }
   if (statesApproxEqual(learnerState, brokenState)) {
     // The most common debug failure: edits that don't change the state (or no

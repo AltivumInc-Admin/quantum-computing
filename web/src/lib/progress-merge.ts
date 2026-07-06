@@ -15,6 +15,9 @@
 //                                  every merge forever with no recovery.
 //   qc:card-content:*              derived cache — prefer the copy that can
 //                                  power a live /review re-mount (kind+source)
+//   qc:measure:*                   personal best (a NUMERIC minimum) — keep the
+//                                  fewer-gates copy; lexMax would wrongly pick
+//                                  the LARGER (worse) count.
 //   anything else under qc:*       no domain rule
 //
 // EVERY genuine tie resolves by lexicographic string comparison — symmetric
@@ -118,6 +121,24 @@ function mergeCard(a: string, b: string, todayEpochDay: number): string {
   return lexMax(a, b);
 }
 
+/** A personal best: the fewer-gates copy wins; a corrupt copy loses; tie lexMax. */
+function mergeMeasurement(a: string, b: string): string {
+  const gatesOf = (raw: string): number | null => {
+    try {
+      const m = JSON.parse(raw) as { gates?: unknown };
+      return typeof m.gates === "number" && Number.isFinite(m.gates) ? m.gates : null;
+    } catch {
+      return null;
+    }
+  };
+  const ga = gatesOf(a);
+  const gb = gatesOf(b);
+  if (ga === null) return gb === null ? lexMax(a, b) : b;
+  if (gb === null) return a;
+  if (ga !== gb) return ga < gb ? a : b;
+  return lexMax(a, b);
+}
+
 function mergeContent(a: string, b: string): string {
   const liveReady = (raw: string): boolean => {
     try {
@@ -152,6 +173,8 @@ export function mergeSnapshots(
       merged[key] = mergeContent(l, r);
     } else if (key.startsWith("qc:card:")) {
       merged[key] = mergeCard(l, r, todayEpochDay);
+    } else if (key.startsWith("qc:measure:")) {
+      merged[key] = mergeMeasurement(l, r);
     } else {
       // Flags ("1") and future families: identical values already matched
       // above; a genuine difference resolves symmetrically.
