@@ -38,6 +38,16 @@ WORKED_EXAMPLES = [
     estimate_cost("IonQ", shots=1000),  # $10.30 — 02-hardware worked example
     estimate_cost("IonQ", shots=2000),  # $20.30 — the qcostestimate Rep
     50 * estimate_cost("IonQ", shots=1000),  # $515 — 06 production-patterns job total
+    # Rep-corpus hint arithmetic (the qcostestimate Reps' worked sub-totals);
+    # each is derived from PRICING so a repricing invalidates the prose.
+    4 * PRICING["IonQ"]["per_task"],  # $1.20 — 02-hardware split-run: 4 saved task fees
+    400 * PRICING["IQM"]["per_task"],  # $120 — 06 full-job: 400 tasks, fee stream alone
+    400 * 100 * PRICING["IQM"]["per_shot"],  # $58 — 06 full-job: shot stream alone
+    300 * estimate_cost("IonQ", shots=200),  # $690 — 06 provider-swap: the IonQ baseline
+    300 * PRICING["IQM"]["per_task"],  # $90 — 06 provider-swap: task fees (any provider)
+    200 * PRICING["IQM"]["per_shot"],  # $0.29 — 06 provider-swap: per-task IQM shot cost
+    300 * 200 * PRICING["IonQ"]["per_shot"],  # $600 — 06 provider-swap: IonQ shot stream
+    300 * 200 * PRICING["IQM"]["per_shot"],  # $87 — 06 provider-swap: IQM shot stream
 ]
 
 # Dollar figures that are legitimately NOT Braket pricing. Keep this list

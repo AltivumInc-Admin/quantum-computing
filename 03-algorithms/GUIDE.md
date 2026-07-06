@@ -66,12 +66,44 @@ $H^{\otimes n}$ un-computes the first unless the oracle intervenes. Spot it and 
 }
 ```
 
+Fixed. Now build the other half of the oracle story — a state that actually *carries* a mark. The
+smallest phase oracle acts on one qubit and flips the sign of the $\ket{1}$ branch (that's $f(x)=x$
+written as pure phase): identical 50/50 statistics, opposite sign — and that sign is everything the
+algorithms below trade in.
+
+```qchallenge
+{
+  "id": "algo-phase-mark-1",
+  "prompt": "Prepare the phase-marked superposition |−⟩ = (|0⟩ − |1⟩)/√2: put the qubit into equal superposition, then flip the sign of its |1⟩ branch.",
+  "qubits": 1,
+  "target": { "program": "H 0\nZ 0" },
+  "starter": "H 0",
+  "allowedGates": ["H", "Z"],
+  "hint": "H alone gives |+⟩ = (|0⟩ + |1⟩)/√2 — no mark yet. Z leaves |0⟩ untouched and multiplies |1⟩ by −1, so H then Z lands on (|0⟩ − |1⟩)/√2. The measurement probabilities never move; only the relative sign does — which is exactly why oracles write their answers there."
+}
+```
+
 ## Deutsch–Jozsa: one query is enough
 
 The cleanest proof that interference buys speedup. You're handed $f:\{0,1\}^n\to\{0,1\}$ promised
 to be either **constant** (same output everywhere) or **balanced** (0 on half the inputs, 1 on
 the other half). Classically, you might need $2^{n-1}+1$ queries to be sure. Quantum mechanically:
 **exactly one.**
+
+The engine opens the way every oracle algorithm does — Hadamards across the entire input register.
+Lay down the three-qubit opener the demo below will use:
+
+```qchallenge
+{
+  "id": "algo-dj-register-1",
+  "prompt": "Prepare the Deutsch–Jozsa input register on three qubits: an equal superposition over all eight basis states, ready to query the oracle once.",
+  "qubits": 3,
+  "target": { "program": "H 0\nH 1\nH 2" },
+  "starter": "H 0\nH 1",
+  "allowedGates": ["H"],
+  "hint": "One Hadamard per wire: H⊗H⊗H spreads |000⟩ evenly over all eight basis states. The starter stops at two wires, so qubit 2 never leaves |0⟩ and half the input space is never queried."
+}
+```
 
 Apply $H^{\otimes n}$, the phase oracle, then $H^{\otimes n}$ again. The amplitude that lands back
 on $\ket{0\dots0}$ is $\frac{1}{N}\sum_x (-1)^{f(x)}$ — which is $\pm 1$ for a constant function
@@ -83,8 +115,35 @@ decide:
 {"qubits": 3}
 ```
 
+Before trusting the widget, run the smallest instance in your head. On two qubits the constant
+oracle $f(x)=0$ is an *empty* layer, so the whole algorithm collapses to Hadamards followed
+immediately by Hadamards — and you already know what $H$ does twice:
+
+```qpredict
+{
+  "id": "algo-dj-constant-1",
+  "prompt": "Deutsch–Jozsa on two qubits with the constant oracle f(x) = 0: the oracle layer is empty, leaving H 0, H 1, H 0, H 1. What is the most likely measurement outcome?",
+  "program": "H 0\nH 1\nH 0\nH 1",
+  "mode": "top-outcome",
+  "hint": "H is its own inverse, so with nothing between them the second pair of Hadamards un-computes the first pair completely. Every amplitude interferes back onto |00⟩ — the all-zeros readout is the algorithm announcing 'constant'."
+}
+```
+
 (Bernstein–Vazirani is the same trick aimed at a hidden bit-string $s$ where $f(x)=s\cdot x$: one
 query recovers all $n$ bits of $s$ that a classical attacker would need $n$ queries to find.)
+
+In our gate set that oracle is nothing exotic: $(-1)^{s\cdot x}$ is just a $Z$ on every wire where
+$s_i = 1$. The circuit below hides a three-bit string in its $Z$s — one query, read it out:
+
+```qpredict
+{
+  "id": "algo-bv-readout-1",
+  "prompt": "A Bernstein–Vazirani instance: Hadamards on all three qubits, a phase oracle built from Z gates, then Hadamards again. What is the most likely measurement outcome? (It spells out the hidden string s.)",
+  "program": "H 0\nH 1\nH 2\nZ 0\nZ 2\nH 0\nH 1\nH 2",
+  "mode": "top-outcome",
+  "hint": "Work wire by wire. A qubit with a Z between its Hadamards feels HZH = X and flips to |1⟩; a qubit without one feels HH = I and returns to |0⟩. The Zs sit on qubits 0 and 2, so the register reads out the hidden string directly — all n bits from a single query."
+}
+```
 
 ## Grover's search: amplitude amplification
 
@@ -104,8 +163,54 @@ to stop is part of the algorithm.
 {"id":"algo-grover-rotation","prompt":"Geometrically, what does one Grover iteration do, and what happens if you run too many iterations?","answer":"It composes two reflections (oracle then diffusion) into a small rotation of the state toward the marked item. Success probability peaks near `(pi/4)*sqrt(N)` iterations; past that it over-rotates and falls back, so knowing when to stop matters."}
 ```
 
+One subtlety before you drive it: the instant after the oracle fires, a computational-basis
+measurement shows *nothing* — every probability is exactly what it was, only a sign has moved. The
+mark is physically real all the same. Convince yourself on the one-qubit version, where the
+oracle's flip turns $\ket{+}$ into $\ket{-}$:
+
+```qexpect
+{
+  "id": "algo-expect-mark-x-1",
+  "prompt": "The circuit H 0, Z 0 prepares the phase-marked state |−⟩ = (|0⟩ − |1⟩)/√2, which a computational-basis measurement cannot tell apart from |+⟩. What is the expectation value ⟨X⟩ for this state?",
+  "program": "H 0\nZ 0",
+  "observable": "X 0",
+  "hint": "In the Z basis |+⟩ and |−⟩ both read 50/50 — the mark is invisible there. But |−⟩ is an eigenstate of X with eigenvalue −1 (X|−⟩ = −|−⟩), so ⟨X⟩ = −1 exactly. A phase mark only becomes visible to an interference-type (X-basis) measurement — which is precisely the job the diffusion step does."
+}
+```
+
 ```qgrover
 {"qubits": 3, "marked": 5}
+```
+
+The oracle inside that widget has one job: flip the sign of a single basis state and touch nothing
+else. On two qubits that is a controlled-$Z$ — and without a native CZ you build one by sandwiching
+a CNOT's target between Hadamards. The attempt below lost half its sandwich: the CNOT shuffles
+basis states, the uniform superposition shrugs, and the mark never lands. Repair it:
+
+```qdebug
+{
+  "id": "algo-debug-oracle-cz-1",
+  "prompt": "This circuit was meant to prepare the state Grover's oracle hands to the diffusion step: the uniform two-qubit superposition with the sign of |11⟩ flipped, (|00⟩ + |01⟩ + |10⟩ − |11⟩)/2. Instead it outputs the plain uniform superposition — no mark anywhere. Fix the circuit.",
+  "qubits": 2,
+  "broken": { "program": "H 0\nH 1\nCNOT 0 1" },
+  "target": { "program": "H 0\nCNOT 0 1\nH 1" },
+  "allowedGates": ["H", "CNOT"],
+  "hint": "A bare CNOT only permutes basis states, and the uniform superposition is unchanged by any permutation — that is why the mark never lands. Sandwich the CNOT's target between Hadamards to turn its bit-flip into a sign-flip (that builds a controlled-Z). Then simplify: the sandwich's first H cancels the prep H on that wire (H·H = I), leaving H 0, CNOT 0 1, H 1."
+}
+```
+
+Now chain the whole iteration: prep, the (repaired) oracle, then the diffusion — the same sandwich
+trick wrapped in $X$s and $H$s so it flips the sign of $\ket{00}$ instead. On $N=4$, one Grover
+iteration is not approximately right, it is *exact*. Call the outcome before you run it:
+
+```qpredict
+{
+  "id": "algo-grover-one-iter-1",
+  "prompt": "One complete Grover iteration on two qubits with |11⟩ marked: prep (H on both), the phase oracle (CZ as an H–CNOT–H sandwich), then the diffusion operator. What is the most likely measurement outcome?",
+  "program": "H 0\nH 1\nH 1\nCNOT 0 1\nH 1\nH 0\nH 1\nX 0\nX 1\nH 1\nCNOT 0 1\nH 1\nX 0\nX 1\nH 0\nH 1",
+  "mode": "top-outcome",
+  "hint": "Track amplitudes: after the oracle, |11⟩ sits at −1/2 while the other three sit at +1/2, so the mean is +1/4. Diffusion reflects every amplitude about that mean, sending the three unmarked states to 0 and the marked one to magnitude 1. With N = 4, a single iteration hits the marked state with probability 1 — the one case where Grover is exact, not just amplified."
+}
 ```
 
 ## The Quantum Fourier Transform: interference reads periodicity
@@ -158,6 +263,21 @@ triangle and watch the expected cut move across the landscape toward the optimum
 
 ```qoptim
 {"edges": [[0, 1], [1, 2], [2, 0]]}
+```
+
+Everything that outer loop "sees" comes from measurements of the cost observable. For an edge
+$(i,j)$ the term is $\langle Z_i Z_j\rangle$: $+1$ when the endpoints agree (edge uncut), $-1$
+when they disagree (edge cut). Take a state that anti-correlates two vertices perfectly and read
+off its edge term:
+
+```qexpect
+{
+  "id": "algo-expect-cut-zz-1",
+  "prompt": "The circuit H 0, CNOT 0 1, X 1 prepares (|01⟩ + |10⟩)/√2 — two vertices forced into opposite partitions on every shot. What is the expectation value ⟨Z₀Z₁⟩?",
+  "program": "H 0\nCNOT 0 1\nX 1",
+  "observable": "Z 0 Z 1",
+  "hint": "The state has support only on |01⟩ and |10⟩, and on both of those the qubits disagree, so every shot returns the Z₀Z₁ eigenvalue −1 and the expectation is exactly −1. In MaxCut terms, ⟨ZᵢZⱼ⟩ = −1 means the edge is cut — QAOA's cost observable is a sum of precisely these edge terms."
+}
 ```
 
 Common optimizers for that outer loop: **COBYLA** and **Nelder–Mead** (gradient-free, robust to

@@ -36,6 +36,12 @@ A Hybrid Job changes the economics. Braket spins up a managed classical instance
 
 **Use a Hybrid Job when** your algorithm iterates between quantum and classical steps (VQE, QAOA, QML training), needs priority access, benefits from parametric compilation, runs longer than a few minutes, or wants checkpointing and metrics. **Use standalone tasks when** you are running a single circuit, exploring interactively, or genuinely do not need priority.
 
+Before moving on, price one turn of that prepare-measure-update loop yourself. An iteration is never one task: a parameter-shift gradient needs two circuit evaluations per parameter, and every evaluation is its own task with its own flat fee.
+
+```qcostestimate
+{"id":"hybrid-cost-iteration-1","prompt":"Your VQE ansatz has 4 parameters and the optimizer takes one gradient step on IonQ. The parameter-shift rule needs 2 evaluations per parameter, so the iteration submits 4 × 2 = 8 tasks at 100 shots each. What does that single iteration cost in quantum charges?","provider":"IonQ","shots":100,"tasks":8,"hint":"Each of the 8 shift evaluations is its own task: a flat {perTask} fee plus {shots} shots × {perShot}. The trap is pricing an iteration like one submission — one gradient step alone is 2 × P tasks, each paying both fees."}
+```
+
 ## Inside a Hybrid Job
 
 When you call `AwsQuantumJob.create(...)`, Braket assembles a self-contained execution environment around your code:
@@ -60,6 +66,12 @@ You provide an algorithm script (the entry point), optional hyperparameters, and
 
 ```qcard
 {"id":"hybrid-priority-job-token","prompt":"Inside a Hybrid Job, what gives the quantum tasks priority access to the device instead of waiting in the general queue?","answer":"A job token. While your script runs, every quantum task it submits carries a job token that marks it as priority work, so iterations jump to the front of the device queue and complete one after another."}
+```
+
+Strip away the container and the token, though, and each priority task is still just a circuit and a shot count. Read one mid-training task the way the device's sampler does — it reports which basis states show up, never the signs on their amplitudes:
+
+```qpredict
+{"id":"hybrid-predict-priority-task-1","prompt":"Mid-training, your job submits this priority task: RY(1.5708) on qubit 0, CNOT 0→1, then RY(3.1416) on qubit 1. Which basis states can the task's shots ever return?","program":"RY 0 1.5708\nCNOT 0 1\nRY 1 3.1416","mode":"nonzero-states","hint":"The first two gates build the Bell pair (|00⟩ + |11⟩)/√2. The final RY(π) on qubit 1 sends |0⟩ → |1⟩ and |1⟩ → −|0⟩, turning perfect agreement into perfect disagreement: (|01⟩ − |10⟩)/√2. The minus sign is invisible to the sampler — only 01 and 10 appear."}
 ```
 
 ## Compile Once, Run a Thousand Times
@@ -100,6 +112,12 @@ RY 1 theta
 CNOT 0 1
 ```
 
+Now freeze that loop at a single optimizer step. The compiled program never sees a slider — each run receives one concrete angle as input. Build the ansatz state the job would prepare when the optimizer hands it $\theta = \pi/3$:
+
+```qchallenge
+{"id":"hybrid-challenge-frozen-ansatz-1","prompt":"Prepare the one-layer ansatz state at the fixed angle θ = 1.0472 (π/3): the rotation layer RY(1.0472) on both qubits, then the entangler from qubit 0 to qubit 1 — exactly what the compiled circuit runs when the optimizer supplies this θ.","qubits":2,"target":{"program":"RY 0 1.0472\nRY 1 1.0472\nCNOT 0 1"},"starter":"RY 0 1.0472\nRY 1 1.0472","allowedGates":["RY","CNOT"],"hint":"The starter is only the rotation layer — a plain product state. The missing entangler is CNOT 0 1: it reroutes the |10⟩ amplitude to |11⟩ and vice versa, tying qubit 1's flip to qubit 0. Without it no setting of the angles ever entangles anything."}
+```
+
 ## The Job Lifecycle and Its Metrics
 
 A job moves through a fixed lifecycle: you **create** it, it **queues** for the device, the container spins up and **runs** your algorithm with priority quantum access, your script **logs metrics** as it goes, optionally **checkpoints** its state, and on **completion** writes results to S3 for **retrieval**. Three channels carry information in and out. *Hyperparameters* are key-value knobs (learning rate, layer count, shot count) passed into your script. *Input data* — training sets, molecular geometries, graphs — is staged from S3 into the container at startup. *Output artifacts and metrics* flow back out: files to S3, and numeric metrics streamed live to CloudWatch via `log_metric`.
@@ -108,6 +126,12 @@ That metrics stream is what turns a job from a black box into something you can 
 
 ```qmetrics
 { "R": 0.74, "threshold": -1.13 }
+```
+
+Every point on that curve is one number computed from one quantum state: an expectation value — the scalar the whole job exists to minimize. Compute the value `log_metric` would stream for a concrete step:
+
+```qexpect
+{"id":"hybrid-expect-logged-energy-1","prompt":"At this iteration the ansatz is RY(1.0472) on a single qubit and the cost your script logs each step is the expectation ⟨Z₀⟩. What value lands in CloudWatch for this iteration?","program":"RY 0 1.0472","observable":"Z 0","hint":"The metric is the long-run average ⟨Z₀⟩ = cos θ, not one shot's ±1 eigenvalue. RY(θ) leaves cos²(θ/2) of the probability on |0⟩, so ⟨Z₀⟩ = cos²(θ/2) − sin²(θ/2) = cos(1.0472) = 0.50. Picking 0.75 means you computed P(+1) = (1 + ⟨Z⟩)/2 instead of the expectation itself."}
 ```
 
 ## Surviving Failure
@@ -122,6 +146,18 @@ A job that runs for hours is a job that can fail for hours' worth of reasons: a 
 { "iterations": 40, "failAt": 27, "every": 10 }
 ```
 
+The salvage arithmetic above has a dollar sign attached: every iteration between the last checkpoint and the failure is quantum work you pay for twice. Price the redo bill for a concrete failure:
+
+```qcostestimate
+{"id":"hybrid-cost-restart-tax-1","prompt":"A QAOA job on IonQ checkpoints every 10 iterations and dies at iteration 45, so the restart resumes from the iteration-40 checkpoint and re-runs 5 iterations. Each iteration is one parameter-shift gradient over the 2 angles (γ, β) — 2 × 2 = 4 tasks — at 250 shots per task. What do the 5 redone iterations cost in quantum charges?","provider":"IonQ","shots":250,"tasks":20,"hint":"The redo bill is 5 iterations × 4 tasks = 20 tasks, each paying the flat {perTask} fee plus {shots} shots × {perShot}. Pricing only the shots forgets that every shift evaluation is its own task; pricing only the task fees forgets the shots. A tighter checkpoint interval is exactly what shrinks this number."}
+```
+
+Restarting is not just about money — it is about correctness. The checkpoint stores the optimizer's $\theta$, and a resumed run should rebuild the ansatz at that angle and reproduce the very cost value the failed run last logged. Verify the physics of a resumption by hand:
+
+```qexpect
+{"id":"hybrid-expect-restart-readout-1","prompt":"A failure kills the job right after the checkpoint saves θ = 2.0944. On restart, load_job_checkpoint() restores θ and the script rebuilds the ansatz — RY(2.0944) on qubit 0, then CNOT 0→1 — and re-measures the cost ⟨Z₀⟩ before continuing. What value should the resumed run reproduce?","program":"RY 0 2.0944\nCNOT 0 1","observable":"Z 0","hint":"A correct resumption reproduces the saved state's cost: ⟨Z₀⟩ = cos θ = cos(2.0944) = −0.50. The CNOT entangles qubit 1 with qubit 0 but leaves qubit 0's own populations — and therefore ⟨Z₀⟩ — untouched. 0.25 is P(+1) for this state, not the expectation the metric stream logs."}
+```
+
 ## Bringing Your Own Environment
 
 The default Braket container ships the SDK and common packages, but real workloads have real dependencies — the chemistry stack from module 05 (OpenFermion, PySCF), a heavy ML framework, a pinned library version. For those you build a **custom container**: start from the Braket base image, add your dependencies, build and push to Amazon ECR, and pass the image URI to `AwsQuantumJob.create(image_uri=...)`. The `containers/` directory here has a working `Dockerfile` and a `build_and_push.sh` to do exactly that. Tasks submitted from inside your container still carry the job token, so they keep priority access and job-rate billing rather than being charged as standalone tasks.
@@ -134,7 +170,19 @@ A Hybrid Job's cost is two streams added together: the classical **instance** (b
 - `ml.m5.xlarge` — more memory for larger problems
 - `ml.p3.2xlarge` / `ml.g4dn.xlarge` — GPU, for classical ML components or CUDA-Q simulation
 
+The quantum stream deserves the same head math at job scale. You priced one iteration back at the start of this module; a full job is that arithmetic times the iteration count:
+
+```qcostestimate
+{"id":"hybrid-cost-full-job-1","prompt":"Price the whole quantum stream of a job: a 4-parameter VQE runs 50 parameter-shift iterations on IQM — 4 × 2 = 8 tasks per iteration, 400 tasks in total, at 100 shots each. Ignoring the classical instance, what do the quantum charges come to?","provider":"IQM","shots":100,"tasks":400,"hint":"A job buys priority, not a discount: all 400 tasks pay the standalone rates — {perTask} each, plus {shots} shots × {perShot}. $120.00 is the task fees alone and $58.00 is the shots alone; the job pays both streams."}
+```
+
 Control spend with `max_runtime` to cap duration, a `stopping_condition` to halt on a metric (the threshold you saw in the dashboard above), CloudWatch alarms, and AWS Budget alerts (templates in `infra/`). As a rule of thumb the instance runs **\$0.10–\$3.85/hour** depending on type, and the quantum charges are unchanged from standalone — so the cheapest job is the one that converges fast and shuts down promptly.
+
+One more lever sits outside the job entirely: which QPU you point it at. The flat task fee is the same everywhere, so re-targeting a job moves only the per-shot stream — sometimes dramatically:
+
+```qcostestimate
+{"id":"hybrid-cost-provider-swap-1","prompt":"The same 300-task job — 25 iterations of a 6-parameter ansatz, 200 shots per task — costs $690.00 on IonQ. Before submission you re-target it at IQM: same circuits, same shots, only the per-shot rate changes. What does the IQM run cost?","provider":"IQM","shots":200,"tasks":300,"hint":"The flat task fee is identical on every provider ({perTask} × 300 = $90.00); the entire difference is per-shot: {shots} shots × {perShot} is $0.29 per task on IQM, so the shot stream drops from $600.00 to $87.00. Provider choice moves the shot bill, never the task bill."}
+```
 
 ## PennyLane and CUDA-Q
 
@@ -157,6 +205,18 @@ for step in range(100):
     log_metric(metric_name="cost", value=cost, iteration_number=step)
 
 save_job_result({"optimal_params": params.tolist(), "final_cost": float(cost)})
+```
+
+Somewhere in the middle of that loop, `optimizer.step_and_cost` hands the device an ansatz with a specific $\theta$ and reads back a shot histogram. Play the device's part for one such step:
+
+```qpredict
+{"id":"hybrid-predict-midtraining-sampler-1","prompt":"Mid-training, the optimizer has driven θ to 2.2143 and the job submits the ansatz RY(2.2143) on qubit 0 followed by CNOT 0→1. Which single outcome dominates the shot histogram the task returns?","program":"RY 0 2.2143\nCNOT 0 1","mode":"top-outcome","hint":"RY(2.2143) puts sin²(θ/2) = 0.8 of the probability on qubit 0's |1⟩, and the CNOT drags qubit 1 along to match — so 80% of shots read 11, 20% read 00, and 01/10 never appear. Past θ = π/2 the heavy branch is |1⟩, not |0⟩."}
+```
+
+And when the loop misbehaves, the metrics stream is your first witness. A cost curve that sits perfectly flat while the optimizer sweeps $\theta$ usually means the ansatz is wired so the parameter never reaches the qubit being measured. Diagnose exactly that:
+
+```qdebug
+{"id":"hybrid-debug-reversed-entangler-1","prompt":"This job's cost is ⟨Z₁⟩, but the CloudWatch curve is flat at +1.00 for every iteration — the optimizer moves θ and nothing happens. The entangler is wired backwards: its control sits on the qubit that never leaves |0⟩, so it never fires and qubit 1 never feels θ. Fix the layer so the rotation reaches the readout qubit.","qubits":2,"broken":{"program":"RY 0 1.0472\nCNOT 1 0"},"target":{"program":"RY 0 1.0472\nCNOT 0 1"},"allowedGates":["RY","CNOT"],"hint":"CNOT 1 0 makes qubit 1 the control — and qubit 1 is still |0⟩, so the gate is an identity and the cost is stuck at ⟨Z₁⟩ = +1 for every θ: a plateau the optimizer cannot descend. Point the control at the rotated qubit instead: CNOT 0 1 makes ⟨Z₁⟩ track cos θ, which is trainable."}
 ```
 
 For circuits beyond ~20 qubits on a simulator, **CUDA-Q** provides GPU-accelerated state-vector and tensor-network simulation — dramatically faster on a `ml.p3.2xlarge` or `ml.g4dn.xlarge`, and available as a Braket-provided container image.

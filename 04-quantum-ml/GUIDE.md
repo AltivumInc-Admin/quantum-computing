@@ -43,8 +43,37 @@ and IQP and see how differently each lays the data out:
 {"x": [0.6, 0.9], "encoding": "angle"}
 ```
 
+The distribution view of that same encoding is worth committing to memory — angle-encode the
+point exactly as the widget just did, and predict what a measurement most often returns:
+
+```qpredict
+{
+  "id": "qml-predict-encoded-point-1",
+  "prompt": "Angle encoding loads the point x = (0.6, 0.9) as RY(0.6) on qubit 0 and RY(0.9) on qubit 1. Which basis state is the most likely measurement outcome?",
+  "program": "RY 0 0.6\nRY 1 0.9",
+  "mode": "top-outcome",
+  "hint": "RY(x) leaves P(1) = sin²(x/2) — the half-angle is the trap. sin²(0.3) ≈ 0.09 and sin²(0.45) ≈ 0.19, so both qubits stay heavily biased toward |0⟩ and 00 dominates at about 74%. Small features barely leave the north pole — which is exactly why the scale you encode at changes the model."
+}
+```
+
 A subtlety the widget makes visible: over-scaling the features wraps them around the Bloch sphere
 and aliases distinct inputs together. Encoding is a modeling choice, not a formality.
+
+A second subtlety: IQP's feature rotations are all diagonal (RZ and ZZ), so within a single
+H-then-diagonal block they write the data into *phases* while every basis state keeps the
+magnitude the Hadamards gave it. (The widget's full map runs that block twice — the second H
+layer turns the first block's phases into the uneven bars you saw.) Predict which outcomes stay
+live after one block:
+
+```qpredict
+{
+  "id": "qml-predict-iqp-phases-1",
+  "prompt": "An IQP-style feature map encodes x = (0.6, 0.9): H on both qubits, then RZ(0.6) on qubit 0, RZ(0.9) on qubit 1, and a ZZ interaction carrying the product feature 0.54. Which basis states have nonzero probability?",
+  "program": "H 0\nH 1\nRZ 0 0.6\nRZ 1 0.9\nCNOT 0 1\nRZ 1 0.54\nCNOT 0 1",
+  "mode": "nonzero-states",
+  "hint": "After the Hadamards every remaining operation is a phase write (the CNOT–RZ–CNOT sandwich is a ZZ rotation): phases change, magnitudes never do. All four states stay at 25% — after a single block the features are invisible to a plain Z-basis readout. IQP maps earn their keep through interference: extra H layers (the widget map runs two blocks) or a kernel inverse map turn those phases into measurable differences."
+}
+```
 
 ## The model: a PQC is a neural network
 
@@ -58,6 +87,20 @@ analogy to a neural net is exact —
 
 ```qcard
 {"id":"qml-pqc-is-neural-net-1","prompt":"In the PQC-as-neural-network analogy, what plays the role of the hidden layers?","answer":"The parameterized (trainable) unitary layers `U(theta)`. Data encoding maps to the input layer and the measurement (e.g. expectation of `Z_0`) maps to the output."}
+```
+
+The first two layers of that network are something you can already build by hand — an input
+layer that encodes one feature, and a single entangling gate that shares it with a second qubit:
+
+```qchallenge
+{
+  "id": "qml-challenge-encoded-point-1",
+  "prompt": "Build the network's first two layers: encode the feature x = 2π/3 with RY(2.0944) on qubit 0, then entangle it onto qubit 1 with a CNOT (control 0). Target: 0.5|00⟩ + 0.866|11⟩.",
+  "qubits": 2,
+  "target": { "program": "RY 0 2.0944\nCNOT 0 1" },
+  "allowedGates": ["RY", "CNOT"],
+  "hint": "RY(θ) puts cos(θ/2) on |0⟩ and sin(θ/2) on |1⟩, so the full feature 2.0944 goes into the gate — the trap is entering the half-angle 1.0472 yourself, which lands the wrong amplitudes. Then a CNOT with control 0 copies the excitation: the |1⟩ branch flips qubit 1, stacking the weight on |00⟩ and |11⟩."
+}
 ```
 
 The design knobs are the same kind you know: depth (number of layers), the entangling pattern
@@ -87,6 +130,19 @@ $\langle Z_0\rangle$ output reads before the reveal:
 }
 ```
 
+And the readout is a design knob in its own right. Keep the state exactly as it is and swap the
+measured observable — the model reports a *different feature* of the same encoding:
+
+```qexpect
+{
+  "id": "qml-expect-x-readout-1",
+  "prompt": "Same encoded state — RY(π/3) applied to |0⟩ — but the model now reads out ⟨X₀⟩ instead of ⟨Z₀⟩. What is the value?",
+  "program": "RY 0 1.0472",
+  "observable": "X 0",
+  "hint": "After RY(θ) the Bloch vector is (sin θ, 0, cos θ): the Z readout gave cos(π/3) = 0.5, but X reads the horizontal component sin(π/3) = √3/2 ≈ 0.87. Same state, different observable, different output — the measurement basis is a modeling decision, not an afterthought."
+}
+```
+
 ## Two ways to learn
 
 With data encoded and gradients in hand, there are two routes to a trained model.
@@ -113,6 +169,20 @@ boundary while the loss falls:
 {"dataset": "blobs"}
 ```
 
+The boundary you just watched is drawn by a sign: the trainer labels a point $+1$ or $-1$
+according to the sign of $\langle Z_0\rangle$. Push an encoded feature past the equator and the
+readout flips negative — verify the $-1$ side by hand:
+
+```qexpect
+{
+  "id": "qml-expect-negative-class-1",
+  "prompt": "A variational classifier labels points by the sign of ⟨Z₀⟩. An input is encoded as RY(2π/3) applied to |0⟩. What does ⟨Z₀⟩ read for this point?",
+  "program": "RY 0 2.0944",
+  "observable": "Z 0",
+  "hint": "⟨Z⟩ = cos θ, and 2π/3 sits past the equator: cos(2π/3) = −1/2. Probabilities can never go negative but expectations can — the 0.75 trap is P(measuring 1) = (1 − ⟨Z⟩)/2, not the readout. A signed output is exactly what lets one number act as a class label."
+}
+```
+
 That trainer reads its prediction from $\langle Z_0\rangle$ on an *entangled* two-qubit state —
 and entanglement does something counterintuitive to a single-qubit readout. Commit before you
 reveal:
@@ -127,6 +197,19 @@ reveal:
 }
 ```
 
+That hint's fix is worth doing, not just reading: move the readout to the joint observable and
+the signal the single qubit lost comes back —
+
+```qexpect
+{
+  "id": "qml-expect-zz-correlation-1",
+  "prompt": "Same Bell-state model (H then CNOT), but the readout is now the correlation feature ⟨Z₀Z₁⟩. What is its value?",
+  "program": "H 0\nCNOT 0 1",
+  "observable": "Z 0 Z 1",
+  "hint": "Each qubit alone is a coin flip (⟨Z₀⟩ = ⟨Z₁⟩ = 0), but the pair always agrees: the only outcomes are 00 and 11, and both are +1 eigenstates of Z₀Z₁, so the expectation is exactly +1. Entanglement moves the signal from the marginals into the correlations — a joint observable is how a model reads it back out."
+}
+```
+
 ## QNN architectures
 
 The ansatz $U(\theta)$ is where the art lives. Common families:
@@ -136,6 +219,23 @@ The ansatz $U(\theta)$ is where the art lives. Common families:
 - **Strongly-entangling** — all-to-all entanglement between layers. More expressive, deeper.
 - **Convolutional QNN** — local gates in a translationally-invariant pattern, à la CNNs; good for
   data with spatial structure.
+
+Wiring these entangling patterns is where real circuits quietly go wrong. The layer below was
+meant to run a linear CNOT chain, but as wired no two-qubit gate ever touches the readout qubit —
+it stays in a product state, and nothing a later layer does can route the other features into
+$\langle Z_0\rangle$:
+
+```qdebug
+{
+  "id": "qml-debug-decoupled-readout-1",
+  "prompt": "This hardware-efficient layer should entangle the register as a linear chain — CNOT(0,1) then CNOT(1,2) — so readout qubit 0 becomes entangled with the rest and later layers can steer every feature into ⟨Z₀⟩. As wired, the entanglers only touch qubits 1 and 2, leaving qubit 0 decoupled. Rewire the entangling layer.",
+  "qubits": 3,
+  "broken": { "program": "RY 0 0.7854\nRY 1 0.7854\nRY 2 0.7854\nCNOT 1 2\nCNOT 2 1" },
+  "target": { "program": "RY 0 0.7854\nRY 1 0.7854\nRY 2 0.7854\nCNOT 0 1\nCNOT 1 2" },
+  "allowedGates": ["RY", "CNOT"],
+  "hint": "Trace which qubits each CNOT touches: neither one involves qubit 0, so the readout qubit stays in a product state and ⟨Z₀⟩ is pinned at cos(π/4) ≈ 0.71 no matter what the other features do. Keep the three RY rotations and rebuild the chain from the readout qubit down: CNOT(0,1), then CNOT(1,2)."
+}
+```
 
 More expressive is not automatically better — which the next section makes painfully clear.
 
@@ -192,6 +292,21 @@ def circuit(params, x):
 PennyLane handles automatic differentiation (parameter-shift on QPU, backprop on simulator), an
 optimizer library (gradient descent, Adam, QNG), one-line device switching (local → SV1 → QPU), and
 integration with PyTorch, TensorFlow, and JAX.
+
+On the local simulator those gradients are free; a managed simulator (SV1) meters them by the minute. On a QPU, every parameter-shift evaluation is a billed
+task — and a training loop multiplies that meter fast. Price a single gradient step before you
+believe hardware training is casual:
+
+```qcostestimate
+{
+  "id": "qml-cost-param-shift-step-1",
+  "prompt": "One parameter-shift gradient step for a 6-parameter model runs 2 evaluations per parameter — 12 tasks — at 100 shots each on IonQ. What does the single step cost?",
+  "provider": "IonQ",
+  "shots": 100,
+  "tasks": 12,
+  "hint": "Every one of the 12 evaluations is its own task: a flat {perTask} plus {shots} × {perShot} in shots. The trap is pricing one task and forgetting that parameter-shift pays the meter 2 × P times per step — and a training run repeats this every iteration."
+}
+```
 
 ## Does it actually help? — and a check
 

@@ -49,7 +49,12 @@ export const FENCE_TOKENS: Record<RepKind, string> = {
 
 // Every key a contribution may carry, per kind. NOTE: challenge deliberately
 // excludes `tier` (see the header) even though the fence parser accepts it.
-const ALLOWED_KEYS: Record<RepKind, readonly string[]> = {
+/**
+ * Exported for the GUIDE-fence corpus test (guide-reps.test.ts): lesson fences
+ * carry the same spec keys minus the `kind` envelope, so one list serves both
+ * gates and cannot drift.
+ */
+export const ALLOWED_KEYS: Record<RepKind, readonly string[]> = {
   challenge: ["kind", "id", "prompt", "qubits", "target", "starter", "allowedGates", "hint"],
   predict: ["kind", "id", "prompt", "program", "mode", "hint"],
   blochtarget: ["kind", "id", "prompt", "target", "toleranceDeg", "blind", "hint"],

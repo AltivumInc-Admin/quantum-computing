@@ -138,6 +138,20 @@ spaced review:
 }
 ```
 
+Not every rotation is a clean half-turn — stop partway and you *bias* the coin instead of
+flipping it. $R_y(2.2143)$ drags the arrow past the equator, most but not all of the way to
+$\ket{1}$. Commit to a prediction before the simulator answers:
+
+```qpredict
+{
+  "id": "found-ry-bias-1",
+  "prompt": "RY(2.2143) tips the arrow past the equator. Which single measurement outcome is most likely for this state? Commit your prediction, then reveal.",
+  "program": "RY 0 2.2143",
+  "mode": "top-outcome",
+  "hint": "P(1) = sin²(θ/2), and here θ ≈ 2.2143 > π/2 — the arrow has crossed the equator, so sin²(θ/2) = 0.8 and the amplitude majority sits on |1⟩. The trap is thinking anything short of a full half-turn still favors |0⟩; the equator is the tipping point, not the pole."
+}
+```
+
 With the geometry in hand, the named gates are just memorable special rotations. Here is the
 reference card — but you now know what each one *does* before you read its matrix:
 
@@ -180,6 +194,22 @@ makes of $\ket{+}$: the same 50/50 split, the opposite relative phase. Place it:
   "toleranceDeg": 5,
   "blind": true,
   "hint": "A minus sign on |1⟩ is a relative phase of e^{iπ}: the equator again (θ = π/2), but half-way around — φ = π."
+}
+```
+
+There is a sharper way to say "basis matters" than pictures: numbers. Score every shot $+1$
+for outcome 0 and $-1$ for outcome 1, and the long-run average of that score is the
+**expectation value** $\langle Z_0 \rangle$ — for $\ket{+}$, the 50/50 split averages to
+exactly 0. But an expectation is always *of some observable*, and nothing forces you to ask
+about Z. Ask $\ket{+}$ about the X axis instead:
+
+```qexpect
+{
+  "id": "found-expect-basis-1",
+  "prompt": "For |+⟩ = H|0⟩, the Z-basis histogram splits 50/50, so ⟨Z₀⟩ = 0. What is the expectation value ⟨X₀⟩ for the same state?",
+  "program": "H 0",
+  "observable": "X 0",
+  "hint": "|+⟩ points along the +X axis of the Bloch sphere — it is the +1 eigenstate of X, so an X measurement returns +1 on every shot and the long-run average is exactly +1. The trap: a state that looks maximally random in the Z basis can be perfectly certain in another basis. The observable you ask about matters as much as the state."
 }
 ```
 
@@ -351,6 +381,40 @@ unentangled. Find the bug and fix it:
   "target": { "program": "H 0\nCNOT 0 1" },
   "allowedGates": ["H", "X", "CNOT"],
   "hint": "Trace it: H puts qubit 0 into superposition — but which qubit does this CNOT use as the control? A control that is always |0⟩ never fires."
+}
+```
+
+The Bell basis has four members, and so far you have built exactly one. $\ket{\Psi^+} =
+\tfrac{1}{\sqrt{2}}(\ket{01} + \ket{10})$ is the odd-parity cousin — the same perfect
+correlation, except the qubits always *disagree*. It is one gate away from the recipe you
+know: break the symmetry first, then entangle:
+
+```qchallenge
+{
+  "id": "found-bell-psi-plus-1",
+  "prompt": "Prepare the Bell state |Ψ+⟩ = (|01⟩ + |10⟩)/√2 — an entangled pair whose measurement outcomes always disagree.",
+  "qubits": 2,
+  "target": { "program": "X 1\nH 0\nCNOT 0 1" },
+  "starter": "H 0",
+  "allowedGates": ["H", "X", "CNOT"],
+  "hint": "Flip qubit 1 with X so the pair starts at |01⟩, then run the Bell recipe: H on qubit 0, CNOT(0,1). The CNOT now ties qubit 0 to a target that began opposite, so the weight lands on |01⟩ and |10⟩. Appending the X after the CNOT works just as well."
+}
+```
+
+Scaling the pattern up to the GHZ state introduces a failure mode the two-qubit case never
+shows: the recipe is a *chain*, and a chain has an order. Each CNOT hands the entanglement
+one qubit further down the line — so a link that fires before its control is live hands off
+nothing. Diagnose this one from its symptom:
+
+```qdebug
+{
+  "id": "found-debug-ghz-order-1",
+  "prompt": "This circuit was meant to prepare the GHZ state (|000⟩ + |111⟩)/√2, but measuring it yields only 000 and 110 — qubit 2 never leaves 0. Fix the circuit.",
+  "qubits": 3,
+  "broken": { "program": "H 0\nCNOT 1 2\nCNOT 0 1" },
+  "target": { "program": "H 0\nCNOT 0 1\nCNOT 1 2" },
+  "allowedGates": ["H", "CNOT"],
+  "hint": "Read the gates in time order: when CNOT(1,2) runs, qubit 1 is still |0⟩ — a control that is always 0 never fires, so nothing reaches qubit 2. Entangle qubit 1 first, then let it pass the flip along; the chain must run down the line in order."
 }
 ```
 
