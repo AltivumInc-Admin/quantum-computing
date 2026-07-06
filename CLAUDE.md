@@ -42,7 +42,7 @@ Amazon Braket charges per-task and per-shot on real hardware. Always:
 Approximate costs (as of 2025):
 - Local simulator: Free
 - SV1/DM1/TN1: $0.075-$0.275 per minute
-- IonQ: $0.01 per shot + $0.30 per task
+- IonQ: $0.08 per shot + $0.30 per task (Forte; Aria retired)
 - IQM: $0.00145 per shot + $0.30 per task
 - QuEra: $0.01 per shot + $0.30 per task
 

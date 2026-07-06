@@ -268,7 +268,7 @@ every QPU bills like IonQ is how estimates go wrong:
   "provider": "IQM",
   "shots": 1000,
   "tasks": 1,
-  "hint": "The per-shot rate is provider-specific: IQM charges {perShot} per shot, roughly a seventh of IonQ's rate. One flat {perTask} for the task, plus {shots} × {perShot}."
+  "hint": "The per-shot rate is provider-specific: IQM charges {perShot} per shot, roughly 1/55 of IonQ's Forte rate. One flat {perTask} for the task, plus {shots} × {perShot}."
 }
 ```
 

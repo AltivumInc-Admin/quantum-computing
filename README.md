@@ -337,7 +337,7 @@ quantum-computing/
 | `get_device(name="local")` | `LocalSimulator` for `"local"`, else `AwsDevice`; raises on unknown names |
 | `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results; **fails fast** if a non-local device is missing `s3_location` (so CI needs no credentials) |
 | `list_available_devices()` | Live device list with status (needs AWS) |
-| `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_aria, ionq_forte, iqm_garnet, quera_aquila` |
+| `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_forte, iqm_garnet, quera_aquila` |
 </details>
 
 <details>
