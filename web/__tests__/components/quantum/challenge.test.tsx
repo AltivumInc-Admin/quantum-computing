@@ -130,6 +130,25 @@ describe("Challenge", () => {
     expect(content.source).toBe(bell);
   });
 
+  it("captures the shortest solution and shows it, keeping the personal best", () => {
+    const { unmount } = render(<Challenge source={bell} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "H 0\nCNOT 0 1" } });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(screen.getByText(/solved in 2 gates — your best/i)).toBeInTheDocument();
+    const key = Object.keys(localStorage).find((k) => k.startsWith("qc:measure:challenge:"));
+    expect(JSON.parse(localStorage.getItem(key!)!)).toEqual({ gates: 2 });
+    unmount();
+
+    // A later, longer solve does not raise the recorded best and says so.
+    render(<Challenge source={bell} />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "H 0\nCNOT 0 1\nX 1\nX 1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(screen.getByText(/solved in 4 gates — your best is 2/i)).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(key!)!)).toEqual({ gates: 2 }); // unchanged
+  });
+
   // persist={false} is the /e2e-fixtures contract: grading works end to end,
   // but NOTHING touches localStorage — no card content on mount, no FSRS card
   // or solved flag on solve. Without it, anyone visiting or solving a fixture

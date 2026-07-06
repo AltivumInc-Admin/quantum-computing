@@ -6,6 +6,7 @@ import { gradeTs, type GradeResult } from "@/lib/challenge-grade";
 import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { challengeCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
 import { nextIntervalDays } from "@/lib/review-schedule";
+import { recordBest, getBest } from "@/lib/skill-measure";
 
 /**
  * A self-checking coding challenge rendered from a ```qchallenge fenced block.
@@ -97,6 +98,10 @@ export function Challenge({
   const cardId = challengeCardId(spec?.id ?? "invalid");
   const wrongAttempts = useRef(0);
   const [scheduled, setScheduled] = useState<number | null>(null);
+  // The shortest-solution skill measurement: this solve's gate count + the
+  // personal best (which this solve may have just lowered).
+  const [solvedGates, setSolvedGates] = useState<number | null>(null);
+  const [bestGates, setBestGates] = useState<number | null>(null);
 
   // Cache the challenge's content — including the raw fence source — so /review
   // can re-mount this exact challenge as a LIVE re-attempt (falling back to a
@@ -133,6 +138,11 @@ export function Challenge({
         const graded = gradeCardIfDue(cardId, ratingForSolve(wrongAttempts.current));
         if (graded) setScheduled(nextIntervalDays(graded));
         markSolved();
+        if (r.metrics) {
+          recordBest(cardId, { gates: r.metrics.gates });
+          setSolvedGates(r.metrics.gates);
+          setBestGates(getBest(cardId)?.gates ?? r.metrics.gates);
+        }
       }
       wrongAttempts.current = 0;
     }
@@ -236,6 +246,15 @@ export function Challenge({
               : scheduled <= 1
                 ? "Added to your review — back tomorrow."
                 : `Added to your review — back in ${scheduled} days.`}
+          </p>
+        )}
+
+        {solvedGates !== null && (
+          <p className="mt-2 text-xs text-caption tabular-nums animate-fade-up">
+            Solved in {solvedGates} gate{solvedGates === 1 ? "" : "s"}
+            {bestGates !== null && bestGates < solvedGates
+              ? ` — your best is ${bestGates}. Can you match it?`
+              : " — your best."}
           </p>
         )}
       </div>

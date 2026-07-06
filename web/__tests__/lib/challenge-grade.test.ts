@@ -21,6 +21,21 @@ describe("gradeTs", () => {
     expect(gradeTs("H 1\nCNOT 1 0", bell).status).toBe("solved");
   });
 
+  it("reports the solve's circuit size as a skill measurement (gates + qubits)", () => {
+    expect(gradeTs("H 0\nCNOT 0 1", bell).metrics).toEqual({ gates: 2, qubits: 2 });
+    // A redundant construction that still reaches the state measures MORE gates.
+    const four = gradeTs("H 0\nCNOT 0 1\nX 1\nX 1", parseChallenge(
+      JSON.stringify({ prompt: "p", qubits: 2, target: { program: "H 0\nCNOT 0 1" } }),
+    ).spec!);
+    expect(four.status).toBe("solved");
+    expect(four.metrics!.gates).toBe(4);
+  });
+
+  it("does not attach metrics to a wrong or errored attempt", () => {
+    expect(gradeTs("H 0", bell).metrics).toBeUndefined();
+    expect(gradeTs("Z 0", bell).metrics).toBeUndefined(); // disallowed gate → error
+  });
+
   it("rejects a circuit that reaches a different state", () => {
     const r = gradeTs("H 0", bell);
     expect(r.status).toBe("wrong");

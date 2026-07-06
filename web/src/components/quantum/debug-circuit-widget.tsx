@@ -7,6 +7,7 @@ import type { GradeResult } from "@/lib/challenge-grade";
 import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { debugCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
 import { nextIntervalDays } from "@/lib/review-schedule";
+import { recordBest, getBest } from "@/lib/skill-measure";
 
 /**
  * A debug-a-circuit Rep rendered from a ```qdebug fenced block. The editor is
@@ -105,6 +106,8 @@ export function DebugCircuitWidget({
     }
   };
   const [scheduled, setScheduled] = useState<number | null>(null);
+  const [solvedGates, setSolvedGates] = useState<number | null>(null);
+  const [bestGates, setBestGates] = useState<number | null>(null);
 
   // Cache content — including the raw fence source — so /review can re-mount
   // this exact Rep as a LIVE re-attempt. The recall answer reuses the
@@ -166,6 +169,11 @@ export function DebugCircuitWidget({
       }
       setSessionSolved(true);
       markSolved();
+      if (r.metrics) {
+        recordBest(cardId, { gates: r.metrics.gates });
+        setSolvedGates(r.metrics.gates);
+        setBestGates(getBest(cardId)?.gates ?? r.metrics.gates);
+      }
     }
   };
 
@@ -177,6 +185,7 @@ export function DebugCircuitWidget({
     setCode(spec.broken.program);
     setResult(null);
     setResetNote(true);
+    setSolvedGates(null); // clear the "Fixed in N gates" caption with the verdict
   };
 
   const showSolved =
@@ -224,6 +233,7 @@ export function DebugCircuitWidget({
             // the learner types (mirrors bloch-target's stale-readout clear).
             if (result !== null) setResult(null);
             if (resetNote) setResetNote(false);
+            if (solvedGates !== null) setSolvedGates(null); // clear the stale "Fixed in N" caption
           }}
           rows={Math.max(3, code.split("\n").length + 1)}
           className="mt-3 w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:text-gray-200 focus-ring resize-y"
@@ -276,6 +286,14 @@ export function DebugCircuitWidget({
                 : scheduled <= 1
                   ? "Added to your review — back tomorrow."
                   : `Added to your review — back in ${scheduled} days.`}
+            </p>
+          )}
+          {solvedGates !== null && (
+            <p className="mt-2 text-xs text-caption tabular-nums animate-fade-up">
+              Fixed in {solvedGates} gate{solvedGates === 1 ? "" : "s"}
+              {bestGates !== null && bestGates < solvedGates
+                ? ` — your best is ${bestGates}. Can you match it?`
+                : " — your best."}
             </p>
           )}
         </div>
