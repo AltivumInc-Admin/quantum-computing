@@ -23,9 +23,27 @@ export function epochDay(nowMs) {
   return Math.floor(nowMs / MS_PER_DAY);
 }
 
+// Ported verbatim from review-schedule.isValidCardState: the app requires ALL
+// six fields finite and DISCARDS a card that fails (treated as not-due in both
+// the badge and the review queue). Counting on dueEpochDay alone would email
+// "1 card due" for a partially-corrupt card the learner then can't find in
+// /review — a real divergence from the surface the email points at.
+function isValidCardState(c) {
+  return (
+    c !== null &&
+    typeof c === "object" &&
+    Number.isFinite(c.reps) &&
+    Number.isFinite(c.lapses) &&
+    Number.isFinite(c.stability) &&
+    Number.isFinite(c.difficulty) &&
+    Number.isFinite(c.dueEpochDay) &&
+    Number.isFinite(c.lastEpochDay)
+  );
+}
+
 /**
- * Count the learner's due cards from a synced qc:* snapshot. Ported from
- * review-schedule.isDue: a card is due when dueEpochDay <= today. Each
+ * Count the learner's due cards from a synced qc:* snapshot. Mirrors the app's
+ * real due path (isValidCardState then isDue: dueEpochDay <= today). Each
  * qc:card:* value is the CardState JSON string as stored in localStorage.
  */
 export function dueCount(data, todayEpochDay) {
@@ -35,7 +53,7 @@ export function dueCount(data, todayEpochDay) {
     if (!key.startsWith("qc:card:")) continue;
     try {
       const card = JSON.parse(value);
-      if (Number.isFinite(card?.dueEpochDay) && card.dueEpochDay <= todayEpochDay) due++;
+      if (isValidCardState(card) && card.dueEpochDay <= todayEpochDay) due++;
     } catch {
       /* a corrupt card simply isn't counted */
     }
@@ -53,8 +71,10 @@ export function unsubToken(sub, secret) {
 
 /** Verify a token and return its `sub`, or null if it is malformed/forged. */
 export function verifyUnsubToken(token, secret) {
-  if (typeof token !== "string" || !token.includes(".")) return null;
-  const [subPart, macPart] = token.split(".");
+  if (typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null; // canonical form only — reject extra segments
+  const [subPart, macPart] = parts;
   let sub;
   try {
     sub = Buffer.from(subPart, "base64url").toString("utf8");

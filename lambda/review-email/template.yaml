@@ -69,12 +69,19 @@ Resources:
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref ProgressTableName
-        - DynamoDBCrudPolicy:
+        # The sender only SCANS prefs (to skip opt-outs); it never writes them —
+        # read-only so a compromised sender can't silently re-subscribe anyone.
+        - DynamoDBReadPolicy:
             TableName: !Ref EmailPrefsTable
+        # Scoped to sending ONLY from the configured address, so this function
+        # cannot send as any other identity verified in the (live) account.
         - Statement:
             - Effect: Allow
               Action: ses:SendEmail
               Resource: "*"
+              Condition:
+                StringEquals:
+                  ses:FromAddress: !Ref FromAddress
       Events:
         Daily:
           Type: Schedule
@@ -84,6 +91,7 @@ Resources:
 
   SenderLogGroup:
     Type: AWS::Logs::LogGroup
+    DependsOn: SenderFunction
     Properties:
       LogGroupName: !Sub /aws/lambda/${SenderFunction}
       RetentionInDays: 30
@@ -110,6 +118,7 @@ Resources:
 
   UnsubscribeLogGroup:
     Type: AWS::Logs::LogGroup
+    DependsOn: UnsubscribeFunction
     Properties:
       LogGroupName: !Sub /aws/lambda/${UnsubscribeFunction}
       RetentionInDays: 30

@@ -34,6 +34,18 @@ test("dueCount counts only qc:card entries whose dueEpochDay has arrived", () =>
   assert.equal(dueCount(null, today), 0);
 });
 
+test("dueCount rejects a partially-corrupt card the app would discard (all six fields required)", () => {
+  const today = 20600;
+  // Finite dueEpochDay <= today but a non-finite stability — the app's
+  // isValidCardState fails this, so /review shows nothing. The email must agree.
+  const partial = JSON.stringify({
+    reps: 2, lapses: 0, stability: null, difficulty: 5, dueEpochDay: today - 1, lastEpochDay: today - 7,
+  });
+  assert.equal(dueCount({ "qc:card:x": partial }, today), 0);
+  // A fully-valid due card still counts.
+  assert.equal(dueCount({ "qc:card:y": card(today - 1) }, today), 1);
+});
+
 test("epochDay matches the review-schedule edge convention", () => {
   assert.equal(epochDay(20600 * 86_400_000 + 123), 20600);
 });
@@ -48,6 +60,9 @@ test("unsubscribe token round-trips and rejects forgery/tamper", () => {
   // A forged sub with a recomputed-looking mac must fail (attacker lacks secret).
   const forged = `${Buffer.from("other-sub").toString("base64url")}.${Buffer.from("nope").toString("base64url")}`;
   assert.equal(verifyUnsubToken(forged, SECRET), null);
+  // Only the canonical two-segment form is accepted — no trailing junk.
+  assert.equal(verifyUnsubToken(token + ".junk", SECRET), null);
+  assert.equal(verifyUnsubToken(token + ".", SECRET), null);
 });
 
 test("renderEmail pluralizes and includes the review + unsubscribe URLs", () => {
