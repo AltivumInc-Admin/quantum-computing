@@ -28,6 +28,12 @@ export function Nav() {
           >
             Runbook
           </Link>
+          <Link
+            href="/credentials"
+            className="hidden md:inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+          >
+            Credentials
+          </Link>
           <ReviewNavBadge />
           <AccountMenu />
           <ThemeToggle />
