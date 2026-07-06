@@ -73,6 +73,20 @@ an exact derivative from two circuit evaluations — no finite differences.
 {"id":"qml-parameter-shift-rule-1","prompt":"How many circuit evaluations does the parameter-shift rule need to get the exact gradient of a gate angle?","answer":"Two: it evaluates `f(theta + pi/2)` and `f(theta - pi/2)`, takes half their difference, and gets an exact derivative with no finite-difference error."}
 ```
 
+The output layer of this "network" is nothing more than an expectation value — so read one
+yourself. The model below has encoded an input as a concrete rotation; commit to what its
+$\langle Z_0\rangle$ output reads before the reveal:
+
+```qexpect
+{
+  "id": "qml-expect-encoded-readout-1",
+  "prompt": "A one-qubit model encodes an input as RY(π/3) applied to |0⟩. The model's output is the expectation ⟨Z₀⟩. What is its value?",
+  "program": "RY 0 1.0472",
+  "observable": "Z 0",
+  "hint": "RY(θ) tilts the Bloch vector θ away from +Z, so ⟨Z⟩ = cos θ — and cos(π/3) = 1/2. The 0.75 trap is P(measuring +1) = (1 + ⟨Z⟩)/2, not the expectation itself."
+}
+```
+
 ## Two ways to learn
 
 With data encoded and gradients in hand, there are two routes to a trained model.
@@ -97,6 +111,20 @@ boundary while the loss falls:
 
 ```qvqc
 {"dataset": "blobs"}
+```
+
+That trainer reads its prediction from $\langle Z_0\rangle$ on an *entangled* two-qubit state —
+and entanglement does something counterintuitive to a single-qubit readout. Commit before you
+reveal:
+
+```qexpect
+{
+  "id": "qml-expect-entangled-readout-1",
+  "prompt": "An entangling layer prepares the Bell state (H then CNOT). Your model takes its output from the single-qubit expectation ⟨Z₀⟩. What is that value?",
+  "program": "H 0\nCNOT 0 1",
+  "observable": "Z 0",
+  "hint": "Alone, an entangled qubit is a coin flip: the Bell state's single-qubit marginal is maximally mixed, so ⟨Z₀⟩ = 0. The correlation lives in joint readouts like ⟨Z₀Z₁⟩ — a readout design lesson: entangle too hard right before measuring one qubit and your model outputs noise."
+}
 ```
 
 ## QNN architectures

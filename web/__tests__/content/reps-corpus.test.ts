@@ -27,8 +27,8 @@ it("content/reps contains only README.md and lowercase .json Reps", () => {
 
 /**
  * Every id authored in a lesson GUIDE. The GUIDEs only use `"id":` inside
- * widget fence specs (qcard/qchallenge/qpredict/qblochtarget/qcostestimate/
- * qdebug JSON bodies), so a plain scan is a faithful extraction.
+ * widget fence specs (qcard + the graded Rep kinds registered in
+ * rep-schema.ts FENCE_TOKENS), so a plain scan is a faithful extraction.
  */
 function guideIds(): Map<string, string> {
   const ids = new Map<string, string>(); // id -> source file

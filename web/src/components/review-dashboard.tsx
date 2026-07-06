@@ -69,6 +69,10 @@ const DebugLive = dynamic(() => import("@/components/quantum/debug-circuit-widge
   ssr: false,
   loading: liveSkeleton,
 });
+const ExpectLive = dynamic(() => import("@/components/quantum/expectation-widget").then((m) => ({ default: m.ExpectationWidget })), {
+  ssr: false,
+  loading: liveSkeleton,
+});
 
 type SourceWidget = ComponentType<{ source: string }>;
 
@@ -91,6 +95,9 @@ const LIVE_WIDGETS: Record<CardKind, SourceWidget> = {
   debug: function DebugReview({ source }) {
     return <DebugLive source={source} surface="review" />;
   },
+  expect: function ExpectReview({ source }) {
+    return <ExpectLive source={source} surface="review" />;
+  },
 };
 
 const KIND_LABELS: Record<CardKind, string> = {
@@ -99,6 +106,7 @@ const KIND_LABELS: Record<CardKind, string> = {
   bloch: "Bloch target",
   cost: "Cost estimate",
   debug: "Fix the circuit",
+  expect: "Expectation value",
 };
 
 interface RosterEntry {

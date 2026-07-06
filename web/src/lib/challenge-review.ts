@@ -89,3 +89,13 @@ export function costCardId(id: string): string {
 export function debugCardId(id: string): string {
   return `debug:${id}`;
 }
+
+/**
+ * Review-card id for an expectation-value Rep, namespaced under `expect:`.
+ * Like a prediction, committing to a value is one irreversible shot — once
+ * the reveal shows the single-shot story a retry is trivially correct — so it
+ * rates through ratingForPrediction (correct "good", miss an "again" lapse).
+ */
+export function expectCardId(id: string): string {
+  return `expect:${id}`;
+}

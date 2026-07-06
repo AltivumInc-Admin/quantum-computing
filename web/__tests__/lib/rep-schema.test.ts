@@ -37,6 +37,13 @@ const reps: Record<string, object> = {
     broken: { program: "H 0\nCNOT 1 0" },
     target: { program: "H 0\nCNOT 0 1" },
   },
+  expect: {
+    kind: "expect",
+    id: "community-t-6",
+    prompt: "What is the expectation of Z on |+>?",
+    program: "H 0",
+    observable: "Z 0",
+  },
 };
 
 describe("validateRep", () => {
@@ -155,5 +162,14 @@ describe("validateRep", () => {
         JSON.stringify({ ...reps.debug, broken: { program: "H 0", programm: "H 0" } })
       ).error
     ).toMatch(/broken\.programm/);
+  });
+
+  it("rejects ungradeable expectation specs through expectationTruth", () => {
+    expect(
+      validateRep(JSON.stringify({ ...reps.expect, program: "RY 0 theta" })).error
+    ).toMatch(/concrete/);
+    expect(
+      validateRep(JSON.stringify({ ...reps.expect, observable: "Z 0 X 0" })).error
+    ).toMatch(/appears twice/);
   });
 });
