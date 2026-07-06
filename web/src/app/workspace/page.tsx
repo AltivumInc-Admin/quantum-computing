@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getSections } from "@/lib/sections";
@@ -67,6 +68,30 @@ export default function WorkspacePage() {
           </>
         )}
       </div>
+
+      <Link
+        href="/runbook"
+        className="mt-4 flex items-center justify-between rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) px-6 py-4 shadow-(--shadow-resting) interactive focus-ring group"
+      >
+        <span>
+          <span className="block text-sm font-medium text-gray-900 dark:text-white">
+            Open your Runbook
+          </span>
+          <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+            Mastery, weekly streak, and your activity graph.
+          </span>
+        </span>
+        <svg
+          className="h-5 w-5 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
 
       <button
         type="button"

@@ -20,6 +20,7 @@ import {
   isValidCardState,
 } from "./review-schedule";
 import { PROGRESS_EVENT_NAME, subscribe } from "./progress-store";
+import { recordActivity } from "./activity-log";
 
 const CARD_PREFIX = "qc:card:";
 const cardKey = (id: string) => `${CARD_PREFIX}${id}`;
@@ -103,6 +104,7 @@ export function gradeCard(id: string, rating: Rating, nowMs: number = Date.now()
   const next = schedule(prev, rating, today);
   try {
     localStorage.setItem(cardKey(id), JSON.stringify(next));
+    recordActivity(nowMs); // log the day for the Runbook (rides this dispatch)
     window.dispatchEvent(new Event(PROGRESS_EVENT_NAME));
   } catch {
     /* storage unavailable — grading still works in-session, just isn't remembered */
@@ -134,6 +136,16 @@ export function getAllCardIds(): string[] {
   } catch {
     return [];
   }
+}
+
+/** Every stored CardState (valid records only) — the Runbook's mastery source. */
+export function getAllCardStates(): CardState[] {
+  const states: CardState[] = [];
+  for (const id of getAllCardIds()) {
+    const s = getCardState(id);
+    if (s) states.push(s);
+  }
+  return states;
 }
 
 /** Card ids whose due day has arrived, given the current (or injected) clock. */

@@ -10,9 +10,10 @@ describe("sitemap", () => {
     expect(urls).toContain(`${SITE_URL}`);
     expect(urls).toContain(`${SITE_URL}/glossary`);
     expect(urls).toContain(`${SITE_URL}/review`);
+    expect(urls).toContain(`${SITE_URL}/runbook`);
     for (const s of getSections()) expect(urls).toContain(`${SITE_URL}/learn/${s.slug}`);
     expect(urls).toContain(`${SITE_URL}/glossary/${termSlug(GLOSSARY[0].term)}`);
-    expect(urls).toHaveLength(3 + getSections().length + GLOSSARY.length);
+    expect(urls).toHaveLength(4 + getSections().length + GLOSSARY.length);
     expect(urls.every((u) => u.startsWith("https://"))).toBe(true);
   });
 });

@@ -8,6 +8,7 @@
 // completion is an explicit learner action ("Mark as complete").
 
 import { registerLocalDeletion, clearLocalDeletion } from "./progress-merge";
+import { recordActivity } from "./activity-log";
 
 const PROGRESS_EVENT = "qc-progress";
 
@@ -25,6 +26,7 @@ function writeFlag(key: string, value: boolean): void {
   try {
     if (value) {
       localStorage.setItem(key, "1");
+      recordActivity(); // completing a section is Runbook activity (rides this dispatch)
       clearLocalDeletion(key);
     } else {
       localStorage.removeItem(key);
