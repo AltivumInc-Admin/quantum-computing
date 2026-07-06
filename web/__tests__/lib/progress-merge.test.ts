@@ -43,6 +43,19 @@ describe("mergeSnapshots", () => {
     });
   });
 
+  it("unions Runbook qc:log:day activity flags across devices (no merge rule needed)", () => {
+    // The Runbook models each active day as a set-once "1" flag, so it rides the
+    // exact additive-union path as section flags — device A's days and device B's
+    // days both survive, and a shared day (identical "1") does not conflict.
+    const a = { "qc:log:day:20600": "1", "qc:log:day:20601": "1" };
+    const b = { "qc:log:day:20601": "1", "qc:log:day:20603": "1" };
+    expect(mergeSnapshots(a, b)).toEqual({
+      "qc:log:day:20600": "1",
+      "qc:log:day:20601": "1",
+      "qc:log:day:20603": "1",
+    });
+  });
+
   it("picks the more recently REVIEWED CardState as a unit (lastEpochDay)", () => {
     const older = card({ lastEpochDay: 20590, reps: 5 });
     const newer = card({ lastEpochDay: 20594, reps: 1, lapses: 1 });
