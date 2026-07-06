@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  quantum-review-email — a scheduled sender that emails a learner ONLY when they
+  have spaced-repetition cards genuinely due, plus a tokenized unsubscribe. Reads
+  the sync stack's progress table (for cards + the persisted email claim) and owns
+  a small prefs table for opt-outs, so the sync PUT never has to preserve them.
+
+Parameters:
+  ProgressTableName:
+    Type: String
+    Default: quantum-workspace-progress
+    Description: The lambda/sync progress table (owned by quantum-workspace-sync).
+  FromAddress:
+    Type: String
+    Description: Verified SES sender, e.g. reviews@altivum.ai (domain must be SES-verified + out of the sandbox).
+  SiteUrl:
+    Type: String
+    Default: https://quantum.altivum.ai
+  UnsubSecret:
+    Type: String
+    NoEcho: true
+    Description: HMAC secret for unsubscribe tokens (a long random string).
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 15 * * ? *)
+    Description: Daily send time (default 15:00 UTC ~ morning in the Americas).
+  MaxConcurrency:
+    Type: Number
+    Default: 1
+    Description: Reserved concurrency — a hard ceiling on the scheduled job.
+
+Resources:
+  # Opt-out state — its own table so the sync full-item PUT can never clobber it.
+  EmailPrefsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: quantum-review-email-prefs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  SenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-review-email-sender
+      Runtime: nodejs22.x
+      Handler: sender.handler
+      CodeUri: ./
+      Timeout: 120
+      MemorySize: 256
+      ReservedConcurrentExecutions: !Ref MaxConcurrency
+      Environment:
+        Variables:
+          PROGRESS_TABLE: !Ref ProgressTableName
+          PREFS_TABLE: !Ref EmailPrefsTable
+          FROM_ADDRESS: !Ref FromAddress
+          SITE_URL: !Ref SiteUrl
+          UNSUB_BASE_URL: !GetAtt UnsubscribeFunctionUrl.FunctionUrl
+          UNSUB_SECRET: !Ref UnsubSecret
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ProgressTableName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailPrefsTable
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: "*"
+      Events:
+        Daily:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref ScheduleExpression
+            Description: Daily review-reminder send.
+
+  SenderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SenderFunction}
+      RetentionInDays: 30
+
+  UnsubscribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-review-email-unsubscribe
+      Runtime: nodejs22.x
+      Handler: unsubscribe.handler
+      CodeUri: ./
+      Timeout: 10
+      MemorySize: 128
+      ReservedConcurrentExecutions: 5
+      Environment:
+        Variables:
+          PREFS_TABLE: !Ref EmailPrefsTable
+          UNSUB_SECRET: !Ref UnsubSecret
+      FunctionUrlConfig:
+        AuthType: NONE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmailPrefsTable
+
+  UnsubscribeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UnsubscribeFunction}
+      RetentionInDays: 30
+
+Outputs:
+  UnsubscribeUrl:
+    Description: The public unsubscribe endpoint (also injected into the sender as UNSUB_BASE_URL).
+    Value: !GetAtt UnsubscribeFunctionUrl.FunctionUrl
+  EmailPrefsTableName:
+    Value: !Ref EmailPrefsTable

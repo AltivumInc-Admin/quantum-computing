@@ -1,0 +1,14 @@
+{
+  "name": "quantum-review-email",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Scheduled SES sender that emails learners only when review cards are due, plus a tokenized unsubscribe.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.699.0",
+    "@aws-sdk/client-sesv2": "^3.699.0"
+  }
+}
