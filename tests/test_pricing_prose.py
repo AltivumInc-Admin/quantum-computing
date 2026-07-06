@@ -136,9 +136,10 @@ def test_corpus_is_nonempty_and_extraction_sees_known_figures():
     """Canary: an extractor regression must not silently pass by matching nothing."""
     assert len(GUIDES) >= 7 and len(NOTEBOOKS) >= 20
     all_hits = [a for _, text in corpus() for a, _ in extract_amounts(text)]
-    # The corpus is known to quote the task fee and the IonQ shot rate many times.
+    # The corpus is known to quote the flat task fee and the IonQ Forte shot
+    # rate many times ($0.01 is now only QuEra's rate, quoted less often).
     assert all_hits.count(0.30) >= 5
-    assert all_hits.count(0.01) >= 4
+    assert all_hits.count(0.08) >= 4
 
 
 def test_extractor_separates_currency_from_latex_math():
