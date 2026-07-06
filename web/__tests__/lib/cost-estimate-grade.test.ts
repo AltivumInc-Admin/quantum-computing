@@ -19,21 +19,21 @@ function spec(overrides: Record<string, unknown> = {}) {
 }
 
 describe("costEstimateTruth", () => {
-  it("computes the GUIDE's worked example: IonQ 2,000 shots, 1 task = $20.30", () => {
+  it("computes the GUIDE's worked example: IonQ 2,000 shots, 1 task = $160.30", () => {
     const { truth } = costEstimateTruth(spec());
-    expect(truth!.correct).toBeCloseTo(20.3, 10);
+    expect(truth!.correct).toBeCloseTo(160.3, 10);
     expect(truth!.taskFee).toBeCloseTo(0.3, 10);
-    expect(truth!.shotFee).toBeCloseTo(20.0, 10);
+    expect(truth!.shotFee).toBeCloseTo(160.0, 10);
   });
 
   it("builds four distinct options containing the misconceptions, with correct flagged", () => {
     const { truth } = costEstimateTruth(spec());
     expect(truth!.options).toHaveLength(4);
-    // forgot-task-fee (20.00), forgot-shots (0.30), fee-per-shot (2000 x 0.31 = 620), correct.
+    // forgot-task-fee (160.00), forgot-shots (0.30), fee-per-shot (2000 x 0.38 = 760), correct.
     expect(new Set(truth!.options.map((v) => fmtUsd(v)))).toEqual(
-      new Set(["$0.30", "$20.00", "$20.30", "$620.00"])
+      new Set(["$0.30", "$160.00", "$160.30", "$760.00"])
     );
-    expect(truth!.options[truth!.correctIndex]).toBeCloseTo(20.3, 2);
+    expect(truth!.options[truth!.correctIndex]).toBeCloseTo(160.3, 2);
   });
 
   it("varies the correct option's position across Rep ids (no structural leak)", () => {
@@ -72,12 +72,12 @@ describe("costEstimateTruth", () => {
 
   it("scales by tasks", () => {
     const { truth } = costEstimateTruth(spec({ tasks: 3 }));
-    expect(truth!.correct).toBeCloseTo(60.9, 10);
+    expect(truth!.correct).toBeCloseTo(480.9, 10); // 3 × (0.30 + 2000 × 0.08)
     expect(truth!.taskFee).toBeCloseTo(0.9, 10);
   });
 
-  it("fails loudly when distractors collide (IonQ at 30 shots: shot fee equals task fee)", () => {
-    const { truth, error } = costEstimateTruth(spec({ shots: 30 }));
+  it("fails loudly when distractors collide (QuEra at 30 shots: shot fee equals task fee)", () => {
+    const { truth, error } = costEstimateTruth(spec({ provider: "QuEra", shots: 30 }));
     expect(truth).toBeUndefined();
     expect(error).toMatch(/collide/);
   });
@@ -102,7 +102,7 @@ describe("costEstimateReviewAnswer", () => {
     const s = spec();
     const { truth } = costEstimateTruth(s);
     const answer = costEstimateReviewAnswer(s, truth!);
-    expect(answer).toContain("$20.30");
+    expect(answer).toContain("$160.30");
     expect(answer).toContain("1 task");
     expect(answer).toContain("2,000");
   });

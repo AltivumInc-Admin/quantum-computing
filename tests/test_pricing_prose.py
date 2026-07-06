@@ -34,19 +34,19 @@ EXTRA = [REPO_ROOT / "README.md", REPO_ROOT / "CLAUDE.md"]
 # Worked examples the prose states; recomputed from PRICING so a repricing
 # invalidates the stale figure in prose (that is the whole point).
 WORKED_EXAMPLES = [
-    estimate_cost("IonQ", shots=100),  # $1.30 — QuEra/Aquila notebook example
-    estimate_cost("IonQ", shots=1000),  # $10.30 — 02-hardware worked example
-    estimate_cost("IonQ", shots=2000),  # $20.30 — the qcostestimate Rep
-    50 * estimate_cost("IonQ", shots=1000),  # $515 — 06 production-patterns job total
+    estimate_cost("QuEra", shots=100),  # $1.30 — 04-quera-analog notebook (QuEra $0.01/shot)
+    estimate_cost("IonQ", shots=1000),  # $80.30 — 02-hardware worked example (Forte $0.08/shot)
+    estimate_cost("IonQ", shots=2000),  # $160.30 — the qcostestimate Rep
+    50 * estimate_cost("IonQ", shots=1000),  # $4,015 — 06 production-patterns job total
     # Rep-corpus hint arithmetic (the qcostestimate Reps' worked sub-totals);
     # each is derived from PRICING so a repricing invalidates the prose.
     4 * PRICING["IonQ"]["per_task"],  # $1.20 — 02-hardware split-run: 4 saved task fees
     400 * PRICING["IQM"]["per_task"],  # $120 — 06 full-job: 400 tasks, fee stream alone
     400 * 100 * PRICING["IQM"]["per_shot"],  # $58 — 06 full-job: shot stream alone
-    300 * estimate_cost("IonQ", shots=200),  # $690 — 06 provider-swap: the IonQ baseline
+    300 * estimate_cost("IonQ", shots=200),  # $4,890 — 06 provider-swap: the IonQ baseline
     300 * PRICING["IQM"]["per_task"],  # $90 — 06 provider-swap: task fees (any provider)
     200 * PRICING["IQM"]["per_shot"],  # $0.29 — 06 provider-swap: per-task IQM shot cost
-    300 * 200 * PRICING["IonQ"]["per_shot"],  # $600 — 06 provider-swap: IonQ shot stream
+    300 * 200 * PRICING["IonQ"]["per_shot"],  # $4,800 — 06 provider-swap: IonQ shot stream
     300 * 200 * PRICING["IQM"]["per_shot"],  # $87 — 06 provider-swap: IQM shot stream
 ]
 
@@ -77,7 +77,9 @@ ALLOWLIST = {
 }
 
 # An amount followed by k/M or more digits is not a literal price ("$10k/seat").
-AMOUNT = re.compile(r"[§$](\d+(?:\.\d+)?)(?![\dkKmM])")
+# Currency amounts, with optional comma thousands separators ($4,890.00). The
+# negative lookahead still rejects $2^n / $5k / a run of bare digits.
+AMOUNT = re.compile(r"[§$](\d{1,3}(?:,\d{3})*(?:\.\d+)?)(?![\dkKmM])")
 INLINE_MATH = re.compile(r"\$[^$\n]{1,200}\$")
 # A candidate $...$ span containing consecutive words is prose whose opening $
 # is currency and whose closing $ is the NEXT span's opener ("$0.30 per task;
@@ -108,7 +110,8 @@ def extract_amounts(text: str) -> list[tuple[float, str]]:
             if not m.group(0).startswith(marker):
                 continue
             start = max(0, m.start() - 40)
-            hits.append((round(float(m.group(1)), 10), source[start : m.end() + 40]))
+            amount = float(m.group(1).replace(",", ""))  # strip thousands separators
+            hits.append((round(amount, 10), source[start : m.end() + 40]))
 
     # Escaped dollars are currency wherever they appear (even inside math).
     collect(protected, "§")
@@ -133,9 +136,10 @@ def test_corpus_is_nonempty_and_extraction_sees_known_figures():
     """Canary: an extractor regression must not silently pass by matching nothing."""
     assert len(GUIDES) >= 7 and len(NOTEBOOKS) >= 20
     all_hits = [a for _, text in corpus() for a, _ in extract_amounts(text)]
-    # The corpus is known to quote the task fee and the IonQ shot rate many times.
+    # The corpus is known to quote the flat task fee and the IonQ Forte shot
+    # rate many times ($0.01 is now only QuEra's rate, quoted less often).
     assert all_hits.count(0.30) >= 5
-    assert all_hits.count(0.01) >= 4
+    assert all_hits.count(0.08) >= 4
 
 
 def test_extractor_separates_currency_from_latex_math():

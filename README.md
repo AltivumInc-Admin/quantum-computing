@@ -337,7 +337,7 @@ quantum-computing/
 | `get_device(name="local")` | `LocalSimulator` for `"local"`, else `AwsDevice`; raises on unknown names |
 | `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results; **fails fast** if a non-local device is missing `s3_location` (so CI needs no credentials) |
 | `list_available_devices()` | Live device list with status (needs AWS) |
-| `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_aria, ionq_forte, iqm_garnet, quera_aquila` |
+| `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_forte, iqm_garnet, quera_aquila` |
 </details>
 
 <details>
@@ -526,7 +526,7 @@ flowchart TB
 | **Local simulator** (`LocalSimulator`) | **Free** |
 | SV1 / DM1 (managed) | $0.075 / minute |
 | TN1 (tensor-network) | $0.275 / minute |
-| IonQ (Aria 25q · Forte 36q) | $0.30 / task + $0.01 / shot |
+| IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |
 | IQM (Garnet 20q) | $0.30 / task + $0.00145 / shot |
 | QuEra (Aquila 256q) | $0.30 / task + $0.01 / shot |
 | Rigetti | $0.30 / task + $0.00035 / shot |

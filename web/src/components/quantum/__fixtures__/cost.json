@@ -3,7 +3,7 @@
   "pricing": {
     "IonQ": {
       "per_task": 0.3,
-      "per_shot": 0.01
+      "per_shot": 0.08
     },
     "IQM": {
       "per_task": 0.3,
@@ -15,7 +15,7 @@
     },
     "Rigetti": {
       "per_task": 0.3,
-      "per_shot": 0.00035
+      "per_shot": 0.000425
     },
     "SV1": {
       "per_minute": 0.075
@@ -35,25 +35,25 @@
       "provider": "IonQ",
       "shots": 1,
       "minutes": 0.0,
-      "cost": 0.31
+      "cost": 0.38
     },
     {
       "provider": "IonQ",
       "shots": 30,
       "minutes": 0.0,
-      "cost": 0.6
+      "cost": 2.6999999999999997
     },
     {
       "provider": "IonQ",
       "shots": 1000,
       "minutes": 0.0,
-      "cost": 10.3
+      "cost": 80.3
     },
     {
       "provider": "IonQ",
       "shots": 12345,
       "minutes": 0.0,
-      "cost": 123.75
+      "cost": 987.9
     },
     {
       "provider": "IQM",
@@ -107,25 +107,25 @@
       "provider": "Rigetti",
       "shots": 1,
       "minutes": 0.0,
-      "cost": 0.30035
+      "cost": 0.300425
     },
     {
       "provider": "Rigetti",
       "shots": 30,
       "minutes": 0.0,
-      "cost": 0.3105
+      "cost": 0.31275
     },
     {
       "provider": "Rigetti",
       "shots": 1000,
       "minutes": 0.0,
-      "cost": 0.6499999999999999
+      "cost": 0.725
     },
     {
       "provider": "Rigetti",
       "shots": 12345,
       "minutes": 0.0,
-      "cost": 4.62075
+      "cost": 5.546625
     },
     {
       "provider": "SV1",

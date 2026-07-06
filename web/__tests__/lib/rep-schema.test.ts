@@ -136,9 +136,10 @@ describe("validateRep", () => {
     expect(
       validateRep(JSON.stringify({ ...reps.blochtarget, target: { program: "Z 0" } })).error
     ).toMatch(/\|0⟩ start/);
-    expect(validateRep(JSON.stringify({ ...reps.costestimate, shots: 30 })).error).toMatch(
-      /collide/
-    );
+    // QuEra ($0.01/shot) at 30 shots: shot fee ($0.30) collides with the task fee.
+    expect(
+      validateRep(JSON.stringify({ ...reps.costestimate, provider: "QuEra", shots: 30 })).error
+    ).toMatch(/collide/);
     // Debug's own degenerate classes, via the same debugTruth the widget runs:
     expect(
       validateRep(
