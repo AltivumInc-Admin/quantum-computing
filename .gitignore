@@ -61,3 +61,9 @@ web/src/lib/tutor-core.generated.ts
 06-hybrid-jobs/notebooks/results.json
 06-hybrid-jobs/notebooks/qml_job_src/
 lambda/sync/.aws-sam/
+
+# Review-email Lambda: node_modules + build artifacts (npm ci restores them;
+# see lambda/review-email/README.md).
+lambda/review-email/node_modules/
+lambda/review-email/.aws-sam/
+lambda/review-email/package-lock.json

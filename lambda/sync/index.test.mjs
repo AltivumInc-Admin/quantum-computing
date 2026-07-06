@@ -4,11 +4,11 @@ import { createHandlerCore, invalidSnapshotReason, MAX_SNAPSHOT_BYTES } from "./
 
 const TABLE = "test-table";
 
-function makeEvent({ method = "GET", sub = "user-1", body } = {}) {
+function makeEvent({ method = "GET", sub = "user-1", email, body } = {}) {
   return {
     requestContext: {
       http: { method },
-      authorizer: sub ? { jwt: { claims: { sub } } } : undefined,
+      authorizer: sub ? { jwt: { claims: { sub, ...(email ? { email } : {}) } } } : undefined,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   };
@@ -62,6 +62,16 @@ test("PUT stores the snapshot with version baseVersion+1 under a condition", asy
   const put = ddb.calls[0].input;
   assert.equal(put.Item.version.N, "3");
   assert.equal(put.ConditionExpression, "version = :base");
+  assert.equal(put.Item.email, undefined); // no email claim → attribute omitted
+});
+
+test("PUT persists the verified email claim so the review-email sender can reach the user", async () => {
+  const ddb = stubDdb();
+  const core = createHandlerCore({ ddb, tableName: TABLE });
+  await core(
+    makeEvent({ method: "PUT", email: "learner@example.com", body: { baseVersion: 0, data: {} } })
+  );
+  assert.equal(ddb.calls[0].input.Item.email.S, "learner@example.com");
 });
 
 test("first PUT (baseVersion 0) allows a missing item", async () => {

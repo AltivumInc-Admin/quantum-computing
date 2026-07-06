@@ -37,8 +37,14 @@ export function invalidSnapshotReason(data) {
 
 export function createHandlerCore({ ddb, tableName }) {
   return async function core(event) {
-    const sub = event.requestContext?.authorizer?.jwt?.claims?.sub;
+    const claims = event.requestContext?.authorizer?.jwt?.claims;
+    const sub = claims?.sub;
     if (!sub) return json(401, { error: "unauthorized" });
+    // The verified email claim (ID tokens carry it) — persisted so the review-
+    // email sender can reach the learner without a Cognito ListUsers lookup.
+    // A separate email-prefs table owns unsubscribe state, so this full-item
+    // PUT never has to preserve an opt-out flag.
+    const email = typeof claims.email === "string" ? claims.email : undefined;
     const method = event.requestContext?.http?.method;
 
     if (method === "GET") {
@@ -84,6 +90,7 @@ export function createHandlerCore({ ddb, tableName }) {
               version: { N: String(version) },
               data: { S: serialized },
               updatedAt: { N: String(Date.now()) },
+              ...(email ? { email: { S: email } } : {}),
             },
             // First write requires no existing item; later writes must replace
             // exactly the version the client read.
