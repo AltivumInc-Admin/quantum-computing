@@ -61,9 +61,19 @@ least-privilege role (`braket:CreateQuantumTask` scoped to the IQM Garnet device
 `dynamodb` item actions on the two tables, read-only `GetItem` on the sync table, `s3` on
 the results bucket), and the two ledger/tasks tables (Retain + PITR).
 
-**After deploy:** the feature stays dark until PR-3's frontend ships AND
-`NEXT_PUBLIC_QPU_URL` (the stack's `QpuUrl` output) is set in Amplify. Nothing spends a
-cent before then.
+**Edge (WAF) — `edge.yaml`, a SEPARATE `us-east-1` stack.** WAFv2 can't attach to an HTTP
+API directly, so `edge.yaml` fronts it with CloudFront + a CLOUDFRONT-scope WAF (per-IP rate
+limit + the AWS managed common rule set) and injects a secret `x-qpu-edge` header the Lambda
+requires — so the public HTTP API URL can't be hit directly to bypass the WAF. Deploy order:
+
+1. `sam deploy` the main stack (us-east-2) with `EdgeSecret=<a random secret>`.
+2. Deploy `edge.yaml` in `us-east-1` with `ApiDomain=<host of QpuUrl>` and the **same**
+   `EdgeSecret`.
+3. Point `NEXT_PUBLIC_QPU_URL` at the CloudFront `DistributionDomainName` (not the API URL).
+
+**Feature stays dark** until the frontend ships AND `NEXT_PUBLIC_QPU_URL` is set in Amplify.
+Nothing spends a cent before then. `EdgeSecret` empty = the edge check is off (the API works
+without CloudFront), so PR-1..PR-3 deploy and pass tests before the edge exists.
 
 ## Safety notes
 
@@ -74,7 +84,9 @@ cent before then.
   in a server-only row no client can write) — genuine, but not cryptographic sybil-proofing.
   Sizing the caps assumes a determined attacker can still mint the credential per account.
 - The DynamoDB reservation is the true spend ceiling — request-rate limits (reserved
-  concurrency, and PR-2's WAF) only slow abuse, they don't cap spend.
+  concurrency, and the WAF in `edge.yaml`) only slow abuse, they don't cap spend. The WAF is
+  defense-in-depth; the `x-qpu-edge` secret makes it non-bypassable, but the caps hold even
+  if it were bypassed.
 - **AWS Budgets only *alert* — the kill-switch is the hard stop.** A monthly `$150` Braket
   budget publishes to an SNS topic at 80%/100%; the `quantum-qpu-killswitch` Lambda flips the
   ledger `KILL` row to `disabled=true` — the 4th condition in the submit reservation, so every

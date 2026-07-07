@@ -139,6 +139,11 @@ export function createHandlerCore({
   ledgerTable,
   tasksTable,
   resultsBucket,
+  // When set, every request must carry this secret in the x-qpu-edge header —
+  // CloudFront (which fronts the WAF) injects it, so a direct hit on the public
+  // HTTP API URL (bypassing the WAF) is rejected. Unset = check disabled (before
+  // the edge stack is deployed), so the API keeps working env-gated like the rest.
+  edgeSecret,
   now = () => Date.now(),
 }) {
   const credKey = (sub) => ({ pk: { S: `CRED#${sub}` } });
@@ -420,6 +425,10 @@ export function createHandlerCore({
   }
 
   return async function core(event) {
+    // Edge gate: reject anything that didn't come through CloudFront/WAF.
+    if (edgeSecret && event.headers?.["x-qpu-edge"] !== edgeSecret) {
+      return json(403, { error: "forbidden" });
+    }
     const claims = event.requestContext?.authorizer?.jwt?.claims;
     const sub = claims?.sub;
     if (!sub) return json(401, { error: "unauthorized" });

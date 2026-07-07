@@ -337,6 +337,32 @@ test("POST /qpu/credential is idempotent once minted and validates the body", as
   assert.equal(bad.statusCode, 400);
 });
 
+test("the edge gate rejects requests missing the x-qpu-edge secret when configured", async () => {
+  const withEdge = (ddb) =>
+    createHandlerCore({
+      ddb,
+      braket: stubBraket(),
+      ledgerTable: "ledger",
+      tasksTable: "tasks",
+      resultsBucket: "b",
+      edgeSecret: "s3cr3t",
+      now: () => NOW,
+    });
+  const budgetReq = (headers) => ({
+    headers,
+    requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } },
+  });
+
+  // Missing header → 403 (a direct hit on the API URL, bypassing CloudFront/WAF).
+  assert.equal((await withEdge(stubDdb())(budgetReq({}))).statusCode, 403);
+  // Wrong secret → 403.
+  assert.equal((await withEdge(stubDdb())(budgetReq({ "x-qpu-edge": "nope" }))).statusCode, 403);
+  // Correct secret (injected by CloudFront) → passes through to the handler.
+  assert.equal((await withEdge(stubDdb())(budgetReq({ "x-qpu-edge": "s3cr3t" }))).statusCode, 200);
+  // Unset edgeSecret (pre-edge-deploy) → the check is skipped entirely.
+  assert.equal((await core(stubDdb(), stubBraket())(budgetReq({}))).statusCode, 200);
+});
+
 test("no verified sub → 401; unknown route → 405; bad JSON → 400", async () => {
   const c = core(stubDdb(), stubBraket());
   assert.equal((await c({ requestContext: { http: { method: "POST", path: "/qpu/submit" } } })).statusCode, 401);

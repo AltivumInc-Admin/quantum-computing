@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Edge protection for the quantum-qpu-submit HTTP API. WAFv2 cannot attach to an
+  API Gateway HTTP API (v2) directly, so this fronts it with a CloudFront
+  distribution carrying a CLOUDFRONT-scope WAF (per-IP rate limit + the AWS
+  managed common rule set). CloudFront injects a secret x-qpu-edge header that the
+  Lambda requires (template.yaml EdgeSecret), so the public HTTP API URL cannot be
+  hit directly to bypass the WAF. CLOUDFRONT-scope WAF must live in us-east-1, so
+  this is a SEPARATE stack from template.yaml (us-east-2). Deploy with the host of
+  that stack's QpuUrl output as ApiDomain, and the SAME secret as EdgeSecret; then
+  point NEXT_PUBLIC_QPU_URL at this distribution and set template.yaml's EdgeSecret.
+
+Parameters:
+  ApiDomain:
+    Type: String
+    Description: >
+      Host (no scheme, no path) of the us-east-2 HTTP API — the host of the
+      quantum-qpu-submit stack's QpuUrl output, e.g.
+      abcd1234.execute-api.us-east-2.amazonaws.com
+  EdgeSecret:
+    Type: String
+    NoEcho: true
+    Description: The shared secret injected as x-qpu-edge (must match template.yaml EdgeSecret).
+  RateLimitPerMinute:
+    Type: Number
+    Default: 300
+    MinValue: 10
+    Description: Max requests per source IP per 60s before WAF blocks (429).
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues: [PriceClass_100, PriceClass_200, PriceClass_All]
+
+Resources:
+  QpuWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: quantum-qpu-edge
+      Scope: CLOUDFRONT
+      Description: Per-IP rate limit + AWS managed common rules for the QPU submit API.
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Name: PerIpRateLimit
+          Priority: 0
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref RateLimitPerMinute
+              EvaluationWindowSec: 60
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: quantumQpuRateLimit
+        - Name: AwsManagedCommon
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: quantumQpuCommonRules
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: quantumQpuEdgeAcl
+
+  QpuDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: quantum-qpu edge (WAF + injected x-qpu-edge secret)
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: !Ref PriceClass
+        WebACLId: !GetAtt QpuWebAcl.Arn
+        Origins:
+          - Id: QpuHttpApiOrigin
+            DomainName: !Ref ApiDomain
+            # Secret shared with the Lambda: a direct hit on the API URL lacks it
+            # and is rejected, so all real traffic must pass through this WAF.
+            OriginCustomHeaders:
+              - HeaderName: x-qpu-edge
+                HeaderValue: !Ref EdgeSecret
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 30
+        DefaultCacheBehavior:
+          TargetOriginId: QpuHttpApiOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: false
+          # Managed-CachingDisabled: never cache the authenticated dynamic API.
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          # Managed-AllViewerExceptHostHeader: forward Authorization (for the
+          # Cognito authorizer) and content-type, but not Host (CloudFront sets
+          # Host to the origin domain).
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+Outputs:
+  DistributionDomainName:
+    Description: Set https://<this>/ as NEXT_PUBLIC_QPU_URL in Amplify.
+    Value: !GetAtt QpuDistribution.DomainName
+  DistributionId:
+    Value: !Ref QpuDistribution
+  WebAclArn:
+    Value: !GetAtt QpuWebAcl.Arn
