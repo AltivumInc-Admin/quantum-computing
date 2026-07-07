@@ -97,7 +97,13 @@ const json = (statusCode, body) => ({
   body: JSON.stringify(body),
 });
 
-const MAX_QASM_BYTES = 100_000;
+// Kept UNDER the CloudFront/WAF managed SizeRestrictions_BODY limit (8,192 bytes
+// for the whole JSON body — edge.yaml's AWSManagedRulesCommonRuleSet). Capping the
+// qasm at 7,000 leaves headroom for the JSON envelope + escaping, so a request the
+// Lambda accepts is never silently blocked with an opaque WAF 403; an oversized
+// circuit instead gets this clear 400. 7KB of OpenQASM is a large IQM Garnet
+// circuit (hundreds of gate lines) — generous for the v1 use case.
+const MAX_QASM_BYTES = 7_000;
 const IDEMPOTENCY_RE = /^[A-Za-z0-9._-]{8,200}$/;
 
 /** Validate a POST /qpu/submit body. Returns {error} or the parsed request. */
