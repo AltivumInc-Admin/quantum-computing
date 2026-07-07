@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { getSections } from "@/lib/sections";
 import { completedCount } from "@/lib/progress-store";
 import { CredentialsWorkspaceTeaser } from "@/components/credentials-wall";
+import { QpuSubmitPanel } from "@/components/quantum/qpu-submit-panel";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -95,6 +96,8 @@ export default function WorkspacePage() {
       </Link>
 
       <CredentialsWorkspaceTeaser />
+
+      <QpuSubmitPanel />
 
       <button
         type="button"
