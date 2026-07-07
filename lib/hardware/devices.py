@@ -37,12 +37,14 @@ def _aws_device_cls():
 #
 # Two flags govern the Phase-4 server-side QPU-submit path (lambda/qpu):
 #   gate_capable — can run gate-model circuits (QuEra Aquila is analog-only: False).
-#   allowlist    — approved for the real-money per-user QPU budget. v1: IQM Garnet ONLY.
-#                  IonQ Forte is deliberately OFF: its 2500-shot error-mitigation floor is
-#                  NOT modeled in estimate_cost, so allowlisting it would let the spend
-#                  ledger under-charge by ~$200. Simulators are off (per-minute model, not
-#                  the hardware-credit path). Adding a cheaper gate QPU + allowlist=True later
-#                  makes it win cheapest_allowlisted_device automatically — no other change.
+#   allowlist    — approved for the real-money per-user QPU budget (lambda/qpu). v1: IQM
+#                  Garnet ONLY. IonQ Forte is deliberately OFF: its 2500-shot error-mitigation
+#                  floor is NOT modeled in estimate_cost, so allowlisting it would let the spend
+#                  ledger under-charge by ~$200. Simulators are off (per-minute model, not the
+#                  hardware-credit path). Adding a cheaper gate QPU + allowlist=True later makes
+#                  it win cheapest_allowlisted_device automatically — no other change.
+#                  NOTE: the real spend boundary is the ledger's hard caps ($5/user, $15/day),
+#                  not the client-authored progress gate — see lambda/qpu/qpu-core.mjs.
 DEVICES = {
     "sv1": {
         "arn": "arn:aws:braket:::device/quantum-simulator/amazon/sv1",

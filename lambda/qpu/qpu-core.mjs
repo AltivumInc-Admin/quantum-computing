@@ -30,9 +30,15 @@ export const DEVICE_REGION = "eu-north-1";
 export const MAX_SHOTS = 1000; // hard ceiling → $1.75 max per run on IQM Garnet
 export const LIFETIME_CAP_MICROS = 5_000_000; // $5.00 per user, forever
 export const DAILY_CAP_MICROS = 15_000_000; // $15.00/day GLOBAL kill-switch
-// Entitlement: a valid JWT is authentication, not authorization to spend. A user
-// must have a verified email AND have completed the hardware module (the
-// server-verified "Cost-Estimate credential" — proven simulator + cost work).
+// Entitlement is a FRICTION gate, NOT a hard security boundary. A valid JWT is
+// authentication, not authorization to spend; on top of it we require a verified
+// email AND the hardware-module completion flag. But progress in this platform is
+// client-authored (grading runs in the browser; the sync backend is a dumb KV),
+// so a determined user can PUT this flag themselves — it raises the bar past "any
+// verified email", it does not prove work. The REAL spend boundary is the hard
+// caps below (per-user $5 lifetime + $15/day global) plus PR-2's WAF rate limit;
+// they bound abuse even against a forged entitlement. Truly proving curriculum
+// work would require a server-side grader, which does not exist yet.
 export const REQUIRED_SECTION_KEY = "qc:section:02-hardware";
 // IQM Garnet pricing in micro-dollars. Kept in lockstep with lib/utils/cost.py
 // PRICING["IQM"] (per_task 0.30, per_shot 0.00145) — a node --test asserts it.
@@ -243,7 +249,12 @@ export function createHandlerCore({
               Key: { idempotencyKey: { S: idempotencyKey } },
             }),
           );
-          if (existing.Item) return json(200, { duplicate: true, task: taskSummary(existing.Item) });
+          // The idempotency key is a GLOBAL, caller-supplied namespace, so only
+          // return the cached task to its OWNER — never disclose another user's
+          // task metadata (taskArn/hash) to whoever guesses/collides on the key.
+          if (existing.Item && existing.Item.userId?.S === sub) {
+            return json(200, { duplicate: true, task: taskSummary(existing.Item) });
+          }
           return json(409, { error: "idempotency-conflict" });
         }
         if (failed(3)) return json(503, { error: "qpu-disabled" }); // kill-switch tripped
@@ -253,7 +264,11 @@ export function createHandlerCore({
       throw err;
     }
 
-    // --- Reservation held: submit to real hardware, then commit or release.
+    // --- Reservation held. ONLY a CreateQuantumTask failure means no task was
+    // created and the reservation must be refunded. A failure AFTER the task
+    // exists must NEVER refund — the task is real and Braket WILL bill, so a
+    // refund there would defeat both caps (the critical bug this split fixes).
+    let taskArn;
     try {
       const action = JSON.stringify({
         braketSchemaHeader: { name: "braket.ir.openqasm.program", version: "1" },
@@ -269,8 +284,23 @@ export function createHandlerCore({
           outputS3KeyPrefix: `${sub}/${idempotencyKey}`,
         }),
       );
-      const taskArn = res.quantumTaskArn;
-      await ddb.send(
+      taskArn = res.quantumTaskArn;
+    } catch (submitErr) {
+      // No task was created — refund. Do NOT swallow a failed refund: log it so
+      // a burned reservation is visible/alarmable (the durable reconciler that
+      // covers a mid-flight Lambda death lands in PR-4).
+      await releaseReservation(sub, day, cost, idempotencyKey).catch((e) =>
+        console.error("qpu-release-failed", { sub, idempotencyKey, day, cost, err: e?.name }),
+      );
+      return json(502, { error: "braket-submit-failed" });
+    }
+
+    // The task IS created and billable, so the reserved spend is now correct.
+    // Recording status/taskArn is best-effort: a failed write leaves the row
+    // RESERVED (money already correctly committed) for the PR-4 reconciler —
+    // it must NOT refund. Always return the arn so it is never lost.
+    await ddb
+      .send(
         new UpdateItemCommand({
           TableName: tasksTable,
           Key: { idempotencyKey: { S: idempotencyKey } },
@@ -278,14 +308,9 @@ export function createHandlerCore({
           ExpressionAttributeNames: { "#s": "status" },
           ExpressionAttributeValues: { ":s": { S: "SUBMITTED" }, ":arn": { S: taskArn } },
         }),
-      );
-      return json(202, { taskArn, estMicros: cost, circuitHash: hash });
-    } catch (submitErr) {
-      // Compensating release: no task was created, so refund the reservation.
-      // Never let a failed submit permanently burn a learner's budget.
-      await releaseReservation(sub, day, cost, idempotencyKey).catch(() => {});
-      return json(502, { error: "braket-submit-failed" });
-    }
+      )
+      .catch((e) => console.error("qpu-status-write-failed", { idempotencyKey, taskArn, err: e?.name }));
+    return json(202, { taskArn, estMicros: cost, circuitHash: hash });
   }
 
   async function releaseReservation(sub, day, cost, idempotencyKey) {
@@ -312,9 +337,16 @@ export function createHandlerCore({
             Update: {
               TableName: tasksTable,
               Key: { idempotencyKey: { S: idempotencyKey } },
-              UpdateExpression: "SET #s = :s",
+              // Idempotent refund: the whole all-or-none release only fires while
+              // the task is still RESERVED, so a retry (or the PR-4 sweeper)
+              // running after a successful release can't double-decrement.
+              UpdateExpression: "SET #s = :released",
+              ConditionExpression: "attribute_exists(idempotencyKey) AND #s = :reserved",
               ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: { ":s": { S: "RELEASED" } },
+              ExpressionAttributeValues: {
+                ":released": { S: "RELEASED" },
+                ":reserved": { S: "RESERVED" },
+              },
             },
           },
         ],

@@ -15,7 +15,7 @@ Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR
 | Shot ceiling | **1000** → $1.75 max per run |
 | Per-user LIFETIME cap | **$5.00** |
 | Per-day GLOBAL kill-switch | **$15.00/day** (resets 00:00 UTC) |
-| Entitlement | verified email **+** completed the `02-hardware` module (server-verified from the sync snapshot) |
+| Entitlement | verified email **+** completed the `02-hardware` module (a **friction** gate — see the security note) |
 
 ## How it works
 
@@ -65,9 +65,18 @@ cent before then.
 
 ## Safety notes
 
-- The DynamoDB reservation is the **true** spend ceiling — request-rate limits (reserved
+- **The hard caps are the real spend boundary.** The per-user `$5` lifetime cap and the
+  `$15/day` global kill-switch, enforced atomically before every submit, bound abuse even
+  against a forged entitlement. The `02-hardware` completion gate is **friction, not proof**:
+  progress in this platform is client-authored (grading runs in the browser; the sync backend
+  is a dumb KV), so a determined user can set that flag themselves. True proof-of-work would
+  need a server-side grader (not built). Sizing the caps assumes the gate can be bypassed.
+- The DynamoDB reservation is the true spend ceiling — request-rate limits (reserved
   concurrency, and PR-2's WAF) only slow abuse, they don't cap spend.
 - AWS Budgets only *alert*; PR-2 adds a Budgets Action → SNS → `qpu-killswitch` Lambda that
   flips the in-app `KILL` flag (a 4th reservation condition) to hard-block new submissions.
-- A failed/cancelled task can cost less than the reserved estimate — v1 conservatively
-  over-charges (never over-spends); PR-4 reconciles down from Braket task-state-change events.
+- The refund path fires **only** when `CreateQuantumTask` itself fails (a real, billable task
+  is never refunded by a later bookkeeping failure). Refunds are idempotent (guarded on
+  `status = RESERVED`). A mid-flight Lambda death can still leave a charged `RESERVED` row with
+  no `taskArn`; the durable reconciler that recovers those lands in **PR-4** (it also reconciles
+  a failed/cancelled task's actual cost down — v1 conservatively over-charges, never over-spends).

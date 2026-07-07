@@ -33,7 +33,7 @@ const R = (i) => {
 };
 
 // A DynamoDB stub: GetItem routed by TableName, other commands by name; records calls.
-function stubDdb({ progress = ENTITLED, transact, existingTask, ledger, tasks } = {}) {
+function stubDdb({ progress = ENTITLED, transact, existingTask, ledger, tasks, failUpdate } = {}) {
   const calls = [];
   return {
     calls,
@@ -53,7 +53,10 @@ function stubDdb({ progress = ENTITLED, transact, existingTask, ledger, tasks } 
         if (transact instanceof Error) throw transact;
         return {};
       }
-      if (name === "UpdateItemCommand") return {};
+      if (name === "UpdateItemCommand") {
+        if (failUpdate) throw Object.assign(new Error("throttled"), { name: "ThrottlingException" });
+        return {};
+      }
       throw new Error(`unexpected command ${name}`);
     },
   };
@@ -184,6 +187,7 @@ test("a duplicate idempotency key returns the cached task, never a double-charge
   // the existing task, NOT a spurious 402 even if the cap condition also failed.
   const existing = {
     idempotencyKey: { S: "abcd-1234-efgh" },
+    userId: { S: "u1" }, // owned by the caller
     device: { S: DEVICE },
     shots: { N: "1000" },
     estMicros: { N: "1750000" },
@@ -201,7 +205,7 @@ test("a duplicate idempotency key returns the cached task, never a double-charge
   assert.equal(braket.calls.length, 0); // never re-submitted
 });
 
-// ---- compensating release --------------------------------------------------
+// ---- compensating release + the critical "never refund a real task" fix ----
 test("a Braket submit failure releases the reservation and returns 502", async () => {
   const ddb = stubDdb();
   const braket = stubBraket(undefined, Object.assign(new Error("boom"), { name: "ServiceError" }));
@@ -210,9 +214,41 @@ test("a Braket submit failure releases the reservation and returns 502", async (
   // Two TransactWriteItems: the reservation, then the compensating release.
   const transacts = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
   assert.equal(transacts.length, 2);
-  // The release decrements spent by the negative cost.
-  const release = transacts[1].input.TransactItems[0].Update;
-  assert.equal(release.ExpressionAttributeValues[":neg"].N, "-1750000");
+  // The release decrements spent by the negative cost...
+  const release = transacts[1].input.TransactItems;
+  assert.equal(release[0].Update.ExpressionAttributeValues[":neg"].N, "-1750000");
+  // ...and is idempotent — it only fires while the task is still RESERVED.
+  assert.match(release[2].Update.ConditionExpression, /RESERVED|:reserved/);
+  assert.equal(release[2].Update.ExpressionAttributeValues[":reserved"].S, "RESERVED");
+});
+
+test("a task that IS created is NEVER refunded by a later status-write failure", async () => {
+  // The critical bug: CreateQuantumTask succeeds (real, billable task) but the
+  // status/taskArn write throws. The reservation must STAY committed, not refund.
+  const ddb = stubDdb({ failUpdate: true });
+  const braket = stubBraket();
+  const res = await core(ddb, braket)(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 202); // success — a real task exists
+  assert.equal(JSON.parse(res.body).taskArn, "arn:aws:braket:eu-north-1:111:quantum-task/abc");
+  // EXACTLY ONE TransactWriteItems (the reservation) — NO compensating release.
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 1);
+});
+
+test("a duplicate idempotency key owned by ANOTHER user returns 409, never their task", async () => {
+  const theirs = {
+    idempotencyKey: { S: "abcd-1234-efgh" },
+    userId: { S: "someone-else" },
+    status: { S: "SUBMITTED" },
+    taskArn: { S: "arn:aws:braket:eu-north-1:111:quantum-task/theirs" },
+    shots: { N: "1000" },
+    estMicros: { N: "1750000" },
+    createdAt: { N: String(NOW) },
+  };
+  const ddb = stubDdb({ transact: canceled(R(2)), existingTask: theirs });
+  const res = await core(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 409);
+  assert.match(JSON.parse(res.body).error, /conflict/);
+  assert.ok(!res.body.includes("theirs")); // no cross-tenant leak
 });
 
 // ---- budget + dispatch -----------------------------------------------------
