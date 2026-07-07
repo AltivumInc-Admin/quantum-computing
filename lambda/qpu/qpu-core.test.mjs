@@ -120,6 +120,9 @@ test("validateSubmitBody enforces device, shots, qasm, idempotencyKey", () => {
   assert.match(validateSubmitBody({ ...goodBody, shots: 1001 }).error, /shots/);
   assert.match(validateSubmitBody({ ...goodBody, shots: 3.5 }).error, /shots/);
   assert.match(validateSubmitBody({ ...goodBody, qasm: "  " }).error, /qasm/);
+  // Over the 7KB cap (kept under the WAF's 8KB body limit) → a clean 400, never
+  // an opaque WAF 403.
+  assert.match(validateSubmitBody({ ...goodBody, qasm: "h q[0];\n".repeat(1000) }).error, /qasm exceeds/);
   assert.match(validateSubmitBody({ ...goodBody, idempotencyKey: "short" }).error, /idempotencyKey/);
   assert.match(validateSubmitBody({ ...goodBody, idempotencyKey: "bad key!" }).error, /idempotencyKey/);
 });
