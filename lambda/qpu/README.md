@@ -46,41 +46,49 @@ AWS: `cd lambda/qpu && npm ci && npm test` (`node --test`).
 
 ## Deploy (operator-run — prod AWS; not runnable by the assistant)
 
-**Prerequisites**
+**Prerequisites** (all already present on the Altivum prod account):
 
-1. **Braket results bucket** in **eu-north-1** (IQM Garnet's region), named
-   `amazon-braket-eu-north-1-<account>` so the Braket service can write results.
-   *(Verify the exact bucket-policy / Braket service-linked-role requirements against the
-   current Braket docs before first submit.)*
-2. The existing Cognito pool `us-east-2_aRydPmAjj` / client `2sg8nejrf2j8p28j6khjil99ir`
-   (reused as-is, no change).
+1. **Braket results bucket** in **eu-north-1**, named `amazon-braket-eu-north-1-<account>`, so
+   the Braket service-linked role can write results.
+2. The existing Cognito pool `us-east-2_aRydPmAjj` / client `2sg8nejrf2j8p28j6khjil99ir`.
 
-**Ship it** (us-east-2):
+**0. The edge secret (Secrets Manager, multi-region).** The `x-qpu-edge` shared secret is
+resolved from Secrets Manager at deploy time via `{{resolve:secretsmanager:...}}` — it is
+never passed on the command line. Create it once with a replica in the edge region so both
+stacks resolve it by name (the value from `openssl` is never printed):
 
 ```
-cd lambda/qpu
-npm ci
-sam build
-sam deploy --guided --region us-east-2 \
+V=$(openssl rand -hex 32); aws secretsmanager create-secret \
+  --name quantum-qpu-edge-secret --secret-string "$V" \
+  --region us-east-2 --add-replica-regions Region=us-east-1
+```
+
+**1. Main stack** (us-east-2):
+
+```
+cd lambda/qpu && npm ci && sam build
+sam deploy --stack-name quantum-qpu-submit --region us-east-2 \
+  --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides ResultsBucket=amazon-braket-eu-north-1-<account>
 ```
 
-The stack creates the HTTP API (Cognito JWT authorizer), the submit/budget Lambda with a
-least-privilege role (`braket:CreateQuantumTask` scoped to the IQM Garnet device ARN,
-`dynamodb` item actions on the two tables, read-only `GetItem` on the sync table, `s3` on
-the results bucket), and the two ledger/tasks tables (Retain + PITR).
+Creates the HTTP API (Cognito JWT authorizer), the submit/budget + reconcile + kill-switch
+Lambdas (least-privilege), the ledger/tasks tables (Retain + PITR), the SNS/Budget, and
+resolves `EDGE_SECRET` from the secret above.
 
-**Edge (WAF) — `edge.yaml`, a SEPARATE `us-east-1` stack.** WAFv2 can't attach to an HTTP
-API directly, so `edge.yaml` fronts it with CloudFront + a CLOUDFRONT-scope WAF (per-IP rate
-limit + the AWS managed common rule set) and injects a secret `x-qpu-edge` header the Lambda
-requires — so the public HTTP API URL can't be hit directly to bypass the WAF. Deploy order:
+**2. Edge stack** (us-east-1 — CLOUDFRONT-scope WAF must live there). Pass the host of the
+main stack's `QpuUrl` output as `ApiDomain`:
 
-1. `sam deploy` the main stack (us-east-2) with `EdgeSecret=<a random secret>`.
-2. Deploy `edge.yaml` in `us-east-1` with `ApiDomain=<host of QpuUrl>` and the **same**
-   `EdgeSecret`.
-3. Point `NEXT_PUBLIC_QPU_URL` at the CloudFront `DistributionDomainName` (not the API URL).
+```
+sam deploy --template-file edge.yaml --stack-name quantum-qpu-edge --region us-east-1 \
+  --resolve-s3 --parameter-overrides ApiDomain=<host of QpuUrl>
+```
 
-**Feature stays dark** until the frontend ships AND `NEXT_PUBLIC_QPU_URL` is set in Amplify.
+**3. Point the frontend at CloudFront.** Set `NEXT_PUBLIC_QPU_URL` to `https://<edge stack's
+DistributionDomainName>/` (NOT the API URL) in Amplify — merge it into the existing env map
+(`aws amplify update-app --environment-variables` REPLACES the whole map, so read + merge).
+
+**Feature stays dark** until `NEXT_PUBLIC_QPU_URL` is set in Amplify.
 Nothing spends a cent before then. `EdgeSecret` empty = the edge check is off (the API works
 without CloudFront), so PR-1..PR-3 deploy and pass tests before the edge exists.
 
