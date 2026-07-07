@@ -10,7 +10,6 @@ const core = createHandlerCore({
   braket: new BraketClient({ region: DEVICE_REGION }),
   ledgerTable: process.env.LEDGER_TABLE,
   tasksTable: process.env.TASKS_TABLE,
-  progressTable: process.env.PROGRESS_TABLE,
   resultsBucket: process.env.RESULTS_BUCKET,
 });
 

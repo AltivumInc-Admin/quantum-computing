@@ -28,10 +28,6 @@ Parameters:
       S3 bucket for Braket results — MUST exist in eu-north-1 (IQM Garnet's
       region) and be named amazon-braket-* so the Braket service can write to it.
       Pre-provisioned by the operator (see README).
-  ProgressTableName:
-    Type: String
-    Default: quantum-workspace-progress
-    Description: The lambda/sync table — read to verify the earned-credential gate.
   MaxConcurrency:
     Type: Number
     Default: 5
@@ -135,12 +131,11 @@ Resources:
         Variables:
           LEDGER_TABLE: !Ref LedgerTable
           TASKS_TABLE: !Ref TasksTable
-          PROGRESS_TABLE: !Ref ProgressTableName
           RESULTS_BUCKET: !Ref ResultsBucket
       Policies:
-        # The spend ledger + tasks table. TransactWriteItems is authorized via
-        # its constituent item actions (Put/Update/ConditionCheck), not a
-        # dedicated action.
+        # The spend ledger (USER#/DAY#/KILL/CRED# rows) + tasks table.
+        # TransactWriteItems is authorized via its constituent item actions
+        # (Put/Update/ConditionCheck), not a dedicated action.
         - Statement:
             - Effect: Allow
               Action:
@@ -153,11 +148,6 @@ Resources:
                 - !GetAtt LedgerTable.Arn
                 - !GetAtt TasksTable.Arn
                 - !Sub ${TasksTable.Arn}/index/userId-index
-        # Read-only on the sync snapshot — the earned-credential gate.
-        - Statement:
-            - Effect: Allow
-              Action: dynamodb:GetItem
-              Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProgressTableName}
         # Submit ONLY to IQM Garnet, and read back the resulting tasks.
         - Statement:
             - Effect: Allow
@@ -187,6 +177,18 @@ Resources:
             ApiId: !Ref QpuApi
             Method: GET
             Path: /qpu/budget
+        CredentialStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref QpuApi
+            Method: GET
+            Path: /qpu/credential
+        CredentialClaim:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref QpuApi
+            Method: POST
+            Path: /qpu/credential
       Tags:
         Project: quantum
         Feature: qpu-submit
