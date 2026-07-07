@@ -294,6 +294,14 @@ test("correctCents replicates the app's component-wise cent settlement", () => {
   assert.equal(correctCents(100), 45);
 });
 
+test("requiredShotsFor stays in [100,1000] and skips the 204..210 collision band", () => {
+  for (let i = 0; i < 5000; i++) {
+    const s = requiredShotsFor(`user-${i}-${(i * 2654435761) >>> 0}`);
+    assert.ok(s >= 100 && s <= 1000, `out of range: ${s}`);
+    assert.ok(s < 204 || s > 210, `landed in the collision band: ${s}`);
+  }
+});
+
 test("GET /qpu/credential returns the per-user challenge + status", async () => {
   const ddb = stubDdb({ credentialed: false });
   const out = JSON.parse((await core(ddb, stubBraket())(credEvent("GET"))).body);

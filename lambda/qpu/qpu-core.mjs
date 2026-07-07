@@ -73,9 +73,13 @@ function djb2(s) {
 }
 
 /** A per-user, deterministic (stateless) shots count in [100, 1000] — so the
- *  credential is not one fixed lookup; each learner prices a specific run. */
+ *  credential is not one fixed lookup; each learner prices a specific run. Skips
+ *  204..210, where the in-app cost-estimate Rep's distractors collide to the same
+ *  cents (cost-estimate-grade.ts author-rejects), so the client can always render
+ *  a solvable challenge for the server's exact shots. */
 export function requiredShotsFor(sub) {
-  return 100 + (djb2(sub) % 901);
+  const s = 100 + (djb2(sub) % 901);
+  return s >= 204 && s <= 210 ? 211 : s;
 }
 
 /** The correct total cents for an IQM Garnet run, replicating the app's
