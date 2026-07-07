@@ -34,22 +34,79 @@ def _aws_device_cls():
 # Single source of truth for every billable device: its Braket ARN and the cost.py PRICING
 # provider key. The cost gate derives the provider from THIS table, so the device list and
 # its cost provider cannot drift — a billable run can't slip past the cost estimate.
+#
+# Two flags govern the Phase-4 server-side QPU-submit path (lambda/qpu):
+#   gate_capable — can run gate-model circuits (QuEra Aquila is analog-only: False).
+#   allowlist    — approved for the real-money per-user QPU budget. v1: IQM Garnet ONLY.
+#                  IonQ Forte is deliberately OFF: its 2500-shot error-mitigation floor is
+#                  NOT modeled in estimate_cost, so allowlisting it would let the spend
+#                  ledger under-charge by ~$200. Simulators are off (per-minute model, not
+#                  the hardware-credit path). Adding a cheaper gate QPU + allowlist=True later
+#                  makes it win cheapest_allowlisted_device automatically — no other change.
 DEVICES = {
-    "sv1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/sv1", "provider": "SV1"},
-    "dm1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/dm1", "provider": "DM1"},
-    "tn1": {"arn": "arn:aws:braket:::device/quantum-simulator/amazon/tn1", "provider": "TN1"},
+    "sv1": {
+        "arn": "arn:aws:braket:::device/quantum-simulator/amazon/sv1",
+        "provider": "SV1",
+        "gate_capable": True,
+        "allowlist": False,
+    },
+    "dm1": {
+        "arn": "arn:aws:braket:::device/quantum-simulator/amazon/dm1",
+        "provider": "DM1",
+        "gate_capable": True,
+        "allowlist": False,
+    },
+    "tn1": {
+        "arn": "arn:aws:braket:::device/quantum-simulator/amazon/tn1",
+        "provider": "TN1",
+        "gate_capable": True,
+        "allowlist": False,
+    },
     # IonQ Aria is retired; Forte-1 is the live IonQ device (per-shot billed via the
     # "IonQ" provider key in cost.py PRICING, now the current $0.08/shot Forte rate).
-    "ionq_forte": {"arn": "arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1", "provider": "IonQ"},
-    "iqm_garnet": {"arn": "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet", "provider": "IQM"},
+    "ionq_forte": {
+        "arn": "arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1",
+        "provider": "IonQ",
+        "gate_capable": True,
+        "allowlist": False,
+    },
+    "iqm_garnet": {
+        "arn": "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet",
+        "provider": "IQM",
+        "gate_capable": True,
+        "allowlist": True,
+    },
     "quera_aquila": {
         "arn": "arn:aws:braket:us-east-1::device/qpu/quera/Aquila",
         "provider": "QuEra",
+        "gate_capable": False,  # analog Hamiltonian device — cannot run gate circuits
+        "allowlist": False,
     },
 }
 
 # Backwards-compatible view (publicly exported via lib.hardware; used by tests/notebooks).
 DEVICE_ARNS = {name: spec["arn"] for name, spec in DEVICES.items()}
+
+
+def allowlisted_gate_devices() -> list[str]:
+    """Short-names approved for the server-side QPU-submit path — real gate QPUs
+    on the per-user budget allowlist. The lambda/qpu ledger only ever charges for
+    one of these."""
+    return [n for n, s in DEVICES.items() if s.get("allowlist") and s.get("gate_capable")]
+
+
+def cheapest_allowlisted_device(shots: int = 1000) -> str | None:
+    """The cheapest allowlisted gate QPU at ``shots``, derived from cost.py PRICING
+    so the device list and its cost can never drift. Returns ``None`` if the
+    allowlist is empty. v1 has exactly one entry (IQM Garnet), but the derivation
+    keeps the choice honest if a cheaper device is ever allowlisted."""
+    from lib.utils.cost import estimate_cost
+
+    candidates = allowlisted_gate_devices()
+    if not candidates:
+        return None
+    return min(candidates, key=lambda n: estimate_cost(DEVICES[n]["provider"], shots=shots))
+
 
 # Guardrail against an accidental huge (expensive) submission on a billable device.
 MAX_SHOTS = 100_000

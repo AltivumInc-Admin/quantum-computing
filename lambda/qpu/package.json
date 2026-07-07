@@ -1,0 +1,14 @@
+{
+  "name": "quantum-qpu-submit",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Server-side QPU task submission under platform creds, with a per-user spend ledger, atomic hard caps, and a global kill-switch.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-braket": "^3.699.0",
+    "@aws-sdk/client-dynamodb": "^3.699.0"
+  }
+}

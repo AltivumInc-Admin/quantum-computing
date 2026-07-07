@@ -1,0 +1,210 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  quantum-qpu-submit: the server-side, hard-capped path by which a learner spends
+  real money on QPU hardware. Submission runs under this stack's Braket execution
+  role (the browser never holds AWS creds — it presents a Cognito JWT from the
+  existing quantum-workspace pool). A DynamoDB spend ledger enforces a per-user
+  lifetime cap AND a per-day global kill-switch atomically, BEFORE any Braket task
+  is created. Deploy in us-east-2 (the pool's region); IQM Garnet itself is in
+  eu-north-1 (the Lambda targets that region for CreateQuantumTask). PR-1 = core;
+  the WAF/CloudFront edge + Budgets-driven auto-kill land in PR-2.
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Default: us-east-2_aRydPmAjj
+    Description: The existing quantum-workspace Cognito user pool.
+  UserPoolClientId:
+    Type: String
+    Default: 2sg8nejrf2j8p28j6khjil99ir
+    Description: The quantum-workspace-web app client (JWT audience).
+  SiteOrigin:
+    Type: String
+    Default: https://quantum.altivum.ai
+  ResultsBucket:
+    Type: String
+    Description: >
+      S3 bucket for Braket results — MUST exist in eu-north-1 (IQM Garnet's
+      region) and be named amazon-braket-* so the Braket service can write to it.
+      Pre-provisioned by the operator (see README).
+  ProgressTableName:
+    Type: String
+    Default: quantum-workspace-progress
+    Description: The lambda/sync table — read to verify the earned-credential gate.
+  MaxConcurrency:
+    Type: Number
+    Default: 5
+    Description: Reserved concurrency — a hard ceiling on request rate.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+
+Resources:
+  # Spend ledger: USER#<sub> rows (cap/spent), DAY#<date> rows (global daily
+  # counter, TTL-expired), and a single KILL row (the in-app kill-switch).
+  LedgerTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: quantum-qpu-ledger
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - { Key: Project, Value: quantum }
+        - { Key: Feature, Value: qpu-submit }
+        - { Key: CostCategory, Value: qpu }
+
+  # One row per accepted submission: idempotency guard + reconciliation record +
+  # R9 hardware-badge provenance (taskArn, resultS3Uri, circuitHash).
+  TasksTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: quantum-qpu-tasks
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: idempotencyKey
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: N
+      KeySchema:
+        - AttributeName: idempotencyKey
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: userId-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - { Key: Project, Value: quantum }
+        - { Key: Feature, Value: qpu-submit }
+        - { Key: CostCategory, Value: qpu }
+
+  QpuApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref SiteOrigin
+          - http://localhost:3000
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+
+  QpuFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-qpu-submit
+      Runtime: nodejs22.x
+      Handler: index.handler
+      CodeUri: ./
+      MemorySize: 256
+      Timeout: 20
+      ReservedConcurrentExecutions: !Ref MaxConcurrency
+      Environment:
+        Variables:
+          LEDGER_TABLE: !Ref LedgerTable
+          TASKS_TABLE: !Ref TasksTable
+          PROGRESS_TABLE: !Ref ProgressTableName
+          RESULTS_BUCKET: !Ref ResultsBucket
+      Policies:
+        # The spend ledger + tasks table. TransactWriteItems is authorized via
+        # its constituent item actions (Put/Update/ConditionCheck), not a
+        # dedicated action.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:ConditionCheckItem
+                - dynamodb:Query
+              Resource:
+                - !GetAtt LedgerTable.Arn
+                - !GetAtt TasksTable.Arn
+                - !Sub ${TasksTable.Arn}/index/userId-index
+        # Read-only on the sync snapshot — the earned-credential gate.
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProgressTableName}
+        # Submit ONLY to IQM Garnet, and read back the resulting tasks.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - braket:CreateQuantumTask
+                - braket:GetQuantumTask
+              Resource:
+                - arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet
+                - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
+        # Braket writes results here under the caller's identity.
+        - Statement:
+            - Effect: Allow
+              Action: [s3:PutObject, s3:GetBucketLocation, s3:ListBucket]
+              Resource:
+                - !Sub arn:aws:s3:::${ResultsBucket}
+                - !Sub arn:aws:s3:::${ResultsBucket}/*
+      Events:
+        Submit:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref QpuApi
+            Method: POST
+            Path: /qpu/submit
+        Budget:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref QpuApi
+            Method: GET
+            Path: /qpu/budget
+      Tags:
+        Project: quantum
+        Feature: qpu-submit
+        CostCategory: qpu
+
+  QpuLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QpuFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+Outputs:
+  QpuUrl:
+    Description: Set as NEXT_PUBLIC_QPU_URL in the Amplify app environment (PR-3).
+    Value: !Sub https://${QpuApi}.execute-api.${AWS::Region}.amazonaws.com
+  LedgerTableName:
+    Value: !Ref LedgerTable
+  TasksTableName:
+    Value: !Ref TasksTable
