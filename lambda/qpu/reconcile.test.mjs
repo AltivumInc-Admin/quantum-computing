@@ -37,7 +37,7 @@ const stubBraket = (statusByArn) => ({
 });
 
 const core = (ddb, braket) =>
-  createReconcileCore({ ddb, braket, ledgerTable: "ledger", tasksTable: "tasks" });
+  createReconcileCore({ ddb, braket, ledgerTable: "ledger", tasksTable: "tasks", now: () => NOW });
 
 test("a COMPLETED task is recorded (charge kept), guarded on SUBMITTED", async () => {
   const ddb = stubDdb([task()]);
@@ -59,12 +59,33 @@ test("a FAILED task refunds the reservation (USER + DAY), guarded on SUBMITTED",
   assert.equal(tx[2].Update.ConditionExpression, "#s = :submitted"); // idempotent
 });
 
-test("a still-running task is left pending; an ARN-less row is flagged orphaned", async () => {
-  const ddb = stubDdb([task(), task({ idempotencyKey: { S: "k2" }, taskArn: undefined })]);
+test("a still-running task is left pending; a stuck RESERVED row is flagged orphaned", async () => {
+  // A genuine mid-flight-death row: RESERVED, no taskArn (the scan's age-bounded
+  // RESERVED filter surfaces it; it can't be resolved here, so it's logged).
+  const reserved = task({ idempotencyKey: { S: "k2" }, status: { S: "RESERVED" }, taskArn: undefined });
+  const ddb = stubDdb([task(), reserved]);
   const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "QUEUED" }))();
   assert.equal(summary.pending, 1);
   assert.equal(summary.orphaned, 1);
   assert.equal(summary.completed, 0);
+  // The orphaned row is never sent to Braket or written — just surfaced.
+  assert.ok(!ddb.calls.some((c) => c.name === "TransactWriteItemsCommand"));
+});
+
+test("a re-delivered refund is idempotent: a TransactionCanceledException is swallowed", async () => {
+  // The priority double-refund path: a second refund of an already-FAILED row
+  // cancels on the status=SUBMITTED guard; the core must swallow it, not throw.
+  const ddb = {
+    calls: [],
+    async send(cmd) {
+      const name = cmd.constructor.name;
+      this.calls.push({ name });
+      if (name === "ScanCommand") return { Items: [task()], LastEvaluatedKey: undefined };
+      throw Object.assign(new Error("already reconciled"), { name: "TransactionCanceledException" });
+    },
+  };
+  const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }))();
+  assert.equal(summary.failed, 1); // did not throw
 });
 
 test("re-delivery is safe: a ConditionalCheckFailed on markCompleted is swallowed", async () => {

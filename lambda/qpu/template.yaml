@@ -239,13 +239,13 @@ Resources:
           LEDGER_TABLE: !Ref LedgerTable
           TASKS_TABLE: !Ref TasksTable
       Policies:
+        # Scan the tasks table; the refund/mark updates (incl. the TransactWriteItems,
+        # which authorizes per-item as UpdateItem) touch both tables.
         - Statement:
             - Effect: Allow
               Action:
                 - dynamodb:Scan
                 - dynamodb:UpdateItem
-                - dynamodb:GetItem
-                - dynamodb:ConditionCheckItem
               Resource:
                 - !GetAtt LedgerTable.Arn
                 - !GetAtt TasksTable.Arn
