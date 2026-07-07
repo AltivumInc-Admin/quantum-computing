@@ -19,6 +19,15 @@ Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR
 
 ## How it works
 
+- **Reconcile** (`reconcile.mjs`, scheduled every 5 min): scans `SUBMITTED` tasks, calls
+  `GetQuantumTask` on IQM Garnet, and marks each `COMPLETED` (keeps the charge — this is what
+  lights the learner's **hardware credential** from real provenance) or refunds a
+  `FAILED`/`CANCELLED` run. Every write is guarded on `status = SUBMITTED`, so the at-least-once,
+  out-of-order nature of task state can never double-apply. It also sweeps `RESERVED` rows older
+  than 5 minutes (well past the submit Lambda's 20s timeout, so it never races an in-flight
+  submit): a stuck reservation with no `taskArn` — the mid-flight-death case — can't be resolved
+  without the ARN, so it's counted `orphaned` and logged for manual review (its money stays
+  reserved, never lost).
 - **`POST /qpu/submit`** `{ device, shots, qasm, idempotencyKey }` — validates, checks
   the entitlement gate, then runs ONE atomic `TransactWriteItems` that reserves budget
   against the per-user cap, the per-day global cap, an idempotency guard, and a global

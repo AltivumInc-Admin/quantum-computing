@@ -2,6 +2,7 @@ import {
   computeCredentials,
   MASTERY_TIERS,
   CONSISTENCY_TIERS,
+  HARDWARE_TIERS,
   type CredentialInput,
 } from "@/lib/credentials";
 
@@ -12,6 +13,7 @@ const base: CredentialInput = {
   ],
   mastery: 0,
   longestStreakWeeks: 0,
+  hardwareRuns: 0,
 };
 
 describe("computeCredentials", () => {
@@ -57,6 +59,19 @@ describe("computeCredentials", () => {
     const first = computeCredentials({ ...base, mastery: 1 }).find((c) => c.id === "mastery:1")!;
     expect(first.earned).toBe(true);
     expect(first.evidence).toBe("1 skill in proven retention");
+  });
+
+  it("emits hardware tiers, earned by COMPLETED real-hardware runs", () => {
+    const creds = computeCredentials({ ...base, hardwareRuns: 5 });
+    const hardware = creds.filter((c) => c.group === "hardware");
+    expect(hardware).toHaveLength(HARDWARE_TIERS.length);
+    for (const c of hardware) {
+      const threshold = Number(c.id.split(":")[1]);
+      expect(c.earned).toBe(5 >= threshold);
+    }
+    // 5 runs clears the 1 and 5 tiers, not the 20 tier.
+    expect(hardware.filter((c) => c.earned)).toHaveLength(2);
+    expect(hardware.find((c) => c.id === "hardware:1")!.evidence).toMatch(/5 completed runs on IQM Garnet/);
   });
 
   it("locked medals carry their requirement text and no evidence", () => {

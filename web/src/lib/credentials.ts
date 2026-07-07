@@ -13,9 +13,12 @@
  *                  infer real skill?" test the whole platform is built on.
  *   consistency  — tiered by the LONGEST weekly streak (monotonic), so these
  *                  never un-earn once achieved.
+ *   hardware     — tiered by COMPLETED real-hardware runs (IQM Garnet), reconciled
+ *                  from actual Braket task provenance. The one credential a
+ *                  competitor structurally can't copy: you ran on the real device.
  */
 
-export type CredentialGroup = "completion" | "mastery" | "consistency";
+export type CredentialGroup = "completion" | "mastery" | "consistency" | "hardware";
 
 export interface Credential {
   /** Stable id, e.g. "mastery:15" or "completion:01-foundations". */
@@ -35,6 +38,8 @@ export interface CredentialInput {
   mastery: number;
   /** The learner's longest weekly streak ever (see runbook.streak). */
   longestStreakWeeks: number;
+  /** COMPLETED real-hardware runs (from the reconciled QPU task provenance). */
+  hardwareRuns: number;
 }
 
 /** Retention milestones. `label` names the rung on the Newcomer→Practitioner→SME ladder. */
@@ -51,6 +56,13 @@ export const CONSISTENCY_TIERS: { n: number; title: string }[] = [
   { n: 4, title: "Consistent" },
   { n: 12, title: "Committed" },
   { n: 26, title: "Relentless" },
+];
+
+/** Real-hardware-run milestones. */
+export const HARDWARE_TIERS: { n: number; title: string }[] = [
+  { n: 1, title: "Ran on real hardware" },
+  { n: 5, title: "Hardware regular" },
+  { n: 20, title: "Hardware veteran" },
 ];
 
 export function computeCredentials(input: CredentialInput): Credential[] {
@@ -93,6 +105,21 @@ export function computeCredentials(input: CredentialInput): Credential[] {
       requirement: `Practice ${t.n} weeks in a row`,
       earned,
       evidence: earned ? `A ${input.longestStreakWeeks}-week streak` : "",
+    });
+  }
+
+  // Hardware — completed real-hardware runs (from reconciled task provenance).
+  for (const t of HARDWARE_TIERS) {
+    const earned = input.hardwareRuns >= t.n;
+    creds.push({
+      id: `hardware:${t.n}`,
+      group: "hardware",
+      title: t.title,
+      requirement: `Complete ${t.n} run${t.n === 1 ? "" : "s"} on real hardware`,
+      earned,
+      evidence: earned
+        ? `${input.hardwareRuns} completed run${input.hardwareRuns === 1 ? "" : "s"} on IQM Garnet`
+        : "",
     });
   }
 

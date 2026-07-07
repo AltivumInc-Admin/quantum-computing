@@ -220,6 +220,58 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${QpuFunction}
       RetentionInDays: !Ref LogRetentionInDays
 
+  # ---- Reconcile: trues the ledger against real hardware outcomes ----
+  # A scheduled poll marks SUBMITTED tasks COMPLETED (lighting the hardware
+  # credential from real provenance) or refunds FAILED/CANCELLED runs. Every
+  # write is guarded on status, so re-runs never double-apply.
+  ReconcileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-qpu-reconcile
+      Runtime: nodejs22.x
+      Handler: reconcile.handler
+      CodeUri: ./
+      MemorySize: 256
+      Timeout: 120
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          LEDGER_TABLE: !Ref LedgerTable
+          TASKS_TABLE: !Ref TasksTable
+      Policies:
+        # Scan the tasks table; the refund/mark updates (incl. the TransactWriteItems,
+        # which authorizes per-item as UpdateItem) touch both tables.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Scan
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt LedgerTable.Arn
+                - !GetAtt TasksTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action: braket:GetQuantumTask
+              Resource: !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
+      Events:
+        Poll:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Description: Reconcile SUBMITTED QPU tasks against Braket.
+      Tags:
+        Project: quantum
+        Feature: qpu-submit
+        CostCategory: qpu
+
+  ReconcileLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ReconcileFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
   # ---- Budgets-driven kill-switch (AWS Budgets only ALERTS; this hard-stops) ----
   KillSwitchTopic:
     Type: AWS::SNS::Topic
