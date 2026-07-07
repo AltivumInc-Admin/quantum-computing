@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import {
   GetItemCommand,
+  PutItemCommand,
   QueryCommand,
   TransactWriteItemsCommand,
   UpdateItemCommand,
@@ -30,16 +31,16 @@ export const DEVICE_REGION = "eu-north-1";
 export const MAX_SHOTS = 1000; // hard ceiling → $1.75 max per run on IQM Garnet
 export const LIFETIME_CAP_MICROS = 5_000_000; // $5.00 per user, forever
 export const DAILY_CAP_MICROS = 15_000_000; // $15.00/day GLOBAL kill-switch
-// Entitlement is a FRICTION gate, NOT a hard security boundary. A valid JWT is
-// authentication, not authorization to spend; on top of it we require a verified
-// email AND the hardware-module completion flag. But progress in this platform is
-// client-authored (grading runs in the browser; the sync backend is a dumb KV),
-// so a determined user can PUT this flag themselves — it raises the bar past "any
-// verified email", it does not prove work. The REAL spend boundary is the hard
-// caps below (per-user $5 lifetime + $15/day global) plus PR-2's WAF rate limit;
-// they bound abuse even against a forged entitlement. Truly proving curriculum
-// work would require a server-side grader, which does not exist yet.
-export const REQUIRED_SECTION_KEY = "qc:section:02-hardware";
+// Entitlement: a valid JWT is authentication, not authorization to spend. On top
+// of a verified email we require a SERVER-MINTED "cost-estimate" credential — the
+// learner must correctly price an IQM Garnet run (POST /qpu/credential), and the
+// server RE-COMPUTES the true cost before minting. The credential lives in the
+// server-only ledger table (CRED#<sub>), so unlike a client-authored qc:* flag it
+// cannot be forged by a localStorage set or a sync PUT. This is genuine
+// server-verified competency (exactly what a spend gate should check: "prove you
+// can price a run before spending real money"), NOT cryptographic sybil-proofing —
+// the hard caps below (per-user $5 lifetime + $15/day global) remain the real
+// spend boundary and are sized assuming the gate can still be scripted past.
 // IQM Garnet pricing in micro-dollars. Kept in lockstep with lib/utils/cost.py
 // PRICING["IQM"] (per_task 0.30, per_shot 0.00145) — a node --test asserts it.
 export const IQM_PER_TASK_MICROS = 300_000; // $0.30
@@ -59,6 +60,31 @@ export function utcDay(nowMs) {
 /** Server-authoritative circuit hash — the tamper-proof R9 badge provenance. */
 export function circuitHash(qasm) {
   return createHash("sha256").update(qasm.trim(), "utf8").digest("hex");
+}
+
+// ---- Cost-estimate credential (the server-verified entitlement) -------------
+export const CREDENTIAL_TASKS = 1;
+const centsOf = (dollars) => Math.round(dollars * 100 + 1e-7);
+
+function djb2(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+
+/** A per-user, deterministic (stateless) shots count in [100, 1000] — so the
+ *  credential is not one fixed lookup; each learner prices a specific run. */
+export function requiredShotsFor(sub) {
+  return 100 + (djb2(sub) % 901);
+}
+
+/** The correct total cents for an IQM Garnet run, replicating the app's
+ *  component-wise half-up cent settlement (cost-estimate-grade.ts) so the server
+ *  grader agrees exactly with the in-app grader. */
+export function correctCents(shots, tasks = CREDENTIAL_TASKS) {
+  const perTask = IQM_PER_TASK_MICROS / 1_000_000;
+  const perShot = IQM_PER_SHOT_MICROS / 1_000_000;
+  return centsOf(tasks * perTask) + centsOf(tasks * perShot * shots);
 }
 
 const json = (statusCode, body) => ({
@@ -108,30 +134,63 @@ export function createHandlerCore({
   braket,
   ledgerTable,
   tasksTable,
-  progressTable,
   resultsBucket,
   now = () => Date.now(),
 }) {
+  const credKey = (sub) => ({ pk: { S: `CRED#${sub}` } });
+
+  async function isCredentialed(sub) {
+    const res = await ddb.send(new GetItemCommand({ TableName: ledgerTable, Key: credKey(sub) }));
+    return res.Item?.costEstimate?.BOOL === true;
+  }
+
   // Is this user allowed to spend real money at all?
   async function entitlement(sub, emailVerified) {
     if (!emailVerified) return { code: 403, error: "email-not-verified" };
-    const res = await ddb.send(
-      new GetItemCommand({ TableName: progressTable, Key: { userId: { S: sub } } }),
-    );
-    let data = {};
-    if (res.Item?.data?.S) {
-      try {
-        data = JSON.parse(res.Item.data.S);
-      } catch {
-        data = {};
-      }
-    }
-    if (data[REQUIRED_SECTION_KEY] !== "1") return { code: 403, error: "credential-required" };
+    // The SERVER-minted credential (not a client-authored flag) — see the header.
+    if (!(await isCredentialed(sub))) return { code: 403, error: "credential-required" };
     return null;
   }
 
+  // GET /qpu/credential — the challenge (which run to price) + current status.
+  async function credentialStatus(sub) {
+    return json(200, {
+      credentialed: await isCredentialed(sub),
+      requiredShots: requiredShotsFor(sub),
+      requiredTasks: CREDENTIAL_TASKS,
+      device: DEVICE,
+    });
+  }
+
+  // POST /qpu/credential { answerCents } — mint iff the learner priced the run
+  // correctly (server recomputes the truth; the answer is never trusted).
+  async function claimCredential(sub, rawBody) {
+    let body;
+    try {
+      body = JSON.parse(rawBody ?? "");
+    } catch {
+      return json(400, { error: "invalid JSON body" });
+    }
+    const answerCents = body?.answerCents;
+    if (!Number.isInteger(answerCents) || answerCents < 0) {
+      return json(400, { error: "answerCents must be a non-negative integer" });
+    }
+    if (await isCredentialed(sub)) return json(200, { credentialed: true }); // idempotent
+    const shots = requiredShotsFor(sub);
+    if (answerCents !== correctCents(shots)) {
+      return json(200, { credentialed: false, correct: false });
+    }
+    await ddb.send(
+      new PutItemCommand({
+        TableName: ledgerTable,
+        Item: { ...credKey(sub), costEstimate: { BOOL: true }, mintedAt: { N: String(now()) } },
+      }),
+    );
+    return json(200, { credentialed: true });
+  }
+
   async function budget(sub) {
-    const [ledger, tasks] = await Promise.all([
+    const [ledger, tasks, credentialed] = await Promise.all([
       ddb.send(new GetItemCommand({ TableName: ledgerTable, Key: { pk: { S: `USER#${sub}` } } })),
       ddb.send(
         new QueryCommand({
@@ -143,6 +202,7 @@ export function createHandlerCore({
           Limit: 50,
         }),
       ),
+      isCredentialed(sub),
     ]);
     const capMicros = Number(ledger.Item?.capMicros?.N ?? LIFETIME_CAP_MICROS);
     const spentMicros = Number(ledger.Item?.spentMicros?.N ?? 0);
@@ -150,6 +210,7 @@ export function createHandlerCore({
       capMicros,
       spentMicros,
       remainingMicros: Math.max(0, capMicros - spentMicros),
+      credentialed,
       tasks: (tasks.Items ?? []).map(taskSummary),
     });
   }
@@ -363,6 +424,8 @@ export function createHandlerCore({
     const path = event.requestContext?.http?.path ?? "";
 
     if (method === "GET" && path.endsWith("/budget")) return budget(sub);
+    if (method === "GET" && path.endsWith("/credential")) return credentialStatus(sub);
+    if (method === "POST" && path.endsWith("/credential")) return claimCredential(sub, event.body);
     if (method === "POST" && path.endsWith("/submit")) return submit(sub, emailVerified, event.body);
     return json(405, { error: "method not allowed" });
   };

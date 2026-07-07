@@ -12,13 +12,14 @@ import {
   validateSubmitBody,
   createHandlerCore,
   circuitHash,
+  correctCents,
+  requiredShotsFor,
   DEVICE,
   LIFETIME_CAP_MICROS,
 } from "./qpu-core.mjs";
 
 const NOW = Date.UTC(2026, 6, 7, 12, 0, 0); // 2026-07-07T12:00:00Z
 const QASM = "OPENQASM 3.0; qubit[1] q; h q[0]; bit[1] b; b[0] = measure q[0];";
-const ENTITLED = { S: JSON.stringify({ "qc:section:02-hardware": "1" }) };
 
 function canceled(reasons) {
   const e = new Error("cancelled");
@@ -32,8 +33,9 @@ const R = (i) => {
   return a;
 };
 
-// A DynamoDB stub: GetItem routed by TableName, other commands by name; records calls.
-function stubDdb({ progress = ENTITLED, transact, existingTask, ledger, tasks, failUpdate } = {}) {
+// A DynamoDB stub. Ledger GetItems are routed by pk prefix: CRED# (the
+// credential), USER# (the budget row). Other commands by name; records calls.
+function stubDdb({ credentialed = true, transact, existingTask, ledgerUser, tasks, failUpdate } = {}) {
   const calls = [];
   return {
     calls,
@@ -41,11 +43,13 @@ function stubDdb({ progress = ENTITLED, transact, existingTask, ledger, tasks, f
       const name = cmd.constructor.name;
       calls.push({ name, input: cmd.input });
       if (name === "GetItemCommand") {
-        if (cmd.input.TableName === "progress") {
-          return progress ? { Item: { data: progress } } : {};
+        if (cmd.input.TableName === "ledger") {
+          const pk = cmd.input.Key.pk.S;
+          if (pk.startsWith("CRED#")) return credentialed ? { Item: { costEstimate: { BOOL: true } } } : {};
+          if (pk.startsWith("USER#")) return ledgerUser ? { Item: ledgerUser } : {};
+          return {};
         }
         if (cmd.input.TableName === "tasks") return existingTask ? { Item: existingTask } : {};
-        if (cmd.input.TableName === "ledger") return ledger ? { Item: ledger } : {};
         return {};
       }
       if (name === "QueryCommand") return { Items: tasks ?? [] };
@@ -53,6 +57,7 @@ function stubDdb({ progress = ENTITLED, transact, existingTask, ledger, tasks, f
         if (transact instanceof Error) throw transact;
         return {};
       }
+      if (name === "PutItemCommand") return {};
       if (name === "UpdateItemCommand") {
         if (failUpdate) throw Object.assign(new Error("throttled"), { name: "ThrottlingException" });
         return {};
@@ -80,7 +85,6 @@ const core = (ddb, braket) =>
     braket,
     ledgerTable: "ledger",
     tasksTable: "tasks",
-    progressTable: "progress",
     resultsBucket: "amazon-braket-eu-north-1-x",
     now: () => NOW,
   });
@@ -148,8 +152,8 @@ test("an unverified email cannot spend — 403, no reservation, no submit", asyn
   assert.ok(!ddb.calls.some((c) => c.name === "TransactWriteItemsCommand"));
 });
 
-test("a verified user WITHOUT the earned credential cannot spend — 403", async () => {
-  const ddb = stubDdb({ progress: { S: JSON.stringify({ "qc:section:01-foundations": "1" }) } });
+test("a verified user WITHOUT the server-minted credential cannot spend — 403", async () => {
+  const ddb = stubDdb({ credentialed: false });
   const braket = stubBraket();
   const res = await core(ddb, braket)(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 403);
@@ -252,9 +256,9 @@ test("a duplicate idempotency key owned by ANOTHER user returns 409, never their
 });
 
 // ---- budget + dispatch -----------------------------------------------------
-test("GET /qpu/budget returns cap, spent, remaining, and the task list", async () => {
+test("GET /qpu/budget returns cap, spent, remaining, credentialed, and the task list", async () => {
   const ddb = stubDdb({
-    ledger: { capMicros: { N: "5000000" }, spentMicros: { N: "1750000" } },
+    ledgerUser: { capMicros: { N: "5000000" }, spentMicros: { N: "1750000" } },
     tasks: [{ idempotencyKey: { S: "k1" }, status: { S: "SUBMITTED" }, shots: { N: "1000" }, estMicros: { N: "1750000" }, createdAt: { N: String(NOW) } }],
   });
   const event = { requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } } };
@@ -264,15 +268,65 @@ test("GET /qpu/budget returns cap, spent, remaining, and the task list", async (
   assert.equal(out.capMicros, 5_000_000);
   assert.equal(out.spentMicros, 1_750_000);
   assert.equal(out.remainingMicros, 3_250_000);
+  assert.equal(out.credentialed, true);
   assert.equal(out.tasks.length, 1);
 });
 
 test("a fresh user's budget defaults to the full lifetime cap", async () => {
-  const ddb = stubDdb({ ledger: null, tasks: [] });
+  const ddb = stubDdb({ ledgerUser: null, tasks: [], credentialed: false });
   const event = { requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } } };
   const out = JSON.parse((await core(ddb, stubBraket())(event)).body);
   assert.equal(out.capMicros, LIFETIME_CAP_MICROS);
   assert.equal(out.remainingMicros, LIFETIME_CAP_MICROS);
+  assert.equal(out.credentialed, false);
+});
+
+// ---- the server-verified cost-estimate credential --------------------------
+const credEvent = (method, body) => ({
+  requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method, path: "/qpu/credential" } },
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
+
+test("correctCents replicates the app's component-wise cent settlement", () => {
+  // IQM: centsOf(0.30)=30 + centsOf(0.00145*shots). 1000 shots → 30 + 145 = 175¢.
+  assert.equal(correctCents(1000), 175);
+  // 100 shots → 30 + centsOf(0.145)=15 → 45¢ (half-up on 14.5).
+  assert.equal(correctCents(100), 45);
+});
+
+test("GET /qpu/credential returns the per-user challenge + status", async () => {
+  const ddb = stubDdb({ credentialed: false });
+  const out = JSON.parse((await core(ddb, stubBraket())(credEvent("GET"))).body);
+  assert.equal(out.credentialed, false);
+  assert.equal(out.requiredShots, requiredShotsFor("u1"));
+  assert.equal(out.device, DEVICE);
+});
+
+test("POST /qpu/credential mints the credential for a correct price, rejects a wrong one", async () => {
+  const shots = requiredShotsFor("u1");
+  // Correct answer → minted (a PutItem to CRED#u1).
+  const ok = stubDdb({ credentialed: false });
+  const okRes = JSON.parse((await core(ok, stubBraket())(credEvent("POST", { answerCents: correctCents(shots) }))).body);
+  assert.equal(okRes.credentialed, true);
+  const put = ok.calls.find((c) => c.name === "PutItemCommand");
+  assert.equal(put.input.Item.pk.S, "CRED#u1");
+  assert.equal(put.input.Item.costEstimate.BOOL, true);
+
+  // Wrong answer → NOT minted.
+  const bad = stubDdb({ credentialed: false });
+  const badRes = JSON.parse((await core(bad, stubBraket())(credEvent("POST", { answerCents: correctCents(shots) + 1 }))).body);
+  assert.equal(badRes.credentialed, false);
+  assert.ok(!bad.calls.some((c) => c.name === "PutItemCommand"));
+});
+
+test("POST /qpu/credential is idempotent once minted and validates the body", async () => {
+  const already = stubDdb({ credentialed: true });
+  const res = JSON.parse((await core(already, stubBraket())(credEvent("POST", { answerCents: 999 }))).body);
+  assert.equal(res.credentialed, true); // already had it; no re-check, no re-mint
+  assert.ok(!already.calls.some((c) => c.name === "PutItemCommand"));
+
+  const bad = await core(stubDdb({ credentialed: false }), stubBraket())(credEvent("POST", { answerCents: -1 }));
+  assert.equal(bad.statusCode, 400);
 });
 
 test("no verified sub → 401; unknown route → 405; bad JSON → 400", async () => {

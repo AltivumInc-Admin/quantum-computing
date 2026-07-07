@@ -15,7 +15,7 @@ Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR
 | Shot ceiling | **1000** → $1.75 max per run |
 | Per-user LIFETIME cap | **$5.00** |
 | Per-day GLOBAL kill-switch | **$15.00/day** (resets 00:00 UTC) |
-| Entitlement | verified email **+** completed the `02-hardware` module (a **friction** gate — see the security note) |
+| Entitlement | verified email **+** a **server-minted cost-estimate credential** (`POST /qpu/credential`) |
 
 ## How it works
 
@@ -25,7 +25,9 @@ Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR
   `KILL` flag. **All four pass or nothing commits.** Only then does it call
   `CreateQuantumTask`; a failed submit runs a compensating release. Returns `202` with
   the task ARN, or `402`/`503` if a cap is hit.
-- **`GET /qpu/budget`** — the user's `{ capMicros, spentMicros, remainingMicros, tasks }`.
+- **`GET /qpu/budget`** — the user's `{ capMicros, spentMicros, remainingMicros, credentialed, tasks }`.
+- **`GET /qpu/credential`** — the per-user challenge (`{ requiredShots, device, credentialed }`).
+- **`POST /qpu/credential`** `{ answerCents }` — the learner prices the required IQM Garnet run; the server **re-computes the true cost** (replicating the app's cent-settlement) and mints a credential in the server-only ledger row `CRED#<sub>` only if it matches. Unlike a client-authored `qc:*` flag, this credential cannot be forged by a `localStorage` set or a sync `PUT`.
 - Money is tracked in integer **micro-dollars** (no float drift). Two DynamoDB tables:
   `quantum-qpu-ledger` (caps/spend + the KILL row) and `quantum-qpu-tasks` (idempotency +
   the R9 hardware-badge provenance: task ARN, result S3 URI, circuit hash).
@@ -67,10 +69,10 @@ cent before then.
 
 - **The hard caps are the real spend boundary.** The per-user `$5` lifetime cap and the
   `$15/day` global kill-switch, enforced atomically before every submit, bound abuse even
-  against a forged entitlement. The `02-hardware` completion gate is **friction, not proof**:
-  progress in this platform is client-authored (grading runs in the browser; the sync backend
-  is a dumb KV), so a determined user can set that flag themselves. True proof-of-work would
-  need a server-side grader (not built). Sizing the caps assumes the gate can be bypassed.
+  if the entitlement gate is scripted past. The credential gate is **server-verified
+  competency** (the server re-computes the true cost before minting, and the credential lives
+  in a server-only row no client can write) — genuine, but not cryptographic sybil-proofing.
+  Sizing the caps assumes a determined attacker can still mint the credential per account.
 - The DynamoDB reservation is the true spend ceiling — request-rate limits (reserved
   concurrency, and PR-2's WAF) only slow abuse, they don't cap spend.
 - AWS Budgets only *alert*; PR-2 adds a Budgets Action → SNS → `qpu-killswitch` Lambda that
