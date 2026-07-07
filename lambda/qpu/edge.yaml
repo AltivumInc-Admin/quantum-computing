@@ -17,10 +17,13 @@ Parameters:
       Host (no scheme, no path) of the us-east-2 HTTP API — the host of the
       quantum-qpu-submit stack's QpuUrl output, e.g.
       abcd1234.execute-api.us-east-2.amazonaws.com
-  EdgeSecret:
+  EdgeSecretName:
     Type: String
-    NoEcho: true
-    Description: The shared secret injected as x-qpu-edge (must match template.yaml EdgeSecret).
+    Default: quantum-qpu-edge-secret
+    Description: >
+      Name of the Secrets Manager secret (a REPLICA must exist in this us-east-1
+      stack's region) holding the x-qpu-edge shared secret — the SAME secret the
+      main stack resolves. Its value is resolved at deploy time, never on the CLI.
   RateLimitPerMinute:
     Type: Number
     Default: 300
@@ -88,7 +91,7 @@ Resources:
             # and is rejected, so all real traffic must pass through this WAF.
             OriginCustomHeaders:
               - HeaderName: x-qpu-edge
-                HeaderValue: !Ref EdgeSecret
+                HeaderValue: !Sub "{{resolve:secretsmanager:${EdgeSecretName}:SecretString}}"
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               OriginSSLProtocols: [TLSv1.2]
