@@ -11,6 +11,7 @@ const core = createHandlerCore({
   ledgerTable: process.env.LEDGER_TABLE,
   tasksTable: process.env.TASKS_TABLE,
   resultsBucket: process.env.RESULTS_BUCKET,
+  edgeSecret: process.env.EDGE_SECRET || undefined,
 });
 
 export const handler = (event) => core(event);

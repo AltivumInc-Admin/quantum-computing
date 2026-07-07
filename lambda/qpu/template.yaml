@@ -32,6 +32,16 @@ Parameters:
     Type: Number
     Default: 5
     Description: Reserved concurrency — a hard ceiling on request rate.
+  EdgeSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >
+      Shared secret that CloudFront (edge.yaml) injects as the x-qpu-edge header.
+      When set, the Lambda rejects any request lacking it — so the public HTTP API
+      URL can't be hit directly, bypassing the WAF. Leave empty until edge.yaml is
+      deployed, then set both to the same value and point the frontend at the
+      CloudFront domain.
   MonthlyBraketBudget:
     Type: Number
     Default: 150
@@ -139,6 +149,7 @@ Resources:
           LEDGER_TABLE: !Ref LedgerTable
           TASKS_TABLE: !Ref TasksTable
           RESULTS_BUCKET: !Ref ResultsBucket
+          EDGE_SECRET: !Ref EdgeSecret
       Policies:
         # The spend ledger (USER#/DAY#/KILL/CRED# rows) + tasks table.
         # TransactWriteItems is authorized via its constituent item actions
