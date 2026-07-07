@@ -75,8 +75,12 @@ cent before then.
   Sizing the caps assumes a determined attacker can still mint the credential per account.
 - The DynamoDB reservation is the true spend ceiling — request-rate limits (reserved
   concurrency, and PR-2's WAF) only slow abuse, they don't cap spend.
-- AWS Budgets only *alert*; PR-2 adds a Budgets Action → SNS → `qpu-killswitch` Lambda that
-  flips the in-app `KILL` flag (a 4th reservation condition) to hard-block new submissions.
+- **AWS Budgets only *alert* — the kill-switch is the hard stop.** A monthly `$150` Braket
+  budget publishes to an SNS topic at 80%/100%; the `quantum-qpu-killswitch` Lambda flips the
+  ledger `KILL` row to `disabled=true` — the 4th condition in the submit reservation, so every
+  new submission then returns `503`. **Re-enabling is a deliberate operator action:** delete
+  the `KILL` item (or set `disabled=false`) in `quantum-qpu-ledger` after resolving the cause,
+  e.g. `aws dynamodb delete-item --table-name quantum-qpu-ledger --key '{"pk":{"S":"KILL"}}'`.
 - The refund path fires **only** when `CreateQuantumTask` itself fails (a real, billable task
   is never refunded by a later bookkeeping failure). Refunds are idempotent (guarded on
   `status = RESERVED`). A mid-flight Lambda death can still leave a charged `RESERVED` row with

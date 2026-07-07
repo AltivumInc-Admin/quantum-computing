@@ -32,6 +32,13 @@ Parameters:
     Type: Number
     Default: 5
     Description: Reserved concurrency — a hard ceiling on request rate.
+  MonthlyBraketBudget:
+    Type: Number
+    Default: 150
+    Description: >
+      Monthly Braket spend budget (USD). At 80%/100% it trips the in-app
+      kill-switch (all new submissions 503) — the hard stop AWS Budgets alone
+      cannot provide. Consistent with the $15/day in-app global cap.
   LogRetentionInDays:
     Type: Number
     Default: 30
@@ -202,6 +209,100 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${QpuFunction}
       RetentionInDays: !Ref LogRetentionInDays
 
+  # ---- Budgets-driven kill-switch (AWS Budgets only ALERTS; this hard-stops) ----
+  KillSwitchTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-qpu-killswitch
+
+  KillSwitchTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref KillSwitchTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSBudgetsSNSPublishingPermissions
+            Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref KillSwitchTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:budgets::${AWS::AccountId}:*
+
+  KillSwitchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-qpu-killswitch
+      Runtime: nodejs22.x
+      Handler: killswitch.handler
+      CodeUri: ./
+      MemorySize: 128
+      Timeout: 10
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          LEDGER_TABLE: !Ref LedgerTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt LedgerTable.Arn
+      Events:
+        BudgetBreach:
+          Type: SNS
+          Properties:
+            Topic: !Ref KillSwitchTopic
+      Tags:
+        Project: quantum
+        Feature: qpu-submit
+        CostCategory: qpu
+
+  KillSwitchLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${KillSwitchFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+  # Monthly Braket budget whose 80%/100% ACTUAL-spend notifications publish to the
+  # kill-switch topic. This is the backstop for the in-app $15/day global cap.
+  QpuBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: quantum-qpu-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBraketBudget
+          Unit: USD
+        CostFilters:
+          Service:
+            - Amazon Braket
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref KillSwitchTopic
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref KillSwitchTopic
+
 Outputs:
   QpuUrl:
     Description: Set as NEXT_PUBLIC_QPU_URL in the Amplify app environment (PR-3).
@@ -210,3 +311,6 @@ Outputs:
     Value: !Ref LedgerTable
   TasksTableName:
     Value: !Ref TasksTable
+  KillSwitchTopicArn:
+    Description: The SNS topic the Braket budget publishes to (trips the KILL flag).
+    Value: !Ref KillSwitchTopic
