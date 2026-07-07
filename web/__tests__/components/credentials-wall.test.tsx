@@ -2,8 +2,19 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
+
+// The hardware group pulls COMPLETED runs from the QPU backend. Default: QPU off
+// (isQpuConfigured false) → the effect no-ops, hardware badges stay locked, and
+// the other tests are unaffected.
+jest.mock("@/lib/qpu-client", () => ({
+  __esModule: true,
+  isQpuConfigured: jest.fn(() => false),
+  getBudget: jest.fn(),
+}));
+
 import { CredentialsWall } from "@/components/credentials-wall";
+import * as qpu from "@/lib/qpu-client";
 import { epochDay } from "@/lib/review-schedule";
 import { RETENTION_STABILITY } from "@/lib/runbook";
 
@@ -24,12 +35,30 @@ function seedRetained(id: string, n: number) {
 describe("CredentialsWall", () => {
   beforeEach(() => localStorage.clear());
 
-  it("renders the three medal groups and an earned/total summary", () => {
+  it("renders all four medal groups and an earned/total summary", () => {
     render(<CredentialsWall />);
     expect(screen.getByRole("heading", { name: "Completion" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Mastery" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Consistency" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Hardware" })).toBeInTheDocument();
     expect(screen.getByText(/of \d+ earned/i)).toBeInTheDocument();
+  });
+
+  it("lights the hardware badge from COMPLETED real-hardware runs (QPU configured)", async () => {
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockResolvedValue({
+      capMicros: 5_000_000, spentMicros: 0, remainingMicros: 5_000_000, credentialed: true,
+      tasks: [
+        { idempotencyKey: "a", status: "COMPLETED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:x", circuitHash: null, createdAt: 1 },
+        { idempotencyKey: "b", status: "SUBMITTED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:y", circuitHash: null, createdAt: 2 },
+      ],
+    });
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    // One COMPLETED run → the "Ran on real hardware" tier earns (async fetch).
+    await waitFor(() => expect(hardware).toHaveTextContent(/Earned/));
+    expect(hardware).toHaveTextContent(/1 completed run on IQM Garnet/);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false); // reset for other tests
   });
 
   it("earns a completion medal from a section flag", () => {

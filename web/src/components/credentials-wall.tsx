@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { subscribe, getAllCardStates } from "@/lib/review-store";
 import { activeDays } from "@/lib/activity-log";
@@ -8,6 +8,7 @@ import { isSectionComplete } from "@/lib/progress-store";
 import { getSections } from "@/lib/sections";
 import { epochDay } from "@/lib/review-schedule";
 import { masteryCount, streak, freezesEarned } from "@/lib/runbook";
+import { isQpuConfigured, getBudget } from "@/lib/qpu-client";
 import {
   computeCredentials,
   type Credential,
@@ -32,16 +33,19 @@ const GROUP_HUE: Record<CredentialGroup, number> = {
   completion: 192, // teal — the platform accent
   mastery: 158, // green
   consistency: 288, // violet
+  hardware: 42, // gold — the run-on-real-hardware prestige
 };
 const GROUP_TITLE: Record<CredentialGroup, string> = {
   completion: "Completion",
   mastery: "Mastery",
   consistency: "Consistency",
+  hardware: "Hardware",
 };
 const GROUP_BLURB: Record<CredentialGroup, string> = {
   completion: "Modules carried to the end.",
   mastery: "Skills held in proven, spaced-repetition retention.",
   consistency: "Weeks of showing up, unbroken.",
+  hardware: "Circuits run on a real quantum computer.",
 };
 
 function snapshot(): string {
@@ -63,7 +67,7 @@ function snapshot(): string {
   }
 }
 
-function readCredentials(today: number): { creds: Credential[]; earned: number } {
+function readCredentials(today: number, hardwareRuns: number): { creds: Credential[]; earned: number } {
   const states = getAllCardStates();
   const mastery = masteryCount(states);
   const days = activeDays().filter((d) => d <= today);
@@ -73,18 +77,29 @@ function readCredentials(today: number): { creds: Credential[]; earned: number }
     title: s.title,
     done: isSectionComplete(s.slug),
   }));
-  const creds = computeCredentials({ sections, mastery, longestStreakWeeks });
+  const creds = computeCredentials({ sections, mastery, longestStreakWeeks, hardwareRuns });
   return { creds, earned: creds.filter((c) => c.earned).length };
 }
 
 export function CredentialsWall() {
   const snap = useSyncExternalStore(subscribe, snapshot, () => SERVER_SNAPSHOT);
+  // Hardware runs come from the QPU backend (server-reconciled provenance), not
+  // the local qc:* snapshot — fetched once, env-gated, and 0 (locked) when the
+  // QPU surface is off or the learner is signed out.
+  const [hardwareRuns, setHardwareRuns] = useState(0);
+  useEffect(() => {
+    if (!isQpuConfigured()) return;
+    void getBudget()
+      .then((b) => setHardwareRuns(b.tasks.filter((t) => t.status === "COMPLETED").length))
+      .catch(() => {}); // signed out / unreachable → stays 0 (hardware locked)
+  }, []);
+
   const data = useMemo(() => {
     if (snap === SERVER_SNAPSHOT) return null;
-    return readCredentials(Number(snap.split("|")[0]) || 0);
-  }, [snap]);
+    return readCredentials(Number(snap.split("|")[0]) || 0, hardwareRuns);
+  }, [snap, hardwareRuns]);
 
-  const groups: CredentialGroup[] = ["completion", "mastery", "consistency"];
+  const groups: CredentialGroup[] = ["completion", "mastery", "consistency", "hardware"];
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
