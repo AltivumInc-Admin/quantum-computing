@@ -112,8 +112,49 @@ test("credentialed: itemized cost + a two-step confirm that submits to real hard
   await act(async () => {
     fireEvent.click(submit);
   });
-  expect(m.submitTask).toHaveBeenCalledWith(100, expect.stringContaining("OPENQASM"));
+  expect(m.submitTask).toHaveBeenCalledWith(100, expect.stringContaining("OPENQASM"), expect.any(String));
   expect(await screen.findByText(/submitted to iqm garnet — task xyz/i)).toBeInTheDocument();
+});
+
+test("a 300-shot run shows ONE price across preview, button, and history ($0.74)", async () => {
+  // The reviewer's exact case: 300 shots costs $0.735, which must never appear as
+  // two different figures. Everything derives from one micros source → all $0.74.
+  m.getBudget.mockResolvedValue(
+    budget({
+      tasks: [
+        { idempotencyKey: "k", device: "iqm_garnet", shots: 300, estMicros: 735_000, status: "SUBMITTED", taskArn: null, circuitHash: null, createdAt: 1 },
+      ],
+    }),
+  );
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  render(<QpuSubmitPanel />);
+  fireEvent.change(await screen.findByLabelText("Shots"), { target: { value: "300" } });
+  fireEvent.click(screen.getByRole("button", { name: /review this run/i }));
+  // Preview button and the run-history row both read $0.74 — never $0.73 or $0.735.
+  expect(screen.getByRole("button", { name: /submit to real hardware — \$0\.74/i })).toBeInTheDocument();
+  const history = screen.getByRole("heading", { name: "Run history" }).closest("div")!;
+  expect(history).toHaveTextContent("$0.74");
+  expect(history).not.toHaveTextContent("$0.73");
+});
+
+test("submitTask reuses ONE idempotency key across a retry of the same run", async () => {
+  m.getBudget.mockResolvedValue(budget());
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  m.submitTask
+    .mockResolvedValueOnce({ ok: false, status: 503, error: "over-daily-budget" })
+    .mockResolvedValueOnce({ ok: true, taskArn: "arn:x/y", estMicros: 445_000 });
+  render(<QpuSubmitPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+  });
+  // First attempt failed; retry from the still-open confirm panel.
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+  });
+  const firstKey = (m.submitTask.mock.calls[0] as unknown[])[2];
+  const retryKey = (m.submitTask.mock.calls[1] as unknown[])[2];
+  expect(firstKey).toBe(retryKey); // same intent → same key → server dedupes
 });
 
 test("a 402 over-lifetime-budget response shows specific copy and does not claim success", async () => {

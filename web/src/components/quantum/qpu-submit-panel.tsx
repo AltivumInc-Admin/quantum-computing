@@ -20,13 +20,16 @@ import {
  * panel is inert (renders nothing) until NEXT_PUBLIC_QPU_URL is configured.
  */
 
-// Display math replicates the server's component-wise cent settlement so what the
-// learner sees equals what the server charges. IQM rates mirror cost.ts / cost.py.
-const centsOf = (v: number) => Math.round(v * 100 + 1e-7);
-const IQM = { perTask: 0.3, perShot: 0.00145 };
-const costCents = (shots: number) => centsOf(IQM.perTask) + centsOf(IQM.perShot * shots);
-const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const usdMicros = (micros: number) => `$${(micros / 1_000_000).toFixed(2)}`;
+// ONE cost source, ONE formatter — mirrors the server's exact charge
+// (costMicros = task + per-shot, in integer micro-dollars). Every displayed
+// dollar (preview, breakdown, button, confirm, budget bar, history) derives from
+// this, so the price previewed, charged, and recorded is always the same number.
+// The server charges the exact Braket cost (no markup); micros are shown to the
+// nearest cent, the resolution any price displays at.
+const IQM_TASK_MICROS = 300_000; // $0.30 per task
+const IQM_SHOT_MICROS = 1_450; // $0.00145 per shot
+const costMicros = (shots: number) => IQM_TASK_MICROS + IQM_SHOT_MICROS * shots;
+const usd = (micros: number) => `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
 const MAX_SHOTS = 1000;
 
 const PRESETS: { name: string; qasm: string }[] = [
@@ -140,14 +143,14 @@ function BudgetBar({ budget }: { budget: Budget }) {
       <div className="flex items-baseline justify-between">
         <p className="text-sm font-medium text-gray-900 dark:text-white">Sponsored QPU budget</p>
         <p className="text-sm tabular-nums text-gray-700 dark:text-gray-200">
-          <span className="font-semibold">{usdMicros(budget.remainingMicros)}</span>
-          <span className="text-caption"> of {usdMicros(budget.capMicros)} left</span>
+          <span className="font-semibold">{usd(budget.remainingMicros)}</span>
+          <span className="text-caption"> of {usd(budget.capMicros)} left</span>
         </p>
       </div>
       <div
         className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200/80 dark:bg-white/[0.06]"
         role="img"
-        aria-label={`${usdMicros(budget.spentMicros)} of ${usdMicros(budget.capMicros)} spent`}
+        aria-label={`${usd(budget.spentMicros)} of ${usd(budget.capMicros)} spent`}
       >
         <div className="h-full rounded-full bg-accent-dark dark:bg-accent" style={{ width: `${pct}%` }} />
       </div>
@@ -236,29 +239,51 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
   const [shots, setShots] = useState(100);
   const [phase, setPhase] = useState<"form" | "confirm" | "submitting" | "done">("form");
   const [outcome, setOutcome] = useState<{ ok: boolean; msg: string } | null>(null);
+  // The idempotency key belongs to THIS run's intent: minted once when the
+  // learner opens the confirm step, reused if they retry a failed submit, and
+  // cleared whenever they edit the circuit/shots (a new intent → a new key).
+  const [idem, setIdem] = useState<string | null>(null);
 
-  const cents = useMemo(() => costCents(shots), [shots]);
-  const remainingCents = Math.round(budget.remainingMicros / 10_000);
-  const overBudget = cents > remainingCents;
+  const micros = useMemo(() => costMicros(shots), [shots]);
+  const overBudget = micros > budget.remainingMicros;
   const validShots = Number.isInteger(shots) && shots >= 1 && shots <= MAX_SHOTS;
   const canSubmit = validShots && qasm.trim() !== "" && !overBudget;
 
+  const editForm = () => {
+    setPhase("form");
+    setIdem(null); // editing = a new intent
+  };
+
+  const openConfirm = () => {
+    setIdem((k) => k ?? crypto.randomUUID());
+    setPhase("confirm");
+  };
+
   const doSubmit = async () => {
+    const key = idem ?? crypto.randomUUID();
     setPhase("submitting");
     setOutcome(null);
-    const res = await submitTask(shots, qasm);
-    if (res.ok) {
+    try {
+      const res = await submitTask(shots, qasm, key);
+      if (res.ok) {
+        setOutcome({
+          ok: true,
+          msg: res.taskArn
+            ? `Submitted to IQM Garnet — task ${res.taskArn.split("/").pop()}. Results will appear in your run history once the device completes it.`
+            : "Submitted to IQM Garnet. Results will appear in your run history.",
+        });
+        setPhase("done");
+        onSubmitted();
+      } else {
+        setOutcome({ ok: false, msg: outcomeMessage(res.status, res.error) });
+        setPhase("confirm"); // keep the key so a retry reuses it
+      }
+    } catch {
       setOutcome({
-        ok: true,
-        msg: res.taskArn
-          ? `Submitted to IQM Garnet — task ${res.taskArn.split("/").pop()}. Results will appear in your run history once the device completes it.`
-          : "Submitted to IQM Garnet. Results will appear in your run history.",
+        ok: false,
+        msg: "That didn't go through — your budget was not charged. Please try again.",
       });
-      setPhase("done");
-      onSubmitted();
-    } else {
-      setOutcome({ ok: false, msg: outcomeMessage(res.status, res.error) });
-      setPhase("form");
+      setPhase("confirm");
     }
   };
 
@@ -271,8 +296,8 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         <button
           type="button"
           onClick={() => {
-            setPhase("form");
             setOutcome(null);
+            editForm();
           }}
           className="mt-3 inline-flex rounded-control border border-gray-200 dark:border-gray-700/50 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 interactive focus-ring"
         >
@@ -303,12 +328,13 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         id="qpu-qasm"
         value={qasm}
         spellCheck={false}
+        disabled={phase === "submitting"}
         onChange={(e) => {
           setQasm(e.target.value);
-          setPhase("form");
+          editForm();
         }}
         rows={Math.max(4, qasm.split("\n").length)}
-        className="mt-2 w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:text-gray-200 focus-ring resize-y"
+        className="mt-2 w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:text-gray-200 focus-ring resize-y disabled:opacity-60"
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -321,21 +347,22 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           min={1}
           max={MAX_SHOTS}
           value={shots}
+          disabled={phase === "submitting"}
           onChange={(e) => {
             setShots(Math.floor(Number(e.target.value)));
-            setPhase("form");
+            editForm();
           }}
-          className="w-24 rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1.5 font-mono text-sm text-gray-900 dark:text-gray-100 focus-ring tabular-nums"
+          className="w-24 rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1.5 font-mono text-sm text-gray-900 dark:text-gray-100 focus-ring tabular-nums disabled:opacity-60"
         />
         <span className="text-xs text-caption">max {MAX_SHOTS.toLocaleString("en-US")}</span>
       </div>
 
       {/* The itemized cost — the honest breakdown, always shown. */}
-      <CostBreakdown shots={shots} cents={cents} />
+      <CostBreakdown shots={shots} micros={micros} />
 
       {overBudget && (
         <p role="status" className="mt-2 text-xs text-red-700 dark:text-red-300">
-          This run ({usd(cents)}) is more than your remaining budget ({usd(remainingCents)}).
+          This run ({usd(micros)}) is more than your remaining budget ({usd(budget.remainingMicros)}).
         </p>
       )}
       {outcome && !outcome.ok && (
@@ -348,7 +375,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         <button
           type="button"
           disabled={!canSubmit}
-          onClick={() => setPhase("confirm")}
+          onClick={openConfirm}
           className="mt-4 inline-flex items-center rounded-control border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-800 dark:text-gray-100 interactive focus-ring disabled:opacity-50"
         >
           Review this run
@@ -356,8 +383,8 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
       ) : (
         <div className="mt-4 rounded-control border border-accent/40 bg-accent/[0.06] px-4 py-3 animate-fade-up">
           <p className="text-sm text-gray-800 dark:text-gray-100">
-            This spends <span className="font-semibold tabular-nums">{usd(cents)}</span> of your{" "}
-            <span className="tabular-nums">{usd(remainingCents)}</span> budget on a real,
+            This spends <span className="font-semibold tabular-nums">{usd(micros)}</span> of your{" "}
+            <span className="tabular-nums">{usd(budget.remainingMicros)}</span> budget on a real,
             irreversible run on the physical device. It cannot be undone once submitted.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -367,12 +394,13 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
               onClick={doSubmit}
               className="inline-flex items-center rounded-control surface-accent px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-50 tabular-nums"
             >
-              {phase === "submitting" ? "Submitting…" : `Submit to real hardware — ${usd(cents)}`}
+              {phase === "submitting" ? "Submitting…" : `Submit to real hardware — ${usd(micros)}`}
             </button>
             <button
               type="button"
-              onClick={() => setPhase("form")}
-              className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 interactive focus-ring"
+              disabled={phase === "submitting"}
+              onClick={editForm}
+              className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 interactive focus-ring disabled:opacity-50"
             >
               Cancel
             </button>
@@ -383,25 +411,26 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
   );
 }
 
-function CostBreakdown({ shots, cents }: { shots: number; cents: number }) {
+function CostBreakdown({ shots, micros }: { shots: number; micros: number }) {
   return (
     <dl className="mt-3 rounded-control bg-gray-50 dark:bg-white/[0.03] px-3 py-2.5 text-sm">
       <div className="flex justify-between">
         <dt className="text-gray-600 dark:text-gray-400">Task fee</dt>
-        <dd className="tabular-nums text-gray-800 dark:text-gray-200">$0.30</dd>
+        <dd className="tabular-nums text-gray-800 dark:text-gray-200">{usd(IQM_TASK_MICROS)}</dd>
       </div>
       <div className="mt-1 flex justify-between">
         <dt className="text-gray-600 dark:text-gray-400">
           Shots — $0.00145 × {shots.toLocaleString("en-US")}
         </dt>
-        <dd className="tabular-nums text-gray-800 dark:text-gray-200">
-          {usd(Math.max(0, cents - 30))}
-        </dd>
+        <dd className="tabular-nums text-gray-800 dark:text-gray-200">{usd(IQM_SHOT_MICROS * shots)}</dd>
       </div>
       <div className="mt-2 flex justify-between border-t border-gray-200/70 dark:border-white/[0.08] pt-2">
         <dt className="font-medium text-gray-900 dark:text-white">Total to the device</dt>
-        <dd className="font-semibold tabular-nums text-gray-900 dark:text-white">{usd(cents)}</dd>
+        <dd className="font-semibold tabular-nums text-gray-900 dark:text-white">{usd(micros)}</dd>
       </div>
+      <p className="mt-2 text-[0.7rem] text-caption">
+        The exact Amazon Braket charge, shown to the nearest cent. It goes to the device, not us.
+      </p>
     </dl>
   );
 }
@@ -418,7 +447,7 @@ function RunHistory({ tasks }: { tasks: Budget["tasks"] }) {
               {t.taskArn ? ` · ${t.taskArn.split("/").pop()}` : ""}
             </span>
             <span className="flex shrink-0 items-center gap-2">
-              <span className="tabular-nums text-gray-500 dark:text-gray-400">{usdMicros(t.estMicros)}</span>
+              <span className="tabular-nums text-gray-500 dark:text-gray-400">{usd(t.estMicros)}</span>
               <StatusChip status={t.status} />
             </span>
           </li>

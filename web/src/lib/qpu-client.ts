@@ -94,21 +94,30 @@ export async function claimCredential(answerCents: number): Promise<{ credential
   return (await res.json()) as { credentialed: boolean };
 }
 
-/** Submit a circuit to real hardware. A fresh idempotency key per attempt. */
-export async function submitTask(shots: number, qasm: string): Promise<SubmitOutcome> {
+/**
+ * Submit a circuit to real hardware. The idempotencyKey belongs to the INTENT
+ * (the caller mints it once and reuses it across retries of the same run), so a
+ * retried submit dedupes on the server instead of double-charging.
+ */
+export async function submitTask(
+  shots: number,
+  qasm: string,
+  idempotencyKey: string,
+): Promise<SubmitOutcome> {
   const res = await req("/qpu/submit", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ device: "iqm_garnet", shots, qasm, idempotencyKey: crypto.randomUUID() }),
+    body: JSON.stringify({ device: "iqm_garnet", shots, qasm, idempotencyKey }),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const task = body.task as { taskArn?: string; estMicros?: number; circuitHash?: string } | undefined;
   if (res.status === 202 || (res.status === 200 && body.duplicate)) {
     return {
       ok: true,
       duplicate: res.status === 200,
-      taskArn: (body.taskArn ?? (body.task as { taskArn?: string })?.taskArn ?? null) as string | null,
-      estMicros: (body.estMicros ?? (body.task as { estMicros?: number })?.estMicros ?? 0) as number,
-      circuitHash: body.circuitHash as string | undefined,
+      taskArn: (body.taskArn ?? task?.taskArn ?? null) as string | null,
+      estMicros: (body.estMicros ?? task?.estMicros ?? 0) as number,
+      circuitHash: (body.circuitHash ?? task?.circuitHash) as string | undefined,
     };
   }
   return { ok: false, status: res.status, error: String(body.error ?? `submit failed (${res.status})`) };
