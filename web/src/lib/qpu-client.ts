@@ -64,8 +64,10 @@ async function auth(): Promise<string> {
 async function req(path: string, init?: RequestInit): Promise<Response> {
   const base = qpuUrl();
   if (!base) throw new Error("qpu not configured");
+  // Strip a trailing slash so a base like ".../" + "/qpu/budget" doesn't become
+  // "...//qpu/budget" (works, but not pristine — the env var may or may not end in /).
   const authorization = await auth();
-  return fetch(`${base}${path}`, {
+  return fetch(`${base.replace(/\/+$/, "")}${path}`, {
     ...init,
     headers: { authorization, ...(init?.headers ?? {}) },
   });
