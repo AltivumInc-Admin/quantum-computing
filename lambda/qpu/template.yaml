@@ -52,6 +52,14 @@ Parameters:
   LogRetentionInDays:
     Type: Number
     Default: 30
+  AlertEmail:
+    Type: String
+    Default: christian.perez@altivum.io
+    Description: >
+      Operator email for the human notification path. Receives budget threshold
+      crossings, kill-switch trips, and every CloudWatch alarm in this stack.
+      Each SNS email subscription must be confirmed once from the inbox before
+      it delivers.
 
 Resources:
   # Spend ledger: USER#<sub> rows (cap/spent), DAY#<date> rows (global daily
@@ -277,6 +285,12 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: quantum-qpu-killswitch
+      # A human hears every message on this topic (budget breach, kill trip)
+      # directly from SNS, even if the kill-switch Lambda is broken or its
+      # subscription is lost.
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
 
   KillSwitchTopicPolicy:
     Type: AWS::SNS::TopicPolicy
@@ -339,7 +353,11 @@ Resources:
     Type: AWS::Budgets::Budget
     Properties:
       Budget:
-        BudgetName: quantum-qpu-monthly
+        # No explicit BudgetName: any change to NotificationsWithSubscribers
+        # REPLACES this resource, and CloudFormation creates the replacement
+        # before deleting the old one, so a fixed name would collide with
+        # itself and fail the stack update. A generated name keeps the budget
+        # updatable (the old quantum-qpu-monthly budget is deleted on cleanup).
         BudgetType: COST
         TimeUnit: MONTHLY
         BudgetLimit:
@@ -348,6 +366,9 @@ Resources:
         CostFilters:
           Service:
             - Amazon Braket
+      # Each threshold notifies BOTH the kill-switch topic (the machine path)
+      # and the operator's inbox (the human path), so a budget crossing is
+      # never silent even if a Lambda or subscription is broken.
       NotificationsWithSubscribers:
         - Notification:
             NotificationType: ACTUAL
@@ -357,6 +378,8 @@ Resources:
           Subscribers:
             - SubscriptionType: SNS
               Address: !Ref KillSwitchTopic
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
         - Notification:
             NotificationType: ACTUAL
             ComparisonOperator: GREATER_THAN
@@ -365,6 +388,144 @@ Resources:
           Subscribers:
             - SubscriptionType: SNS
               Address: !Ref KillSwitchTopic
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+  # ---- Human notification path: every alarm below lands in an inbox ----
+  # This stack spends real money, so silent failure modes are not acceptable:
+  # a broken kill-switch Lambda disarms the hard stop, a dead reconciler stops
+  # refunds, and an orphaned RESERVED row is money charged with no task ARN.
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-qpu-alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  SubmitErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-submit-errors
+      AlarmDescription: >-
+        The quantum-qpu-submit function threw at least one error in 5 minutes.
+        Learners may be unable to submit, or a reservation may have been
+        charged without a task ARN. Check the function's log group.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref QpuFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  ReconcileErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-reconcile-errors
+      AlarmDescription: >-
+        The quantum-qpu-reconcile function threw at least one error in 5
+        minutes. Refunds for failed or cancelled runs and hardware-badge
+        completion are stalled until it recovers.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ReconcileFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  KillSwitchErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-killswitch-errors
+      AlarmDescription: >-
+        The quantum-qpu-killswitch function threw at least one error in 5
+        minutes. A budget breach may NOT have tripped the KILL row, which
+        means the hard spend stop could be disarmed. Verify the KILL row in
+        the quantum-qpu-ledger table immediately.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref KillSwitchFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # The reconciler runs on a rate(5 minutes) schedule, so 12 invocations are
+  # expected per hour. Zero invocations across a full hour means the schedule
+  # rule is dead, disabled, or deleted; TreatMissingData is breaching so a
+  # rule that never fires (and so emits no metric at all) also alerts.
+  ReconcileStalledAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-reconcile-stalled
+      AlarmDescription: >-
+        The quantum-qpu-reconcile function was not invoked at all in the last
+        hour despite its 5-minute schedule. Stuck reservations are no longer
+        being refunded and completed runs are not being recorded.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ReconcileFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # reconcile.mjs logs 'qpu-reconcile: orphaned row <key> (status <s>) ...' for
+  # a stuck RESERVED row it cannot resolve (no task ARN): money charged with
+  # nothing to show for it. Until now that log line was the ONLY trace; this
+  # turns it into a metric and an alarm. template.test.mjs asserts the phrase
+  # below still literally appears in reconcile.mjs, so the two cannot drift.
+  OrphanedRowMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ReconcileLogGroup
+      FilterPattern: '"qpu-reconcile: orphaned row"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: OrphanedMoneyRow
+          MetricValue: "1"
+          Unit: Count
+
+  OrphanedRowAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-orphaned-money-row
+      AlarmDescription: >-
+        The reconciler found at least one orphaned RESERVED row, which is
+        reserved learner money with no task ARN to resolve it against. It
+        needs manual review in the quantum-qpu-tasks table; the alarm re-fires
+        every reconcile run until the row is resolved.
+      Namespace: QuantumQpu
+      MetricName: OrphanedMoneyRow
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
 
 Outputs:
   QpuUrl:
@@ -377,3 +538,6 @@ Outputs:
   KillSwitchTopicArn:
     Description: The SNS topic the Braket budget publishes to (trips the KILL flag).
     Value: !Ref KillSwitchTopic
+  AlertsTopicArn:
+    Description: The SNS topic every CloudWatch alarm in this stack notifies.
+    Value: !Ref AlertsTopic
