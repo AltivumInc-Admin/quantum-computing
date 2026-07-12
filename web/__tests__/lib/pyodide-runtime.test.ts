@@ -1,87 +1,154 @@
-import { runSerialized } from "@/lib/pyodide-runtime";
+/**
+ * @jest-environment jsdom
+ */
 
-// A controllable fake of the Pyodide interpreter for exercising runSerialized's
-// orchestration (serialization + fresh namespace + stdout capture) without WASM.
-function makeFakePy() {
-  let stdoutSink: (s: string) => void = () => {};
-  const namespaces: Array<{ destroyed: boolean }> = [];
-  const py = {
-    loadPackage: jest.fn(),
-    setStdout: jest.fn(({ batched }: { batched: (s: string) => void }) => {
-      stdoutSink = batched;
-    }),
-    setStderr: jest.fn(),
-    toPy: jest.fn(() => {
-      const ns = {
-        destroyed: false,
-        destroy() {
-          ns.destroyed = true;
-        },
-      };
-      namespaces.push(ns);
-      return ns;
-    }),
-    runPythonAsync: jest.fn(async () => "default"),
-    emit: (s: string) => stdoutSink(s),
-    namespaces,
-  };
-  return py;
+// runSerialized orchestration against the WORKER-hosted runtime: result
+// passthrough, output routing, run serialization, and the watchdog timeout
+// (kill -> learner-facing PythonTimeoutError -> queued runs reject -> the next
+// getPyodide() boots a FRESH worker). The worker itself is faked at the
+// postMessage/onmessage boundary; the real worker + real Pyodide execution is
+// proven end-to-end by web/e2e/challenge-py-grader.e2e.ts and
+// web/e2e/py-grader-timeout.e2e.ts.
+
+type Posted = { type: string; id?: number; code?: string } & Record<string, unknown>;
+
+/** Scriptable stand-in for the /pyodide.worker.js worker. */
+class FakeWorker {
+  static instances: FakeWorker[] = [];
+  /** Per-test scripts for how "the worker" responds to boot/run messages. */
+  static onBoot: (w: FakeWorker, msg: Posted) => void = (w) => w.emit({ type: "ready" });
+  static onRun: (w: FakeWorker, msg: Posted) => void = () => {};
+
+  onmessage: ((ev: { data: unknown }) => void) | null = null;
+  onerror: ((ev: { message: string }) => void) | null = null;
+  posted: Posted[] = [];
+  terminated = false;
+
+  constructor(public url: string) {
+    FakeWorker.instances.push(this);
+  }
+  postMessage(msg: Posted) {
+    this.posted.push(msg);
+    // Reply asynchronously, like a real worker.
+    if (msg.type === "boot") queueMicrotask(() => FakeWorker.onBoot(this, msg));
+    if (msg.type === "run") queueMicrotask(() => FakeWorker.onRun(this, msg));
+  }
+  terminate() {
+    this.terminated = true;
+  }
+  emit(data: unknown) {
+    this.onmessage?.({ data });
+  }
+  runs(): Posted[] {
+    return this.posted.filter((m) => m.type === "run");
+  }
 }
 
-describe("runSerialized", () => {
-  it("returns the value the interpreter produces", async () => {
-    const py = makeFakePy();
-    py.runPythonAsync.mockResolvedValue("RESULT");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(await runSerialized(py as any, "1 + 1")).toBe("RESULT");
+function loadRuntime() {
+  return require("@/lib/pyodide-runtime") as typeof import("@/lib/pyodide-runtime");
+}
+
+beforeEach(() => {
+  jest.resetModules();
+  FakeWorker.instances = [];
+  FakeWorker.onBoot = (w) => w.emit({ type: "ready" });
+  FakeWorker.onRun = () => {};
+  (globalThis as unknown as { Worker: unknown }).Worker = FakeWorker;
+});
+
+describe("runSerialized (worker-hosted)", () => {
+  it("boots the static worker asset and resolves with the value the run produces", async () => {
+    FakeWorker.onRun = (w, msg) => w.emit({ type: "result", id: msg.id, value: "RESULT" });
+    const { getPyodide, runSerialized } = loadRuntime();
+    const py = await getPyodide();
+    await expect(runSerialized(py, "1 + 1")).resolves.toBe("RESULT");
+    expect(FakeWorker.instances).toHaveLength(1);
+    expect(FakeWorker.instances[0].url).toBe("/pyodide.worker.js");
+    expect(FakeWorker.instances[0].runs()[0].code).toBe("1 + 1");
   });
 
-  it("captures stdout into the onOutput sink", async () => {
-    const py = makeFakePy();
-    py.runPythonAsync.mockImplementation(async () => {
-      py.emit("hello\n");
-      return undefined;
-    });
+  it("streams output messages into the onOutput sink, in order", async () => {
+    FakeWorker.onRun = (w, msg) => {
+      w.emit({ type: "output", id: msg.id, text: "hello\n" });
+      w.emit({ type: "output", id: msg.id, text: "world\n" });
+      w.emit({ type: "result", id: msg.id, value: undefined });
+    };
+    const { getPyodide, runSerialized } = loadRuntime();
+    const py = await getPyodide();
     const out: string[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await runSerialized(py as any, "print('hello')", (t) => out.push(t));
-    expect(out.join("")).toBe("hello\n");
+    await runSerialized(py, "print('hello'); print('world')", (t) => out.push(t));
+    expect(out.join("")).toBe("hello\nworld\n");
   });
 
-  it("runs each call in a fresh namespace and destroys it", async () => {
-    const py = makeFakePy();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await runSerialized(py as any, "a = 1");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await runSerialized(py as any, "b = 2");
-    expect(py.toPy).toHaveBeenCalledTimes(2);
-    expect(py.runPythonAsync.mock.calls[0][1]).toHaveProperty("globals");
-    expect(py.namespaces.every((n) => n.destroyed)).toBe(true);
+  it("rejects with the worker-reported Python error message", async () => {
+    FakeWorker.onRun = (w, msg) =>
+      w.emit({ type: "error", id: msg.id, message: "NameError: name 'x' is not defined" });
+    const { getPyodide, runSerialized } = loadRuntime();
+    const py = await getPyodide();
+    await expect(runSerialized(py, "print(x)")).rejects.toThrow(/NameError/);
   });
 
   it("serializes overlapping runs so they never interleave", async () => {
-    const py = makeFakePy();
-    let release!: (v: unknown) => void;
-    py.runPythonAsync
-      .mockImplementationOnce(
-        () =>
-          new Promise((r) => {
-            release = r;
-          })
-      )
-      .mockImplementationOnce(async () => "second");
+    FakeWorker.onRun = () => {}; // replies driven manually below
+    const { getPyodide, runSerialized } = loadRuntime();
+    const py = await getPyodide();
+    const w = FakeWorker.instances[0];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p1 = runSerialized(py as any, "first");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p2 = runSerialized(py as any, "second");
+    const p1 = runSerialized(py, "first");
+    const p2 = runSerialized(py, "second");
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(py.runPythonAsync).toHaveBeenCalledTimes(1); // second is still queued
-    release(undefined);
-    await p1;
-    await p2;
-    expect(py.runPythonAsync).toHaveBeenCalledTimes(2);
+    // The second run must still be queued client-side, not posted to the worker.
+    expect(w.runs()).toHaveLength(1);
+    w.emit({ type: "result", id: w.runs()[0].id, value: "one" });
+    await expect(p1).resolves.toBe("one");
+    await Promise.resolve();
+    expect(w.runs()).toHaveLength(2);
+    w.emit({ type: "result", id: w.runs()[1].id, value: "two" });
+    await expect(p2).resolves.toBe("two");
+  });
+
+  it("kills the worker on timeout with the learner-facing message, and reboots fresh", async () => {
+    FakeWorker.onRun = () => {}; // never replies: an infinite loop
+    const rt = loadRuntime();
+    rt.__setRunTimeoutMsForTests(20);
+    const py = await rt.getPyodide();
+    const first = FakeWorker.instances[0];
+
+    const hung = rt.runSerialized(py, "while True: pass");
+    await expect(hung).rejects.toThrow(rt.PythonTimeoutError);
+    await expect(hung).rejects.toThrow(/shut down and reset/);
+    await expect(hung).rejects.toThrow(/infinite loop/);
+    // The ONLY interrupt without SharedArrayBuffer is terminating the worker.
+    expect(first.terminated).toBe(true);
+
+    // The dead handle refuses further runs with an explicit reset message...
+    await expect(rt.runSerialized(py, "print(1)")).rejects.toThrow(
+      /reset because an earlier run timed out/
+    );
+
+    // ...and the module cache was invalidated: the next boot is a NEW worker
+    // that runs normally (the killed-then-rebooted runtime still works).
+    FakeWorker.onRun = (w, msg) => w.emit({ type: "result", id: msg.id, value: "alive" });
+    const py2 = await rt.getPyodide();
+    expect(py2).not.toBe(py);
+    expect(FakeWorker.instances).toHaveLength(2);
+    await expect(rt.runSerialized(py2, "2 + 2")).resolves.toBe("alive");
+  });
+
+  it("rejects runs queued behind a timed-out run instead of posting them to the dead worker", async () => {
+    FakeWorker.onRun = () => {};
+    const rt = loadRuntime();
+    rt.__setRunTimeoutMsForTests(20);
+    const py = await rt.getPyodide();
+    const w = FakeWorker.instances[0];
+
+    const p1 = rt.runSerialized(py, "while True: pass");
+    const p2 = rt.runSerialized(py, "print('queued')");
+    await expect(p1).rejects.toThrow(rt.PythonTimeoutError);
+    await expect(p2).rejects.toThrow(/reset because an earlier run timed out/);
+    // The queued run was never posted to the terminated worker.
+    expect(w.runs()).toHaveLength(1);
   });
 });

@@ -39,6 +39,24 @@ fresh-namespace guard, since the solved run's `circuit` would otherwise stand in
 Like the lab spec, it asserts the whole flow makes **zero third-party requests**
 (Pyodide from the self-hosted `/pyodide/`, the wheel from `/lab/files/wheels/`).
 
+The lesson runtime executes learner Python in a **dedicated worker**
+(`/pyodide.worker.js`, a static asset — see `src/lib/pyodide-runtime.ts`), so
+this spec's network assertions also pin down that worker-originated requests
+(the wasm boot, the wheel install) stay same-origin.
+
+## `py-grader-timeout.e2e.ts`
+
+Proves the worker watchdog on the same fixture page (loaded with
+`?timeoutMs=2000`, which the fixture's `TimeoutOverride` feeds to the runtime's
+test-only setter): an infinite-loop submission must be **killed** — the worker
+terminated, the learner shown the full reset message (never "Your code
+raised:") — and a correct solution submitted immediately afterwards must grade
+to the exact solved literal on a **fresh** runtime. Asserts exactly TWO
+interpreter boots (the kill really discarded the first interpreter) and, like
+the other specs, zero third-party requests. Kept separate from
+`challenge-py-grader.e2e.ts` because that spec's fresh-namespace proof is
+premised on a single boot.
+
 ## Running
 
 The E2E serves the already-built `web/out/`, so build first:
