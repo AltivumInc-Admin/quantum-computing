@@ -1,10 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  quantum-review-email — a scheduled sender that emails a learner ONLY when they
-  have spaced-repetition cards genuinely due, plus a tokenized unsubscribe. Reads
-  the sync stack's progress table (for cards + the persisted email claim) and owns
-  a small prefs table for opt-outs, so the sync PUT never has to preserve them.
+  quantum-review-email - a scheduled sender that emails a learner ONLY when they
+  have spaced-repetition cards genuinely due AND have explicitly opted in
+  (remindersOn must be true; absent means no email), plus a tokenized
+  unsubscribe and a Cognito-JWT-authorized preferences API (GET/PUT/DELETE
+  /prefs). Reads the sync stack's progress table (cards + the persisted email
+  claim) and owns a small prefs table for consent and the 7-day cadence cap.
+  Refuses to send while SES is in the sandbox, and alarms on any send failure.
 
 Parameters:
   ProgressTableName:
@@ -24,14 +27,32 @@ Parameters:
   ScheduleExpression:
     Type: String
     Default: cron(0 15 * * ? *)
-    Description: Daily send time (default 15:00 UTC ~ morning in the Americas).
+    Description: Daily send time (default 15:00 UTC, morning in the Americas).
   MaxConcurrency:
     Type: Number
     Default: 1
-    Description: Reserved concurrency — a hard ceiling on the scheduled job.
+    Description: Reserved concurrency - a hard ceiling on the scheduled job.
+  UserPoolId:
+    Type: String
+    Default: us-east-2_aRydPmAjj
+    Description: The existing quantum-workspace Cognito user pool (JWT issuer for the prefs API).
+  UserPoolClientId:
+    Type: String
+    Default: 2sg8nejrf2j8p28j6khjil99ir
+    Description: The quantum-workspace-web app client (JWT audience for the prefs API).
+  SiteOrigin:
+    Type: String
+    Default: https://quantum.altivum.ai
+    Description: Production origin allowed by the prefs API CORS.
+  AlertEmail:
+    Type: String
+    Default: christian.perez@altivum.io
+    Description: Receives a CloudWatch alarm email whenever a reminder send fails.
 
 Resources:
-  # Opt-out state — its own table so the sync full-item PUT can never clobber it.
+  # Consent + cadence state - its own table so the sync full-item PUT can never
+  # clobber it. Row shape: {userId, remindersOn, lastSentEpochDay, optOut (legacy),
+  # updatedAt}. remindersOn must be exactly true for any send (opt-in).
   EmailPrefsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -69,10 +90,15 @@ Resources:
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref ProgressTableName
-        # The sender only SCANS prefs (to skip opt-outs); it never writes them —
-        # read-only so a compromised sender can't silently re-subscribe anyone.
+        # The sender reads prefs (the opt-in gate) and writes exactly one thing
+        # back: the lastSentEpochDay cadence marker after a successful send. It
+        # has no PutItem/DeleteItem, so it can never flip anyone's consent.
         - DynamoDBReadPolicy:
             TableName: !Ref EmailPrefsTable
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt EmailPrefsTable.Arn
         # Scoped to sending ONLY from the configured address, so this function
         # cannot send as any other identity verified in the (live) account.
         - Statement:
@@ -82,6 +108,12 @@ Resources:
               Condition:
                 StringEquals:
                   ses:FromAddress: !Ref FromAddress
+        # The sandbox guard: the sender checks ProductionAccessEnabled before
+        # sending anything. GetAccount supports no resource-level scoping.
+        - Statement:
+            - Effect: Allow
+              Action: ses:GetAccount
+              Resource: "*"
       Events:
         Daily:
           Type: Schedule
@@ -110,11 +142,16 @@ Resources:
         Variables:
           PREFS_TABLE: !Ref EmailPrefsTable
           UNSUB_SECRET: !Ref UnsubSecret
+          SITE_URL: !Ref SiteUrl
       FunctionUrlConfig:
         AuthType: NONE
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref EmailPrefsTable
+        # Unsubscribe only ever updates the caller's own consent flags (an
+        # UpdateItem keyed by the HMAC-verified sub) - no read, no delete.
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt EmailPrefsTable.Arn
 
   UnsubscribeLogGroup:
     Type: AWS::Logs::LogGroup
@@ -123,9 +160,111 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${UnsubscribeFunction}
       RetentionInDays: 30
 
+  # The authenticated preferences API - the same Cognito JWT authorizer shape as
+  # lambda/sync: API Gateway validates the token, the handler trusts only the
+  # verified sub claim.
+  PrefsApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref SiteOrigin
+          - http://localhost:3000
+        AllowMethods: [GET, PUT, DELETE, OPTIONS]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+
+  PrefsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-review-email-prefs
+      Runtime: nodejs22.x
+      Handler: prefs.handler
+      CodeUri: ./
+      Timeout: 10
+      MemorySize: 128
+      ReservedConcurrentExecutions: 5
+      Environment:
+        Variables:
+          PREFS_TABLE: !Ref EmailPrefsTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:UpdateItem, dynamodb:DeleteItem]
+              Resource: !GetAtt EmailPrefsTable.Arn
+      Events:
+        GetPrefs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PrefsApi
+            Method: GET
+            Path: /prefs
+        PutPrefs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PrefsApi
+            Method: PUT
+            Path: /prefs
+        DeletePrefs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PrefsApi
+            Method: DELETE
+            Path: /prefs
+
+  PrefsLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: PrefsFunction
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PrefsFunction}
+      RetentionInDays: 30
+
+  # Fail loud: any failed send (or failed cadence-marker write) surfaces as a
+  # ReviewEmailFailed EMF metric and rings this alarm - never a silent summary.
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-review-email-alerts
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  SendFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-review-email-send-failures
+      AlarmDescription: >-
+        One or more review-reminder emails failed to send (or a cadence marker
+        failed to persist). Emitted by the sender via EMF; check the sender's
+        CloudWatch logs.
+      Namespace: QuantumReviewEmail
+      MetricName: ReviewEmailFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertsTopic
+
 Outputs:
   UnsubscribeUrl:
     Description: The public unsubscribe endpoint (also injected into the sender as UNSUB_BASE_URL).
     Value: !GetAtt UnsubscribeFunctionUrl.FunctionUrl
+  PrefsUrl:
+    Description: Set as NEXT_PUBLIC_REVIEW_PREFS_URL in the Amplify app environment.
+    Value: !Sub https://${PrefsApi}.execute-api.${AWS::Region}.amazonaws.com
   EmailPrefsTableName:
     Value: !Ref EmailPrefsTable
+  AlertsTopicArn:
+    Value: !Ref AlertsTopic
