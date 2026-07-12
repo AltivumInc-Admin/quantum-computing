@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { Challenge } from "@/components/quantum/challenge";
 
 const bell = JSON.stringify({
+  id: "bell-widget-1",
   prompt: "Prepare the Bell state Φ+ on 2 qubits.",
   qubits: 2,
   target: { program: "H 0\nCNOT 0 1" },

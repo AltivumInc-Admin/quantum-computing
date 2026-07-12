@@ -101,8 +101,8 @@ export function validateRep(source: string): RepValidation {
   if (typeof kind !== "string" || !(REP_KINDS as readonly string[]).includes(kind)) {
     return { error: `Rep needs "kind": one of ${REP_KINDS.join(", ")}` };
   }
-  // The challenge parser auto-hashes a missing id from the prompt; contributed
-  // Reps must be explicit — an id is a permanent storage key, never implicit.
+  // An id is a permanent storage key, never implicit — every Rep kind's own
+  // parser (challenge included) also enforces this.
   if (typeof data.id !== "string" || !data.id.trim()) {
     return { error: 'contributed Reps need an explicit string "id" (the stable storage key)' };
   }

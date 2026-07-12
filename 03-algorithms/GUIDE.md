@@ -41,6 +41,7 @@ oracle algorithm opens with.
 
 ```qchallenge
 {
+  "id": "c1hegrk5",
   "prompt": "Put two qubits into an equal superposition over all four basis states (the H-on-all-qubits step that opens Deutsch–Jozsa).",
   "qubits": 2,
   "target": { "program": "H 0\nH 1" },
