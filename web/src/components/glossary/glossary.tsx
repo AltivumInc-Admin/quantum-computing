@@ -1,10 +1,19 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { GLOSSARY, groupByLetter, matchesQuery, ALPHABET } from "@/lib/glossary";
-import { GlossaryEntry } from "./glossary-entry";
 
-export function Glossary() {
+interface GlossaryProps {
+  /**
+   * Prerendered entry nodes keyed by term name, built ONCE on the server
+   * (glossary/page.tsx renders <GlossaryEntry> per term at build). The search
+   * below only filters and re-mounts these stable nodes — no markdown/KaTeX
+   * work happens client-side, on load or on a keystroke.
+   */
+  entries: Record<string, ReactNode>;
+}
+
+export function Glossary({ entries }: GlossaryProps) {
   const [query, setQuery] = useState("");
   const searchId = useId();
 
@@ -70,9 +79,7 @@ export function Glossary() {
             </h2>
             <ul role="list" className="mt-2">
               {group.terms.map((term) => (
-                <li key={term.term}>
-                  <GlossaryEntry term={term} />
-                </li>
+                <li key={term.term}>{entries[term.term]}</li>
               ))}
             </ul>
           </section>
