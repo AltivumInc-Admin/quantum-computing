@@ -8,7 +8,7 @@
 // clear that cache on rejection so a transient failure never bricks the session.
 
 const LOCAL_JS = "/pyodide/pyodide.js";
-const CDN_JS = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js";
+const CDN_JS = "https://cdn.jsdelivr.net/pyodide/v0.29.0/full/pyodide.js";
 
 function injectScript(src: string) {
   // Pre-inject so the internal loadScript()'s querySelector short-circuits and
@@ -63,7 +63,7 @@ describe("getPyodide boot: same-origin first, CDN fallback, actionable error", (
     // Same-origin attempted first, then the CDN fallback.
     expect(indexURLs(loadPyodide)).toEqual([
       "/pyodide/",
-      "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/",
+      "https://cdn.jsdelivr.net/pyodide/v0.29.0/full/",
     ]);
   });
 

@@ -16,6 +16,33 @@ source .venv/bin/activate
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 
+# Download (and cache) a pyodide-core release tarball, then unpack it into $2.
+# The tarball is keyed by version under .cache/ (already persisted across builds
+# by both CI and Amplify), so the two runtime stagings below share one download
+# when their pins coincide — which they do today: the LESSON runtime is pinned
+# to the same Pyodide build the LAB kernel uses (0.29.0), whose pyodide.asm.wasm
+# stays under CloudFront's compression ceiling (see the wasm assertion below).
+fetch_pyodide_core() {
+  local version="$1" dest="$2"
+  local tarball=".cache/pyodide-core-${version}.tar.bz2"
+  mkdir -p .cache
+  if [[ -s "$tarball" ]]; then
+    echo "    using cached ${tarball}"
+  else
+    curl -fsSL --retry 3 \
+      "https://github.com/pyodide/pyodide/releases/download/${version}/pyodide-core-${version}.tar.bz2" \
+      -o "${tarball}.part"
+    mv "${tarball}.part" "$tarball"
+  fi
+  local tmp
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/pyodide-core-XXXXXX")
+  # A corrupt cached tarball must not wedge every future build: drop it on failure.
+  tar -xjf "$tarball" -C "$tmp" \
+    || { rm -f "$tarball"; rm -rf "$tmp"; echo "corrupt ${tarball} removed - rerun the build"; exit 1; }
+  cp -R "$tmp"/pyodide/. "$dest"/   # tarball unpacks to pyodide/
+  rm -rf "$tmp"
+}
+
 # 1b) Self-host the pinned Pyodide LESSON runtime under ../public/pyodide so
 #     src/lib/pyodide-runtime.ts boots from SAME-ORIGIN instead of a third-party
 #     CDN, removing the runtime single point of failure. The version is parsed
@@ -37,13 +64,7 @@ PYODIDE_CDN="https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full"
 echo "==> Self-hosting Pyodide ${PYODIDE_VERSION} runtime -> ${PYODIDE_DEST}"
 rm -rf "$PYODIDE_DEST"
 mkdir -p "$PYODIDE_DEST"
-TMP_PYO=$(mktemp -d "${TMPDIR:-/tmp}/pyodide-core-XXXXXX")
-curl -fsSL --retry 3 \
-  "https://github.com/pyodide/pyodide/releases/download/${PYODIDE_VERSION}/pyodide-core-${PYODIDE_VERSION}.tar.bz2" \
-  -o "$TMP_PYO/core.tar.bz2"
-tar -xjf "$TMP_PYO/core.tar.bz2" -C "$TMP_PYO"   # unpacks to $TMP_PYO/pyodide/
-cp -R "$TMP_PYO"/pyodide/. "$PYODIDE_DEST"/
-rm -rf "$TMP_PYO"
+fetch_pyodide_core "$PYODIDE_VERSION" "$PYODIDE_DEST"
 test -f "$PYODIDE_DEST/pyodide.js" || { echo "pyodide.js missing after self-host"; exit 1; }
 # Fetch the {micropip, numpy} closure (the wheels 'core' omits) so the runtime's
 # loadPackage('micropip') + micropip.install(qcsim -> numpy) all resolve same-origin.
@@ -78,10 +99,12 @@ done
 #     from cdn.jsdelivr.net on every "Run in Browser", so a blocked/owned/down CDN
 #     bricks the whole lab.
 #
-#     This is a SEPARATE Pyodide from the lesson runtime above: its version is the
-#     KERNEL package's own pin (read from jupyterlite-pyodide-kernel so a kernel bump
-#     self-heals), which differs from the lesson runtime's pin, so the two must not
-#     share a directory. As with the lesson runtime, "core" ships no wheels, so after
+#     This is a SEPARATELY-STAGED Pyodide from the lesson runtime above: its version
+#     is the KERNEL package's own pin (read from jupyterlite-pyodide-kernel so a
+#     kernel bump self-heals), sourced independently from the lesson runtime's pin
+#     (they coincide at 0.29.0 today, so the core tarball downloads once via the
+#     cache, but either pin can move alone), so the two must not share a directory.
+#     As with the lesson runtime, "core" ships no wheels, so after
 #     unpacking core we fetch the exact wheel closure the lab loads (computed from the
 #     lock; see below).
 LAB_PYODIDE_VERSION=$(python -c 'from jupyterlite_pyodide_kernel.constants import PYODIDE_VERSION; print(PYODIDE_VERSION)')
@@ -91,13 +114,7 @@ LAB_PYO_CDN="https://cdn.jsdelivr.net/pyodide/v${LAB_PYODIDE_VERSION}/full"
 echo "==> Self-hosting LAB kernel Pyodide ${LAB_PYODIDE_VERSION} -> ${LAB_PYO_DEST}"
 rm -rf "$LAB_PYO_DEST"
 mkdir -p "$LAB_PYO_DEST"
-TMP_LAB=$(mktemp -d "${TMPDIR:-/tmp}/pyodide-lab-XXXXXX")
-curl -fsSL --retry 3 \
-  "https://github.com/pyodide/pyodide/releases/download/${LAB_PYODIDE_VERSION}/pyodide-core-${LAB_PYODIDE_VERSION}.tar.bz2" \
-  -o "$TMP_LAB/core.tar.bz2"
-tar -xjf "$TMP_LAB/core.tar.bz2" -C "$TMP_LAB"   # unpacks to $TMP_LAB/pyodide/
-cp -R "$TMP_LAB"/pyodide/. "$LAB_PYO_DEST"/
-rm -rf "$TMP_LAB"
+fetch_pyodide_core "$LAB_PYODIDE_VERSION" "$LAB_PYO_DEST"
 test -f "$LAB_PYO_DEST/pyodide.js" || { echo "lab pyodide.js missing after self-host"; exit 1; }
 # Compute the exact wheel closure the lab loads from the lock. Roots:
 #   - kernel boot packages that resolve via the Pyodide lock: sqlite3, jedi, ipython

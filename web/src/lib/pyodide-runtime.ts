@@ -16,7 +16,13 @@
 
 import { getWheelName } from "./manifest";
 
-const PYODIDE_VERSION = "0.27.7";
+// 0.29.0 deliberately matches the LAB kernel's own Pyodide pin (read from
+// jupyterlite-pyodide-kernel by build.sh): its pyodide.asm.wasm is ~8.6 MB —
+// safely under CloudFront's 10,000,000-byte compression ceiling, so it ships
+// brotli'd (~2.8 MB on the wire). The previous 0.27.7 wasm was 10,105,545 bytes,
+// 105,545 bytes OVER the ceiling, and was served raw. build.sh asserts every
+// staged wasm stays under the ceiling.
+const PYODIDE_VERSION = "0.29.0";
 // Primary: same-origin self-hosted distribution. No SRI needed — the assets are
 // ours and same-origin, served from the deploy we control.
 const PYODIDE_LOCAL_BASE = "/pyodide/";
@@ -29,7 +35,7 @@ const PYODIDE_LOCAL_BASE = "/pyodide/";
 //   curl -fsSL <cdn>/pyodide.js | openssl dgst -sha384 -binary | openssl base64 -A
 const PYODIDE_CDN_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 const PYODIDE_CDN_SRI =
-  "sha384-90so5tCKvl0xs9agU29IMKlAVzhfzFX7QO//YxQkRhJG58bBZrFN+2ZTRB026X5X";
+  "sha384-l95tshxQlbjf4kdyWZf10uUL5Dw8/iN9q16SQ+ttOEWA8SN0cLG6BGDGY17GxToh";
 
 export interface PyNamespace {
   destroy?(): void;
