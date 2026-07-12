@@ -9,7 +9,7 @@ import {
   fmtUsd,
 } from "@/lib/cost-estimate-grade";
 import { costCardId, ratingForPrediction } from "@/lib/challenge-review";
-import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
+import { gradeCardIfDue, getCardState, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { PRICING, costLabel } from "./cost";
 import { Chip, ErrorCard, WidgetCard, primaryActionClass } from "./widget-ui";
@@ -67,10 +67,14 @@ export function CostEstimateWidget({
 }) {
   const parsed = useMemo(() => parseCostEstimate(source), [source]);
   const spec = parsed.spec;
-  const truthResult = useMemo<ReturnType<typeof costEstimateTruth>>(
-    () => (spec ? costEstimateTruth(spec) : { error: "no spec" }),
-    [spec],
-  );
+  // On /review, salt the option ORDER with the card's repetition count so a
+  // scheduled re-review shuffles fresh — position memory must not grade as
+  // mastery. Lesson mounts stay unsalted (stable layout), like expectation.
+  const truthResult = useMemo<ReturnType<typeof costEstimateTruth>>(() => {
+    if (!spec) return { error: "no spec" };
+    const salt = surface === "review" ? getCardState(costCardId(spec.id))?.reps ?? 0 : undefined;
+    return costEstimateTruth(spec, salt);
+  }, [spec, surface]);
   const truth = truthResult.truth;
 
   const cardId = costCardId(spec?.id ?? "invalid");

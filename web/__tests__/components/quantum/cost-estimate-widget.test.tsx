@@ -4,8 +4,10 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CostEstimateWidget } from "@/components/quantum/cost-estimate-widget";
-import { getCardState } from "@/lib/review-store";
+import { getCardState, gradeCard } from "@/lib/review-store";
 import { costCardId } from "@/lib/challenge-review";
+import { parseCostEstimate } from "@/lib/cost-estimate-schema";
+import { costEstimateTruth, fmtUsd } from "@/lib/cost-estimate-grade";
 
 const ionq2000 = JSON.stringify({
   id: "t-cost",
@@ -89,5 +91,24 @@ describe("CostEstimateWidget", () => {
     fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
     expect(screen.getByText(/reviewed — next review/i)).toBeInTheDocument();
     expect(screen.queryByText(/added to your review/i)).not.toBeInTheDocument();
+  });
+
+  it("salts the option order on /review with the card's reps — position memory can't pass", () => {
+    const spec = parseCostEstimate(ionq2000).spec!;
+    const optionNames = () =>
+      screen
+        .getAllByRole("button", { name: /^\$/ })
+        .map((b) => b.textContent);
+
+    // Lesson mount: the stable, unsalted per-Rep order.
+    const lesson = render(<CostEstimateWidget source={ionq2000} />);
+    expect(optionNames()).toEqual(costEstimateTruth(spec).truth!.options.map(fmtUsd));
+    lesson.unmount();
+
+    // Review mount after one rep: the order is drawn from the reps-salted
+    // shuffle (same contract as the expectation Rep).
+    gradeCard(costCardId("t-cost"), "good"); // reps -> 1
+    render(<CostEstimateWidget source={ionq2000} surface="review" />);
+    expect(optionNames()).toEqual(costEstimateTruth(spec, 1).truth!.options.map(fmtUsd));
   });
 });

@@ -77,7 +77,16 @@ export interface CostTruthResult {
   error?: string;
 }
 
-export function costEstimateTruth(spec: CostEstimateSpec): CostTruthResult {
+/**
+ * `shuffleSalt` varies the option ORDER (never the values): the lesson surface
+ * omits it for a stable layout, while /review passes the card's repetition
+ * count so a scheduled re-review draws a fresh permutation — remembering
+ * "second button" must not rate as mastery forever. Mirrors expectationTruth.
+ */
+export function costEstimateTruth(
+  spec: CostEstimateSpec,
+  shuffleSalt?: string | number,
+): CostTruthResult {
   const rates = PRICING[spec.provider];
   if (!("perShot" in rates)) {
     return { error: "This Rep's provider must be a per-shot QPU." };
@@ -112,7 +121,8 @@ export function costEstimateTruth(spec: CostEstimateSpec): CostTruthResult {
         "This Rep's distractors collide at these rates — pick a different shots count so all four options are distinct.",
     };
   }
-  const options = seededOrder(4, spec.id).map((i) => distinct[i] / 100);
+  const seedKey = shuffleSalt == null ? spec.id : `${spec.id}#${shuffleSalt}`;
+  const options = seededOrder(4, seedKey).map((i) => distinct[i] / 100);
   const correctIndex = options.findIndex((v) => centsOf(v) === correctCents);
 
   return {
