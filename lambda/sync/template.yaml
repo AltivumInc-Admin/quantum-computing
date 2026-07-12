@@ -59,7 +59,7 @@ Resources:
         AllowOrigins:
           - !Ref SiteOrigin
           - http://localhost:3000
-        AllowMethods: [GET, PUT, OPTIONS]
+        AllowMethods: [GET, PUT, DELETE, OPTIONS]
         AllowHeaders: [authorization, content-type]
         MaxAge: 3600
       Auth:
@@ -86,8 +86,10 @@ Resources:
           TABLE_NAME: !Ref ProgressTable
       Policies:
         - Statement:
+            # DeleteItem serves DELETE /progress (account deletion) — still
+            # scoped to this one table, still keyed only by the verified sub.
             - Effect: Allow
-              Action: [dynamodb:GetItem, dynamodb:PutItem]
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem]
               Resource: !GetAtt ProgressTable.Arn
       Events:
         GetProgress:
@@ -101,6 +103,12 @@ Resources:
           Properties:
             ApiId: !Ref SyncApi
             Method: PUT
+            Path: /progress
+        DeleteProgress:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SyncApi
+            Method: DELETE
             Path: /progress
       Tags:
         Project: quantum
