@@ -96,7 +96,7 @@ export function CopyButton({
       className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-control interactive focus-ring ${
         failed
           ? "text-warm-dark dark:text-warm-light"
-          : "text-gray-400 hover:bg-accent/10 hover:text-accent dark:hover:text-accent-light"
+          : "text-caption hover:bg-accent/10 hover:text-accent dark:hover:text-accent-light"
       } ${className}`}
     >
       {copied ? <CheckIcon /> : failed ? <FailIcon /> : <ClipboardIcon />}

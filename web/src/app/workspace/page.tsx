@@ -84,7 +84,7 @@ export default function WorkspacePage() {
           </span>
         </span>
         <svg
-          className="h-5 w-5 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5"
+          className="h-5 w-5 shrink-0 text-caption transition-transform group-hover:translate-x-0.5"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

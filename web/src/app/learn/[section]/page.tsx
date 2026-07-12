@@ -83,7 +83,7 @@ export default async function SectionPage({ params }: PageProps) {
 
             <div className="mt-16 flex flex-wrap items-center gap-4 border-t border-gray-200/60 dark:border-gray-800/40 pt-10 reveal">
               <SectionProgress slug={slug} />
-              <p className="text-sm text-gray-400 dark:text-gray-500">
+              <p className="text-sm text-caption">
                 Mark this lesson done to track your progress through the path.
               </p>
             </div>

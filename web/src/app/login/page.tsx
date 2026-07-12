@@ -26,7 +26,7 @@ export default function LoginPage() {
           </p>
         </div>
       ) : (
-        <Suspense fallback={<p className="text-sm text-gray-500">Loading…</p>}>
+        <Suspense fallback={<p className="text-sm text-caption">Loading…</p>}>
           <AuthForm />
         </Suspense>
       )}

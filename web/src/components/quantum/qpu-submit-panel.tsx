@@ -200,7 +200,7 @@ function CredentialGate({
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 focus-within:ring-2 focus-within:ring-accent/40">
-          <span className="text-gray-500">$</span>
+          <span className="text-caption">$</span>
           <label htmlFor="qpu-cred" className="sr-only">
             Estimated cost in dollars
           </label>

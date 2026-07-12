@@ -9,7 +9,7 @@ export function Footer() {
   return (
     <footer className="mt-24 border-t border-gray-200/60 dark:border-gray-800/40">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-caption">
           Quantum Workspace — learn quantum computing with Amazon Braket.
         </p>
         <nav aria-label="Footer" className="flex items-center gap-6 text-sm font-medium">
@@ -24,7 +24,7 @@ export function Footer() {
           </a>
         </nav>
       </div>
-      <p className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 text-xs text-gray-400 dark:text-gray-600">
+      <p className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 text-xs text-caption">
         Altivum Inc. — built with Amazon Braket.
       </p>
     </footer>

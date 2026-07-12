@@ -172,8 +172,8 @@ export function CostCalculator({ source }: { source: string }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-700/40">
-                <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Item</th>
-                <th scope="col" className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">USD</th>
+                <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-caption">Item</th>
+                <th scope="col" className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-caption">USD</th>
               </tr>
             </thead>
             <tbody>

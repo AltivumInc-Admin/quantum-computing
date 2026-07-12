@@ -214,7 +214,7 @@ export function AskTutor() {
               type="button"
               aria-label="Close tutor"
               onClick={close}
-              className="rounded-control p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 interactive focus-ring"
+              className="rounded-control p-1.5 text-caption hover:text-gray-700 dark:hover:text-gray-200 interactive focus-ring"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
@@ -231,7 +231,7 @@ export function AskTutor() {
                   {answer}
                 </p>
               ) : (
-                <p className="text-sm text-gray-400 dark:text-gray-500">
+                <p className="text-sm text-caption">
                   {busy
                     ? "Thinking…"
                     : "Ask anything about this lesson. I answer only from the lesson text and will nudge you with a question before handing over the full answer."}

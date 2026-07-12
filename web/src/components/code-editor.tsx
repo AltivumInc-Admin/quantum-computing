@@ -19,7 +19,7 @@ export interface CodeEditorProps {
 const Monaco = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900/60 text-sm text-gray-400 dark:text-gray-500">
+    <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900/60 text-sm text-caption">
       Loading editor…
     </div>
   ),

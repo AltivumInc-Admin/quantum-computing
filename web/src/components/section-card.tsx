@@ -40,7 +40,7 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
           </span>
           <span
             aria-hidden="true"
-            className="text-xs text-gray-400 dark:text-gray-500 tabular-nums mt-1"
+            className="text-xs text-caption tabular-nums mt-1"
           >
             {notebookCount} {notebookCount === 1 ? "notebook" : "notebooks"}
           </span>
@@ -58,7 +58,7 @@ export function SectionCard({ slug, index, title, summary, notebookCount }: Sect
         <div className="h-px bg-gradient-to-r from-gray-200/50 dark:from-gray-700/30 to-transparent mt-4 mb-4" />
         <div
           aria-hidden="true"
-          className="flex items-center gap-1.5 text-xs font-medium text-gray-400 dark:text-gray-500 group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200"
+          className="flex items-center gap-1.5 text-xs font-medium text-caption group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200"
         >
           <span>Explore section</span>
           <svg className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
