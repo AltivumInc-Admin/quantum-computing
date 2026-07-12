@@ -13,6 +13,14 @@ jest.mock("@/lib/qpu-client", () => ({
   getBudget: jest.fn(),
 }));
 
+// The hardware fetch is gated on auth resolving (status === "authenticated") —
+// mutable so tests can drive the configuring → authenticated transition.
+let mockAuthStatus = "authenticated";
+jest.mock("@/components/auth/auth-provider", () => ({
+  __esModule: true,
+  useAuth: () => ({ status: mockAuthStatus, email: null, signOut: async () => {} }),
+}));
+
 import { CredentialsWall } from "@/components/credentials-wall";
 import * as qpu from "@/lib/qpu-client";
 import { epochDay } from "@/lib/review-schedule";
@@ -33,7 +41,11 @@ function seedRetained(id: string, n: number) {
 }
 
 describe("CredentialsWall", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    mockAuthStatus = "authenticated";
+    (qpu.getBudget as jest.Mock).mockClear();
+  });
 
   it("renders all four medal groups and an earned/total summary", () => {
     render(<CredentialsWall />);
@@ -59,6 +71,61 @@ describe("CredentialsWall", () => {
     await waitFor(() => expect(hardware).toHaveTextContent(/Earned/));
     expect(hardware).toHaveTextContent(/1 completed run on IQM Garnet/);
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false); // reset for other tests
+  });
+
+  it("waits out the Amplify-bridge race: no fetch while configuring, fetch on authenticated", async () => {
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockResolvedValue({
+      capMicros: 5_000_000, spentMicros: 0, remainingMicros: 5_000_000, credentialed: true,
+      tasks: [
+        { idempotencyKey: "a", status: "COMPLETED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:x", circuitHash: null, createdAt: 1 },
+      ],
+    });
+
+    // Auth still resolving (Amplify.configure not yet run): fetching now is the
+    // exact race this guards against — it must NOT happen.
+    mockAuthStatus = "configuring";
+    const { rerender } = render(<CredentialsWall />);
+    expect(qpu.getBudget).not.toHaveBeenCalled();
+
+    // Auth resolves → the status dep re-runs the effect and the fetch lands.
+    mockAuthStatus = "authenticated";
+    rerender(<CredentialsWall />);
+    await waitFor(() => expect(qpu.getBudget).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Hardware")).toHaveTextContent(/Earned/)
+    );
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("treats signed-out as an honest zero: no fetch, locked medals, no error note", () => {
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    mockAuthStatus = "unauthenticated";
+    render(<CredentialsWall />);
+    expect(qpu.getBudget).not.toHaveBeenCalled();
+    const hardware = screen.getByLabelText("Hardware");
+    expect(hardware).toHaveTextContent(/Locked/);
+    expect(hardware).not.toHaveTextContent(/couldn't verify/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("shows an explicit couldn't-verify state when the budget fetch fails", async () => {
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockRejectedValue(new Error("budget failed (502)"));
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() =>
+      expect(hardware).toHaveTextContent(/couldn't verify your hardware runs/i)
+    );
+    // Signed out is NOT an error: NotSignedIn keeps the honest locked zero.
+    (qpu.getBudget as jest.Mock).mockRejectedValue(
+      Object.assign(new Error("not signed in"), { name: "NotSignedIn" })
+    );
+    render(<CredentialsWall />);
+    const walls = screen.getAllByLabelText("Hardware");
+    await waitFor(() => expect(qpu.getBudget).toHaveBeenCalledTimes(2));
+    expect(walls[walls.length - 1]).not.toHaveTextContent(/couldn't verify/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
   });
 
   it("earns a completion medal from a section flag", () => {
