@@ -16,6 +16,40 @@ source .venv/bin/activate
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 
+# CloudFront compresses a response only when the object is UNDER 10,000,000
+# bytes (its documented maximum file size for compression); anything at or over
+# that ceiling is served RAW. For a multi-MB wasm that is the difference between
+# ~2.8 MB brotli on the wire and the full uncompressed payload on EVERY cold
+# boot: the lesson runtime's 0.27.7 pyodide.asm.wasm was 10,105,545 bytes --
+# 105,545 bytes over -- and shipped as 10.1 MB raw (live-verified on
+# quantum.altivum.ai) while the lab's 8,647,609-byte copy compressed to ~2.8 MB.
+# Assert EVERY staged wasm stays under the ceiling so no future Pyodide (or
+# other wasm) bump can silently fall off the compression cliff.
+WASM_COMPRESSION_CEILING=10000000
+assert_wasm_under_ceiling() {
+  local dir="$1"
+  local f size count=0 ok=1
+  while IFS= read -r -d '' f; do
+    count=$((count + 1))
+    size=$(wc -c < "$f" | tr -d '[:space:]')
+    if [ "$size" -lt "$WASM_COMPRESSION_CEILING" ]; then
+      echo "    OK: $f = $size bytes (< $WASM_COMPRESSION_CEILING)"
+    else
+      echo "    ERROR: $f = $size bytes, at/over CloudFront's $WASM_COMPRESSION_CEILING-byte compression ceiling." >&2
+      echo "           CloudFront will serve it UNCOMPRESSED (no brotli/gzip) -- megabytes of pure waste per cold boot." >&2
+      echo "           Use a Pyodide build (or asset) whose wasm stays under the ceiling." >&2
+      ok=0
+    fi
+  done < <(find "$dir" -type f -name '*.wasm' -print0)
+  # Zero wasm found means the runtime was not staged at all -- fail loudly
+  # rather than let the guard pass vacuously.
+  if [ "$count" -eq 0 ]; then
+    echo "    ERROR: no .wasm found under $dir (expected the Pyodide runtime wasm)" >&2
+    exit 1
+  fi
+  [ "$ok" -eq 1 ] || exit 1
+}
+
 # Download (and cache) a pyodide-core release tarball, then unpack it into $2.
 # The tarball is keyed by version under .cache/ (already persisted across builds
 # by both CI and Amplify), so the two runtime stagings below share one download
@@ -360,6 +394,13 @@ cp -R files/lib ../public/lab/files/lib
 #    them cuts the deployed lab to ~20MB with zero functional impact.
 echo "==> Stripping source maps from lab output (production payload)"
 find ../public/lab -name '*.map' -type f -delete
+
+# 9) Hard gate: every wasm staged by this build -- the lesson runtime under
+#    ../public/pyodide AND the lab kernel's copy inside ../public/lab -- must
+#    stay under CloudFront's compression ceiling (see assert_wasm_under_ceiling).
+echo "==> Asserting every staged wasm is under CloudFront's compression ceiling"
+assert_wasm_under_ceiling "$PYODIDE_DEST"
+assert_wasm_under_ceiling ../public/lab
 
 echo ""
 echo "==> Build complete: ../public/lab/"
