@@ -4,7 +4,7 @@ import { CredentialsWall } from "@/components/credentials-wall";
 export const metadata: Metadata = {
   title: "Credentials — Quantum Workspace",
   description:
-    "Your software-verified credentials: engraved medals for modules completed, skills held in proven retention, and weeks of unbroken practice.",
+    "Software-verified credentials: medals for modules completed, skills held in proven retention, weeks of unbroken practice, and circuits run on a real quantum computer — sponsored, so you never pay.",
 };
 
 // Static route (no params) — prerendered as an inert shell under output:"export";

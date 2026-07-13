@@ -56,12 +56,16 @@ describe("CredentialsWall", () => {
     expect(screen.getByText(/of \d+ earned/i)).toBeInTheDocument();
   });
 
-  it("lights the hardware badge from COMPLETED real-hardware runs (QPU configured)", async () => {
+  it("lights the hardware badge from the SERVER counters, not the truncated task list", async () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
     (qpu.getBudget as jest.Mock).mockResolvedValue({
-      capMicros: 5_000_000, spentMicros: 0, remainingMicros: 5_000_000, credentialed: true,
+      capMicros: 2_500_000, spentMicros: 445_000, remainingMicros: 2_055_000, credentialed: true,
+      completedRuns: 1,
+      completedShots: 100,
+      // `tasks` deliberately contains NO completed row: the medal must come from the
+      // server aggregate above. The old code did tasks.filter(COMPLETED).length over
+      // this 50-row-truncated window, which let an earned medal silently un-earn.
       tasks: [
-        { idempotencyKey: "a", status: "COMPLETED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:x", circuitHash: null, createdAt: 1 },
         { idempotencyKey: "b", status: "SUBMITTED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:y", circuitHash: null, createdAt: 2 },
       ],
     });
@@ -70,13 +74,24 @@ describe("CredentialsWall", () => {
     // One COMPLETED run → the "Ran on real hardware" tier earns (async fetch).
     await waitFor(() => expect(hardware).toHaveTextContent(/Earned/));
     expect(hardware).toHaveTextContent(/1 completed run on IQM Garnet/);
+    // The lab record — the artifact a peer would be shown.
+    expect(hardware).toHaveTextContent(/Your record: 1 completed run, 100 shots on IQM Garnet/);
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false); // reset for other tests
+  });
+
+  it("states that the platform pays for the hardware runs", () => {
+    render(<CredentialsWall />);
+    expect(screen.getByLabelText("Hardware")).toHaveTextContent(
+      /The platform pays Amazon Braket for every one of these runs/i,
+    );
   });
 
   it("waits out the Amplify-bridge race: no fetch while configuring, fetch on authenticated", async () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
     (qpu.getBudget as jest.Mock).mockResolvedValue({
-      capMicros: 5_000_000, spentMicros: 0, remainingMicros: 5_000_000, credentialed: true,
+      capMicros: 2_500_000, spentMicros: 445_000, remainingMicros: 2_055_000, credentialed: true,
+      completedRuns: 1,
+      completedShots: 100,
       tasks: [
         { idempotencyKey: "a", status: "COMPLETED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:x", circuitHash: null, createdAt: 1 },
       ],
@@ -115,7 +130,8 @@ describe("CredentialsWall", () => {
     render(<CredentialsWall />);
     const hardware = screen.getByLabelText("Hardware");
     await waitFor(() =>
-      expect(hardware).toHaveTextContent(/couldn't verify your hardware runs/i)
+      // "record", not "runs": the group is fed by shots AND runs now.
+      expect(hardware).toHaveTextContent(/couldn't verify your hardware record/i)
     );
     // Signed out is NOT an error: NotSignedIn keeps the honest locked zero.
     (qpu.getBudget as jest.Mock).mockRejectedValue(

@@ -46,7 +46,8 @@ const GROUP_BLURB: Record<CredentialGroup, string> = {
   completion: "Modules carried to the end.",
   mastery: "Skills held in proven, spaced-repetition retention.",
   consistency: "Weeks of showing up, unbroken.",
-  hardware: "Circuits run on a real quantum computer.",
+  hardware:
+    "Circuits run on a real quantum computer. The platform pays Amazon Braket for every one of these runs.",
 };
 
 function snapshot(): string {
@@ -68,7 +69,10 @@ function snapshot(): string {
   }
 }
 
-function readCredentials(today: number, hardwareRuns: number): { creds: Credential[]; earned: number } {
+function readCredentials(
+  today: number,
+  hardware: { runs: number; shots: number },
+): { creds: Credential[]; earned: number } {
   const states = getAllCardStates();
   const mastery = masteryCount(states);
   const days = activeDays().filter((d) => d <= today);
@@ -78,7 +82,13 @@ function readCredentials(today: number, hardwareRuns: number): { creds: Credenti
     title: s.title,
     done: isSectionComplete(s.slug),
   }));
-  const creds = computeCredentials({ sections, mastery, longestStreakWeeks, hardwareRuns });
+  const creds = computeCredentials({
+    sections,
+    mastery,
+    longestStreakWeeks,
+    hardwareRuns: hardware.runs,
+    hardwareShots: hardware.shots,
+  });
   return { creds, earned: creds.filter((c) => c.earned).length };
 }
 
@@ -92,7 +102,11 @@ export function CredentialsWall() {
   // fetchAuthSession works, so an empty-dep mount fetch raced it, the thrown
   // NotSignedIn was swallowed, and earned Hardware medals rendered "Locked"
   // for the life of the page.
-  const [hardwareRuns, setHardwareRuns] = useState(0);
+  // Runs AND shots come from the server's monotonic aggregates, NOT from
+  // b.tasks.filter(COMPLETED) — that list is truncated to the newest 50 rows, and
+  // refunded FAILED/RELEASED rows still occupy slots in it, so a busy learner could
+  // push an earned COMPLETED row out of the window and watch a medal un-earn.
+  const [hardware, setHardware] = useState({ runs: 0, shots: 0 });
   // Signed out / QPU surface off is an HONEST zero (locked). A failed fetch is
   // not — it becomes an explicit "couldn't verify" note on the Hardware group.
   const [hardwareUnverified, setHardwareUnverified] = useState(false);
@@ -102,7 +116,7 @@ export function CredentialsWall() {
     getBudget()
       .then((b) => {
         if (disposed) return;
-        setHardwareRuns(b.tasks.filter((t) => t.status === "COMPLETED").length);
+        setHardware({ runs: b.completedRuns, shots: b.completedShots });
         setHardwareUnverified(false);
       })
       .catch((e: Error) => {
@@ -117,8 +131,8 @@ export function CredentialsWall() {
 
   const data = useMemo(() => {
     if (snap === SERVER_SNAPSHOT) return null;
-    return readCredentials(Number(snap.split("|")[0]) || 0, hardwareRuns);
-  }, [snap, hardwareRuns]);
+    return readCredentials(Number(snap.split("|")[0]) || 0, hardware);
+  }, [snap, hardware]);
 
   const groups: CredentialGroup[] = ["completion", "mastery", "consistency", "hardware"];
 
@@ -160,9 +174,21 @@ export function CredentialsWall() {
                     {GROUP_TITLE[g]}
                   </h2>
                   <p className="mt-0.5 text-sm text-caption">{GROUP_BLURB[g]}</p>
+                  {/* The lab record: the artifact a peer would actually be shown. */}
+                  {g === "hardware" && hardware.runs > 0 && (
+                    <p className="mt-1 text-sm tabular-nums text-gray-700 dark:text-gray-300">
+                      Your record:{" "}
+                      <span className="font-medium">
+                        {hardware.runs.toLocaleString("en-US")} completed run
+                        {hardware.runs === 1 ? "" : "s"}
+                      </span>
+                      , <span className="font-medium">{hardware.shots.toLocaleString("en-US")} shots</span>{" "}
+                      on IQM Garnet.
+                    </p>
+                  )}
                   {g === "hardware" && hardwareUnverified && (
                     <p role="status" className="mt-1 text-xs text-warm-dark dark:text-warm-light">
-                      Couldn&apos;t verify your hardware runs — these medals may show as
+                      Couldn&apos;t verify your hardware record — these medals may show as
                       locked. Reload to retry.
                     </p>
                   )}

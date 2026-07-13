@@ -13,9 +13,23 @@
  *                  infer real skill?" test the whole platform is built on.
  *   consistency  — tiered by the LONGEST weekly streak (monotonic), so these
  *                  never un-earn once achieved.
- *   hardware     — tiered by COMPLETED real-hardware runs (IQM Garnet), reconciled
- *                  from actual Braket task provenance. The one credential a
- *                  competitor structurally can't copy: you ran on the real device.
+ *   hardware     — the real-hardware track (IQM Garnet), reconciled from actual
+ *                  Braket task provenance and PAID FOR BY THE PLATFORM. Two tiers
+ *                  count COMPLETED runs; the top tier counts total SHOTS across
+ *                  completed runs, because shots — not submissions — buy statistical
+ *                  precision. A run's $0.30 task fee is flat and dominates the
+ *                  $0.00145 shot fee, so a run-count top medal would pay learners to
+ *                  spam 1-shot runs and penalise good experimental design. Monotonic:
+ *                  hardware medals never lapse. The one credential a competitor
+ *                  structurally can't copy: you ran on the real device.
+ *
+ * INVARIANT: every hardware tier must be earnable within LIFETIME_CAP_MICROS
+ * (lambda/qpu/qpu-core.mjs). The ladder and the cap are pinned together by the
+ * committed fixture lambda/qpu/__fixtures__/hardware-ladder.json, asserted from BOTH
+ * sides (qpu-core.test.mjs's feasibility lock + credentials.test.ts). Do not add a
+ * tier without it: the ladder this replaced (1/5/20 runs) shipped a 20-run medal
+ * costing $8.90 under a $5.00 cap — a medal the platform's own budget made
+ * impossible to earn, under a header promising "Each medal is earned, not awarded."
  */
 
 export type CredentialGroup = "completion" | "mastery" | "consistency" | "hardware";
@@ -40,6 +54,8 @@ export interface CredentialInput {
   longestStreakWeeks: number;
   /** COMPLETED real-hardware runs (from the reconciled QPU task provenance). */
   hardwareRuns: number;
+  /** Total shots across COMPLETED real-hardware runs. */
+  hardwareShots: number;
 }
 
 /** Retention milestones. `label` names the rung on the Newcomer→Practitioner→SME ladder. */
@@ -58,11 +74,17 @@ export const CONSISTENCY_TIERS: { n: number; title: string }[] = [
   { n: 26, title: "Relentless" },
 ];
 
-/** Real-hardware-run milestones. */
-export const HARDWARE_TIERS: { n: number; title: string }[] = [
-  { n: 1, title: "Ran on real hardware" },
-  { n: 5, title: "Hardware regular" },
-  { n: 20, title: "Hardware veteran" },
+/** Real-hardware milestones — the three artifacts of an experimental campaign: a
+ *  result, a series, a sample. The top tier is measured in SHOTS, not runs (see the
+ *  header): shots buy statistical precision, runs buy only the right to submit again.
+ *  `metric` is a discriminant because the requirement grammar has to branch — a shots
+ *  tier rendered through the runs template would read "Complete 1000 runs on real
+ *  hardware", a worse lie than the one this ladder fixes.
+ *  Pinned to the money constants by __fixtures__/hardware-ladder.json (see header). */
+export const HARDWARE_TIERS: { n: number; title: string; metric: "runs" | "shots" }[] = [
+  { n: 1, title: "Ran on real hardware", metric: "runs" },
+  { n: 3, title: "Run series", metric: "runs" },
+  { n: 1000, title: "Deep sample", metric: "shots" },
 ];
 
 export function computeCredentials(input: CredentialInput): Credential[] {
@@ -108,18 +130,30 @@ export function computeCredentials(input: CredentialInput): Credential[] {
     });
   }
 
-  // Hardware — completed real-hardware runs (from reconciled task provenance).
+  // Hardware — COMPLETED real-hardware runs and the shots inside them, both from
+  // reconciled Braket task provenance (server aggregates, never a client tally).
   for (const t of HARDWARE_TIERS) {
-    const earned = input.hardwareRuns >= t.n;
+    const value = t.metric === "shots" ? input.hardwareShots : input.hardwareRuns;
+    const earned = value >= t.n;
+    // The shared clause: the run count is the provenance behind BOTH metrics, so a
+    // shots medal still cites the runs it was sampled across ("a lab record").
+    const runs = `${input.hardwareRuns} completed run${input.hardwareRuns === 1 ? "" : "s"} on IQM Garnet`;
     creds.push({
-      id: `hardware:${t.n}`,
+      // id carries the metric: a runs-tier and a shots-tier can otherwise collide
+      // on `n`. (Safe to change — the id is only a React key, never persisted.)
+      id: `hardware:${t.metric}:${t.n}`,
       group: "hardware",
       title: t.title,
-      requirement: `Complete ${t.n} run${t.n === 1 ? "" : "s"} on real hardware`,
+      requirement:
+        t.metric === "shots"
+          ? `Run ${t.n.toLocaleString("en-US")} total shots on real hardware`
+          : `Complete ${t.n} run${t.n === 1 ? "" : "s"} on real hardware`,
       earned,
-      evidence: earned
-        ? `${input.hardwareRuns} completed run${input.hardwareRuns === 1 ? "" : "s"} on IQM Garnet`
-        : "",
+      evidence: !earned
+        ? ""
+        : t.metric === "shots"
+          ? `${input.hardwareShots.toLocaleString("en-US")} shots across ${runs}`
+          : runs,
     });
   }
 
