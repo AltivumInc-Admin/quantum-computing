@@ -43,8 +43,10 @@ def _aws_device_cls():
 #                  ledger under-charge by ~$200. Simulators are off (per-minute model, not the
 #                  hardware-credit path). Adding a cheaper gate QPU + allowlist=True later makes
 #                  it win cheapest_allowlisted_device automatically — no other change.
-#                  NOTE: the real spend boundary is the ledger's hard caps ($5/user, $15/day),
-#                  not the client-authored progress gate — see lambda/qpu/qpu-core.mjs.
+#                  NOTE: the real spend boundary is the ledger's hard caps ($2.50 lifetime per
+#                  user, $15/day globally), not the client-authored progress gate — see
+#                  LIFETIME_CAP_MICROS / DAILY_CAP_MICROS in lambda/qpu/qpu-core.mjs. (The
+#                  platform pays those dollars; the learner never does.)
 DEVICES = {
     "sv1": {
         "arn": "arn:aws:braket:::device/quantum-simulator/amazon/sv1",
