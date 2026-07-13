@@ -257,6 +257,30 @@ Resources:
       AlarmActions:
         - !Ref AlertsTopic
 
+  # A sender that crashes outright (for example the SES GetAccount sandbox
+  # probe throwing) emits no EMF at all, so the send-failure alarm above
+  # cannot see it. This one watches the invocation itself.
+  SenderErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-review-email-sender-errors
+      AlarmDescription: >-
+        The scheduled review-email sender invocation failed before it could
+        report anything. Check the sender's CloudWatch logs.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SenderFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertsTopic
+
 Outputs:
   UnsubscribeUrl:
     Description: The public unsubscribe endpoint (also injected into the sender as UNSUB_BASE_URL).

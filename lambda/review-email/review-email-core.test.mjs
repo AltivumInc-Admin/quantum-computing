@@ -89,6 +89,10 @@ test("emfLine is valid EMF: namespace, metric names, and values in one stdout bl
   const parsed = JSON.parse(emfLine({ ReviewEmailSent: 3, ReviewEmailFailed: 1 }, 1234));
   assert.equal(parsed._aws.Timestamp, 1234);
   assert.equal(parsed._aws.CloudWatchMetrics[0].Namespace, METRIC_NAMESPACE);
+  // The EMF spec REQUIRES Dimensions on every MetricDirective; without it the
+  // whole document is ignored and the send-failure alarm can never fire. One
+  // empty DimensionSet = dimensionless metrics, matching the template's alarm.
+  assert.deepEqual(parsed._aws.CloudWatchMetrics[0].Dimensions, [[]]);
   assert.deepEqual(
     parsed._aws.CloudWatchMetrics[0].Metrics,
     [

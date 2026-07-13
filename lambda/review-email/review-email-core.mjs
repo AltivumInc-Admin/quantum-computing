@@ -151,7 +151,9 @@ async function scanAll(ddb, params) {
 /**
  * One CloudWatch metric emission in Embedded Metric Format — a structured
  * stdout line the Logs agent turns into real metrics, no SDK dependency.
- * `Dimensions` is omitted: these are account-level operational counters.
+ * The EMF spec REQUIRES the Dimensions member on every MetricDirective; a
+ * single empty DimensionSet ([[]]) publishes these as dimensionless
+ * account-level counters, which is what the template's alarm queries.
  */
 export function emfLine(metrics, timestamp = Date.now()) {
   return JSON.stringify({
@@ -160,6 +162,7 @@ export function emfLine(metrics, timestamp = Date.now()) {
       CloudWatchMetrics: [
         {
           Namespace: METRIC_NAMESPACE,
+          Dimensions: [[]],
           Metrics: Object.keys(metrics).map((Name) => ({ Name, Unit: "Count" })),
         },
       ],
