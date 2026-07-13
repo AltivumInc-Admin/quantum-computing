@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   isQpuConfigured,
   getBudget,
@@ -11,6 +11,20 @@ import {
   type Budget,
   type CredentialChallenge,
 } from "@/lib/qpu-client";
+import { HARDWARE_TIERS } from "@/lib/credentials";
+import {
+  IQM_TASK_MICROS,
+  IQM_SHOT_MICROS,
+  MAX_SHOTS,
+  DEEP_SAMPLE_SHOTS,
+  DEEP_SAMPLE_TITLE,
+  costMicros,
+  usd,
+  maxShotsAffordable,
+  deepSampleReachable,
+  remainingLadderPlan,
+  tierReachable,
+} from "@/lib/qpu-budget";
 import { PRICING } from "./cost";
 
 /**
@@ -30,68 +44,60 @@ import { PRICING } from "./cost";
  * (renders nothing) until NEXT_PUBLIC_QPU_URL is configured.
  */
 
-// ONE cost source, ONE formatter — mirrors the server's exact charge
-// (costMicros = task + per-shot, in integer micro-dollars). Every displayed
-// dollar (preview, breakdown, button, confirm, budget bar, history) AND every
-// rate quoted in prose derives from PRICING in cost.ts — the pricing table the
-// whole app grades against, itself parity-locked to lib/utils/cost.py by the
-// committed cost.json fixture — so a reprice lands everywhere at once instead
-// of leaving this panel quoting a stale rate. (Exported for the parity test,
-// which asserts the derived micros settle to the same cents as the kernel.)
-// The server charges the exact Braket cost (no markup); micros are shown to the
-// nearest cent, the resolution any price displays at.
-export const IQM_TASK_MICROS = Math.round(PRICING.IQM.perTask * 1_000_000);
-export const IQM_SHOT_MICROS = Math.round(PRICING.IQM.perShot * 1_000_000);
-export const costMicros = (shots: number) => IQM_TASK_MICROS + IQM_SHOT_MICROS * shots;
-export const usd = (micros: number) => `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
+// ONE cost source, ONE ladder source, ONE formatter. Every displayed dollar (preview,
+// breakdown, button, confirm, budget bar, history), every rate quoted in prose, and
+// every medal threshold named on this surface comes from @/lib/qpu-budget, which
+// derives rates from PRICING (cost.ts, parity-locked to lib/utils/cost.py) and the
+// ladder from HARDWARE_TIERS (lib/credentials.ts, locked to the committed fixture).
+// NOTHING is hand-typed here: this panel used to hand-copy the ladder's `3` and its
+// $2.35, so a tier change would have left the surface that TEACHES the plan quoting a
+// stale one while its suite stayed green. Re-exported for the existing parity tests.
+export {
+  IQM_TASK_MICROS,
+  IQM_SHOT_MICROS,
+  costMicros,
+  usd,
+  maxShotsAffordable,
+} from "@/lib/qpu-budget";
+
 // Rate strings for prose ("$0.30 per task", "$0.00145 per shot") — same source.
 const PER_TASK_USD = usd(IQM_TASK_MICROS);
 const PER_SHOT_USD = `$${PRICING.IQM.perShot}`;
-// The server's hard shot ceiling — and, not by coincidence, the "Deep sample" medal
-// threshold (see lambda/qpu/__fixtures__/hardware-ladder.json, which locks them
-// equal). One number: the ceiling, the medal, the $1.75 run, the curriculum's card.
-const MAX_SHOTS = 1000;
 
 // ---- The teaching identity, entirely derived (never hand-typed) --------------
 // A run's flat task fee is worth this many shots ($0.30 / $0.00145 = 206.9 → 207).
 // This single ratio is why "fewer, bigger runs" is both better science and better
 // value, and it moves automatically with any reprice.
 const SHOTS_PER_TASK_FEE = Math.round(IQM_TASK_MICROS / IQM_SHOT_MICROS);
-// The same 1,000 shots, bought two ways. Identical statistics, very different money.
+// The same MAX_SHOTS shots, bought two ways. Identical statistics, very different money.
 const SPLIT_RUNS = 10;
 const CONCENTRATED_MICROS = costMicros(MAX_SHOTS); // 1,000 shots in ONE run  → $1.75
 const SPLIT_MICROS = SPLIT_RUNS * costMicros(MAX_SHOTS / SPLIT_RUNS); // ten 100s → $4.45
-// The plan that earns all three Hardware medals: 3 runs totalling 1,000 shots.
-// Cost depends ONLY on (runs, shots), never on how the shots are split.
-const LADDER_RUNS = 3;
-const LADDER_MICROS = IQM_TASK_MICROS * LADDER_RUNS + IQM_SHOT_MICROS * MAX_SHOTS; // $2.35
 /** Shot noise at p = 0.5: the standard error of an estimated probability is
  *  1/(2√N). The SAME formula the cost-estimate Rep already teaches and grades
  *  (cost-estimate-widget.tsx), so the credential and the Rep teach one thing. */
 const noisePct = (shots: number) => (100 / (2 * Math.sqrt(shots))).toFixed(1);
 
 /**
- * The most shots the remaining budget can still buy, over ANY number of runs.
- *
- * cost(r, s) = TASK*r + SHOT*s, with s <= MAX_SHOTS*r — so concentrating shots into
- * fewer runs is optimal until MAX_SHOTS binds, and past that another run's task fee
- * buys headroom. Just take the best over every affordable run count.
- *
- * This is EXACTLY the frontier that decides whether the "Deep sample" medal is still
- * reachable, so it must never be approximated. It is also the honest answer to a
- * question the old UI let stand silently: a learner with $0.28 left has a number that
- * buys ZERO runs, and the bar used to just show them the $0.28.
+ * The graduation link. `#quickstart` did not exist — GitHub slugifies headings, so the
+ * old anchor silently no-oped and dropped the learner at the top of a ~500-line README
+ * with no route to the section they were sent for. This is the real slug of the README
+ * heading "### Path C — Full workspace (AWS Braket, real hardware)", and
+ * qpu-submit-panel.test.tsx re-derives every heading's slug from README.md and pins
+ * this string to it, so renaming that heading reddens the suite instead of quietly
+ * breaking the one link the terminal state has.
  */
-export function maxShotsAffordable(remainingMicros: number): number {
-  let best = 0;
-  const maxRuns = Math.floor(remainingMicros / (IQM_TASK_MICROS + IQM_SHOT_MICROS));
-  for (let r = 1; r <= maxRuns; r++) {
-    const forShots = remainingMicros - IQM_TASK_MICROS * r;
-    if (forShots < 0) break;
-    best = Math.max(best, Math.min(MAX_SHOTS * r, Math.floor(forShots / IQM_SHOT_MICROS)));
-  }
-  return best;
-}
+export const REPO_URL = "https://github.com/AltivumInc-Admin/quantum-computing";
+export const README_QUICKSTART_ANCHOR = "path-c--full-workspace-aws-braket-real-hardware";
+
+/** The learner's hardware standing — the three numbers every reachability question
+ *  on this surface is answered from. All three come off the budget the panel already
+ *  fetched, so nothing new is loaded to tell the truth about the ladder. */
+const reachOf = (b: Budget) => ({
+  completedRuns: b.completedRuns,
+  completedShots: b.completedShots,
+  remainingMicros: b.remainingMicros,
+});
 
 /** A budget with too little left for even a 1-shot run is SPENT — not "low". */
 const isSpent = (b: Budget) => b.remainingMicros < costMicros(1);
@@ -173,9 +179,9 @@ function Panel() {
         <div className="mt-4 animate-fade-up space-y-4">
           <BudgetBar budget={budget} />
           {/* The plan surface: the cost model is the only thing that lets a learner
-              plan a path to all three medals BEFORE spending. Closed by default —
-              the live frontier in the bar above carries the truth at all times. */}
-          <BudgetGuide capMicros={budget.capMicros} />
+              plan a path to all three medals BEFORE spending. OPEN until they have
+              spent anything — a learner who has never run has everything to lose. */}
+          <BudgetGuide budget={budget} />
           {budget.credentialed ? (
             isSpent(budget) ? (
               <BudgetSpent budget={budget} />
@@ -212,8 +218,9 @@ function SponsorNote() {
         <span className="tabular-nums font-medium">
           {PER_TASK_USD} per task + {PER_SHOT_USD} per shot
         </span>{" "}
-        — with no markup. The budget below is an allowance we fund, not an invoice. Nothing here
-        is a subscription or a simulation.
+        — with no markup. The budget below is an allowance we fund, not an invoice: one lifetime
+        allowance per learner, not a monthly credit. It does not refill. Nothing here is a
+        subscription or a simulation.
       </p>
     </div>
   );
@@ -228,19 +235,33 @@ function BudgetBar({ budget }: { budget: Budget }) {
   // below are exactly true, and the shot figure is the same frontier the confirm
   // dialog quotes, so the two can never disagree on screen.
   const affordable = maxShotsAffordable(budget.remainingMicros);
+  // LIFETIME is said HERE, where the number lives — before the money is gone, not
+  // only in the error after it. Newcomers arrive assuming budgets refill (monthly
+  // credits, free tiers); this one never does, and that is the whole plan constraint.
+  const left = `${usd(budget.remainingMicros)} of ${usd(budget.capMicros)} left`;
   return (
     <div className={`${card} px-5 py-4`}>
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm font-medium text-gray-900 dark:text-white">Sponsored QPU budget</p>
-        <p className="text-sm tabular-nums text-gray-700 dark:text-gray-200">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-gray-900 dark:text-white">
+          Lifetime sponsored QPU budget
+        </p>
+        <p className="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-200">
           <span className="font-semibold">{usd(budget.remainingMicros)}</span>
           <span className="text-caption"> of {usd(budget.capMicros)} left</span>
         </p>
       </div>
+      {/* A real progressbar, and its aria-valuetext is the SAME sentence as the visible
+          figure. The old track was role="img" labelled in the OPPOSITE framing (spent),
+          so a screen-reader user and a sighted user were read different numbers off the
+          same bar. */}
       <div
         className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200/80 dark:bg-white/[0.06]"
-        role="img"
-        aria-label={`${usd(budget.spentMicros)} of ${usd(budget.capMicros)} spent`}
+        role="progressbar"
+        aria-label="Lifetime sponsored QPU budget"
+        aria-valuemin={0}
+        aria-valuemax={budget.capMicros}
+        aria-valuenow={budget.remainingMicros}
+        aria-valuetext={left}
       >
         <div className="h-full rounded-full bg-accent-dark dark:bg-accent" style={{ width: `${pct}%` }} />
       </div>
@@ -261,7 +282,45 @@ function BudgetBar({ budget }: { budget: Budget }) {
           </>
         )}
       </p>
+      <LadderProgress budget={budget} />
     </div>
+  );
+}
+
+/**
+ * The medal ladder, on the surface where the money is spent.
+ *
+ * Without it the shot-frontier caption above is uninterpretable — "enough for 1,310
+ * more shots" means nothing to a learner who cannot see that 1,000 of them is a medal.
+ * Every threshold and title comes from HARDWARE_TIERS (the wall's own source), so the
+ * two surfaces cannot disagree about what the ladder is, and a tier edit moves both.
+ * A tier the remaining budget can no longer reach says so here too — the same verdict
+ * the wall renders, never a silently unreachable counter ticking toward nothing.
+ */
+function LadderProgress({ budget }: { budget: Budget }) {
+  const reach = reachOf(budget);
+  return (
+    <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs tabular-nums text-caption">
+      {HARDWARE_TIERS.map((t, i) => {
+        const value = t.metric === "shots" ? budget.completedShots : budget.completedRuns;
+        const earned = value >= t.n;
+        const unit = t.metric === "shots" ? "shots" : `run${t.n === 1 ? "" : "s"}`;
+        const lost = !earned && !tierReachable(t, reach);
+        return (
+          <span key={`${t.metric}:${t.n}`}>
+            {i > 0 && <span aria-hidden="true" className="mr-1.5 text-gray-300 dark:text-gray-600">·</span>}
+            <span className={earned ? "text-gray-700 dark:text-gray-300" : undefined}>
+              {t.title}:{" "}
+              <span className="font-medium">
+                {Math.min(value, t.n).toLocaleString("en-US")} of {t.n.toLocaleString("en-US")}
+              </span>{" "}
+              {unit}
+              {lost && <span className="text-warm-dark dark:text-warm-light"> — out of reach</span>}
+            </span>
+          </span>
+        );
+      })}
+    </p>
   );
 }
 
@@ -279,13 +338,53 @@ function BudgetBar({ budget }: { budget: Budget }) {
  * marker — no icon, no emoji. Every figure derives; the cap comes from the server, so
  * a grandfathered learner sees THEIR cap, not a hardcoded one.
  */
-function BudgetGuide({ capMicros }: { capMicros: number }) {
+function BudgetGuide({ budget }: { budget: Budget }) {
+  const capMicros = budget.capMicros;
+  // Open by default until the learner has completed a run: before the first submit
+  // they can still spend the allowance well, and everything in here is what "well"
+  // means. Once they have run, it collapses to a reference they can reopen. Held in
+  // state (not a bare `open` attribute) so a re-render never reopens what they closed.
+  const [open, setOpen] = useState(budget.completedRuns === 0);
+  // The killer fact, stated rather than buried: ten default-sized runs cost MORE than
+  // the entire allowance. Comparative, never hardcoded — a grandfathered $5.00 learner
+  // must not be told $4.45 is "more than your budget", because it isn't.
+  const splitOverCap = SPLIT_MICROS > capMicros;
+  // The plan is quoted from where the learner ACTUALLY stands, and only while it is
+  // still buyable. Asserting "a plan that fits: $2.35" to someone holding $1.16 was
+  // the same defect class as the unearnable medal: a promise the money contradicts.
+  const plan = remainingLadderPlan(reachOf(budget));
   return (
-    <details className={`${card} group px-5 py-4`}>
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      className={`${card} group px-5 py-4`}
+    >
       <summary className="cursor-pointer list-item text-sm font-medium text-gray-900 dark:text-white interactive focus-ring rounded-control">
         How the sponsored budget works
       </summary>
       <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+        <p>
+          <span className="font-medium text-gray-800 dark:text-gray-200">
+            Ten <span className="tabular-nums">100</span>-shot runs cost{" "}
+            <span className="tabular-nums">{usd(SPLIT_MICROS)}</span>
+            {splitOverCap ? (
+              <>
+                {" "}
+                — more than your entire <span className="tabular-nums">{usd(capMicros)}</span>{" "}
+                lifetime budget.
+              </>
+            ) : (
+              <>
+                {" "}
+                of your <span className="tabular-nums">{usd(capMicros)}</span> lifetime budget.
+              </>
+            )}
+          </span>{" "}
+          The same{" "}
+          <span className="tabular-nums">{(SPLIT_RUNS * 100).toLocaleString("en-US")}</span> shots in
+          one run cost <span className="tabular-nums">{usd(CONCENTRATED_MICROS)}</span>. How you buy
+          them decides whether the allowance lasts.
+        </p>
         <p>
           Runs are metered two ways: a flat <span className="font-medium">task fee</span> of{" "}
           <span className="tabular-nums font-medium">{PER_TASK_USD}</span> every time you submit,
@@ -293,11 +392,23 @@ function BudgetGuide({ capMicros }: { capMicros: number }) {
           fee dominates — submitting once costs what about{" "}
           <span className="tabular-nums">{SHOTS_PER_TASK_FEE}</span> shots cost.
         </p>
-        <p>So the same statistics cost very different amounts depending on how you buy them:</p>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <caption className="sr-only">Cost of 1,000 shots, bought two ways</caption>
+            <caption className="sr-only">
+              What {MAX_SHOTS.toLocaleString("en-US")} shots cost bought as one run and as ten
+              100-shot runs, against your whole lifetime sponsored budget
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className="sr-only">
+                  How the shots are bought
+                </th>
+                <th scope="col" className="sr-only">
+                  Cost
+                </th>
+              </tr>
+            </thead>
             <tbody>
               <tr className="border-b border-gray-200/70 dark:border-white/[0.08]">
                 <td className="py-1.5 pr-4">
@@ -318,7 +429,7 @@ function BudgetGuide({ capMicros }: { capMicros: number }) {
                 </td>
               </tr>
               <tr>
-                <td className="py-1.5 pr-4">your whole sponsored budget</td>
+                <td className="py-1.5 pr-4">your whole lifetime sponsored budget</td>
                 <td className="py-1.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">
                   {usd(capMicros)}
                 </td>
@@ -342,15 +453,44 @@ function BudgetGuide({ capMicros }: { capMicros: number }) {
           <span className="tabular-nums">{noisePct(MAX_SHOTS)}%</span>. Runs buy nothing but the
           right to submit again.
         </p>
-        <p>
-          <span className="font-medium text-gray-800 dark:text-gray-200">
-            A plan that fits: {LADDER_RUNS} runs totalling{" "}
-            <span className="tabular-nums">{MAX_SHOTS.toLocaleString("en-US")}</span> shots —{" "}
-            <span className="tabular-nums">{usd(LADDER_MICROS)}</span>.
-          </span>{" "}
-          Split them however you like; cost depends only on how many runs and how many shots, never
-          on how you divide them. That plan also earns all three Hardware medals.
-        </p>
+        {plan.complete ? (
+          <p>
+            <span className="font-medium text-gray-800 dark:text-gray-200">
+              You hold all three Hardware medals.
+            </span>{" "}
+            Anything you run now is your own experiment, on the same allowance.
+          </p>
+        ) : plan.fits ? (
+          <p>
+            <span className="font-medium text-gray-800 dark:text-gray-200">
+              A plan that fits: {plan.runs} run{plan.runs === 1 ? "" : "s"}
+              {plan.shots > 0 && (
+                <>
+                  {" "}
+                  totalling <span className="tabular-nums">
+                    {plan.shots.toLocaleString("en-US")}
+                  </span>{" "}
+                  shots
+                </>
+              )}{" "}
+              — <span className="tabular-nums">{usd(plan.micros)}</span>.
+            </span>{" "}
+            Split them however you like; cost depends only on how many runs and how many shots,
+            never on how you divide them. That plan takes you to all three Hardware medals from
+            where you stand.
+          </p>
+        ) : (
+          <p>
+            <span className="font-medium text-gray-800 dark:text-gray-200">
+              All three medals no longer fit your remaining budget.
+            </span>{" "}
+            From here they would take {plan.runs} more run{plan.runs === 1 ? "" : "s"} totalling{" "}
+            <span className="tabular-nums">{plan.shots.toLocaleString("en-US")}</span> more shots —{" "}
+            <span className="tabular-nums">{usd(plan.micros)}</span>, against the{" "}
+            <span className="tabular-nums">{usd(budget.remainingMicros)}</span> you have left. The
+            medals you can still reach are listed under the budget bar.
+          </p>
+        )}
       </div>
     </details>
   );
@@ -380,15 +520,19 @@ function BudgetSpent({ budget }: { budget: Budget }) {
         shots. Those runs stay on your record.
       </p>
       <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-        The hardware track continues on your own AWS account. The repository runs the same circuits,
-        unmodified, against Amazon Braket at list price —{" "}
+        The hardware track continues on your own AWS account, against the same device. The
+        repository submits through the Braket Python SDK, not the OpenQASM above — you rebuild the
+        circuit as a <span className="font-mono text-xs">braket.circuits.Circuit</span> and run{" "}
+        <span className="font-mono text-xs">run_circuit(circuit, device_name=&quot;iqm_garnet&quot;)</span>{" "}
+        from <span className="font-mono text-xs">lib/hardware</span>, which prints a cost estimate
+        before it submits. Amazon Braket then bills your account at list price —{" "}
         <span className="tabular-nums">
           {PER_TASK_USD} per task + {PER_SHOT_USD} per shot
         </span>
-        , the same rates shown here, billed to you.
+        , the same rates shown here.
       </p>
       <a
-        href="https://github.com/AltivumInc-Admin/quantum-computing#quickstart"
+        href={`${REPO_URL}#${README_QUICKSTART_ANCHOR}`}
         target="_blank"
         rel="noreferrer"
         className="mt-3 inline-flex items-center rounded-control surface-accent px-3.5 py-1.5 text-sm font-medium interactive focus-ring"
@@ -512,6 +656,39 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
   // What the budget still buys AFTER this run — the cliff, made visible before the click.
   const afterMicros = Math.max(0, budget.remainingMicros - micros);
   const afterShots = maxShotsAffordable(afterMicros);
+
+  // THE FORECLOSURE CHECK — the whole reason this branch exists.
+  //
+  // Deep sample (1,000 shots) can be closed off FOREVER by runs that each look
+  // harmless: three at the default 100 shots cost $1.335 and leave $1.165, which buys
+  // at most 596 more shots — 896 total, forever short of 1,000. The old panel let that
+  // happen in silence. So at the one moment the learner is about to commit money, we
+  // compare the frontier BEFORE this run with the frontier AFTER it, and if this run is
+  // the one that closes the door we say so. It does not block the run: it is their
+  // allowance and a deliberate 1,000-shot-less campaign is a legitimate use of it. It
+  // only refuses to let the door close quietly.
+  //
+  // The post-run figures assume this run COMPLETES (its shots then count toward the
+  // medal). A FAILED/CANCELLED run is refunded and counts for nothing, which restores
+  // the budget too — so this is the correct, and the conservative, comparison.
+  const reachNow = reachOf(budget);
+  const reachAfter = {
+    completedRuns: budget.completedRuns + 1,
+    completedShots: budget.completedShots + shots,
+    remainingMicros: afterMicros,
+  };
+  const deepSampleForeclosed =
+    validShots && deepSampleReachable(reachNow) && !deepSampleReachable(reachAfter);
+  const shotsCeilingAfter = reachAfter.completedShots + afterShots;
+
+  // The confirm step now carries the panel's most consequential sentences (an
+  // irreversible spend, and what it forecloses), yet it used to appear silently and
+  // leave focus behind on a button that no longer existed. Announce it, and put focus
+  // on the action it is asking about.
+  const submitRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (phase === "confirm") submitRef.current?.focus();
+  }, [phase]);
 
   const editForm = () => {
     setPhase("form");
@@ -668,7 +845,10 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           Review this run
         </button>
       ) : (
-        <div className="mt-4 rounded-control border border-accent/40 bg-accent/[0.06] px-4 py-3 animate-fade-up">
+        <div
+          role="status"
+          className="mt-4 rounded-control border border-accent/40 bg-accent/[0.06] px-4 py-3 animate-fade-up"
+        >
           <p className="text-sm text-gray-800 dark:text-gray-100">
             This spends <span className="font-semibold tabular-nums">{usd(micros)}</span> of your{" "}
             <span className="tabular-nums">{usd(budget.remainingMicros)}</span> sponsored budget on a
@@ -687,9 +867,27 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
               <>After this run: {usd(afterMicros)} left — not enough for another run.</>
             )}
           </p>
+          {deepSampleForeclosed && (
+            // The consequence, stated before the money moves — not blocked, not softened.
+            <p className="mt-1.5 text-sm leading-relaxed text-warm-dark dark:text-warm-light">
+              This run closes off the{" "}
+              <span className="font-medium">{DEEP_SAMPLE_TITLE}</span> medal for good. Counting this
+              run, your record plus every shot the remaining budget
+              could still buy tops out at{" "}
+              <span className="tabular-nums font-medium">
+                {shotsCeilingAfter.toLocaleString("en-US")}
+              </span>{" "}
+              shots — the medal needs{" "}
+              <span className="tabular-nums font-medium">
+                {DEEP_SAMPLE_SHOTS.toLocaleString("en-US")}
+              </span>
+              . Fewer, bigger runs keep it in reach.
+            </p>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
+              ref={submitRef}
               disabled={phase === "submitting" || !canSubmit}
               onClick={doSubmit}
               className="inline-flex items-center rounded-control surface-accent px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-50 tabular-nums"
