@@ -1,9 +1,14 @@
 name: CI
 
 # Gate every PR and every push to main on the full test + lint + build-smoke
-# matrix. main is intended to be a protected branch with the three jobs below
-# (python, web, build-smoke) as required status checks, so Amplify only ever
-# auto-builds a commit that has already passed CI.
+# matrix. main is intended to be a protected branch with the jobs below
+# (python, web, lambdas, build-smoke) as required status checks, so Amplify
+# only ever auto-builds a commit that has already passed CI.
+#
+# The lambdas job matrixes over every Lambda in lambda/ and runs its own
+# node --test suite. This is load-bearing: the qpu Lambda's tests guard the
+# real-money spend ledger (costMicros, the cap demux, the compensating-refund
+# split) and nothing else in CI executes them.
 #
 # Version pinning: keep PYTHON_VERSION / NODE_VERSION aligned with the Amplify
 # build image (Amplify console -> App settings -> Build settings / build logs).
@@ -83,14 +88,32 @@ jobs:
       - name: Test
         run: npm test
 
-      # The tutor Lambda has its own deps + lockfile; the web job's `npm ci` runs
-      # in web/ and never touches them. node --test imports index.mjs, which imports
-      # @aws-sdk/client-bedrock-runtime at module top, so install first.
-      - name: Install tutor Lambda deps
-        working-directory: lambda/tutor
+  lambdas:
+    name: Lambda tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [tutor, qpu, sync, review-email]
+    defaults:
+      run:
+        working-directory: lambda/${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: lambda/${{ matrix.dir }}/package-lock.json
+
+      # Each Lambda has its own deps + lockfile; node --test imports the handler,
+      # which imports its AWS SDK clients at module top, so install first.
+      - name: Install dependencies
         run: npm ci
-      - name: Tutor Lambda handler test
-        working-directory: lambda/tutor
+
+      - name: Test
         run: npm test
 
   build-smoke:

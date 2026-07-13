@@ -153,6 +153,23 @@ function resetLocalProgress(): void {
   }
 }
 
+/**
+ * Delete the caller's entire server-side snapshot (account deletion). The
+ * server keys the delete on the verified token's sub; nothing else identifies
+ * the row. Local qc:* data is intentionally untouched here — the delete-account
+ * flow clears it separately, after every server step has succeeded.
+ */
+export async function deleteProgress(): Promise<void> {
+  const base = syncUrl();
+  if (!base || !isAuthConfigured()) throw new Error("sync not configured");
+  const { auth } = await session();
+  const res = await fetch(`${base}/progress`, {
+    method: "DELETE",
+    headers: { authorization: auth },
+  });
+  if (!res.ok) throw new Error(`sync delete failed (${res.status})`);
+}
+
 export async function syncNow(options?: { accountChange?: AccountChange }): Promise<SyncResult> {
   const base = syncUrl();
   if (!base || !isAuthConfigured()) throw new Error("sync not configured");

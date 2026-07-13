@@ -11,7 +11,12 @@
 // Mirrors lambda/tutor's DI-core pattern: createHandlerCore(deps) unit-tests
 // under node --test with a stubbed DynamoDB client.
 
-import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBClient,
+  GetItemCommand,
+  PutItemCommand,
+  DeleteItemCommand,
+} from "@aws-sdk/client-dynamodb";
 
 // A learner's full snapshot measures well under 100KB today (~110 keys); this
 // bounds abuse, not legitimate use.
@@ -112,6 +117,16 @@ export function createHandlerCore({ ddb, tableName }) {
         throw err;
       }
       return json(200, { version });
+    }
+
+    if (method === "DELETE") {
+      // Account deletion: remove the caller's entire server-side snapshot (one
+      // item per user). Identity is the verified token's sub, like every route.
+      // Idempotent — deleting an absent item is still a 200.
+      await ddb.send(
+        new DeleteItemCommand({ TableName: tableName, Key: { userId: { S: sub } } })
+      );
+      return json(200, { deleted: true });
     }
 
     return json(405, { error: "method not allowed" });
