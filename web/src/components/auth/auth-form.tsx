@@ -326,7 +326,7 @@ function GoogleBlock({ onClick }: { onClick: () => void }) {
     <>
       <div className="flex items-center gap-3 py-1">
         <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700/60" />
-        <span className="text-xs text-gray-400">or</span>
+        <span className="text-xs text-caption">or</span>
         <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700/60" />
       </div>
       <button

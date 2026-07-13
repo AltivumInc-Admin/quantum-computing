@@ -9,6 +9,7 @@ import { getSections } from "@/lib/sections";
 import { epochDay } from "@/lib/review-schedule";
 import { masteryCount, streak, freezesEarned } from "@/lib/runbook";
 import { isQpuConfigured, getBudget } from "@/lib/qpu-client";
+import { useAuth } from "@/components/auth/auth-provider";
 import {
   computeCredentials,
   type Credential,
@@ -83,16 +84,36 @@ function readCredentials(today: number, hardwareRuns: number): { creds: Credenti
 
 export function CredentialsWall() {
   const snap = useSyncExternalStore(subscribe, snapshot, () => SERVER_SNAPSHOT);
+  const { status } = useAuth();
   // Hardware runs come from the QPU backend (server-reconciled provenance), not
-  // the local qc:* snapshot — fetched once, env-gated, and 0 (locked) when the
-  // QPU surface is off or the learner is signed out.
+  // the local qc:* snapshot. The fetch waits for auth to resolve to
+  // "authenticated" (status in the dep array, the progress-sync contract): the
+  // lazily-loaded Amplify bridge must run Amplify.configure before
+  // fetchAuthSession works, so an empty-dep mount fetch raced it, the thrown
+  // NotSignedIn was swallowed, and earned Hardware medals rendered "Locked"
+  // for the life of the page.
   const [hardwareRuns, setHardwareRuns] = useState(0);
+  // Signed out / QPU surface off is an HONEST zero (locked). A failed fetch is
+  // not — it becomes an explicit "couldn't verify" note on the Hardware group.
+  const [hardwareUnverified, setHardwareUnverified] = useState(false);
   useEffect(() => {
-    if (!isQpuConfigured()) return;
-    void getBudget()
-      .then((b) => setHardwareRuns(b.tasks.filter((t) => t.status === "COMPLETED").length))
-      .catch(() => {}); // signed out / unreachable → stays 0 (hardware locked)
-  }, []);
+    if (!isQpuConfigured() || status !== "authenticated") return;
+    let disposed = false;
+    getBudget()
+      .then((b) => {
+        if (disposed) return;
+        setHardwareRuns(b.tasks.filter((t) => t.status === "COMPLETED").length);
+        setHardwareUnverified(false);
+      })
+      .catch((e: Error) => {
+        // Signed out mid-flight → honest zero, not an error.
+        if (disposed || e?.name === "NotSignedIn") return;
+        setHardwareUnverified(true);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [status]);
 
   const data = useMemo(() => {
     if (snap === SERVER_SNAPSHOT) return null;
@@ -139,6 +160,12 @@ export function CredentialsWall() {
                     {GROUP_TITLE[g]}
                   </h2>
                   <p className="mt-0.5 text-sm text-caption">{GROUP_BLURB[g]}</p>
+                  {g === "hardware" && hardwareUnverified && (
+                    <p role="status" className="mt-1 text-xs text-warm-dark dark:text-warm-light">
+                      Couldn&apos;t verify your hardware runs — these medals may show as
+                      locked. Reload to retry.
+                    </p>
+                  )}
                 </div>
                 <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((c) => (
@@ -234,7 +261,7 @@ export function CredentialsWorkspaceTeaser() {
         </span>
       </span>
       <svg
-        className="h-5 w-5 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5"
+        className="h-5 w-5 shrink-0 text-caption transition-transform group-hover:translate-x-0.5"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

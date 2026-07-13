@@ -13,6 +13,7 @@ import {
   mergeSnapshots,
   applySnapshot,
   resetLocalDeletions,
+  type ProgressSnapshot,
 } from "./progress-merge";
 
 export const SYNC_META_KEY = "qc-sync:meta"; // outside qc:* so it never syncs
@@ -51,6 +52,27 @@ export interface SyncResult {
 interface Remote {
   version: number;
   data: Record<string, string>;
+}
+
+/**
+ * The last sync this page load KNOWS the server accepted: the auth header it
+ * used, the account it was for, and the exact snapshot + version the server
+ * holds. This cache is what makes the exit flush possible at all — page
+ * dismissal leaves no time for fetchAuthSession's async token machinery or a
+ * pull round trip, so the flush pushes optimistically against this state and
+ * lets the server's version check (409) protect against a concurrent device.
+ */
+interface LastGoodSync {
+  auth: string;
+  sub: string;
+  version: number;
+  data: ProgressSnapshot;
+}
+let lastGood: LastGoodSync | null = null;
+
+/** Test hook — the exit-flush cache is module state. */
+export function resetLastGoodSync(): void {
+  lastGood = null;
 }
 
 async function session(): Promise<{ auth: string; sub: string }> {
@@ -131,6 +153,23 @@ function resetLocalProgress(): void {
   }
 }
 
+/**
+ * Delete the caller's entire server-side snapshot (account deletion). The
+ * server keys the delete on the verified token's sub; nothing else identifies
+ * the row. Local qc:* data is intentionally untouched here — the delete-account
+ * flow clears it separately, after every server step has succeeded.
+ */
+export async function deleteProgress(): Promise<void> {
+  const base = syncUrl();
+  if (!base || !isAuthConfigured()) throw new Error("sync not configured");
+  const { auth } = await session();
+  const res = await fetch(`${base}/progress`, {
+    method: "DELETE",
+    headers: { authorization: auth },
+  });
+  if (!res.ok) throw new Error(`sync delete failed (${res.status})`);
+}
+
 export async function syncNow(options?: { accountChange?: AccountChange }): Promise<SyncResult> {
   const base = syncUrl();
   if (!base || !isAuthConfigured()) throw new Error("sync not configured");
@@ -169,15 +208,77 @@ export async function syncNow(options?: { accountChange?: AccountChange }): Prom
     const merged = mergeSnapshots(exportSnapshot(), remote.data);
     applied += applySnapshot(merged);
     if (snapshotsEqual(merged, remote.data)) {
+      lastGood = { auth, sub, version: remote.version, data: merged };
       recordSynced(sub);
       return { applied, pushed };
     }
     const result = await push(base, auth, remote.version, merged);
     if (result === "ok") {
       pushed = true;
+      // The server assigns baseVersion + 1 (lambda/sync's PUT contract).
+      lastGood = { auth, sub, version: remote.version + 1, data: merged };
       recordSynced(sub);
       return { applied, pushed };
     }
   }
   throw new Error("sync conflict persisted after retry");
+}
+
+/**
+ * Browsers cap a keepalive request's payload at 64KB (shared across in-flight
+ * keepalive fetches). A full-mastery snapshot measures ~130KB (card-content
+ * caches whole fence sources), so a large flush must fall back to a plain
+ * fetch and accept that dismissal may kill it — a killed best-effort flush
+ * loses nothing over not flushing at all.
+ */
+export const KEEPALIVE_BODY_LIMIT = 60_000;
+
+/**
+ * Best-effort push of unsynced local progress during page dismissal (pagehide
+ * / visibility "hidden"), when the debounced sync can no longer run. Nothing
+ * async survives dismissal, so this deliberately differs from syncNow:
+ *
+ *  - auth is the header cached from the last successful sync — no token fetch;
+ *  - no pull round trip: it pushes exportSnapshot() merged over the server
+ *    snapshot that sync last confirmed, against that version. If another
+ *    device pushed since, the server 409s and nothing is clobbered — the
+ *    grades are still in localStorage and sync on the next visit;
+ *  - fire-and-forget: initiation is synchronous; the response is observed
+ *    only if the page survives (tab re-shown), keeping the cache and the
+ *    last-synced metadata accurate for a later flush.
+ *
+ * Returns true when a flush request was initiated (the caller may stand down
+ * its timers); false means nothing was sent — never synced this page load,
+ * account binding changed, or nothing unsynced. Never throws.
+ */
+export function exitFlush(): boolean {
+  try {
+    const base = syncUrl();
+    if (!base || !isAuthConfigured() || !lastGood) return false;
+    // Same fence as syncNow: never push under a changed account binding.
+    if (readMeta().sub !== lastGood.sub) return false;
+    const merged = mergeSnapshots(exportSnapshot(), lastGood.data);
+    if (snapshotsEqual(merged, lastGood.data)) return false;
+    const body = JSON.stringify({ baseVersion: lastGood.version, data: merged });
+    const { auth, sub } = lastGood;
+    const nextVersion = lastGood.version + 1;
+    fetch(`${base}/progress`, {
+      method: "PUT",
+      headers: { authorization: auth, "content-type": "application/json" },
+      body,
+      keepalive: new TextEncoder().encode(body).length <= KEEPALIVE_BODY_LIMIT,
+    })
+      .then((res) => {
+        if (res.ok) {
+          lastGood = { auth, sub, version: nextVersion, data: merged };
+          recordSynced(sub);
+        }
+      })
+      .catch(() => {
+        /* dismissal killed it — the data is still local and syncs later */
+      });
+    return true;
+  } catch {
+    return false; // never block dismissal
+  }
 }

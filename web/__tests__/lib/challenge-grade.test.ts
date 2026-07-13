@@ -3,6 +3,7 @@ import { parseChallenge } from "@/lib/challenge-schema";
 
 const bell = parseChallenge(
   JSON.stringify({
+    id: "bell-grade-1",
     prompt: "Prepare the Bell state Φ+.",
     qubits: 2,
     target: { program: "H 0\nCNOT 0 1" },
@@ -25,7 +26,7 @@ describe("gradeTs", () => {
     expect(gradeTs("H 0\nCNOT 0 1", bell).metrics).toEqual({ gates: 2, qubits: 2 });
     // A redundant construction that still reaches the state measures MORE gates.
     const four = gradeTs("H 0\nCNOT 0 1\nX 1\nX 1", parseChallenge(
-      JSON.stringify({ prompt: "p", qubits: 2, target: { program: "H 0\nCNOT 0 1" } }),
+      JSON.stringify({ id: "p-1", prompt: "p", qubits: 2, target: { program: "H 0\nCNOT 0 1" } }),
     ).spec!);
     expect(four.status).toBe("solved");
     expect(four.metrics!.gates).toBe(4);
@@ -65,7 +66,7 @@ describe("gradeTs", () => {
 
   it("rejects a challenge whose target uses a slider theta (would grade against the identity)", () => {
     const spec = parseChallenge(
-      JSON.stringify({ prompt: "p", qubits: 1, target: { program: "RY 0 theta" } })
+      JSON.stringify({ id: "p-1", prompt: "p", qubits: 1, target: { program: "RY 0 theta" } })
     ).spec!;
     const r = gradeTs("H 0", spec);
     expect(r.status).toBe("error");
@@ -74,7 +75,7 @@ describe("gradeTs", () => {
 
   it("rejects a challenge whose target circuit is malformed instead of silently grading wrong", () => {
     const spec = parseChallenge(
-      JSON.stringify({ prompt: "p", qubits: 1, target: { program: "FOO 0" } })
+      JSON.stringify({ id: "p-1", prompt: "p", qubits: 1, target: { program: "FOO 0" } })
     ).spec!;
     expect(gradeTs("H 0", spec).status).toBe("error");
   });
@@ -83,7 +84,7 @@ describe("gradeTs", () => {
     // Author-only static config (spec.qubits) is unbounded; a typo like qubits:30
     // must degrade to a clear error, not a frozen tab on a 2**30 allocation.
     const spec = parseChallenge(
-      JSON.stringify({ prompt: "p", qubits: 30, target: { program: "H 0" } })
+      JSON.stringify({ id: "p-30", prompt: "p", qubits: 30, target: { program: "H 0" } })
     ).spec!;
     const r = gradeTs("H 0", spec);
     expect(r.status).toBe("error");

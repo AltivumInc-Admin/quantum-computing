@@ -120,7 +120,7 @@ export function ShotsSampler({ source }: { source: string }) {
                 total > 0 ? (
                   <>
                     <span className="text-gray-700 dark:text-gray-200">{empiricalPct}</span>
-                    <span className="text-gray-400 dark:text-gray-600"> / {exactPct}</span>
+                    <span className="text-caption"> / {exactPct}</span>
                   </>
                 ) : (
                   exactPct

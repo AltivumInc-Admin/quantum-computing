@@ -72,14 +72,40 @@ function djb2(s) {
   return h >>> 0;
 }
 
+/** The in-app cost-estimate Rep builds four answer options — the true total plus
+ *  the three canonical-misconception distractors (cost-estimate-grade.ts) — and
+ *  author-rejects any shots count where two settle to the same cents. This is
+ *  that predicate, computed from THIS file's own price constants (rates are
+ *  overridable only so tests can probe hypothetical repricings): at today's IQM
+ *  rates it excludes exactly 204..210, where round(0.145 x shots) = 30 makes the
+ *  shot fee collide with the task fee — and it MOVES with any reprice instead of
+ *  leaving a stale hardcoded band that silently strands learners. */
+export function credentialOptionsCollide(
+  shots,
+  { perTaskMicros = IQM_PER_TASK_MICROS, perShotMicros = IQM_PER_SHOT_MICROS } = {},
+  tasks = CREDENTIAL_TASKS,
+) {
+  const perTask = perTaskMicros / 1_000_000;
+  const perShot = perShotMicros / 1_000_000;
+  const taskFeeCents = centsOf(tasks * perTask);
+  const shotFeeCents = centsOf(tasks * perShot * shots);
+  const feePerShotCents = centsOf(tasks * shots * (perTask + perShot));
+  const correct = taskFeeCents + shotFeeCents;
+  return new Set([correct, taskFeeCents, shotFeeCents, feePerShotCents]).size < 4;
+}
+
 /** A per-user, deterministic (stateless) shots count in [100, 1000] — so the
- *  credential is not one fixed lookup; each learner prices a specific run. Skips
- *  204..210, where the in-app cost-estimate Rep's distractors collide to the same
- *  cents (cost-estimate-grade.ts author-rejects), so the client can always render
- *  a solvable challenge for the server's exact shots. */
-export function requiredShotsFor(sub) {
-  const s = 100 + (djb2(sub) % 901);
-  return s >= 204 && s <= 210 ? 211 : s;
+ *  credential is not one fixed lookup; each learner prices a specific run. A
+ *  colliding count steps forward (wrapping at 1000) to the next solvable one,
+ *  so the client can always render a solvable challenge for the server's exact
+ *  shots. At today's rates this maps 204..210 to 211 — identical to the old
+ *  hardcoded skip, so no learner's outstanding challenge changes. */
+export function requiredShotsFor(sub, rates) {
+  let s = 100 + (djb2(sub) % 901);
+  for (let i = 0; credentialOptionsCollide(s, rates) && i < 901; i++) {
+    s = s >= 1000 ? 100 : s + 1;
+  }
+  return s;
 }
 
 /** The correct total cents for an IQM Garnet run, replicating the app's

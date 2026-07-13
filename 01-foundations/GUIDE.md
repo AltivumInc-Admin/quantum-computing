@@ -358,6 +358,7 @@ control a flip:
 
 ```qchallenge
 {
+  "id": "c6omjbc",
   "prompt": "Prepare the Bell state |Φ+⟩ = (|00⟩ + |11⟩)/√2 on two qubits.",
   "qubits": 2,
   "target": { "program": "H 0\nCNOT 0 1" },

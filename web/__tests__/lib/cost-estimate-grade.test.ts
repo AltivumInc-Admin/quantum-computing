@@ -86,6 +86,20 @@ describe("costEstimateTruth", () => {
     const { truth } = costEstimateTruth(spec({ shots: 2500 }));
     expect(truth!.sePercentPerTask).toBeCloseTo(1.0, 10); // 100 / (2 * 50)
   });
+
+  it("a shuffle salt permutes option ORDER only — values and truth unchanged", () => {
+    // /review passes the card's reps as the salt so a scheduled re-review can't
+    // be solved by remembering which button was correct last time (mirrors
+    // expectationTruth's contract).
+    const base = costEstimateTruth(spec()).truth!;
+    const salts = [0, 1, 2, 3, 4, 5].map((n) => costEstimateTruth(spec(), n).truth!);
+    for (const t of salts) {
+      expect([...t.options].sort()).toEqual([...base.options].sort());
+      expect(t.options[t.correctIndex]).toBe(base.correct);
+    }
+    // Some salt in a small family must actually move the correct button.
+    expect(new Set(salts.map((t) => t.correctIndex)).size).toBeGreaterThan(1);
+  });
 });
 
 describe("gradeCostEstimate", () => {

@@ -5,7 +5,7 @@ import { termSlug } from "@/lib/glossary";
 export function SeeAlsoLinks({ refs }: { refs?: string[] }) {
   if (!refs || refs.length === 0) return null;
   return (
-    <p className="mt-2 text-xs text-gray-500">
+    <p className="mt-2 text-xs text-caption">
       See also:{" "}
       {refs.map((ref, i) => (
         <span key={ref}>

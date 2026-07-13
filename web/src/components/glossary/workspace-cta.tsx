@@ -24,7 +24,7 @@ export function WorkspaceCta() {
             Sign up free
           </Link>
         ) : (
-          <span className="inline-flex items-center rounded-control border border-gray-200 dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-400 dark:text-gray-500">
+          <span className="inline-flex items-center rounded-control border border-gray-200 dark:border-white/10 px-4 py-2 text-sm font-medium text-caption">
             Sign-up coming soon
           </span>
         )}

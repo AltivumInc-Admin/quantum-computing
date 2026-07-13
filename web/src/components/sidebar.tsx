@@ -161,7 +161,7 @@ export function Sidebar() {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 mb-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-caption mb-3">
           Learning Path
         </p>
 

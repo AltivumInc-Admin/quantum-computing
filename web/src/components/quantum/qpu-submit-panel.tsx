@@ -11,6 +11,7 @@ import {
   type Budget,
   type CredentialChallenge,
 } from "@/lib/qpu-client";
+import { PRICING } from "./cost";
 
 /**
  * The one surface where a learner spends a sponsored budget to run a circuit on a
@@ -22,14 +23,21 @@ import {
 
 // ONE cost source, ONE formatter — mirrors the server's exact charge
 // (costMicros = task + per-shot, in integer micro-dollars). Every displayed
-// dollar (preview, breakdown, button, confirm, budget bar, history) derives from
-// this, so the price previewed, charged, and recorded is always the same number.
+// dollar (preview, breakdown, button, confirm, budget bar, history) AND every
+// rate quoted in prose derives from PRICING in cost.ts — the pricing table the
+// whole app grades against, itself parity-locked to lib/utils/cost.py by the
+// committed cost.json fixture — so a reprice lands everywhere at once instead
+// of leaving this panel quoting a stale rate. (Exported for the parity test,
+// which asserts the derived micros settle to the same cents as the kernel.)
 // The server charges the exact Braket cost (no markup); micros are shown to the
 // nearest cent, the resolution any price displays at.
-const IQM_TASK_MICROS = 300_000; // $0.30 per task
-const IQM_SHOT_MICROS = 1_450; // $0.00145 per shot
-const costMicros = (shots: number) => IQM_TASK_MICROS + IQM_SHOT_MICROS * shots;
-const usd = (micros: number) => `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
+export const IQM_TASK_MICROS = Math.round(PRICING.IQM.perTask * 1_000_000);
+export const IQM_SHOT_MICROS = Math.round(PRICING.IQM.perShot * 1_000_000);
+export const costMicros = (shots: number) => IQM_TASK_MICROS + IQM_SHOT_MICROS * shots;
+export const usd = (micros: number) => `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
+// Rate strings for prose ("$0.30 per task", "$0.00145 per shot") — same source.
+const PER_TASK_USD = usd(IQM_TASK_MICROS);
+const PER_SHOT_USD = `$${PRICING.IQM.perShot}`;
 const MAX_SHOTS = 1000;
 
 const PRESETS: { name: string; qasm: string }[] = [
@@ -129,8 +137,11 @@ function TransparencyNote() {
         </span>{" "}
         IQM Garnet is a 20-qubit superconducting quantum processor in Amazon&apos;s{" "}
         <span className="tabular-nums">eu-north-1</span> region. You pay the exact Amazon Braket
-        price — <span className="tabular-nums font-medium">$0.30 per task + $0.00145 per shot</span> —
-        with no platform markup. Nothing here is a subscription or a simulation.
+        price —{" "}
+        <span className="tabular-nums font-medium">
+          {PER_TASK_USD} per task + {PER_SHOT_USD} per shot
+        </span>{" "}
+        — with no platform markup. Nothing here is a subscription or a simulation.
       </p>
     </div>
   );
@@ -169,7 +180,12 @@ function CredentialGate({
   onEarned: () => void;
 }) {
   const [value, setValue] = useState("");
-  const [state, setState] = useState<"idle" | "checking" | "wrong">("idle");
+  // "wrong" is reserved for the server's authoritative 200 {credentialed:false}
+  // (and a locally unparseable answer) — a THROWN failure is never a wrong
+  // answer, so it must not render the recompute hint (mirrors Panel.refresh()).
+  const [state, setState] = useState<"idle" | "checking" | "wrong" | "expired" | "unreachable">(
+    "idle",
+  );
   const shots = challenge.requiredShots;
 
   const submit = async () => {
@@ -183,8 +199,8 @@ function CredentialGate({
       const { credentialed } = await claimCredential(cents);
       if (credentialed) onEarned();
       else setState("wrong");
-    } catch {
-      setState("wrong");
+    } catch (e) {
+      setState(e instanceof NotSignedInError ? "expired" : "unreachable");
     }
   };
 
@@ -196,11 +212,11 @@ function CredentialGate({
       <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
         Real hardware costs real money, so we ask you to compute it first. What does a{" "}
         <span className="tabular-nums font-medium">{shots.toLocaleString("en-US")}</span>-shot run on
-        IQM Garnet cost?
+        IQM Garnet cost, to the nearest cent?
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 focus-within:ring-2 focus-within:ring-accent/40">
-          <span className="text-gray-500">$</span>
+          <span className="text-caption">$</span>
           <label htmlFor="qpu-cred" className="sr-only">
             Estimated cost in dollars
           </label>
@@ -210,7 +226,7 @@ function CredentialGate({
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
-              if (state === "wrong") setState("idle");
+              if (state !== "idle" && state !== "checking") setState("idle");
             }}
             placeholder="0.00"
             className="w-24 bg-transparent px-1 py-1.5 font-mono text-sm text-gray-900 dark:text-gray-100 outline-none tabular-nums"
@@ -227,7 +243,21 @@ function CredentialGate({
       </div>
       {state === "wrong" && (
         <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
-          Not quite. Recompute: <span className="tabular-nums">$0.30 per task + $0.00145 × {shots.toLocaleString("en-US")} shots</span>.
+          Not quite. Recompute:{" "}
+          <span className="tabular-nums">
+            {PER_TASK_USD} per task + {PER_SHOT_USD} × {shots.toLocaleString("en-US")} shots
+          </span>
+          , rounded to the nearest cent.
+        </p>
+      )}
+      {state === "expired" && (
+        <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300 animate-fade-up">
+          Your session expired. Sign in again.
+        </p>
+      )}
+      {state === "unreachable" && (
+        <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300 animate-fade-up">
+          Couldn&apos;t reach the hardware service. Try again.
         </p>
       )}
     </div>
@@ -278,10 +308,19 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         setOutcome({ ok: false, msg: outcomeMessage(res.status, res.error) });
         setPhase("confirm"); // keep the key so a retry reuses it
       }
-    } catch {
+    } catch (e) {
+      // The request may have reached the server before the connection died, and
+      // the server reserves the spend BEFORE it submits to the device — so a
+      // thrown submit must NOT claim "not charged". `idem` is untouched and the
+      // phase returns to "confirm", so a retry reuses the SAME key and the
+      // server dedupes instead of double-charging — which is what makes the
+      // "retrying is safe" sentence true.
       setOutcome({
         ok: false,
-        msg: "That didn't go through — your budget was not charged. Please try again.",
+        msg:
+          e instanceof NotSignedInError
+            ? "Your session expired before this run was sent — nothing was submitted or charged. Sign in again."
+            : "We couldn't confirm this run. Check your run history; retrying is safe and will not double-charge.",
       });
       setPhase("confirm");
     }
@@ -420,7 +459,7 @@ function CostBreakdown({ shots, micros }: { shots: number; micros: number }) {
       </div>
       <div className="mt-1 flex justify-between">
         <dt className="text-gray-600 dark:text-gray-400">
-          Shots — $0.00145 × {shots.toLocaleString("en-US")}
+          Shots — {PER_SHOT_USD} × {shots.toLocaleString("en-US")}
         </dt>
         <dd className="tabular-nums text-gray-800 dark:text-gray-200">{usd(IQM_SHOT_MICROS * shots)}</dd>
       </div>
@@ -471,6 +510,11 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+// "Your budget was not charged" is claimed ONLY where the server provably never
+// committed the reservation: every 4xx is a rejection before (or an all-or-none
+// cancellation of) the reserve transaction, and 502 braket-submit-failed is the
+// one path that runs the compensating release. Any other 5xx/timeout can die
+// AFTER the money is reserved, so there we say only what we know.
 function outcomeMessage(status: number, error: string): string {
   switch (error) {
     case "over-lifetime-budget":
@@ -483,9 +527,14 @@ function outcomeMessage(status: number, error: string): string {
       return "Price a run first to unlock hardware access.";
     case "email-not-verified":
       return "Verify your email before running on real hardware.";
+    case "braket-submit-failed":
+      return "The device did not accept this run, so the hold was released — your budget was not charged. Try again.";
     default:
-      return status === 402
-        ? "Budget reached."
-        : "That run couldn't be submitted. Your budget was not charged.";
+      if (status >= 400 && status < 500) {
+        return status === 402
+          ? "Budget reached. This run was not submitted and your budget was not charged."
+          : "That run couldn't be submitted. Your budget was not charged.";
+      }
+      return "We couldn't confirm this run. Check your run history; retrying is safe and will not double-charge.";
   }
 }

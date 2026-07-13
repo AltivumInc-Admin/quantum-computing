@@ -127,7 +127,29 @@ test("invalidSnapshotReason accepts a clean snapshot", () => {
   assert.equal(invalidSnapshotReason({ "qc:section:a": "1", "qc:card:b": "{}" }), null);
 });
 
+test("DELETE removes exactly the caller's row (identity from the verified token)", async () => {
+  const ddb = stubDdb();
+  const core = createHandlerCore({ ddb, tableName: TABLE });
+  const res = await core(makeEvent({ method: "DELETE", sub: "user-9" }));
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { deleted: true });
+  assert.equal(ddb.calls.length, 1);
+  assert.equal(ddb.calls[0].constructor.name, "DeleteItemCommand");
+  assert.deepEqual(ddb.calls[0].input, {
+    TableName: TABLE,
+    Key: { userId: { S: "user-9" } },
+  });
+});
+
+test("DELETE without a verified sub is rejected before any DynamoDB call", async () => {
+  const ddb = stubDdb();
+  const core = createHandlerCore({ ddb, tableName: TABLE });
+  const res = await core(makeEvent({ method: "DELETE", sub: null }));
+  assert.equal(res.statusCode, 401);
+  assert.equal(ddb.calls.length, 0);
+});
+
 test("unknown methods 405", async () => {
   const core = createHandlerCore({ ddb: stubDdb(), tableName: TABLE });
-  assert.equal((await core(makeEvent({ method: "DELETE" }))).statusCode, 405);
+  assert.equal((await core(makeEvent({ method: "PATCH" }))).statusCode, 405);
 });

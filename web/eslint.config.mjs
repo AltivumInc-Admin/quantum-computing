@@ -24,6 +24,9 @@ const eslintConfig = defineConfig([
     // Self-hosted Pyodide lesson runtime (minified upstream distribution staged
     // by jupyterlite-build/build.sh) — vendored, must not be linted.
     "public/pyodide/**",
+    // Self-hosted Monaco editor core (minified upstream distribution staged by
+    // scripts/stage-monaco.mjs) — vendored, must not be linted.
+    "public/monaco/**",
     "jupyterlite-build/**",
     // Generated build artifacts (e.g. tutor-core.generated.ts, a @ts-nocheck copy
     // of lambda/tutor/tutor-core.mjs produced by the gen:tutor-core prebuild hook).

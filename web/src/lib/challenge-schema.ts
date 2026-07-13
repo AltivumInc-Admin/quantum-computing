@@ -21,14 +21,6 @@ export interface ParsedChallenge {
   error?: string;
 }
 
-// Small deterministic hash so a challenge gets a stable localStorage key (for
-// progress persistence) without the author having to assign an id by hand.
-function stableId(input: string): string {
-  let h = 5381;
-  for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) | 0;
-  return "c" + (h >>> 0).toString(36);
-}
-
 export function parseChallenge(source: string): ParsedChallenge {
   let data: Record<string, unknown>;
   try {
@@ -37,6 +29,15 @@ export function parseChallenge(source: string): ParsedChallenge {
     return { error: `invalid challenge JSON: ${(e as Error).message}` };
   }
 
+  // The id is the learner's PERMANENT schedule key (FSRS card, solved flag,
+  // personal best) — it must be explicit. The old fallback hashed the prompt,
+  // which meant any copy-edit to the prompt silently orphaned every learner's
+  // card (and orphaned cards resurface forever on /review; sync merge never
+  // deletes). The two shipped fences that relied on the fallback were
+  // backfilled with their then-current hashes, so existing keys are preserved.
+  if (typeof data.id !== "string" || !data.id.trim()) {
+    return { error: 'challenge needs an explicit "id" string (the permanent schedule key)' };
+  }
   if (typeof data.prompt !== "string" || !data.prompt.trim()) {
     return { error: 'challenge needs a non-empty "prompt" string' };
   }
@@ -50,7 +51,7 @@ export function parseChallenge(source: string): ParsedChallenge {
     : undefined;
 
   const spec: ChallengeSpec = {
-    id: typeof data.id === "string" && data.id ? data.id : stableId(data.prompt),
+    id: data.id,
     prompt: data.prompt,
     qubits: typeof data.qubits === "number" ? data.qubits : undefined,
     target: { program: target.program },
