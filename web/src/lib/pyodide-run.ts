@@ -1,7 +1,9 @@
 // Run free-form Python in the browser and capture its console output. Built on
-// the shared Pyodide runtime (CDN + qcsim wheel), so a learner's `print(...)`,
-// `from braket.circuits import Circuit`, etc. all work the same as in the lab.
-// Used by the runnable code editor embedded in lessons.
+// the shared worker-hosted Pyodide runtime (same-origin assets + qcsim wheel),
+// so a learner's `print(...)`, `from braket.circuits import Circuit`, etc. all
+// work the same as in the lab -- without ever blocking the main thread. Used by
+// the runnable code editor embedded in lessons. A run that exceeds the runtime's
+// watchdog timeout surfaces its learner-facing reset message via `error`.
 
 import { getPyodide, runSerialized } from "./pyodide-runtime";
 

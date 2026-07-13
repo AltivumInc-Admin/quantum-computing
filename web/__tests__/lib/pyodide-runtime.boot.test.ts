@@ -2,122 +2,122 @@
  * @jest-environment jsdom
  */
 
-// getPyodide self-hosts the runtime SAME-ORIGIN (/pyodide/) and falls back to the
-// jsdelivr CDN only if same-origin fails; if BOTH fail it surfaces an actionable
-// remediation message. It memoizes the boot in a module-global promise and must
-// clear that cache on rejection so a transient failure never bricks the session.
+// getPyodide boots the runtime in a dedicated worker, self-hosted SAME-ORIGIN
+// (/pyodide/), and falls back to the jsdelivr CDN (integrity-pinned bootstrap)
+// only if same-origin fails; if BOTH fail it surfaces an actionable remediation
+// message. It memoizes the boot in a module-global promise and must clear that
+// cache on rejection so a transient failure never bricks the session. Each boot
+// attempt gets a FRESH worker; a failed attempt's worker must be terminated.
 
-const LOCAL_JS = "/pyodide/pyodide.js";
-const CDN_JS = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js";
+const LOCAL_JS = "http://localhost/pyodide/pyodide.js";
+const CDN_BASE = "https://cdn.jsdelivr.net/pyodide/v0.29.0/full/";
 
-function injectScript(src: string) {
-  // Pre-inject so the internal loadScript()'s querySelector short-circuits and
-  // resolves immediately (jsdom never fires <script> onload over the network).
-  const s = document.createElement("script");
-  s.src = src;
-  document.head.appendChild(s);
+type Posted = { type: string } & Record<string, unknown>;
+
+class FakeWorker {
+  static instances: FakeWorker[] = [];
+  /** Per-test script for how "the worker" responds to a boot message. */
+  static onBoot: (w: FakeWorker, msg: Posted) => void = (w) => w.emit({ type: "ready" });
+
+  onmessage: ((ev: { data: unknown }) => void) | null = null;
+  onerror: ((ev: { message: string }) => void) | null = null;
+  posted: Posted[] = [];
+  terminated = false;
+
+  constructor(public url: string) {
+    FakeWorker.instances.push(this);
+  }
+  postMessage(msg: Posted) {
+    this.posted.push(msg);
+    if (msg.type === "boot") queueMicrotask(() => FakeWorker.onBoot(this, msg));
+  }
+  terminate() {
+    this.terminated = true;
+  }
+  emit(data: unknown) {
+    this.onmessage?.({ data });
+  }
+  bootMsg(): Posted {
+    return this.posted[0];
+  }
 }
 
-function fakePyodide() {
-  return {
-    loadPackage: jest.fn().mockResolvedValue(undefined),
-    runPythonAsync: jest.fn().mockResolvedValue(undefined),
-  };
+function loadRuntime() {
+  return require("@/lib/pyodide-runtime") as typeof import("@/lib/pyodide-runtime");
 }
 
-function indexURLs(loadPyodide: jest.Mock): string[] {
-  return loadPyodide.mock.calls.map((c) => (c[0] as { indexURL: string }).indexURL);
-}
+beforeEach(() => {
+  jest.resetModules();
+  FakeWorker.instances = [];
+  FakeWorker.onBoot = (w) => w.emit({ type: "ready" });
+  (globalThis as unknown as { Worker: unknown }).Worker = FakeWorker;
+});
 
 describe("getPyodide boot: same-origin first, CDN fallback, actionable error", () => {
-  beforeEach(() => {
-    jest.resetModules();
-    document.head.innerHTML = "";
-    delete (window as unknown as { loadPyodide?: unknown }).loadPyodide;
-  });
-
   it("boots from same-origin /pyodide/ and never touches the CDN when it succeeds", async () => {
-    injectScript(LOCAL_JS);
-    const fakePy = fakePyodide();
-    const loadPyodide = jest.fn().mockResolvedValue(fakePy);
-    (window as unknown as { loadPyodide: unknown }).loadPyodide = loadPyodide;
+    const { getPyodide } = loadRuntime();
+    await getPyodide();
 
-    const { getPyodide } = require("@/lib/pyodide-runtime");
-    await expect(getPyodide()).resolves.toBe(fakePy);
-    // Only the same-origin index was used; the CDN was never attempted.
-    expect(indexURLs(loadPyodide)).toEqual(["/pyodide/"]);
+    expect(FakeWorker.instances).toHaveLength(1);
+    const boot = FakeWorker.instances[0].bootMsg();
+    expect(boot.pyodideJsUrl).toBe(LOCAL_JS);
+    expect(boot.indexURL).toBe("http://localhost/pyodide/");
+    // Same-origin assets are ours: no integrity pin is sent.
+    expect(boot.integrity).toBeUndefined();
+    // The qcsim wheel resolves same-origin from the lab's wheel directory.
+    expect(String(boot.wheelUrl)).toMatch(
+      /^http:\/\/localhost\/lab\/files\/wheels\/qcsim-.*\.whl$/
+    );
   });
 
-  it("falls back to the SRI'd CDN when the same-origin runtime fails", async () => {
-    injectScript(LOCAL_JS);
-    injectScript(CDN_JS);
-    const fakePy = fakePyodide();
-    const loadPyodide = jest
-      .fn()
-      .mockRejectedValueOnce(new Error("same-origin /pyodide/ unavailable"))
-      .mockResolvedValue(fakePy);
-    (window as unknown as { loadPyodide: unknown }).loadPyodide = loadPyodide;
+  it("falls back to the integrity-pinned CDN when the same-origin boot fails", async () => {
+    FakeWorker.onBoot = (w) => {
+      if (FakeWorker.instances.length === 1) {
+        w.emit({ type: "boot-error", message: "same-origin /pyodide/ unavailable" });
+      } else {
+        w.emit({ type: "ready" });
+      }
+    };
+    const { getPyodide } = loadRuntime();
+    await getPyodide();
 
-    const { getPyodide } = require("@/lib/pyodide-runtime");
-    await expect(getPyodide()).resolves.toBe(fakePy);
-    // Same-origin attempted first, then the CDN fallback.
-    expect(indexURLs(loadPyodide)).toEqual([
-      "/pyodide/",
-      "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/",
-    ]);
+    expect(FakeWorker.instances).toHaveLength(2);
+    // The failed same-origin attempt's worker must not be left running.
+    expect(FakeWorker.instances[0].terminated).toBe(true);
+    const cdnBoot = FakeWorker.instances[1].bootMsg();
+    expect(cdnBoot.pyodideJsUrl).toBe(`${CDN_BASE}pyodide.js`);
+    expect(cdnBoot.indexURL).toBe(CDN_BASE);
+    // The CDN bootstrap is integrity-pinned (the worker digests it by hand,
+    // since importScripts cannot enforce SRI itself).
+    expect(String(cdnBoot.integrity)).toMatch(/^sha384-.{10,}/);
   });
 
   it("throws an actionable message when BOTH origins fail, and clears the cache so a retry re-boots", async () => {
-    injectScript(LOCAL_JS);
-    injectScript(CDN_JS);
-    const fakePy = fakePyodide();
-    const loadPyodide = jest
-      .fn()
-      .mockRejectedValueOnce(new Error("same-origin down"))
-      .mockRejectedValueOnce(new Error("cdn down"))
-      .mockResolvedValue(fakePy); // a later retry can succeed
-    (window as unknown as { loadPyodide: unknown }).loadPyodide = loadPyodide;
+    let down = true;
+    FakeWorker.onBoot = (w) => {
+      if (down) w.emit({ type: "boot-error", message: "origin down" });
+      else w.emit({ type: "ready" });
+    };
+    const { getPyodide } = loadRuntime();
 
-    const { getPyodide } = require("@/lib/pyodide-runtime");
     await expect(getPyodide()).rejects.toThrow(/this site or the CDN/i);
-    // The rejection must NOT be cached: a retry re-boots (both origins again).
-    await expect(getPyodide()).resolves.toBe(fakePy);
-    // 2 failed (1st call) + at least 1 more (2nd call) — proves the cache cleared.
-    expect(loadPyodide.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(FakeWorker.instances.every((w) => w.terminated)).toBe(true);
+
+    // The rejection must NOT be cached: a retry re-boots and can succeed.
+    down = false;
+    await expect(getPyodide()).resolves.toBeDefined();
+    expect(FakeWorker.instances.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("removes a failed bootstrap <script> so a retry re-fetches instead of wedging on the dead tag", async () => {
-    // Simulate the network at the <script> level: appended scripts fire 'error'
-    // while "down", 'load' once "recovered". (jsdom never fires these itself.)
-    let networkUp = false;
-    const realAppend = document.head.appendChild.bind(document.head);
-    const appendSpy = jest
-      .spyOn(document.head, "appendChild")
-      .mockImplementation((node: unknown) => {
-        const el = realAppend(node as Node);
-        const n = node as HTMLElement;
-        if (n.tagName === "SCRIPT") {
-          queueMicrotask(() => n.dispatchEvent(new Event(networkUp ? "load" : "error")));
-        }
-        return el;
-      });
+  it("treats a worker-script load failure as a failed boot attempt (terminated, then actionable error)", async () => {
+    // The worker never gets to reply; its 'error' event fires instead (e.g.
+    // /pyodide.worker.js unreachable). Both attempts fail the same way.
+    FakeWorker.onBoot = (w) => w.onerror?.({ message: "importScripts failed" });
+    const { getPyodide } = loadRuntime();
 
-    const fakePy = fakePyodide();
-    const loadPyodide = jest.fn().mockResolvedValue(fakePy);
-    (window as unknown as { loadPyodide: unknown }).loadPyodide = loadPyodide;
-
-    const { getPyodide } = require("@/lib/pyodide-runtime");
-
-    // Round 1 — network down: both origins' scripts fire onerror -> actionable error.
     await expect(getPyodide()).rejects.toThrow(/this site or the CDN/i);
-    // The dead tags MUST have been removed; otherwise the querySelector
-    // short-circuit makes every retry resolve without re-fetching (the wedge).
-    expect(document.querySelectorAll("script").length).toBe(0);
-
-    // Round 2 — network recovers: the retry must re-append fresh scripts and boot.
-    networkUp = true;
-    await expect(getPyodide()).resolves.toBe(fakePy);
-
-    appendSpy.mockRestore();
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(FakeWorker.instances.every((w) => w.terminated)).toBe(true);
   });
 });

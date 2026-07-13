@@ -3,23 +3,26 @@
 // challenge's reference circuit (computed in TS) up to global phase.
 //
 // This is the advanced, free-form path. On first use it boots the shared
-// SAME-ORIGIN self-hosted Pyodide runtime (/pyodide/; the CDN is only an
-// SRI-protected fallback — see pyodide-runtime.ts) and installs the same qcsim
-// wheel the in-browser lab ships (single-sourced via the content manifest), so
-// `from braket.circuits import Circuit` resolves to qcsim exactly as it does in
-// the lab. The module is imported lazily (only when a tier:"py" challenge is
+// WORKER-HOSTED, SAME-ORIGIN self-hosted Pyodide runtime (/pyodide/; the CDN is
+// only an integrity-pinned fallback — see pyodide-runtime.ts) and installs the
+// same qcsim wheel the in-browser lab ships (single-sourced via the content
+// manifest), so `from braket.circuits import Circuit` resolves to qcsim exactly
+// as it does in the lab. Learner code executes off the main thread with a hard
+// watchdog timeout; a timed-out run surfaces the runtime's learner-facing reset
+// message. The module is imported lazily (only when a tier:"py" challenge is
 // checked) so it never touches the main bundle.
 //
-// NOTE: requires a live browser (Pyodide/WebAssembly); it cannot run under
-// jsdom. All shipped challenges currently use the instant Tier-A TS grader.
-// This path IS verified end-to-end in a real browser by
+// NOTE: requires a live browser (Pyodide/WebAssembly/Worker); it cannot run
+// under jsdom. All shipped challenges currently use the instant Tier-A TS
+// grader. This path IS verified end-to-end in a real browser by
 // web/e2e/challenge-py-grader.e2e.ts (solved / wrong / fresh-namespace error,
-// same-origin boot) against the fixture page at /e2e-fixtures/py-challenge —
-// keep that spec in lockstep when changing grading semantics here.
+// same-origin boot) and web/e2e/py-grader-timeout.e2e.ts (watchdog kill +
+// fresh-runtime regrade) against the fixture page at /e2e-fixtures/py-challenge
+// — keep those specs in lockstep when changing grading semantics here.
 
 import { simulate, statesApproxEqual, type Complex } from "@/components/quantum/math";
 import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";
-import { getPyodide, runSerialized, type Pyodide } from "./pyodide-runtime";
+import { getPyodide, runSerialized, PythonTimeoutError, type Pyodide } from "./pyodide-runtime";
 import type { ChallengeSpec } from "./challenge-schema";
 import type { GradeResult } from "./challenge-grade";
 
@@ -47,6 +50,12 @@ export async function gradePy(
   try {
     learnerState = JSON.parse((await runSerialized(py, program)) as string) as Complex[];
   } catch (e) {
+    // A watchdog kill is not a Python exception: its message is already
+    // learner-facing and complete (what happened, that the environment was
+    // reset, check for an infinite loop) -- show it verbatim, unprefixed.
+    if (e instanceof PythonTimeoutError) {
+      return { status: "error", message: e.message };
+    }
     return { status: "error", message: `Your code raised: ${(e as Error).message}` };
   }
 

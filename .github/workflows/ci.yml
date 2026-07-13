@@ -162,8 +162,11 @@ jobs:
         run: |
           test -f web/public/pyodide/pyodide.js || { echo "self-hosted pyodide.js missing"; exit 1; }
           ver=$(grep -oE 'PYODIDE_VERSION *= *"[0-9.]+"' web/src/lib/pyodide-runtime.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          grep -q "\"version\": \"$ver\"" web/public/pyodide/pyodide-lock.json \
-            || { echo "self-hosted pyodide-lock version != runtime $ver"; exit 1; }
+          # The distribution's package.json carries the release version. Do NOT
+          # check pyodide-lock.json's info.version: the upstream 0.29.0 core
+          # tarball ships a lock stamped "0.28.0.dev0" (unstamped dev version),
+          # which would false-fail a correct self-host.
+          python3 -c "import json,sys; v=json.load(open('web/public/pyodide/package.json'))['version']; sys.exit(0 if v == '$ver' else 'self-hosted pyodide '+v+' != runtime $ver')"
           # Assert the STABLE closure roots only (micropip is always loadPackage'd;
           # numpy is qcsim's dependency). Transitive deps are computed from the lock
           # by build.sh and may change across Pyodide versions, so we don't pin them.

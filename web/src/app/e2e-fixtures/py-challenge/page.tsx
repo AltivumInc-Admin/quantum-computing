@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import { Challenge } from "@/components/quantum/challenge";
+import { TimeoutOverride } from "./timeout-override";
 
 /**
  * E2E fixture for the Tier-B (Pyodide) grader path — the ONLY page that mounts a
- * tier:"py" challenge. It exists so `web/e2e/challenge-py-grader.e2e.ts` can drive
- * Challenge → runPy → gradePy against real Pyodide + the real qcsim wheel without
- * publishing py-tier content into a lesson GUIDE. Unlinked from navigation,
- * excluded from the sitemap allowlist (src/app/sitemap.ts), noindex'd here
- * (deliberately NOT robots-disallowed — a Disallow would hide the noindex from
- * crawlers), and mounted persist={false} so no visitor ever mints qc:* keys.
- * Keep the spec in lockstep with the e2e's assertions.
+ * tier:"py" challenge. It exists so `web/e2e/challenge-py-grader.e2e.ts` (the
+ * three-verdict grading proof) and `web/e2e/py-grader-timeout.e2e.ts` (the
+ * watchdog kill-and-reboot proof, which shortens the run timeout via
+ * `?timeoutMs=` — see TimeoutOverride) can drive Challenge → runPy → gradePy
+ * against real Pyodide + the real qcsim wheel without publishing py-tier content
+ * into a lesson GUIDE. Unlinked from navigation, excluded from the sitemap
+ * allowlist (src/app/sitemap.ts), noindex'd here (deliberately NOT
+ * robots-disallowed — a Disallow would hide the noindex from crawlers), and
+ * mounted persist={false} so no visitor ever mints qc:* keys.
+ * Keep the spec in lockstep with both e2e specs' assertions.
  */
 
 export const metadata: Metadata = {
@@ -40,6 +44,7 @@ export default function PyChallengeFixturePage() {
       {/* persist={false}: grading works, but no qc:* keys are ever written —
           a visitor (or the e2e itself) must not mint a phantom card that the
           additive cross-device sync would replicate forever. */}
+      <TimeoutOverride />
       <Challenge source={SPEC} persist={false} />
     </main>
   );
