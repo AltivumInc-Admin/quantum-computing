@@ -1,12 +1,21 @@
 /**
  * @jest-environment jsdom
  */
+import { TextEncoder } from "node:util";
+
+// jsdom does not expose the encoding global exitFlush uses at runtime.
+const g = globalThis as Record<string, unknown>;
+g.TextEncoder ??= TextEncoder;
+
 import {
   syncNow,
+  exitFlush,
+  resetLastGoodSync,
   lastSyncedAt,
   isSyncConfigured,
   SyncAccountMismatchError,
   SYNC_META_KEY,
+  KEEPALIVE_BODY_LIMIT,
 } from "@/lib/sync-client";
 
 jest.mock("aws-amplify/auth", () => ({
@@ -37,6 +46,7 @@ function mockFetch(responses: Array<{ status: number; body?: unknown }>) {
 describe("syncNow", () => {
   beforeEach(() => {
     localStorage.clear();
+    resetLastGoodSync();
     process.env.NEXT_PUBLIC_SYNC_URL = "https://sync.example";
   });
   afterEach(() => {
@@ -161,5 +171,138 @@ describe("syncNow", () => {
     ]);
     localStorage.setItem("qc:x", "b"); // local difference forces a push each round
     await expect(syncNow()).rejects.toThrow(/conflict/);
+  });
+});
+
+describe("exitFlush", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLastGoodSync();
+    process.env.NEXT_PUBLIC_SYNC_URL = "https://sync.example";
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SYNC_URL;
+  });
+
+  /** A pull-only successful sync that seeds the cached header/version/data. */
+  async function seedSync(version: number, data: Record<string, string>) {
+    for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v);
+    mockFetch([{ status: 200, body: { version, data } }]);
+    await syncNow();
+  }
+
+  /** Let a survived flush's fire-and-forget response handler run (real timers). */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("skips before any successful sync — no cached auth header, nothing leaves", async () => {
+    localStorage.setItem("qc:section:new", "1");
+    const calls = mockFetch([]);
+    expect(exitFlush()).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("skips when nothing is unsynced", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    const calls = mockFetch([]);
+    expect(exitFlush()).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("pushes unsynced keys with the cached header + keepalive against the last-known version", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    localStorage.setItem("qc:section:b", "1"); // the grade that would otherwise strand
+    const calls = mockFetch([{ status: 200, body: { version: 5 } }]);
+
+    expect(exitFlush()).toBe(true);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://sync.example/progress");
+    expect(calls[0].init?.method).toBe("PUT");
+    expect((calls[0].init?.headers as Record<string, string>).authorization).toBe("Bearer JWT");
+    expect((calls[0].init as { keepalive?: boolean }).keepalive).toBe(true);
+    const body = JSON.parse(String(calls[0].init?.body));
+    expect(body.baseVersion).toBe(4);
+    expect(body.data).toEqual({ "qc:section:a": "1", "qc:section:b": "1" });
+  });
+
+  it("keeps server-known keys deleted locally (deletions never propagate cross-device)", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    localStorage.removeItem("qc:section:a");
+    localStorage.setItem("qc:section:b", "1");
+    const calls = mockFetch([{ status: 200, body: { version: 5 } }]);
+    expect(exitFlush()).toBe(true);
+    expect(JSON.parse(String(calls[0].init?.body)).data).toEqual({
+      "qc:section:a": "1",
+      "qc:section:b": "1",
+    });
+  });
+
+  it("names the post-push version after a sync that pushed", async () => {
+    localStorage.setItem("qc:section:mine", "1");
+    mockFetch([
+      { status: 200, body: { version: 1, data: {} } },
+      { status: 200, body: { version: 2 } },
+    ]);
+    await syncNow(); // pushed — the server is now at version 2
+    localStorage.setItem("qc:section:later", "1");
+    const calls = mockFetch([{ status: 200, body: { version: 3 } }]);
+    expect(exitFlush()).toBe(true);
+    expect(JSON.parse(String(calls[0].init?.body)).baseVersion).toBe(2);
+  });
+
+  it("falls back to a plain (non-keepalive) fetch when the body exceeds the 64KB cap", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    localStorage.setItem("qc:card-content:huge", "x".repeat(KEEPALIVE_BODY_LIMIT + 1));
+    const calls = mockFetch([{ status: 200, body: { version: 5 } }]);
+    expect(exitFlush()).toBe(true);
+    expect((calls[0].init as { keepalive?: boolean }).keepalive).toBe(false);
+  });
+
+  it("skips under a changed account binding — never bleeds into another account", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    localStorage.setItem("qc:section:b", "1");
+    const calls = mockFetch([]);
+    expect(exitFlush()).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a flush the page survives records the sync and advances the cached version", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    const synced = jest.fn();
+    window.addEventListener("qc-sync", synced);
+    localStorage.setItem("qc:section:b", "1");
+    const calls = mockFetch([
+      { status: 200, body: { version: 5 } },
+      { status: 200, body: { version: 6 } },
+    ]);
+
+    expect(exitFlush()).toBe(true);
+    await settle(); // the tab was re-shown; the 200 lands
+
+    expect(synced).toHaveBeenCalledTimes(1);
+    localStorage.setItem("qc:section:c", "1");
+    expect(exitFlush()).toBe(true);
+    const body = JSON.parse(String(calls[1].init?.body));
+    expect(body.baseVersion).toBe(5); // the survived 200 advanced the cache
+    expect(body.data).toEqual({
+      "qc:section:a": "1",
+      "qc:section:b": "1",
+      "qc:section:c": "1",
+    });
+    window.removeEventListener("qc-sync", synced);
+  });
+
+  it("a 409'd flush does not advance the cache — the next flush retries the old version", async () => {
+    await seedSync(4, { "qc:section:a": "1" });
+    localStorage.setItem("qc:section:b", "1");
+    const calls = mockFetch([{ status: 409 }, { status: 200, body: { version: 5 } }]);
+
+    expect(exitFlush()).toBe(true);
+    await settle();
+
+    localStorage.setItem("qc:section:c", "1");
+    expect(exitFlush()).toBe(true);
+    expect(JSON.parse(String(calls[1].init?.body)).baseVersion).toBe(4);
   });
 });
