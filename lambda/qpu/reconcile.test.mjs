@@ -12,6 +12,7 @@ const task = (over = {}) => ({
   userId: { S: "u1" },
   status: { S: "SUBMITTED" },
   taskArn: { S: "arn:aws:braket:eu-north-1:1:quantum-task/t1" },
+  shots: { N: "100" }, // feeds the completedShots medal counter
   estMicros: { N: "450000" },
   createdAt: { N: String(NOW) },
   ...over,
@@ -39,14 +40,51 @@ const stubBraket = (statusByArn) => ({
 const core = (ddb, braket) =>
   createReconcileCore({ ddb, braket, ledgerTable: "ledger", tasksTable: "tasks", now: () => NOW });
 
-test("a COMPLETED task is recorded (charge kept), guarded on SUBMITTED", async () => {
+test("a COMPLETED task is recorded (charge kept) AND credits the medal counters", async () => {
   const ddb = stubDdb([task()]);
   const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))();
   assert.deepEqual(summary, { checked: 1, completed: 1, failed: 0, pending: 0, orphaned: 0 });
-  const upd = ddb.calls.find((c) => c.name === "UpdateItemCommand");
-  assert.match(upd.input.UpdateExpression, /COMPLETED|:done/);
-  assert.equal(upd.input.ConditionExpression, "#s = :submitted"); // idempotent
-  assert.ok(!ddb.calls.some((c) => c.name === "TransactWriteItemsCommand")); // no refund
+
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  // Leg 1 — the task row goes COMPLETED, guarded on SUBMITTED (unchanged semantics).
+  assert.match(tx[0].Update.UpdateExpression, /:done/);
+  assert.equal(tx[0].Update.ConditionExpression, "#s = :submitted");
+  // Leg 2 — the learner's monotonic medal counters, in the SAME transaction.
+  assert.equal(tx[1].Update.Key.pk.S, "USER#u1");
+  assert.match(tx[1].Update.UpdateExpression, /ADD completedRuns :one, completedShots :shots/);
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":one"].N, "1");
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":shots"].N, "100"); // the row's real shots
+  // The charge is KEPT — a completed run is never refunded.
+  assert.ok(!tx.some((t) => JSON.stringify(t).includes(":neg")));
+});
+
+test("counting is exactly-once: a re-delivered COMPLETED cancels the WHOLE transaction", async () => {
+  // The double-count guard. Both legs are in one all-or-none transaction guarded on
+  // status = SUBMITTED, so a re-delivery of an already-COMPLETED row cancels the
+  // ledger ADD too — the counters cannot drift above the true run count. A medal
+  // that inflates itself is as dishonest as one that never lights.
+  const ddb = {
+    calls: [],
+    async send(cmd) {
+      const name = cmd.constructor.name;
+      this.calls.push({ name });
+      if (name === "ScanCommand") return { Items: [task()], LastEvaluatedKey: undefined };
+      throw Object.assign(new Error("already terminal"), { name: "TransactionCanceledException" });
+    },
+  };
+  const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))();
+  assert.equal(summary.completed, 1); // swallowed, did not throw
+});
+
+test("a FAILED run is refunded and credits NO medal counters", async () => {
+  // Every dollar spent maps to a run that counts; a refunded run counts for nothing.
+  const ddb = stubDdb([task()]);
+  await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }))();
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  const body = JSON.stringify(tx);
+  assert.ok(!body.includes("completedRuns"), "a refunded run must never earn a medal");
+  assert.ok(!body.includes("completedShots"), "a refunded run must never earn shot credit");
+  assert.ok(body.includes(":neg")); // it IS a refund
 });
 
 test("a FAILED task refunds the reservation (USER + DAY), guarded on SUBMITTED", async () => {
@@ -88,17 +126,21 @@ test("a re-delivered refund is idempotent: a TransactionCanceledException is swa
   assert.equal(summary.failed, 1); // did not throw
 });
 
-test("re-delivery is safe: a ConditionalCheckFailed on markCompleted is swallowed", async () => {
-  const ddb = stubDdb([task()]);
-  const throwing = {
-    calls: ddb.calls,
+test("a genuinely unexpected error on markCompleted still THROWS (never silently lost)", async () => {
+  // The swallow is narrow on purpose: only TransactionCanceledException (= already
+  // terminal) is benign. A throttle/permission error must surface, not vanish —
+  // otherwise a run could go uncounted and a medal would quietly fail to light.
+  const ddb = {
+    calls: [],
     async send(cmd) {
       const name = cmd.constructor.name;
-      ddb.calls.push({ name, input: cmd.input });
+      this.calls.push({ name });
       if (name === "ScanCommand") return { Items: [task()], LastEvaluatedKey: undefined };
-      throw Object.assign(new Error("already terminal"), { name: "ConditionalCheckFailedException" });
+      throw Object.assign(new Error("throttled"), { name: "ProvisionedThroughputExceededException" });
     },
   };
-  const summary = await core(throwing, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))();
-  assert.equal(summary.completed, 1); // did not throw
+  await assert.rejects(
+    () => core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))(),
+    /throttled/,
+  );
 });
