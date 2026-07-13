@@ -25,6 +25,11 @@ describe("Footer", () => {
     expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/review");
   });
 
+  it("links to the privacy page", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
+  });
+
   it("links to the GitHub repo in a new tab, safely", () => {
     render(<Footer />);
     const gh = screen.getByRole("link", { name: "GitHub" });

@@ -76,6 +76,16 @@ Creates the HTTP API (Cognito JWT authorizer), the submit/budget + reconcile + k
 Lambdas (least-privilege), the ledger/tasks tables (Retain + PITR), the SNS/Budget, and
 resolves `EDGE_SECRET` from the secret above.
 
+It also wires the **human notification path** (parameter `AlertEmail`, default
+christian.perez@altivum.io): a `quantum-qpu-alerts` SNS topic receives an Errors alarm per
+Lambda, a dead-reconciler alarm (zero invocations in an hour, breaching on missing data so a
+deleted schedule rule also alerts), and a `QuantumQpu/OrphanedMoneyRow` alarm fed by a metric
+filter on the reconcile log group's exact `qpu-reconcile: orphaned row` line. The same email
+is subscribed directly to the kill-switch topic and to both budget thresholds, so a budget
+crossing or a kill event reaches a human even if a Lambda is broken. **After the first deploy,
+confirm the two SNS email subscriptions from the inbox** (Budgets emails need no confirmation).
+`template.test.mjs` locks all of this in place offline.
+
 **2. Edge stack** (us-east-1 — CLOUDFRONT-scope WAF must live there). Pass the host of the
 main stack's `QpuUrl` output as `ApiDomain`:
 
@@ -107,7 +117,10 @@ without CloudFront), so PR-1..PR-3 deploy and pass tests before the edge exists.
 - **AWS Budgets only *alert* — the kill-switch is the hard stop.** A monthly `$150` Braket
   budget publishes to an SNS topic at 80%/100%; the `quantum-qpu-killswitch` Lambda flips the
   ledger `KILL` row to `disabled=true` — the 4th condition in the submit reservation, so every
-  new submission then returns `503`. **Re-enabling is a deliberate operator action:** delete
+  new submission then returns `503`. The operator hears each threshold directly (Budgets EMAIL
+  subscriber and the kill-switch topic's email subscription), and a kill-switch Lambda failure
+  trips the `quantum-qpu-killswitch-errors` alarm, so neither the crossing nor a disarmed hard
+  stop is ever silent. **Re-enabling is a deliberate operator action:** delete
   the `KILL` item (or set `disabled=false`) in `quantum-qpu-ledger` after resolving the cause,
   e.g. `aws dynamodb delete-item --table-name quantum-qpu-ledger --key '{"pk":{"S":"KILL"}}'`.
 - The refund path fires **only** when `CreateQuantumTask` itself fails (a real, billable task
