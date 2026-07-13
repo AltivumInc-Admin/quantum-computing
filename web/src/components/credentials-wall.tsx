@@ -15,6 +15,14 @@ import {
   type Credential,
   type CredentialGroup,
 } from "@/lib/credentials";
+import {
+  LADDER_RUNS,
+  DEEP_SAMPLE_SHOTS,
+  LADDER_MICROS,
+  usd,
+  tierReachable,
+  type HardwareReach,
+} from "@/lib/qpu-budget";
 
 /**
  * The Credentials wall: an engraved-medal register of what the learner has
@@ -27,6 +35,19 @@ import {
  */
 
 const SERVER_SNAPSHOT = "0|0|0|0|0";
+
+/**
+ * A medal has FOUR states, and "Locked" is a claim: it says the medal is still
+ * winnable. On the sponsored hardware track that claim can be false — the allowance is
+ * finite and a medal can be spent out of reach — and it can also be unknown, when the
+ * hardware record fails to load. Collapsing either case into "Locked" is the same
+ * dishonesty as advertising a medal the budget cannot buy.
+ */
+type MedalState = "earned" | "locked" | "out-of-reach" | "unverified";
+
+/** The note an unverified medal points at (aria-describedby), so its explanation
+ *  travels with the medal rather than sitting in a group header. */
+const HARDWARE_UNVERIFIED_NOTE_ID = "hardware-record-unverified";
 
 // One enamel hue per group — the wall reads as a collection of distinct medal
 // types (an oklch hue angle; earned seals only, locked stay neutral).
@@ -106,7 +127,16 @@ export function CredentialsWall() {
   // b.tasks.filter(COMPLETED) — that list is truncated to the newest 50 rows, and
   // refunded FAILED/RELEASED rows still occupy slots in it, so a busy learner could
   // push an earned COMPLETED row out of the window and watch a medal un-earn.
-  const [hardware, setHardware] = useState({ runs: 0, shots: 0 });
+  // remainingMicros rides along because a hardware medal's honesty depends on it: a
+  // medal the learner's remaining allowance can no longer buy is NOT "Locked" (a word
+  // that promises attainability) — it is out of reach, and it must say so. `known`
+  // gates that verdict: without a budget we know only that the medal is unearned.
+  const [hardware, setHardware] = useState({
+    runs: 0,
+    shots: 0,
+    remainingMicros: 0,
+    known: false,
+  });
   // Signed out / QPU surface off is an HONEST zero (locked). A failed fetch is
   // not — it becomes an explicit "couldn't verify" note on the Hardware group.
   const [hardwareUnverified, setHardwareUnverified] = useState(false);
@@ -116,7 +146,12 @@ export function CredentialsWall() {
     getBudget()
       .then((b) => {
         if (disposed) return;
-        setHardware({ runs: b.completedRuns, shots: b.completedShots });
+        setHardware({
+          runs: b.completedRuns,
+          shots: b.completedShots,
+          remainingMicros: b.remainingMicros,
+          known: true,
+        });
         setHardwareUnverified(false);
       })
       .catch((e: Error) => {
@@ -135,6 +170,40 @@ export function CredentialsWall() {
   }, [snap, hardware]);
 
   const groups: CredentialGroup[] = ["completion", "mastery", "consistency", "hardware"];
+
+  /**
+   * Four states, four words — and every one of them reaches a screen reader, because
+   * each is the medal's own chip text, not a caveat parked in a group header that a
+   * user navigating by list item never hears.
+   *
+   *   earned        — struck.
+   *   locked        — not yet earned, and still attainable.
+   *   out-of-reach  — not earned and NO LONGER ATTAINABLE on the remaining sponsored
+   *                   budget. The bug this state exists for: three 100-shot runs cost
+   *                   $1.335 of a $2.50 lifetime allowance and cap the learner at 896
+   *                   shots, so the 1,000-shot medal is foreclosed forever — and the
+   *                   wall went on calling it "Locked", i.e. still winnable.
+   *   unverified    — the hardware record could not be fetched, so `earned` is
+   *                   UNKNOWN, not false. Rendering an earned medal as "Locked" here
+   *                   was a lie told only to the screen-reader user, since the sighted
+   *                   caveat lived in the group header.
+   */
+  const medalState = (c: Credential): MedalState => {
+    if (c.group !== "hardware") return c.earned ? "earned" : "locked";
+    if (hardwareUnverified) return "unverified";
+    if (c.earned) return "earned";
+    const [, metric, n] = c.id.split(":");
+    const tier = { metric: metric as "runs" | "shots", n: Number(n) };
+    const reach: HardwareReach = {
+      completedRuns: hardware.runs,
+      completedShots: hardware.shots,
+      remainingMicros: hardware.remainingMicros,
+    };
+    // Without a budget (signed out, QPU surface off, fetch in flight) reachability is
+    // unknowable — and an unknown must never be reported as a foreclosure.
+    if (!hardware.known || tierReachable(tier, reach)) return "locked";
+    return "out-of-reach";
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
@@ -186,16 +255,42 @@ export function CredentialsWall() {
                       on IQM Garnet.
                     </p>
                   )}
+                  {/* The route out of a dead end. The hardware group listed three
+                      requirements and named no surface that grants them, and never said
+                      the money behind them is finite. Both facts are derived: the plan
+                      from HARDWARE_TIERS + PRICING, the link from the one page that
+                      hosts the submit panel. */}
+                  {g === "hardware" && (
+                    <p className="mt-1 text-sm leading-relaxed text-caption">
+                      All three fit inside the sponsored allowance:{" "}
+                      <span className="tabular-nums text-gray-700 dark:text-gray-300">
+                        {LADDER_RUNS} runs totalling {DEEP_SAMPLE_SHOTS.toLocaleString("en-US")}{" "}
+                        shots — {usd(LADDER_MICROS)}
+                      </span>
+                      . The allowance is one-time and does not refill, so how you spend it decides
+                      which of these you can still earn.{" "}
+                      <Link
+                        href="/workspace"
+                        className="font-medium text-accent-dark dark:text-accent-light underline underline-offset-2 interactive focus-ring rounded-control"
+                      >
+                        Run on IQM Garnet
+                      </Link>
+                    </p>
+                  )}
                   {g === "hardware" && hardwareUnverified && (
-                    <p role="status" className="mt-1 text-xs text-warm-dark dark:text-warm-light">
-                      Couldn&apos;t verify your hardware record — these medals may show as
-                      locked. Reload to retry.
+                    <p
+                      id={HARDWARE_UNVERIFIED_NOTE_ID}
+                      role="status"
+                      className="mt-1 text-xs text-warm-dark dark:text-warm-light"
+                    >
+                      Couldn&apos;t verify your hardware record — these medals show as unverified,
+                      not locked. Reload to retry.
                     </p>
                   )}
                 </div>
                 <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((c) => (
-                    <Medal key={c.id} cred={c} hue={GROUP_HUE[g]} />
+                    <Medal key={c.id} cred={c} hue={GROUP_HUE[g]} state={medalState(c)} />
                   ))}
                 </ul>
               </section>
@@ -207,32 +302,56 @@ export function CredentialsWall() {
   );
 }
 
-function Medal({ cred, hue }: { cred: Credential; hue: number }) {
+function Medal({ cred, hue, state }: { cred: Credential; hue: number; state: MedalState }) {
   const enamel = `oklch(0.62 0.13 ${hue})`;
+  // State is carried by the chip's WORD (and the seal's form), never by colour — the
+  // four states have to be four different things to hear, not four different things to
+  // see. The out-of-reach and unverified tones are the semantic warm pair, but they
+  // are redundant with the label by construction.
+  const chip = {
+    earned: "Earned",
+    locked: "Locked",
+    "out-of-reach": "Out of reach",
+    unverified: "Unverified",
+  }[state];
+  const chipTone = {
+    earned: "bg-accent/12 text-accent-dark dark:text-accent-light",
+    locked: "bg-gray-200/70 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400",
+    "out-of-reach": "bg-warm/12 text-warm-dark dark:text-warm-light",
+    unverified: "bg-warm/12 text-warm-dark dark:text-warm-light",
+  }[state];
+  const detail = {
+    earned: cred.evidence,
+    locked: cred.requirement,
+    "out-of-reach": `${cred.requirement} — out of reach on your remaining sponsored budget.`,
+    unverified: cred.requirement,
+  }[state];
   return (
     <li
       className={`flex items-start gap-4 rounded-card border px-4 py-4 shadow-(--shadow-resting) ${
-        cred.earned
+        state === "earned"
           ? "border-gray-200/70 bg-(--surface-1) dark:border-white/[0.08]"
           : "border-dashed border-gray-300/70 bg-(--surface-2)/60 dark:border-white/[0.06]"
       }`}
     >
-      <Seal earned={cred.earned} enamel={enamel} />
+      <Seal state={state} enamel={enamel} />
       <div className="min-w-0">
         <p className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
           <span className="truncate">{cred.title}</span>
           <span
-            className={`shrink-0 rounded-chip px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide ${
-              cred.earned
-                ? "bg-accent/12 text-accent-dark dark:text-accent-light"
-                : "bg-gray-200/70 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400"
-            }`}
+            className={`shrink-0 rounded-chip px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide ${chipTone}`}
           >
-            {cred.earned ? "Earned" : "Locked"}
+            {chip}
           </span>
         </p>
-        <p className="mt-1 text-xs leading-relaxed text-caption">
-          {cred.earned ? cred.evidence : cred.requirement}
+        <p
+          className="mt-1 text-xs leading-relaxed text-caption"
+          // The unverified medal points at the note that explains WHY its state is
+          // unknown, so the explanation travels with the medal instead of living in a
+          // group header a list-item reader never visits.
+          aria-describedby={state === "unverified" ? HARDWARE_UNVERIFIED_NOTE_ID : undefined}
+        >
+          {detail}
         </p>
       </div>
     </li>
@@ -240,18 +359,25 @@ function Medal({ cred, hue }: { cred: Credential; hue: number }) {
 }
 
 /**
- * An engraved medallion: concentric rings struck in the group's enamel when
- * earned, a quiet outline when locked. Purely decorative (the state is also in
- * the "Earned/Locked" text), so aria-hidden.
+ * An engraved medallion: concentric rings struck in the group's enamel when earned, a
+ * quiet dashed outline when locked, and a struck-through outline when the medal is out
+ * of reach — three different FORMS, not three colours. Purely decorative (every state
+ * is also in the chip's text), so aria-hidden throughout.
  */
-function Seal({ earned, enamel }: { earned: boolean; enamel: string }) {
-  if (!earned) {
+function Seal({ state, enamel }: { state: MedalState; enamel: string }) {
+  if (state !== "earned") {
     return (
       <svg viewBox="0 0 40 40" className="h-10 w-10 shrink-0" aria-hidden="true">
         <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="1.5"
           strokeDasharray="3 3" className="text-gray-300 dark:text-gray-600" />
         <circle cx="20" cy="20" r="9" fill="none" stroke="currentColor" strokeWidth="1"
           className="text-gray-300 dark:text-gray-600" />
+        {state === "out-of-reach" && (
+          // Struck through: a FORM the locked seal does not have, on the AA-passing
+          // muted pair (the contrast guard rejects gray-400/dark:gray-500 outright).
+          <path d="M9 31L31 9" fill="none" stroke="currentColor" strokeWidth="1.5"
+            strokeLinecap="round" className="text-gray-500 dark:text-gray-400" />
+        )}
       </svg>
     );
   }
