@@ -1,5 +1,3 @@
-"use client";
-
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -11,6 +9,12 @@ import { KATEX_MACROS } from "@/lib/katex-macros";
  * to a fragment so the definition flows inside the entry's own <p>. Definitions
  * are authored as a single inline string (no block elements), so unwrapping <p>
  * is sufficient.
+ *
+ * SERVER Component (the markdown-renderer.tsx pattern): definitions are fixed
+ * strings, so the whole react-markdown + remark-math + rehype-katex pipeline
+ * runs once at build and ships as prerendered markup — none of it lands in the
+ * client bundle. Keep it out of "use client" modules or the pipeline is
+ * dragged back onto every glossary page.
  */
 export function InlineMarkdown({ children }: { children: string }) {
   return (

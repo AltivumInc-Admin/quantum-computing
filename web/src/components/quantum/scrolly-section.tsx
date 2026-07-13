@@ -123,7 +123,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
                 className={`text-lg leading-relaxed transition-opacity duration-300 ${
                   i === active
                     ? "text-gray-800 dark:text-gray-100 opacity-100"
-                    : "pointer-events-none absolute inset-0 text-gray-500 opacity-0"
+                    : "pointer-events-none absolute inset-0 text-caption opacity-0"
                 }`}
               >
                 {beat.caption}

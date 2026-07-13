@@ -1,6 +1,7 @@
 import { parseChallenge } from "@/lib/challenge-schema";
 
 const valid = JSON.stringify({
+  id: "bell-1",
   prompt: "Prepare the Bell state.",
   qubits: 2,
   target: { program: "H 0\nCNOT 0 1" },
@@ -22,20 +23,26 @@ describe("parseChallenge", () => {
     expect(parseChallenge(valid).spec!.tier).toBe("ts");
   });
 
-  it("derives a stable id from the prompt when none is given", () => {
-    const a = parseChallenge(valid).spec!.id;
-    const b = parseChallenge(valid).spec!.id;
-    expect(a).toBeTruthy();
-    expect(a).toBe(b);
+  it("uses the explicit id verbatim (the permanent schedule key)", () => {
+    expect(parseChallenge(valid).spec!.id).toBe("bell-1");
+  });
+
+  it("errors when the id is missing — no silent fallback key", () => {
+    const { error } = parseChallenge(
+      JSON.stringify({ prompt: "x", target: { program: "H 0" } })
+    );
+    expect(error).toMatch(/id/i);
   });
 
   it("errors when the prompt is missing", () => {
-    const { error } = parseChallenge(JSON.stringify({ target: { program: "H 0" } }));
+    const { error } = parseChallenge(
+      JSON.stringify({ id: "x-1", target: { program: "H 0" } })
+    );
     expect(error).toMatch(/prompt/i);
   });
 
   it("errors when the target program is missing", () => {
-    const { error } = parseChallenge(JSON.stringify({ prompt: "x" }));
+    const { error } = parseChallenge(JSON.stringify({ id: "x-1", prompt: "x" }));
     expect(error).toMatch(/target/i);
   });
 

@@ -1,6 +1,8 @@
 // web/src/app/glossary/page.tsx
 import type { Metadata } from "next";
 import { Glossary } from "@/components/glossary/glossary";
+import { GlossaryEntry } from "@/components/glossary/glossary-entry";
+import { GLOSSARY } from "@/lib/glossary";
 
 export const metadata: Metadata = {
   title: "Glossary — Quantum Computing Workspace",
@@ -9,6 +11,13 @@ export const metadata: Metadata = {
 };
 
 export default function GlossaryPage() {
+  // Every entry (markdown + KaTeX) is rendered HERE, on the server, at build —
+  // the client <Glossary> only filters/shows these prerendered nodes, so the
+  // react-markdown/rehype-katex pipeline never ships to the browser and a
+  // search keystroke re-renders nothing but visibility.
+  const entries = Object.fromEntries(
+    GLOSSARY.map((term) => [term.term, <GlossaryEntry key={term.term} term={term} />])
+  );
   return (
     <div className="relative overflow-hidden">
       <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
@@ -24,7 +33,7 @@ export default function GlossaryPage() {
             Look up any quantum computing term, A to Z. Each entry links to the lesson where it is taught.
           </p>
         </header>
-        <Glossary />
+        <Glossary entries={entries} />
       </div>
     </div>
   );

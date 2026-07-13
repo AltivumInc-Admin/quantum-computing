@@ -1,10 +1,12 @@
-"use client";
-
 import { TransitionLink } from "@/components/transition-link";
 import { termSlug, type GlossaryTerm } from "@/lib/glossary";
 import { InlineMarkdown } from "./inline-markdown";
 import { CategoryChip } from "./category-chip";
 import { SeeAlsoLinks } from "./see-also-links";
+
+// SERVER Component: entries are prerendered once at build (glossary/page.tsx
+// passes them into the client <Glossary> as ReactNode props), so the markdown/
+// KaTeX pipeline inside InlineMarkdown stays out of the client bundle.
 
 export function GlossaryEntry({ term }: { term: GlossaryTerm }) {
   return (

@@ -13,8 +13,11 @@
  *
  * GUIDE-specific rules (vs validateRep):
  *   - No `kind` envelope — the fence token IS the kind.
- *   - challenge may omit `id` (the parser auto-hashes from the prompt); every
- *     other kind requires an explicit id, which its own parser enforces.
+ *   - EVERY kind requires an explicit id (each parser enforces it). An id is a
+ *     permanent schedule key; the old prompt-hash fallback for challenge meant
+ *     a copy-edit to the prompt orphaned every learner's card, so it was
+ *     removed (the two legacy fences were backfilled with their then-current
+ *     hashes).
  *   - challenge may carry `tier`, but NOT "py": a py-tier fence cannot be
  *     graded in CI (pyodide needs a real browser), so authored py content is
  *     rejected here until a browser-gated path exists for it (the e2e fixture
@@ -147,13 +150,16 @@ describe.each(fences.map((f, i) => [`${f.guide} ${f.token} #${i}`, f] as const))
   }
 );
 
-it("Rep ids are unique across every GUIDE (an id is a permanent schedule key)", () => {
+it("every Rep has an explicit id, unique across every GUIDE (an id is a permanent schedule key)", () => {
   const seen = new Map<string, string>();
   for (const f of fences) {
     const id = (JSON.parse(f.body) as { id?: string }).id;
-    if (!id) continue; // challenge auto-hash — collision-free by construction
-    const prior = seen.get(id);
+    // A missing id is a shipping hazard, not a pass: without an explicit key
+    // the card would fall back to nothing stable and a prompt edit would
+    // orphan every learner's progress.
+    expect(id ? "" : `missing id in a ${f.token} fence in ${f.guide}`).toBe("");
+    const prior = seen.get(id!);
     expect(prior ? `id "${id}" in both ${prior} and ${f.guide}` : "").toBe("");
-    seen.set(id, f.guide);
+    seen.set(id!, f.guide);
   }
 });
