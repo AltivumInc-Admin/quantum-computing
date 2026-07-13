@@ -8,6 +8,8 @@ import { getSections } from "@/lib/sections";
 import { completedCount } from "@/lib/progress-store";
 import { CredentialsWorkspaceTeaser } from "@/components/credentials-wall";
 import { QpuSubmitPanel } from "@/components/quantum/qpu-submit-panel";
+import { ReminderPrefs } from "@/components/reminder-prefs";
+import { DeleteAccount } from "@/components/auth/delete-account";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -71,6 +73,8 @@ export default function WorkspacePage() {
         )}
       </div>
 
+      <ReminderPrefs />
+
       <Link
         href="/runbook"
         className="mt-4 flex items-center justify-between rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) px-6 py-4 shadow-(--shadow-resting) interactive focus-ring group"
@@ -106,6 +110,8 @@ export default function WorkspacePage() {
       >
         Sign out
       </button>
+
+      <DeleteAccount />
     </Shell>
   );
 }

@@ -7,4 +7,5 @@ export const handler = createUnsubscribeCore({
   ddb: new DynamoDBClient({}),
   prefsTable: process.env.PREFS_TABLE,
   unsubSecret: process.env.UNSUB_SECRET,
+  siteUrl: process.env.SITE_URL,
 });

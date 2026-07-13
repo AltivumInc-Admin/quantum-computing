@@ -22,6 +22,12 @@ export function Footer() {
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={linkClass}>
             GitHub
           </a>
+          <Link
+            href="/privacy"
+            className="text-caption hover:text-accent dark:hover:text-accent-light interactive focus-ring rounded transition-colors"
+          >
+            Privacy
+          </Link>
         </nav>
       </div>
       <p className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 text-xs text-caption">

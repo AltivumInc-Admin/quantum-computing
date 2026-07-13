@@ -13,6 +13,7 @@ import {
   createHandlerCore,
   circuitHash,
   correctCents,
+  credentialOptionsCollide,
   requiredShotsFor,
   DEVICE,
   LIFETIME_CAP_MICROS,
@@ -302,6 +303,48 @@ test("requiredShotsFor stays in [100,1000] and skips the 204..210 collision band
     const s = requiredShotsFor(`user-${i}-${(i * 2654435761) >>> 0}`);
     assert.ok(s >= 100 && s <= 1000, `out of range: ${s}`);
     assert.ok(s < 204 || s > 210, `landed in the collision band: ${s}`);
+  }
+});
+
+test("the collision band is DERIVED from the price constants — exactly 204..210 at today's rates", () => {
+  // round(0.145 x s) = 30 for s in 204..210: the shot fee settles to the same
+  // cents as the task fee, so the Rep's options collide. Nothing else in range.
+  const excluded = [];
+  for (let s = 100; s <= 1000; s++) if (credentialOptionsCollide(s)) excluded.push(s);
+  assert.deepEqual(excluded, [204, 205, 206, 207, 208, 209, 210]);
+});
+
+test("under hypothetical repriced rates the band MOVES and the challenge still dodges it", () => {
+  // The old hardcoded 204..210 skip would go silently stale on a reprice. Two
+  // repricings whose collision bands sit elsewhere in [100, 1000]:
+  const repricings = [
+    // $0.30/task + $0.003/shot -> round(0.3 x s) = 30 -> band 100..101.
+    { perTaskMicros: 300_000, perShotMicros: 3_000 },
+    // $0.50/task + $0.001/shot -> round(0.1 x s) = 50 -> band 495..504.
+    { perTaskMicros: 500_000, perShotMicros: 1_000 },
+  ];
+  for (const rates of repricings) {
+    const banned = [];
+    for (let s = 100; s <= 1000; s++) if (credentialOptionsCollide(s, rates)) banned.push(s);
+    // The predicate is rate-sensitive: a real in-range band, and NOT today's.
+    assert.ok(banned.length > 0, "expected an in-range collision band for this repricing");
+    assert.notDeepEqual(banned, [204, 205, 206, 207, 208, 209, 210]);
+    // And the chosen challenge never lands on it.
+    for (let i = 0; i < 2000; i++) {
+      const s = requiredShotsFor(`user-${i}`, rates);
+      assert.ok(s >= 100 && s <= 1000, `out of range: ${s}`);
+      assert.ok(!credentialOptionsCollide(s, rates), `collides at ${s}`);
+    }
+  }
+});
+
+test("requiredShotsFor maps the excluded band to 211 — identical to the old hardcoded skip", () => {
+  // Determinism contract: learners whose djb2 landed in 204..210 must keep the
+  // exact challenge (211 shots) they were already shown before this change.
+  for (let s = 204; s <= 210; s++) {
+    let next = s;
+    while (credentialOptionsCollide(next)) next += 1;
+    assert.equal(next, 211);
   }
 });
 

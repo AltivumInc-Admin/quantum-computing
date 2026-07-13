@@ -72,6 +72,13 @@ Resources:
         authorize_scopes: "openid email profile"
       AttributeMapping:
         email: email
+        # Map Google's OIDC email_verified claim onto the pool attribute. Mapped
+        # email addresses are UNVERIFIED by default and a federated user has no
+        # Cognito verification flow to run, so without this mapping the QPU spend
+        # gate (lambda/qpu: "Verify your email before running on real hardware")
+        # is a dead end for every Google sign-in. Guarded by
+        # tests/test_workspace_cognito.py.
+        email_verified: email_verified
 
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
