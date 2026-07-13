@@ -45,6 +45,22 @@ async function scanStuck(ddb, tasksTable, staleBefore) {
   return items;
 }
 
+// A TransactWriteItems cancellation is benign in exactly ONE case: the row already
+// moved on, so OUR status guard (the conditional leg) is the reason the transaction
+// was cancelled. Anything else — a TransactionConflict with a concurrent submit, a
+// throttle, a validation error — means the write did NOT apply for a reason we have
+// not accounted for, and swallowing it would let the poll log `completed: 1` while
+// applying nothing: the learner's dollar spent, their run uncounted, their medal
+// quietly never lighting. So: swallow only the ConditionalCheckFailed on the leg that
+// carries the guard, and rethrow everything else (including a cancellation whose
+// reasons we cannot read).
+function isAlreadyTerminal(e, guardLeg) {
+  return (
+    e?.name === "TransactionCanceledException" &&
+    e?.CancellationReasons?.[guardLeg]?.Code === "ConditionalCheckFailed"
+  );
+}
+
 export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now = () => Date.now(), log = () => {} }) {
   // COMPLETED — the task ran and Braket billed; keep the charge, record it, and
   // credit the learner's monotonic medal counters in the SAME all-or-none
@@ -53,8 +69,13 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
   // exactly once. Because the whole transaction is guarded on the task still being
   // SUBMITTED, a re-delivery cancels EVERY leg — the row can't go COMPLETED twice
   // and the counters can't double-count. Only COMPLETED ever increments: a
-  // FAILED/CANCELLED run is refunded below and earns nothing, so every dollar spent
-  // corresponds to a run that counts, and no run that counts was ever free.
+  // FAILED/CANCELLED run is refunded below and earns nothing.
+  //
+  // The invariant that buys, precisely: NO RUN THAT COUNTS WAS EVER FREE, and no
+  // refunded run ever counts. NOT the converse — an orphaned RESERVED row (a submit
+  // that died after CreateQuantumTask) is money the platform pays for a run that
+  // counts for nothing, which is exactly why those rows are logged for review rather
+  // than quietly dropped.
   async function markCompleted(idempotencyKey, sub, shots) {
     await ddb
       .send(
@@ -88,7 +109,9 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
         }),
       )
       .catch((e) => {
-        if (e?.name !== "TransactionCanceledException") throw e; // already terminal — fine
+        // Leg 0 carries the status guard: ConditionalCheckFailed there = the row is
+        // already terminal (a re-delivery), which is the one benign cancellation.
+        if (!isAlreadyTerminal(e, 0)) throw e;
       });
   }
 
@@ -129,7 +152,10 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
         }),
       )
       .catch((e) => {
-        if (e?.name !== "TransactionCanceledException") throw e; // already reconciled — fine
+        // Leg 2 carries the status guard here (the two ledger ADDs come first), so a
+        // ConditionalCheckFailed there = already reconciled. A TransactionConflict is
+        // NOT that, and must surface: a silently dropped refund is real money.
+        if (!isAlreadyTerminal(e, 2)) throw e;
       });
   }
 

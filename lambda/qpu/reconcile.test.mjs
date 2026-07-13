@@ -58,22 +58,71 @@ test("a COMPLETED task is recorded (charge kept) AND credits the medal counters"
   assert.ok(!tx.some((t) => JSON.stringify(t).includes(":neg")));
 });
 
+/** A real DynamoDB TransactionCanceledException: one CancellationReason per leg, in
+ *  leg order. `codes` names what happened to each leg ("None" = it would have applied). */
+const cancelled = (codes) =>
+  Object.assign(new Error("Transaction cancelled"), {
+    name: "TransactionCanceledException",
+    CancellationReasons: codes.map((Code) => ({ Code })),
+  });
+
+/** A ddb stub whose every write throws `err`. */
+const throwingDdb = (rows, err) => ({
+  calls: [],
+  async send(cmd) {
+    const name = cmd.constructor.name;
+    this.calls.push({ name });
+    if (name === "ScanCommand") return { Items: rows, LastEvaluatedKey: undefined };
+    throw err;
+  },
+});
+
 test("counting is exactly-once: a re-delivered COMPLETED cancels the WHOLE transaction", async () => {
   // The double-count guard. Both legs are in one all-or-none transaction guarded on
   // status = SUBMITTED, so a re-delivery of an already-COMPLETED row cancels the
   // ledger ADD too — the counters cannot drift above the true run count. A medal
   // that inflates itself is as dishonest as one that never lights.
-  const ddb = {
-    calls: [],
-    async send(cmd) {
-      const name = cmd.constructor.name;
-      this.calls.push({ name });
-      if (name === "ScanCommand") return { Items: [task()], LastEvaluatedKey: undefined };
-      throw Object.assign(new Error("already terminal"), { name: "TransactionCanceledException" });
-    },
-  };
+  // Leg 0 (the task row) is the guard that fails; leg 1 would have applied.
+  const ddb = throwingDdb([task()], cancelled(["ConditionalCheckFailed", "None"]));
   const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))();
   assert.equal(summary.completed, 1); // swallowed, did not throw
+});
+
+test("markCompleted RETHROWS a cancellation that is NOT the already-terminal guard", async () => {
+  // The lost-race bug: a TransactionConflict (a concurrent submit touching the same
+  // ledger row) is ALSO a TransactionCanceledException, and the old blanket swallow ate
+  // it — logging `completed: 1` while applying nothing at all. The run stays SUBMITTED,
+  // the counters never move, the medal silently never lights, and the money is spent.
+  // Only the genuine already-terminal case may be swallowed.
+  const ddb = throwingDdb([task()], cancelled(["None", "TransactionConflict"]));
+  await assert.rejects(
+    () => core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))(),
+    /Transaction cancelled/,
+  );
+});
+
+test("markCompleted RETHROWS a cancellation with no reasons it can read", async () => {
+  // Fail loud on the unknown: a cancellation we cannot attribute to our own guard is
+  // not evidence that the row was already terminal.
+  const ddb = throwingDdb(
+    [task()],
+    Object.assign(new Error("opaque cancel"), { name: "TransactionCanceledException" }),
+  );
+  await assert.rejects(
+    () => core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))(),
+    /opaque cancel/,
+  );
+});
+
+test("refund RETHROWS a cancellation that is NOT the already-reconciled guard", async () => {
+  // Same defect class on the refund path: a dropped refund is real money the platform
+  // never gets back, and the learner's allowance stays consumed by a run that failed.
+  // Leg 2 (the task row) carries the guard; a conflict on leg 0 must surface.
+  const ddb = throwingDdb([task()], cancelled(["TransactionConflict", "None", "None"]));
+  await assert.rejects(
+    () => core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }))(),
+    /Transaction cancelled/,
+  );
 });
 
 test("a FAILED run is refunded and credits NO medal counters", async () => {
@@ -110,35 +159,21 @@ test("a still-running task is left pending; a stuck RESERVED row is flagged orph
   assert.ok(!ddb.calls.some((c) => c.name === "TransactWriteItemsCommand"));
 });
 
-test("a re-delivered refund is idempotent: a TransactionCanceledException is swallowed", async () => {
-  // The priority double-refund path: a second refund of an already-FAILED row
-  // cancels on the status=SUBMITTED guard; the core must swallow it, not throw.
-  const ddb = {
-    calls: [],
-    async send(cmd) {
-      const name = cmd.constructor.name;
-      this.calls.push({ name });
-      if (name === "ScanCommand") return { Items: [task()], LastEvaluatedKey: undefined };
-      throw Object.assign(new Error("already reconciled"), { name: "TransactionCanceledException" });
-    },
-  };
+test("a re-delivered refund is idempotent: the already-reconciled cancellation is swallowed", async () => {
+  // The priority double-refund path: a second refund of an already-FAILED row cancels
+  // on the status=SUBMITTED guard (leg 2); the core must swallow THAT, and only that.
+  const ddb = throwingDdb([task()], cancelled(["None", "None", "ConditionalCheckFailed"]));
   const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }))();
   assert.equal(summary.failed, 1); // did not throw
 });
 
 test("a genuinely unexpected error on markCompleted still THROWS (never silently lost)", async () => {
-  // The swallow is narrow on purpose: only TransactionCanceledException (= already
-  // terminal) is benign. A throttle/permission error must surface, not vanish —
-  // otherwise a run could go uncounted and a medal would quietly fail to light.
-  const ddb = {
-    calls: [],
-    async send(cmd) {
-      const name = cmd.constructor.name;
-      this.calls.push({ name });
-      if (name === "ScanCommand") return { Items: [task()], LastEvaluatedKey: undefined };
-      throw Object.assign(new Error("throttled"), { name: "ProvisionedThroughputExceededException" });
-    },
-  };
+  // The swallow is narrow on purpose. A throttle/permission error must surface, not
+  // vanish — otherwise a run could go uncounted and a medal would quietly fail to light.
+  const ddb = throwingDdb(
+    [task()],
+    Object.assign(new Error("throttled"), { name: "ProvisionedThroughputExceededException" }),
+  );
   await assert.rejects(
     () => core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))(),
     /throttled/,
