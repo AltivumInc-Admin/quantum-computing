@@ -6,7 +6,7 @@ import { GLOSSARY, termSlug } from "@/lib/glossary";
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const top = ["", "/glossary", "/review", "/runbook", "/credentials"].map((p) => ({
+  const top = ["", "/glossary", "/review", "/runbook", "/credentials", "/privacy"].map((p) => ({
     url: `${SITE_URL}${p}`,
   }));
   const lessons = getSections().map((s) => ({ url: `${SITE_URL}/learn/${s.slug}` }));
