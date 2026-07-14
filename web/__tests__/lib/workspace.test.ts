@@ -6,8 +6,6 @@ import { gradeCard, setCardContent } from "@/lib/review-store";
 import { setSectionComplete } from "@/lib/progress-store";
 import { getSections } from "@/lib/sections";
 
-const DAY = 86_400_000;
-
 // The Valve is the page's whole thesis, so its precedence must be provable as a pure
 // function of (due, tracked, daysUntilNext, firstIncomplete).
 describe("resolveValve — deterministic precedence", () => {
