@@ -39,6 +39,13 @@ export interface Budget {
   spentMicros: number;
   remainingMicros: number;
   credentialed: boolean;
+  /** COMPLETED runs, a monotonic SERVER aggregate (not derived from `tasks`).
+   *  `tasks` is truncated to the newest 50 rows, and refunded FAILED/RELEASED rows
+   *  still occupy slots in that window — so counting COMPLETED rows there lets a
+   *  busy learner's earned medal silently UN-EARN. These counters can't. */
+  completedRuns: number;
+  /** Total shots across COMPLETED runs — what the "Deep sample" medal reads. */
+  completedShots: number;
   tasks: QpuTask[];
 }
 

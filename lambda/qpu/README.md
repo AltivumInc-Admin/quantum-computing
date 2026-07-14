@@ -13,7 +13,7 @@ Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR
 |---|---|
 | Device (v1) | **IQM Garnet only** (`$0.30 + $0.00145/shot`) |
 | Shot ceiling | **1000** → $1.75 max per run |
-| Per-user LIFETIME cap | **$5.00** |
+| Per-user LIFETIME cap | **$2.50** (sponsored — the platform pays, the learner never does) |
 | Per-day GLOBAL kill-switch | **$15.00/day** (resets 00:00 UTC) |
 | Entitlement | verified email **+** a **server-minted cost-estimate credential** (`POST /qpu/credential`) |
 
@@ -104,7 +104,7 @@ without CloudFront), so PR-1..PR-3 deploy and pass tests before the edge exists.
 
 ## Safety notes
 
-- **The hard caps are the real spend boundary.** The per-user `$5` lifetime cap and the
+- **The hard caps are the real spend boundary.** The per-user `$2.50` lifetime cap and the
   `$15/day` global kill-switch, enforced atomically before every submit, bound abuse even
   if the entitlement gate is scripted past. The credential gate is **server-verified
   competency** (the server re-computes the true cost before minting, and the credential lives

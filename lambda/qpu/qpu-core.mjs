@@ -29,7 +29,12 @@ export const DEVICE = "iqm_garnet";
 export const DEVICE_ARN = "arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet";
 export const DEVICE_REGION = "eu-north-1";
 export const MAX_SHOTS = 1000; // hard ceiling → $1.75 max per run on IQM Garnet
-export const LIFETIME_CAP_MICROS = 5_000_000; // $5.00 per user, forever
+// The PLATFORM pays Braket for every learner run — this is a sponsored allowance,
+// not an invoice. MAX_SHOTS doubles as the "Deep sample" medal threshold (1,000
+// shots); the two must stay equal. Every hardware medal must be co-earnable inside
+// this cap (3 runs + 1,000 shots = $2.35) — see the feasibility lock in
+// qpu-core.test.mjs, which fails if a tier is ever made unearnable.
+export const LIFETIME_CAP_MICROS = 2_500_000; // $2.50 per user, forever
 export const DAILY_CAP_MICROS = 15_000_000; // $15.00/day GLOBAL kill-switch
 // Entitlement: a valid JWT is authentication, not authorization to spend. On top
 // of a verified email we require a SERVER-MINTED "cost-estimate" credential — the
@@ -39,7 +44,7 @@ export const DAILY_CAP_MICROS = 15_000_000; // $15.00/day GLOBAL kill-switch
 // cannot be forged by a localStorage set or a sync PUT. This is genuine
 // server-verified competency (exactly what a spend gate should check: "prove you
 // can price a run before spending real money"), NOT cryptographic sybil-proofing —
-// the hard caps below (per-user $5 lifetime + $15/day global) remain the real
+// the hard caps below (per-user $2.50 lifetime + $15/day global) remain the real
 // spend boundary and are sized assuming the gate can still be scripted past.
 // IQM Garnet pricing in micro-dollars. Kept in lockstep with lib/utils/cost.py
 // PRICING["IQM"] (per_task 0.30, per_shot 0.00145) — a node --test asserts it.
@@ -247,11 +252,23 @@ export function createHandlerCore({
     ]);
     const capMicros = Number(ledger.Item?.capMicros?.N ?? LIFETIME_CAP_MICROS);
     const spentMicros = Number(ledger.Item?.spentMicros?.N ?? 0);
+    // Monotonic COMPLETED-run aggregates, written by the reconciler in the same
+    // guarded transaction that declares a run real (reconcile.mjs markCompleted).
+    // They come off the ledger row ALREADY fetched above — zero extra reads.
+    //
+    // These exist because `tasks` above is truncated (Limit: 50, newest-first) and
+    // refunded FAILED/RELEASED rows still occupy slots in that window: deriving a
+    // medal from tasks.filter(COMPLETED).length lets a >50-row user push an earned
+    // COMPLETED row out of the window and watch a medal UN-EARN. A credential that
+    // silently retracts itself is exactly the dishonesty this product exists to
+    // avoid, so the medal counters are server-side and truncation-proof.
     return json(200, {
       capMicros,
       spentMicros,
       remainingMicros: Math.max(0, capMicros - spentMicros),
       credentialed,
+      completedRuns: Number(ledger.Item?.completedRuns?.N ?? 0),
+      completedShots: Number(ledger.Item?.completedShots?.N ?? 0),
       tasks: (tasks.Items ?? []).map(taskSummary),
     });
   }
@@ -285,6 +302,15 @@ export function createHandlerCore({
               Update: {
                 TableName: ledgerTable,
                 Key: { pk: { S: `USER#${sub}` } },
+                // if_not_exists STAMPS the cap on the row at first submit and never
+                // rewrites it. That is deliberate GRANDFATHERING: a learner who was
+                // promised a $5.00 allowance by name keeps it forever, even though
+                // LIFETIME_CAP_MICROS is now $2.50. Never write a cap-lowering
+                // migration — retracting an allowance the UI already named would be
+                // the one unforgivable lie in the one product whose differentiator
+                // is honesty about money. (Corollary, enforced in the web copy: no
+                // UI string may hardcode the cap — every figure derives from the
+                // capMicros this row returns.)
                 UpdateExpression:
                   "SET capMicros = if_not_exists(capMicros, :cap) ADD spentMicros :cost",
                 ConditionExpression:

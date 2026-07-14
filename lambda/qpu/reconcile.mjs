@@ -1,14 +1,15 @@
 // quantum-qpu-reconcile: a scheduled poll that trues up the ledger against what
 // actually happened on the hardware. Two jobs:
-//   COMPLETED task → mark the row COMPLETED (keep the charge; this is what lights
-//                    the learner's hardware credential from real provenance).
+//   COMPLETED task → mark the row COMPLETED (keep the charge) and ADD to the
+//                    learner's completedRuns/completedShots counters — this is what
+//                    lights the Hardware medals, from real provenance.
 //   FAILED/CANCELLED → refund the reservation (a run that didn't happen should
-//                    not cost the learner's sponsored budget).
+//                    not cost the platform's sponsored budget) and count for nothing.
 // Every write is guarded on the current status (ConditionExpression), so the
 // at-least-once, possibly-out-of-order nature of task state changes can never
 // double-apply. DI-core, offline-tested under `node --test`.
 
-import { DynamoDBClient, ScanCommand, TransactWriteItemsCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ScanCommand, TransactWriteItemsCommand } from "@aws-sdk/client-dynamodb";
 import { BraketClient, GetQuantumTaskCommand } from "@aws-sdk/client-braket";
 import { utcDay, DEVICE_REGION } from "./qpu-core.mjs";
 
@@ -44,22 +45,73 @@ async function scanStuck(ddb, tasksTable, staleBefore) {
   return items;
 }
 
+// A TransactWriteItems cancellation is benign in exactly ONE case: the row already
+// moved on, so OUR status guard (the conditional leg) is the reason the transaction
+// was cancelled. Anything else — a TransactionConflict with a concurrent submit, a
+// throttle, a validation error — means the write did NOT apply for a reason we have
+// not accounted for, and swallowing it would let the poll log `completed: 1` while
+// applying nothing: the learner's dollar spent, their run uncounted, their medal
+// quietly never lighting. So: swallow only the ConditionalCheckFailed on the leg that
+// carries the guard, and rethrow everything else (including a cancellation whose
+// reasons we cannot read).
+function isAlreadyTerminal(e, guardLeg) {
+  return (
+    e?.name === "TransactionCanceledException" &&
+    e?.CancellationReasons?.[guardLeg]?.Code === "ConditionalCheckFailed"
+  );
+}
+
 export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now = () => Date.now(), log = () => {} }) {
-  // COMPLETED — the task ran and Braket billed; keep the charge, just record it.
-  async function markCompleted(idempotencyKey) {
+  // COMPLETED — the task ran and Braket billed; keep the charge, record it, and
+  // credit the learner's monotonic medal counters in the SAME all-or-none
+  // transaction. The counters are what the Hardware medals read (a truncation-proof
+  // server aggregate — see budget() in qpu-core.mjs), so they must be incremented
+  // exactly once. Because the whole transaction is guarded on the task still being
+  // SUBMITTED, a re-delivery cancels EVERY leg — the row can't go COMPLETED twice
+  // and the counters can't double-count. Only COMPLETED ever increments: a
+  // FAILED/CANCELLED run is refunded below and earns nothing.
+  //
+  // The invariant that buys, precisely: NO RUN THAT COUNTS WAS EVER FREE, and no
+  // refunded run ever counts. NOT the converse — an orphaned RESERVED row (a submit
+  // that died after CreateQuantumTask) is money the platform pays for a run that
+  // counts for nothing, which is exactly why those rows are logged for review rather
+  // than quietly dropped.
+  async function markCompleted(idempotencyKey, sub, shots) {
     await ddb
       .send(
-        new UpdateItemCommand({
-          TableName: tasksTable,
-          Key: { idempotencyKey: { S: idempotencyKey } },
-          UpdateExpression: "SET #s = :done, actualMicros = estMicros",
-          ConditionExpression: "#s = :submitted",
-          ExpressionAttributeNames: { "#s": "status" },
-          ExpressionAttributeValues: { ":done": { S: "COMPLETED" }, ":submitted": { S: "SUBMITTED" } },
+        new TransactWriteItemsCommand({
+          TransactItems: [
+            {
+              Update: {
+                TableName: tasksTable,
+                Key: { idempotencyKey: { S: idempotencyKey } },
+                UpdateExpression: "SET #s = :done, actualMicros = estMicros",
+                ConditionExpression: "#s = :submitted",
+                ExpressionAttributeNames: { "#s": "status" },
+                ExpressionAttributeValues: {
+                  ":done": { S: "COMPLETED" },
+                  ":submitted": { S: "SUBMITTED" },
+                },
+              },
+            },
+            {
+              Update: {
+                TableName: ledgerTable,
+                Key: { pk: { S: `USER#${sub}` } },
+                UpdateExpression: "ADD completedRuns :one, completedShots :shots",
+                ExpressionAttributeValues: {
+                  ":one": { N: "1" },
+                  ":shots": { N: String(shots) },
+                },
+              },
+            },
+          ],
         }),
       )
       .catch((e) => {
-        if (e?.name !== "ConditionalCheckFailedException") throw e; // already terminal — fine
+        // Leg 0 carries the status guard: ConditionalCheckFailed there = the row is
+        // already terminal (a re-delivery), which is the one benign cancellation.
+        if (!isAlreadyTerminal(e, 0)) throw e;
       });
   }
 
@@ -100,7 +152,10 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
         }),
       )
       .catch((e) => {
-        if (e?.name !== "TransactionCanceledException") throw e; // already reconciled — fine
+        // Leg 2 carries the status guard here (the two ledger ADDs come first), so a
+        // ConditionalCheckFailed there = already reconciled. A TransactionConflict is
+        // NOT that, and must surface: a silently dropped refund is real money.
+        if (!isAlreadyTerminal(e, 2)) throw e;
       });
   }
 
@@ -120,7 +175,7 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
       const res = await braket.send(new GetQuantumTaskCommand({ quantumTaskArn: taskArn }));
       const status = res.status;
       if (status === "COMPLETED") {
-        await markCompleted(idempotencyKey);
+        await markCompleted(idempotencyKey, row.userId.S, Number(row.shots?.N ?? 0));
         summary.completed++;
       } else if (status === "FAILED" || status === "CANCELLED") {
         await refund(idempotencyKey, row.userId.S, utcDay(Number(row.createdAt.N)), Number(row.estMicros.N));

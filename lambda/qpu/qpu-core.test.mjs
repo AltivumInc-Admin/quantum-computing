@@ -6,6 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   costMicros,
   utcDay,
@@ -17,7 +18,16 @@ import {
   requiredShotsFor,
   DEVICE,
   LIFETIME_CAP_MICROS,
+  DAILY_CAP_MICROS,
+  MAX_SHOTS,
+  IQM_PER_TASK_MICROS,
+  IQM_PER_SHOT_MICROS,
 } from "./qpu-core.mjs";
+
+// The shared ladder contract (also read by web/__tests__/lib/credentials.test.ts).
+const LADDER = JSON.parse(
+  readFileSync(new URL("./__fixtures__/hardware-ladder.json", import.meta.url), "utf8"),
+);
 
 const NOW = Date.UTC(2026, 6, 7, 12, 0, 0); // 2026-07-07T12:00:00Z
 const QASM = "OPENQASM 3.0; qubit[1] q; h q[0]; bit[1] b; b[0] = measure q[0];";
@@ -260,6 +270,13 @@ test("a duplicate idempotency key owned by ANOTHER user returns 409, never their
 });
 
 // ---- budget + dispatch -----------------------------------------------------
+// THE GRANDFATHERING LOCK. This user's row persists capMicros = 5_000_000 — the OLD
+// cap, stamped by `SET capMicros = if_not_exists(capMicros, :cap)` before the cap was
+// lowered to $2.50. budget() must keep honoring THEIR cap, not today's constant. The
+// figures below are deliberately hardcoded (not derived from LIFETIME_CAP_MICROS):
+// that is the whole point — if someone ever "fixes" this test by deriving them, or
+// writes a cap-lowering migration, this goes red. Never claw back an allowance the
+// UI already promised a learner by name.
 test("GET /qpu/budget returns cap, spent, remaining, credentialed, and the task list", async () => {
   const ddb = stubDdb({
     ledgerUser: { capMicros: { N: "5000000" }, spentMicros: { N: "1750000" } },
@@ -269,11 +286,37 @@ test("GET /qpu/budget returns cap, spent, remaining, credentialed, and the task 
   const res = await core(ddb, stubBraket())(event);
   assert.equal(res.statusCode, 200);
   const out = JSON.parse(res.body);
-  assert.equal(out.capMicros, 5_000_000);
+  assert.equal(out.capMicros, 5_000_000); // grandfathered — NOT today's 2_500_000
   assert.equal(out.spentMicros, 1_750_000);
   assert.equal(out.remainingMicros, 3_250_000);
   assert.equal(out.credentialed, true);
   assert.equal(out.tasks.length, 1);
+});
+
+test("GET /qpu/budget returns the COMPLETED-run medal counters off the ledger row", async () => {
+  const ddb = stubDdb({
+    ledgerUser: {
+      capMicros: { N: String(LIFETIME_CAP_MICROS) },
+      spentMicros: { N: "2350000" },
+      completedRuns: { N: "3" },
+      completedShots: { N: "1000" },
+    },
+    tasks: [],
+  });
+  const event = { requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } } };
+  const out = JSON.parse((await core(ddb, stubBraket())(event)).body);
+  // The medal aggregates are server-side and truncation-proof — NOT derived from
+  // the 50-row task window, which refunded rows can push an earned run out of.
+  assert.equal(out.completedRuns, 3);
+  assert.equal(out.completedShots, 1000);
+});
+
+test("a user with no completed runs reports zero counters (absent attrs, not NaN)", async () => {
+  const ddb = stubDdb({ ledgerUser: null, tasks: [], credentialed: false });
+  const event = { requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } } };
+  const out = JSON.parse((await core(ddb, stubBraket())(event)).body);
+  assert.equal(out.completedRuns, 0);
+  assert.equal(out.completedShots, 0);
 });
 
 test("a fresh user's budget defaults to the full lifetime cap", async () => {
@@ -415,4 +458,72 @@ test("no verified sub → 401; unknown route → 405; bad JSON → 400", async (
   assert.equal((await c({ requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "DELETE", path: "/qpu/x" } } })).statusCode, 405);
   const bad = { requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "POST", path: "/qpu/submit" } }, body: "{not json" };
   assert.equal((await c(bad)).statusCode, 400);
+});
+
+// ---- THE FEASIBILITY LOCK --------------------------------------------------
+// The most important test in this file. The Hardware medals are advertised under
+// "Each medal is earned, not awarded — struck from work you can point to." The
+// ladder this replaced (1/5/20 runs) broke that promise with arithmetic: a 20-run
+// medal costs $8.90 at the panel's default 100 shots, and $6.03 even at 1 shot per
+// run — both over the $5.00 cap that was live at the time. The platform shipped a
+// medal its own budget made mathematically impossible to earn. These tests make
+// that class of bug unshippable.
+
+test("the ladder fixture still matches the REAL money constants (no drift)", () => {
+  assert.equal(LADDER.lifetimeCapMicros, LIFETIME_CAP_MICROS);
+  assert.equal(LADDER.dailyCapMicros, DAILY_CAP_MICROS);
+  assert.equal(LADDER.perTaskMicros, IQM_PER_TASK_MICROS);
+  assert.equal(LADDER.perShotMicros, IQM_PER_SHOT_MICROS);
+  assert.equal(LADDER.maxShots, MAX_SHOTS);
+});
+
+test("MAX_SHOTS IS the Deep sample threshold — the two must stay equal", () => {
+  // One number across four surfaces: the shot ceiling, the top medal, the panel's
+  // "$1.75 full run" hint, and the curriculum's own 1,000-shot card. If a reprice
+  // or a ceiling change splits them, the copy starts lying.
+  const shotsTier = LADDER.tiers.find((t) => t.metric === "shots");
+  assert.equal(shotsTier.n, MAX_SHOTS);
+});
+
+test("EVERY hardware medal is co-earnable within the lifetime cap", () => {
+  // The binding tiers: the most runs any run-tier demands, and the most shots any
+  // shots-tier demands. A learner must be able to hold ALL medals AT ONCE.
+  const runs = Math.max(...LADDER.tiers.filter((t) => t.metric === "runs").map((t) => t.n));
+  const shots = Math.max(...LADDER.tiers.filter((t) => t.metric === "shots").map((t) => t.n));
+
+  // cost(R runs, S shots) = TASK*R + SHOT*S. Cost depends ONLY on the run count and
+  // the shot total — never on how the shots are split across the runs — so this is
+  // the true cheapest path to the whole ladder, not merely an upper bound.
+  const need = IQM_PER_TASK_MICROS * runs + IQM_PER_SHOT_MICROS * shots;
+
+  // The shots must actually be placeable: no run may exceed MAX_SHOTS.
+  assert.ok(
+    shots <= MAX_SHOTS * runs,
+    `${shots} shots cannot fit in ${runs} runs of at most ${MAX_SHOTS} — an unplaceable medal`,
+  );
+  assert.ok(
+    need <= LIFETIME_CAP_MICROS,
+    `the ladder costs ${need} micros > the ${LIFETIME_CAP_MICROS} cap — an UNEARNABLE medal`,
+  );
+  // And it is exactly the path the fixture advertises to the learner.
+  assert.equal(need, LADDER.cheapestPath.costMicros);
+  assert.equal(need, costMicros(0) * runs + IQM_PER_SHOT_MICROS * shots - 0); // = 3 tasks + 1000 shots
+  assert.equal(need, 2_350_000); // $2.35, with $0.15 of the $2.50 allowance to spare
+});
+
+test("a refunded run earns nothing: only COMPLETED rows tally toward a medal", async () => {
+  const { tallyCompleted } = await import("./backfill-counters.mjs");
+  const rows = [
+    { userId: { S: "u1" }, status: { S: "COMPLETED" }, shots: { N: "1000" } },
+    { userId: { S: "u1" }, status: { S: "COMPLETED" }, shots: { N: "247" } },
+    { userId: { S: "u1" }, status: { S: "FAILED" }, shots: { N: "900" } }, // refunded
+    { userId: { S: "u1" }, status: { S: "RELEASED" }, shots: { N: "900" } }, // never ran
+    { userId: { S: "u1" }, status: { S: "SUBMITTED" }, shots: { N: "900" } }, // not yet real
+    { userId: { S: "u2" }, status: { S: "COMPLETED" }, shots: { N: "5" } },
+  ];
+  const byUser = tallyCompleted(rows);
+  // Every dollar spent maps to a run that counts; a device-side failure is refunded
+  // and consumes no medal progress. No leakage in either direction.
+  assert.deepEqual(byUser.get("u1"), { runs: 2, shots: 1247 });
+  assert.deepEqual(byUser.get("u2"), { runs: 1, shots: 5 });
 });

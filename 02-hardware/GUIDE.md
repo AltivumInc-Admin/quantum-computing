@@ -15,6 +15,10 @@ simulated or computed locally. Nothing submits a task or spends a cent.
 > (circuits, gates, measurement). To run the notebooks on real hardware you'll also need AWS
 > credentials (`make setup`) — but none of this page requires them.
 
+You don't need an AWS account to touch a real QPU at all: a free Workspace account comes with
+a sponsored budget on IQM Garnet, a 20-qubit superconducting device — the platform pays Amazon
+Braket, you pay nothing.
+
 ---
 
 ## Why there's no single "best" quantum computer
@@ -251,7 +255,7 @@ simplest superposition, work out where that average lands:
 ```qexpect
 {
   "id": "hw-readout-plus-1",
-  "prompt": "You pay for 1,000 shots of the one-gate circuit H 0 and average the ±1 readings of Z₀. What ideal value ⟨Z₀⟩ is that shot average converging to?",
+  "prompt": "A 1,000-shot run of the one-gate circuit H 0 averages the ±1 readings of Z₀. What ideal value ⟨Z₀⟩ is that shot average converging to?",
   "program": "H 0",
   "observable": "Z 0",
   "hint": "H|0⟩ gives 0 and 1 with equal probability, so the +1 and −1 readings cancel in the long run: the expectation is 0, even though no single shot ever reads 0. Your finite-shot average just scatters around it, shrinking like 1/√N — that scatter is what more shots (and more dollars) buy down."

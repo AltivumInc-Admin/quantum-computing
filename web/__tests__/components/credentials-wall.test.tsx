@@ -56,12 +56,16 @@ describe("CredentialsWall", () => {
     expect(screen.getByText(/of \d+ earned/i)).toBeInTheDocument();
   });
 
-  it("lights the hardware badge from COMPLETED real-hardware runs (QPU configured)", async () => {
+  it("lights the hardware badge from the SERVER counters, not the truncated task list", async () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
     (qpu.getBudget as jest.Mock).mockResolvedValue({
-      capMicros: 5_000_000, spentMicros: 0, remainingMicros: 5_000_000, credentialed: true,
+      capMicros: 2_500_000, spentMicros: 445_000, remainingMicros: 2_055_000, credentialed: true,
+      completedRuns: 1,
+      completedShots: 100,
+      // `tasks` deliberately contains NO completed row: the medal must come from the
+      // server aggregate above. The old code did tasks.filter(COMPLETED).length over
+      // this 50-row-truncated window, which let an earned medal silently un-earn.
       tasks: [
-        { idempotencyKey: "a", status: "COMPLETED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:x", circuitHash: null, createdAt: 1 },
         { idempotencyKey: "b", status: "SUBMITTED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:y", circuitHash: null, createdAt: 2 },
       ],
     });
@@ -70,13 +74,24 @@ describe("CredentialsWall", () => {
     // One COMPLETED run → the "Ran on real hardware" tier earns (async fetch).
     await waitFor(() => expect(hardware).toHaveTextContent(/Earned/));
     expect(hardware).toHaveTextContent(/1 completed run on IQM Garnet/);
+    // The lab record — the artifact a peer would be shown.
+    expect(hardware).toHaveTextContent(/Your record: 1 completed run, 100 shots on IQM Garnet/);
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false); // reset for other tests
+  });
+
+  it("states that the platform pays for the hardware runs", () => {
+    render(<CredentialsWall />);
+    expect(screen.getByLabelText("Hardware")).toHaveTextContent(
+      /The platform pays Amazon Braket for every one of these runs/i,
+    );
   });
 
   it("waits out the Amplify-bridge race: no fetch while configuring, fetch on authenticated", async () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
     (qpu.getBudget as jest.Mock).mockResolvedValue({
-      capMicros: 5_000_000, spentMicros: 0, remainingMicros: 5_000_000, credentialed: true,
+      capMicros: 2_500_000, spentMicros: 445_000, remainingMicros: 2_055_000, credentialed: true,
+      completedRuns: 1,
+      completedShots: 100,
       tasks: [
         { idempotencyKey: "a", status: "COMPLETED", device: "iqm_garnet", shots: 100, estMicros: 445_000, taskArn: "arn:x", circuitHash: null, createdAt: 1 },
       ],
@@ -109,13 +124,98 @@ describe("CredentialsWall", () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
   });
 
+  // ---- the four states -------------------------------------------------------
+  // earned / locked / out-of-reach / could-not-verify must be four DISTINGUISHABLE
+  // states, and distinguishable to a screen reader — i.e. by the medal's own chip
+  // text, not by colour and not by a caveat parked in a group header.
+  it("an unearned hardware medal the remaining budget cannot buy is OUT OF REACH, not 'Locked'", async () => {
+    // THE RELOCATED BUG. Three runs at the panel's 100-shot default cost $1.335 of the
+    // $2.50 lifetime allowance. $1.165 is left, which buys at most 596 more shots — so
+    // 300 + 596 = 896, forever short of the 1,000-shot medal. The wall went on calling
+    // it "Locked", a word that promises the medal is still winnable.
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockResolvedValue({
+      capMicros: 2_500_000,
+      spentMicros: 1_335_000,
+      remainingMicros: 1_165_000,
+      credentialed: true,
+      completedRuns: 3,
+      completedShots: 300,
+      tasks: [],
+    });
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() => expect(hardware).toHaveTextContent(/Out of reach/i));
+
+    const item = (title: string) =>
+      Array.from(hardware.querySelectorAll("li")).find((li) => li.textContent?.includes(title))!;
+    // Deep sample: foreclosed — and it says so, in text, on the medal itself.
+    expect(item("Deep sample")).toHaveTextContent(/Out of reach/i);
+    expect(item("Deep sample")).toHaveTextContent(/out of reach on your remaining sponsored budget/i);
+    expect(item("Deep sample")).not.toHaveTextContent(/Locked/i);
+    // The two run medals ARE earned at 3 runs — the states coexist on one wall.
+    expect(item("Run series")).toHaveTextContent(/Earned/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("keeps saying LOCKED while a medal is still attainable", async () => {
+    // The same 300 shots, but with the allowance to still reach 1,000: Locked is the
+    // truth here, and "out of reach" would be a lie in the other direction.
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockResolvedValue({
+      capMicros: 2_500_000,
+      spentMicros: 445_000,
+      remainingMicros: 2_055_000,
+      credentialed: true,
+      completedRuns: 1,
+      completedShots: 300,
+      tasks: [],
+    });
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() => expect(hardware).toHaveTextContent(/Earned/i)); // the 1-run tier
+    const deep = Array.from(hardware.querySelectorAll("li")).find((li) =>
+      li.textContent?.includes("Deep sample"),
+    )!;
+    expect(deep).toHaveTextContent(/Locked/i);
+    expect(deep).not.toHaveTextContent(/Out of reach/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("never calls a medal out of reach when the budget is UNKNOWN (signed out)", () => {
+    // An unknown must never be reported as a foreclosure.
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    mockAuthStatus = "unauthenticated";
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    expect(hardware).toHaveTextContent(/Locked/i);
+    expect(hardware).not.toHaveTextContent(/Out of reach/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("routes out of the dead end: the plan, the finite allowance, and the way to run", () => {
+    // The group listed three requirements, named no surface that grants them, and never
+    // said the money behind them is finite. Numbers derive from the ladder + PRICING.
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    expect(hardware).toHaveTextContent(
+      /All three fit inside the sponsored allowance: 3 runs totalling 1,000 shots — \$2\.35/i,
+    );
+    expect(hardware).toHaveTextContent(/one-time and does not refill/i);
+    expect(screen.getByRole("link", { name: /run on iqm garnet/i })).toHaveAttribute(
+      "href",
+      "/workspace",
+    );
+  });
+
   it("shows an explicit couldn't-verify state when the budget fetch fails", async () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
     (qpu.getBudget as jest.Mock).mockRejectedValue(new Error("budget failed (502)"));
     render(<CredentialsWall />);
     const hardware = screen.getByLabelText("Hardware");
     await waitFor(() =>
-      expect(hardware).toHaveTextContent(/couldn't verify your hardware runs/i)
+      // "record", not "runs": the group is fed by shots AND runs now.
+      expect(hardware).toHaveTextContent(/couldn't verify your hardware record/i)
     );
     // Signed out is NOT an error: NotSignedIn keeps the honest locked zero.
     (qpu.getBudget as jest.Mock).mockRejectedValue(
@@ -125,6 +225,31 @@ describe("CredentialsWall", () => {
     const walls = screen.getAllByLabelText("Hardware");
     await waitFor(() => expect(qpu.getBudget).toHaveBeenCalledTimes(2));
     expect(walls[walls.length - 1]).not.toHaveTextContent(/couldn't verify/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("an unverifiable medal announces UNVERIFIED — never 'Locked' — and carries the reason", async () => {
+    // The caveat used to live in the group header, which a screen-reader user
+    // navigating by list item never hears: an EARNED medal announced as "Locked" to
+    // them and only to them. The state now rides on the medal, and the explanation
+    // travels with it via aria-describedby.
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockRejectedValue(new Error("budget failed (502)"));
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() => expect(hardware).toHaveTextContent(/Unverified/i));
+    // Every MEDAL (the group note is allowed to say the word "locked" — it is what it
+    // is explaining) must announce Unverified, and none may announce Locked.
+    for (const li of Array.from(hardware.querySelectorAll("li"))) {
+      expect(li).toHaveTextContent(/Unverified/i);
+      expect(li).not.toHaveTextContent(/Locked/i);
+      expect(li).not.toHaveTextContent(/Out of reach/i); // unknown is not foreclosed
+    }
+
+    const described = hardware.querySelector("li [aria-describedby]")!;
+    const noteId = described.getAttribute("aria-describedby")!;
+    const note = document.getElementById(noteId)!;
+    expect(note).toHaveTextContent(/couldn't verify your hardware record/i);
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
   });
 

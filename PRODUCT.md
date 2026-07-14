@@ -26,7 +26,9 @@ spaced-repetition scheduler so skills are measured, not just visited.
 1. **Newcomer** — a self-directed autodidact with programming instincts and no
    quantum background. Beginner-friendly funnel; nothing gates on credentials.
 2. **Practitioner** — the retention target. Runs real algorithms, tracks
-   mastery, eventually touches real QPU hardware ($0.30/task, not $10k/seat).
+   mastery, eventually touches real QPU hardware — **sponsored**: the platform
+   pays Amazon Braket ($0.30/task + $0.00145/shot on IQM Garnet), the learner
+   never does.
 3. **Subject-matter expert** — the top rung shapes the platform itself
    (contributed Reps, community depth). Top of funnel is the content pipeline.
 

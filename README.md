@@ -4,7 +4,7 @@
 
 ### A zero-to-production learning path for quantum computing on Amazon Braket — with a math-native web portal and notebooks that run in your browser.
 
-**The Braket-native learning platform where the code you write runs _unmodified_ — free in your browser, or on real quantum hardware for about $0.30 a task.**
+**The Braket-native learning platform where the code you write runs _unmodified_ — free in your browser, or on a real 20-qubit QPU — sponsored, so a learner never pays.**
 
 [![CI](https://github.com/AltivumInc-Admin/quantum-computing/actions/workflows/ci.yml/badge.svg)](https://github.com/AltivumInc-Admin/quantum-computing/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -30,7 +30,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 - **Production AWS infrastructure as code** (`infra/`) — least-privilege IAM, encrypted result storage with lifecycle cleanup, and a hard monthly budget alarm.
 - **A CI gate and an auto-deploy pipeline** so `main` is always green and the live site is always built from a passing commit.
 
-> **Philosophy:** prototype on the **free local simulator** first, validate, then spend. Real QPU/managed-simulator runs are always opt-in and cost-estimated before execution.
+> **Philosophy:** prototype on the **free local simulator** first, validate, then spend. Real QPU/managed-simulator runs are always opt-in and cost-estimated before execution. (On quantum.altivum.ai the platform pays for QPU runs; in this repo, running against your own AWS account bills you.)
 
 ---
 

@@ -54,6 +54,11 @@ def test_lambda_micro_dollar_constants_match_cost_pricing():
     assert const("IQM_PER_TASK_MICROS") == round(iqm["per_task"] * 1_000_000)
     assert const("IQM_PER_SHOT_MICROS") == round(iqm["per_shot"] * 1_000_000)
     # And the launch-posture caps are exactly the user-approved dollar figures.
-    assert const("LIFETIME_CAP_MICROS") == 5_000_000  # $5.00
+    # $2.50 is the SPONSORED lifetime allowance: the platform pays Braket for every
+    # learner run, and $2.50 is what the hardware medal ladder (1 run / 3 runs /
+    # 1,000 shots) costs to complete -- 3 runs totalling 1,000 shots = $2.35. The
+    # ladder and this cap are locked together in lambda/qpu/__fixtures__/
+    # hardware-ladder.json; a change on either side must keep every medal earnable.
+    assert const("LIFETIME_CAP_MICROS") == 2_500_000  # $2.50
     assert const("DAILY_CAP_MICROS") == 15_000_000  # $15.00
     assert const("MAX_SHOTS") == 1000

@@ -1,0 +1,19 @@
+{
+  "_comment": "The Hardware-medal ladder + the sponsored cap it must fit inside — the ONE shared contract between the money path and the credential wall, which live in different packages. lambda/qpu/qpu-core.test.mjs asserts the real constants in qpu-core.mjs still match this file AND that every tier is co-earnable within the cap (the feasibility lock). web/__tests__/lib/credentials.test.ts asserts HARDWARE_TIERS in web/src/lib/credentials.ts still matches it. Neither suite hand-copies the other's numbers, so a change on EITHER side fails loudly here instead of silently shipping a medal the platform's own budget makes impossible to earn. That is not hypothetical: the ladder this replaced (1/5/20 runs) shipped a 20-run medal costing $8.90 under a $5.00 cap — mathematically unearnable, under a header promising 'Each medal is earned, not awarded'. Do not add a tier without re-running the lock.",
+  "lifetimeCapMicros": 2500000,
+  "dailyCapMicros": 15000000,
+  "perTaskMicros": 300000,
+  "perShotMicros": 1450,
+  "maxShots": 1000,
+  "tiers": [
+    { "n": 1, "title": "Ran on real hardware", "metric": "runs" },
+    { "n": 3, "title": "Run series", "metric": "runs" },
+    { "n": 1000, "title": "Deep sample", "metric": "shots" }
+  ],
+  "cheapestPath": {
+    "_comment": "The cheapest way to hold ALL THREE medals at once: 3 runs whose shots sum to 1,000. Cost depends only on (runs, shots) — never on how the shots are split across the runs — so any 334/333/333-style split costs the same. 300000*3 + 1450*1000 = 2350000 micros = $2.35, leaving $0.15 of the $2.50 allowance.",
+    "runs": 3,
+    "shots": 1000,
+    "costMicros": 2350000
+  }
+}
