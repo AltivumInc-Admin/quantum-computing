@@ -146,6 +146,13 @@ export function CredentialsWall() {
     getBudget()
       .then((b) => {
         if (disposed) return;
+        // An older Lambda omits the medal counters: the record is UNKNOWN, not zero.
+        // Reachability and even "earned" are then unknowable, so this is the SAME state
+        // as a failed fetch — never invented zeros that would un-earn a real medal.
+        if (b.completedRuns === null || b.completedShots === null) {
+          setHardwareUnverified(true);
+          return;
+        }
         setHardware({
           runs: b.completedRuns,
           shots: b.completedShots,

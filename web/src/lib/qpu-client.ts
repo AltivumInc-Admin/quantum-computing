@@ -39,13 +39,22 @@ export interface Budget {
   spentMicros: number;
   remainingMicros: number;
   credentialed: boolean;
-  /** COMPLETED runs, a monotonic SERVER aggregate (not derived from `tasks`).
-   *  `tasks` is truncated to the newest 50 rows, and refunded FAILED/RELEASED rows
-   *  still occupy slots in that window — so counting COMPLETED rows there lets a
-   *  busy learner's earned medal silently UN-EARN. These counters can't. */
-  completedRuns: number;
-  /** Total shots across COMPLETED runs — what the "Deep sample" medal reads. */
-  completedShots: number;
+  /**
+   * COMPLETED runs, a monotonic SERVER aggregate (not derived from `tasks`).
+   * `tasks` is truncated to the newest 50 rows, and refunded FAILED/RELEASED rows
+   * still occupy slots in that window — so counting COMPLETED rows there lets a
+   * busy learner's earned medal silently UN-EARN. These counters can't.
+   *
+   * `null` means the SERVER DID NOT REPORT IT — not zero. A Lambda deployed before
+   * the medal counters existed omits both fields, and the client is not entitled to
+   * invent a value for them: a learner with two real runs told "0 of 1 run" is being
+   * lied to just as surely as one told "NaN". Unknown stays unknown all the way to
+   * the UI, which renders it as `unverified` — the state the wall already has.
+   */
+  completedRuns: number | null;
+  /** Total shots across COMPLETED runs — what the "Deep sample" medal reads. `null`
+   *  when the server did not report it (see completedRuns). */
+  completedShots: number | null;
   tasks: QpuTask[];
 }
 
@@ -80,10 +89,48 @@ async function req(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+/**
+ * A non-negative finite number, or null. THE BUG THIS EXISTS TO KILL:
+ *
+ * The deployed Lambda predated the medal counters and returned a budget with NO
+ * completedRuns/completedShots. TypeScript said `number`; the runtime said
+ * `undefined`. So `Math.min(undefined, 1).toLocaleString()` rendered the literal
+ * string "NaN" — "NaN of 1 run" shipped to production — and, far worse,
+ * `tierReachable()` computed `undefined + 596 >= 1000` → `NaN >= 1000` → false,
+ * which the UI reads as FORECLOSED. A missing field was silently converting into
+ * the claim "this medal is out of reach forever." The budget's own money fields
+ * were fine; one absent counter poisoned the arithmetic downstream of them.
+ *
+ * A `Budget` is now honest by construction: an absent or malformed counter is
+ * `null`, the type makes every consumer say what it does about that, and nothing
+ * on any surface can do arithmetic on an unknown.
+ */
+function counter(x: unknown): number | null {
+  return typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : null;
+}
+
+/** The money fields, by contrast, are NOT optional: a budget that cannot state its
+ *  own remaining balance is unusable, and coercing it would print "$NaN". Reject it
+ *  and let the caller's existing error state ("Couldn't reach the hardware service")
+ *  do its job — a surface that admits it is broken beats one that renders nonsense. */
+function money(x: unknown): number {
+  if (typeof x !== "number" || !Number.isFinite(x)) throw new Error("budget malformed");
+  return x;
+}
+
 export async function getBudget(): Promise<Budget> {
   const res = await req("/qpu/budget");
   if (!res.ok) throw new Error(`budget failed (${res.status})`);
-  return (await res.json()) as Budget;
+  const raw = (await res.json()) as Record<string, unknown>;
+  return {
+    capMicros: money(raw.capMicros),
+    spentMicros: money(raw.spentMicros),
+    remainingMicros: money(raw.remainingMicros),
+    credentialed: raw.credentialed === true,
+    completedRuns: counter(raw.completedRuns),
+    completedShots: counter(raw.completedShots),
+    tasks: Array.isArray(raw.tasks) ? (raw.tasks as QpuTask[]) : [],
+  };
 }
 
 export async function getCredentialChallenge(): Promise<CredentialChallenge> {
