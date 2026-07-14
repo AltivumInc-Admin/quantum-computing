@@ -15,7 +15,7 @@ const CONFIRM_WORD = "delete";
  * sync-client is imported dynamically (its aws-amplify contract); the prefs
  * client lazy-loads amplify internally.
  */
-export function DeleteAccount() {
+export function DeleteAccount({ className = "" }: { className?: string }) {
   const router = useRouter();
   const { signOut } = useAuth();
   const [open, setOpen] = useState(false);
@@ -102,7 +102,7 @@ export function DeleteAccount() {
 
   if (!open) {
     return (
-      <div className="mt-10 border-t border-gray-200/60 dark:border-white/[0.06] pt-6">
+      <div className={className}>
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -120,7 +120,7 @@ export function DeleteAccount() {
   return (
     <section
       aria-label="Delete account"
-      className="mt-10 rounded-card border border-red-300/70 dark:border-red-500/30 bg-(--surface-1) p-6 shadow-(--shadow-resting)"
+      className={`rounded-card border border-red-300/70 dark:border-red-500/30 bg-(--surface-1) p-6 shadow-(--shadow-resting) ${className}`}
     >
       <h2 className="text-sm font-medium text-gray-900 dark:text-white">Delete account</h2>
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">

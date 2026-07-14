@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getSections } from "@/lib/sections";
 import { completedCount } from "@/lib/progress-store";
-import { CredentialsWorkspaceTeaser } from "@/components/credentials-wall";
 import { QpuSubmitPanel } from "@/components/quantum/qpu-submit-panel";
 import { ReminderPrefs } from "@/components/reminder-prefs";
 import { DeleteAccount } from "@/components/auth/delete-account";
@@ -73,7 +72,7 @@ export default function WorkspacePage() {
         )}
       </div>
 
-      <ReminderPrefs />
+      <ReminderPrefs className="mt-4 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 shadow-(--shadow-resting)" />
 
       <Link
         href="/runbook"
@@ -99,9 +98,7 @@ export default function WorkspacePage() {
         </svg>
       </Link>
 
-      <CredentialsWorkspaceTeaser />
-
-      <QpuSubmitPanel />
+      <QpuSubmitPanel className="mt-6" />
 
       <button
         type="button"
@@ -111,7 +108,7 @@ export default function WorkspacePage() {
         Sign out
       </button>
 
-      <DeleteAccount />
+      <DeleteAccount className="mt-10 border-t border-gray-200/60 dark:border-white/[0.06] pt-6" />
     </Shell>
   );
 }

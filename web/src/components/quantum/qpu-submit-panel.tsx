@@ -131,14 +131,14 @@ const PRESETS: { name: string; qasm: string }[] = [
 const card =
   "rounded-card border border-gray-200/70 dark:border-white/[0.08] bg-(--surface-1) shadow-(--shadow-resting)";
 
-export function QpuSubmitPanel() {
+export function QpuSubmitPanel({ className }: { className?: string }) {
   if (!isQpuConfigured()) return null;
-  return <Panel />;
+  return <Panel className={className} />;
 }
 
 type Load = "loading" | "signed-out" | "error" | "ready";
 
-function Panel() {
+function Panel({ className }: { className?: string }) {
   const [load, setLoad] = useState<Load>("loading");
   const [budget, setBudget] = useState<Budget | null>(null);
   const [challenge, setChallenge] = useState<CredentialChallenge | null>(null);
@@ -163,7 +163,7 @@ function Panel() {
   }, [refresh]);
 
   return (
-    <section aria-label="Run on real quantum hardware" className="mt-6">
+    <section aria-label="Run on real quantum hardware" className={className}>
       <header className="mb-4">
         <p className="text-xs font-medium uppercase tracking-widest text-accent dark:text-accent-light">
           Real hardware
