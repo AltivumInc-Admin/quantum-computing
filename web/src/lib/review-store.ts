@@ -168,5 +168,35 @@ export function dueCount(nowMs: number = Date.now()): number {
   return dueCardIds(nowMs).length;
 }
 
+/**
+ * Human labels for each graded-Rep kind. Lifted here from review-dashboard.tsx so
+ * the /review roster and the /workspace "Due now" breakdown name a kind identically
+ * — review-dashboard imports it back. Shared-module edit: the /review suite must stay
+ * green (it asserts these exact strings).
+ */
+export const KIND_LABELS: Record<CardKind, string> = {
+  challenge: "Circuit challenge",
+  predict: "Prediction",
+  bloch: "Bloch target",
+  cost: "Cost estimate",
+  debug: "Fix the circuit",
+  expect: "Expectation value",
+};
+
+/**
+ * The due count, broken down by Rep kind — the Valve's named breakdown ("4 Circuit
+ * challenge · 2 Prediction · 1 Bloch target"). A due card whose content was cached
+ * before `kind` existed (or is an authored qcard) counts under "unknown", so the
+ * parts always sum to dueCount(). Reads content, which due cards always have cached.
+ */
+export function dueByKind(nowMs: number = Date.now()): Record<CardKind | "unknown", number> {
+  const counts = {} as Record<CardKind | "unknown", number>;
+  for (const id of dueCardIds(nowMs)) {
+    const kind = getCardContent(id)?.kind ?? "unknown";
+    counts[kind] = (counts[kind] ?? 0) + 1;
+  }
+  return counts;
+}
+
 // Re-export so consumers subscribe to progress changes from one module.
 export { subscribe, PROGRESS_EVENT_NAME };

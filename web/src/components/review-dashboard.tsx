@@ -7,6 +7,7 @@ import {
   getAllCardIds,
   getCardContent,
   subscribe,
+  KIND_LABELS,
   type CardKind,
 } from "@/lib/review-store";
 import { ReviewCard } from "@/components/quantum/review-card";
@@ -98,15 +99,6 @@ const LIVE_WIDGETS: Record<CardKind, SourceWidget> = {
   expect: function ExpectReview({ source }) {
     return <ExpectLive source={source} surface="review" />;
   },
-};
-
-const KIND_LABELS: Record<CardKind, string> = {
-  challenge: "Circuit challenge",
-  predict: "Prediction",
-  bloch: "Bloch target",
-  cost: "Cost estimate",
-  debug: "Fix the circuit",
-  expect: "Expectation value",
 };
 
 interface RosterEntry {

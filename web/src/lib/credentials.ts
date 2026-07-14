@@ -87,6 +87,20 @@ export const HARDWARE_TIERS: { n: number; title: string; metric: "runs" | "shots
   { n: 1000, title: "Deep sample", metric: "shots" },
 ];
 
+/**
+ * The nearest tier the learner has NOT yet reached, and how far it is — the "Within
+ * reach" objective. Tiers are ascending by `n`, so the first tier above the current
+ * value is the next rung. Null when every tier is already earned (nothing is within
+ * reach because it is all behind them). Pure; two lines; no storage.
+ */
+export function nextUnearnedTier<T extends { n: number }>(
+  tiers: T[],
+  value: number,
+): { tier: T; distance: number } | null {
+  const tier = tiers.find((t) => t.n > value);
+  return tier ? { tier, distance: tier.n - value } : null;
+}
+
 export function computeCredentials(input: CredentialInput): Credential[] {
   const creds: Credential[] = [];
 
