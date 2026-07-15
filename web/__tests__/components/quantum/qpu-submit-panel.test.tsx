@@ -14,6 +14,10 @@ jest.mock("@/lib/qpu-client", () => ({
   getCredentialChallenge: jest.fn(),
   claimCredential: jest.fn(),
   submitTask: jest.fn(),
+  // The REAL classifier: it is pure (navigator + instanceof), and mocking it
+  // would let these tests pass while the classification itself rotted.
+  classifySubmitFailure: (jest.requireActual("@/lib/qpu-client") as typeof import("@/lib/qpu-client"))
+    .classifySubmitFailure,
 }));
 
 import * as client from "@/lib/qpu-client";
@@ -828,8 +832,13 @@ test("after braket-submit-failed (hold released) a retry mints a NEW key — a s
 });
 
 // ---- outcomes: every message is true of the code as written ------------------
-test("a network throw does NOT claim the budget is untouched, and keeps the key for a safe retry", async () => {
-  m.getBudget.mockResolvedValue(budget());
+// A THROWN submit is ambiguous only until the run history is consulted: the
+// reserve transaction writes the task row atomically with the spend, so the
+// key's presence there IS the truth. These tests pin the two-stage behavior a
+// live wifi drop exposed (2026-07-15): name the connection as the culprit, then
+// resolve what actually happened instead of telling the learner to go check.
+test("a network throw names the connection, then the history check PROVES no budget was spent — same key kept", async () => {
+  m.getBudget.mockResolvedValue(budget()); // reachable; run history has no such key
   m.getCredentialChallenge.mockResolvedValue(challenge());
   m.submitTask
     .mockRejectedValueOnce(new TypeError("Failed to fetch"))
@@ -839,17 +848,97 @@ test("a network throw does NOT claim the budget is untouched, and keeps the key 
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
   });
+  // The resolution effect ran against the (empty) run history, so the panel is
+  // now ENTITLED to the "no budget was spent" claim the old message had to avoid.
   const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent(/couldn't confirm this run/i);
-  expect(alert).toHaveTextContent(/will not double-spend your budget/i);
-  expect(screen.queryByText(/no budget was spent/i)).not.toBeInTheDocument();
+  expect(alert).toHaveTextContent(/never reached us/i);
+  expect(alert).toHaveTextContent(/no budget was spent/i);
+  expect(alert).toHaveTextContent(/will not double-spend/i);
   expectNeverSaysTheLearnerPays();
+  // The retry still reuses the SAME key — dedupe-safe even if resolution raced.
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
   });
   expect((m.submitTask.mock.calls[1] as unknown[])[2]).toBe(
     (m.submitTask.mock.calls[0] as unknown[])[2],
   );
+});
+
+test("a network throw whose run actually COMMITTED resolves to success, not a retry prompt", async () => {
+  // The resolution getBudget returns the submitted key in the run history —
+  // the request reached the server before the connection died.
+  m.getBudget.mockImplementation(() => {
+    const calls = m.submitTask.mock.calls as unknown[][];
+    const key = calls.length > 0 ? (calls[calls.length - 1][2] as string) : "none";
+    return Promise.resolve(
+      budget({
+        tasks:
+          key === "none"
+            ? []
+            : [
+                {
+                  idempotencyKey: key,
+                  device: "iqm_garnet",
+                  shots: 100,
+                  estMicros: costMicros(100),
+                  status: "COMPLETED",
+                  taskArn: "arn:aws:braket:eu-north-1:1:quantum-task/abc123",
+                  circuitHash: "h",
+                  createdAt: 1,
+                },
+              ],
+      }),
+    );
+  });
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  m.submitTask.mockRejectedValue(new TypeError("Failed to fetch"));
+  render(<QpuSubmitPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+  });
+  // Flipped to the done card: the run is real, no retry needed or offered.
+  const status = await screen.findByRole("status");
+  expect(status).toHaveTextContent(/already reached us/i);
+  expect(status).toHaveTextContent(/abc123/i);
+  expect(status).toHaveTextContent(/no retry needed/i);
+  expect(
+    screen.queryByRole("button", { name: /submit to real hardware/i }),
+  ).not.toBeInTheDocument();
+  expectNeverSaysTheLearnerPays();
+});
+
+test("offline: the message says OFFLINE (not software), and the 'online' event triggers the history check", async () => {
+  const proto = Object.getPrototypeOf(window.navigator) as object;
+  const onLine = Object.getOwnPropertyDescriptor(proto, "onLine");
+  Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => false });
+  try {
+    m.getBudget.mockResolvedValueOnce(budget()); // the panel's initial load
+    m.getBudget.mockRejectedValueOnce(new TypeError("Failed to fetch")); // resolution attempt while offline
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    m.submitTask.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<QpuSubmitPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/you appear to be offline/i);
+    expect(alert).toHaveTextContent(/network problem, not a hardware failure/i);
+    expectNeverSaysTheLearnerPays();
+
+    // Wifi comes back: the browser fires "online", the panel checks the history
+    // (now reachable, key absent) and upgrades the message to the proven truth.
+    m.getBudget.mockResolvedValue(budget());
+    await act(async () => {
+      fireEvent(window, new Event("online"));
+    });
+    expect(await screen.findByText(/never reached us/i)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/no budget was spent/i);
+  } finally {
+    delete (window.navigator as unknown as Record<string, unknown>).onLine;
+    if (onLine) Object.defineProperty(proto, "onLine", onLine);
+  }
 });
 
 test("an unexplained 5xx does NOT claim the budget is untouched — the server may hold it", async () => {
