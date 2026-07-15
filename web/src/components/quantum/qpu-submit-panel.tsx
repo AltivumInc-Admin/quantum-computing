@@ -24,6 +24,7 @@ import {
   deepSampleReachable,
   remainingLadderPlan,
   tierReachable,
+  type HardwareReach,
 } from "@/lib/qpu-budget";
 import { PRICING } from "./cost";
 
@@ -90,14 +91,28 @@ const noisePct = (shots: number) => (100 / (2 * Math.sqrt(shots))).toFixed(1);
 export const REPO_URL = "https://github.com/AltivumInc-Admin/quantum-computing";
 export const README_QUICKSTART_ANCHOR = "path-c--full-workspace-aws-braket-real-hardware";
 
-/** The learner's hardware standing — the three numbers every reachability question
- *  on this surface is answered from. All three come off the budget the panel already
- *  fetched, so nothing new is loaded to tell the truth about the ladder. */
-const reachOf = (b: Budget) => ({
-  completedRuns: b.completedRuns,
-  completedShots: b.completedShots,
-  remainingMicros: b.remainingMicros,
-});
+/**
+ * The learner's hardware standing — the three numbers every reachability question on
+ * this surface is answered from. All three come off the budget the panel already
+ * fetched, so nothing new is loaded to tell the truth about the ladder.
+ *
+ * `null` when the server did not report the medal counters (an older Lambda). The
+ * NULL IS THE POINT: reachability is then UNKNOWABLE, and the type refuses to let any
+ * caller compute it anyway. An unknown must never be reported as a foreclosure — that
+ * was the exact defect that shipped "NaN of 1 run — out of reach" to production.
+ */
+const reachOf = (b: Budget): HardwareReach | null =>
+  b.completedRuns === null || b.completedShots === null
+    ? null
+    : {
+        completedRuns: b.completedRuns,
+        completedShots: b.completedShots,
+        remainingMicros: b.remainingMicros,
+      };
+
+/** The one sentence every surface here says when the hardware record is missing. */
+const RECORD_UNAVAILABLE =
+  "Your hardware record is unavailable right now, so medal progress can't be shown. Your completed runs are unaffected — reload to retry.";
 
 /** A budget with too little left for even a 1-shot run is SPENT — not "low". */
 const isSpent = (b: Budget) => b.remainingMicros < costMicros(1);
@@ -116,14 +131,14 @@ const PRESETS: { name: string; qasm: string }[] = [
 const card =
   "rounded-card border border-gray-200/70 dark:border-white/[0.08] bg-(--surface-1) shadow-(--shadow-resting)";
 
-export function QpuSubmitPanel() {
+export function QpuSubmitPanel({ className }: { className?: string }) {
   if (!isQpuConfigured()) return null;
-  return <Panel />;
+  return <Panel className={className} />;
 }
 
 type Load = "loading" | "signed-out" | "error" | "ready";
 
-function Panel() {
+function Panel({ className }: { className?: string }) {
   const [load, setLoad] = useState<Load>("loading");
   const [budget, setBudget] = useState<Budget | null>(null);
   const [challenge, setChallenge] = useState<CredentialChallenge | null>(null);
@@ -148,7 +163,7 @@ function Panel() {
   }, [refresh]);
 
   return (
-    <section aria-label="Run on real quantum hardware" className="mt-6">
+    <section aria-label="Run on real quantum hardware" className={className}>
       <header className="mb-4">
         <p className="text-xs font-medium uppercase tracking-widest text-accent dark:text-accent-light">
           Real hardware
@@ -299,10 +314,20 @@ function BudgetBar({ budget }: { budget: Budget }) {
  */
 function LadderProgress({ budget }: { budget: Budget }) {
   const reach = reachOf(budget);
+  // No record, no counters, no claims. The old code walked straight into the
+  // arithmetic here and printed "NaN of 1 run — out of reach" on the founder's own
+  // screen: a medal declared permanently lost because a field was missing.
+  if (reach === null) {
+    return (
+      <p role="status" className="mt-2 text-xs leading-relaxed text-warm-dark dark:text-warm-light">
+        {RECORD_UNAVAILABLE}
+      </p>
+    );
+  }
   return (
     <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs tabular-nums text-caption">
       {HARDWARE_TIERS.map((t, i) => {
-        const value = t.metric === "shots" ? budget.completedShots : budget.completedRuns;
+        const value = t.metric === "shots" ? reach.completedShots : reach.completedRuns;
         const earned = value >= t.n;
         const unit = t.metric === "shots" ? "shots" : `run${t.n === 1 ? "" : "s"}`;
         const lost = !earned && !tierReachable(t, reach);
@@ -352,7 +377,11 @@ function BudgetGuide({ budget }: { budget: Budget }) {
   // The plan is quoted from where the learner ACTUALLY stands, and only while it is
   // still buyable. Asserting "a plan that fits: $2.35" to someone holding $1.16 was
   // the same defect class as the unearnable medal: a promise the money contradicts.
-  const plan = remainingLadderPlan(reachOf(budget));
+  // Reachability needs the hardware record; without it (an older Lambda that omits the
+  // counters) there is no honest personalized plan to quote — so we don't. The static
+  // cost mechanics below stand on their own; an unknown is never dressed as a plan.
+  const reach = reachOf(budget);
+  const plan = reach ? remainingLadderPlan(reach) : null;
   return (
     <details
       open={open}
@@ -453,7 +482,8 @@ function BudgetGuide({ budget }: { budget: Budget }) {
           <span className="tabular-nums">{noisePct(MAX_SHOTS)}%</span>. Runs buy nothing but the
           right to submit again.
         </p>
-        {plan.complete ? (
+        {plan &&
+          (plan.complete ? (
           <p>
             <span className="font-medium text-gray-800 dark:text-gray-200">
               You hold all three Hardware medals.
@@ -490,7 +520,7 @@ function BudgetGuide({ budget }: { budget: Budget }) {
             <span className="tabular-nums">{usd(budget.remainingMicros)}</span> you have left. The
             medals you can still reach are listed under the budget bar.
           </p>
-        )}
+          ))}
       </div>
     </details>
   );
@@ -504,20 +534,34 @@ function BudgetGuide({ budget }: { budget: Budget }) {
  * aggregates, so they stay truthful past the 50-row task window.
  */
 function BudgetSpent({ budget }: { budget: Budget }) {
-  const runs = budget.completedRuns;
-  const shots = budget.completedShots;
+  // The same server aggregates the ladder reads. Absent (an older Lambda) they are
+  // UNKNOWN, not zero — so the card drops the counts rather than print "NaN shots" over
+  // a learner's real record. The graduation path below never depended on them.
+  const record =
+    budget.completedRuns !== null && budget.completedShots !== null
+      ? { runs: budget.completedRuns, shots: budget.completedShots }
+      : null;
   return (
     <div className={`${card} px-5 py-4`}>
       <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Sponsored budget spent</h3>
       <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
         Your <span className="tabular-nums font-medium">{usd(budget.capMicros)}</span> sponsored
-        budget is spent:{" "}
-        <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200">{runs}</span>{" "}
-        completed run{runs === 1 ? "" : "s"} on IQM Garnet,{" "}
-        <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200">
-          {shots.toLocaleString("en-US")}
-        </span>{" "}
-        shots. Those runs stay on your record.
+        budget is spent
+        {record ? (
+          <>
+            :{" "}
+            <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200">
+              {record.runs}
+            </span>{" "}
+            completed run{record.runs === 1 ? "" : "s"} on IQM Garnet,{" "}
+            <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200">
+              {record.shots.toLocaleString("en-US")}
+            </span>{" "}
+            shots. Those runs stay on your record.
+          </>
+        ) : (
+          <>. Your completed runs stay on your record.</>
+        )}
       </p>
       <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
         The hardware track continues on your own AWS account, against the same device. The
@@ -672,14 +716,22 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
   // medal). A FAILED/CANCELLED run is refunded and counts for nothing, which restores
   // the budget too — so this is the correct, and the conservative, comparison.
   const reachNow = reachOf(budget);
-  const reachAfter = {
-    completedRuns: budget.completedRuns + 1,
-    completedShots: budget.completedShots + shots,
+  // The check compares the medal frontier BEFORE this run with the one AFTER it. With no
+  // hardware record (an older Lambda omits the counters) that frontier is unknowable —
+  // and an unknown must never be dressed as a foreclosure — so the whole check stands
+  // down: no record, no warning.
+  const reachAfter: HardwareReach | null = reachNow && {
+    completedRuns: reachNow.completedRuns + 1,
+    completedShots: reachNow.completedShots + shots,
     remainingMicros: afterMicros,
   };
   const deepSampleForeclosed =
-    validShots && deepSampleReachable(reachNow) && !deepSampleReachable(reachAfter);
-  const shotsCeilingAfter = reachAfter.completedShots + afterShots;
+    validShots &&
+    reachNow !== null &&
+    reachAfter !== null &&
+    deepSampleReachable(reachNow) &&
+    !deepSampleReachable(reachAfter);
+  const shotsCeilingAfter = reachAfter ? reachAfter.completedShots + afterShots : 0;
 
   // The confirm step now carries the panel's most consequential sentences (an
   // irreversible spend, and what it forecloses), yet it used to appear silently and

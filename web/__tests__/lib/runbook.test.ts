@@ -7,6 +7,10 @@ import {
   masteredThisWeek,
   freezesEarned,
   contributionCells,
+  retentionSpectrum,
+  daysUntilNextDue,
+  dueRetained,
+  RETENTION_BINS,
   RETENTION_STABILITY,
   REPS_PER_FREEZE,
 } from "@/lib/runbook";
@@ -153,5 +157,80 @@ describe("contributionCells", () => {
     const future = cells.filter((c) => c.epochDay > today);
     expect(future.every((c) => c.future)).toBe(true);
     expect(cells.filter((c) => c.epochDay <= today).every((c) => !c.future)).toBe(true);
+  });
+});
+
+describe("retentionSpectrum", () => {
+  const at = (stability: number) => card({ stability });
+
+  it("buckets each card's stability into the eight bins", () => {
+    const states = [at(1), at(3), at(3), at(7), at(20), at(21), at(60), at(365)];
+    const s = retentionSpectrum(states);
+    // bins: [1] [2–3] [4–7] [8–20] ‖ [21–45] [46–90] [91–180] [181–365]
+    expect(s.bins.map((b) => b.count)).toEqual([1, 2, 1, 1, 1, 1, 0, 1]);
+    expect(s.bins.map((b) => b.label)).toEqual(RETENTION_BINS.map((b) => b.label));
+  });
+
+  it("splits maturing (LEFT of the 21d line) from retained (AT/right of it)", () => {
+    const states = [at(1), at(20), at(21), at(45), at(200)];
+    const s = retentionSpectrum(states);
+    // Only the bins at/above 21 are the accent (retained) side.
+    expect(s.bins.filter((b) => b.retained).map((b) => b.lo)).toEqual([21, 46, 91, 181]);
+    expect(s.maturing).toBe(2); // stability 1, 20
+    expect(s.retained).toBe(3); // stability 21, 45, 200
+    expect(s.tracked).toBe(5);
+  });
+
+  it("tracked always equals maturing + retained (the footer can never fail to add up)", () => {
+    const states = [at(2), at(5), at(21), at(21), at(90), at(300)];
+    const s = retentionSpectrum(states);
+    expect(s.tracked).toBe(s.maturing + s.retained);
+  });
+
+  // The invariant the whole instrument rests on: the accent mass is EXACTLY the
+  // North-Star number. If these two ever diverge the chart is lying.
+  it("INVARIANT: the retained mass equals masteryCount over the same states", () => {
+    const states = [at(1), at(8), at(20), at(21), at(21), at(46), at(365), at(19)];
+    expect(retentionSpectrum(states).retained).toBe(masteryCount(states));
+  });
+
+  it("is empty and adds to zero for no cards", () => {
+    const s = retentionSpectrum([]);
+    expect(s.tracked).toBe(0);
+    expect(s.bins.every((b) => b.count === 0)).toBe(true);
+  });
+});
+
+describe("daysUntilNextDue (NOT nextIntervalDays — the trap)", () => {
+  it("measures from TODAY over the not-yet-due cards, taking the soonest", () => {
+    const today = 100;
+    const states = [
+      card({ dueEpochDay: 103, lastEpochDay: 90 }), // due in 3 (last interval was 13)
+      card({ dueEpochDay: 108, lastEpochDay: 100 }),
+      card({ dueEpochDay: 95 }), // already due — excluded
+    ];
+    // The last SCHEDULED interval of the soonest card is 13; the answer is 3 (from today).
+    expect(daysUntilNextDue(states, today)).toBe(3);
+  });
+
+  it("returns null when every card is already due", () => {
+    expect(daysUntilNextDue([card({ dueEpochDay: 90 }), card({ dueEpochDay: 100 })], 100)).toBeNull();
+  });
+
+  it("returns null for no cards", () => {
+    expect(daysUntilNextDue([], 100)).toBeNull();
+  });
+});
+
+describe("dueRetained", () => {
+  it("counts cards that are due AND in proven retention (an 'Again' resets them)", () => {
+    const today = 100;
+    const states = [
+      card({ dueEpochDay: 99, stability: 40 }), // due + retained ✓
+      card({ dueEpochDay: 100, stability: 21 }), // due + retained ✓
+      card({ dueEpochDay: 100, stability: 5 }), // due but maturing ✗
+      card({ dueEpochDay: 110, stability: 60 }), // retained but not due ✗
+    ];
+    expect(dueRetained(states, today)).toBe(2);
   });
 });

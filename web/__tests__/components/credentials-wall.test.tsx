@@ -182,6 +182,32 @@ describe("CredentialsWall", () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
   });
 
+  it("a SUCCESSFUL fetch with NO server counters is UNVERIFIED, not zeros — an older Lambda", async () => {
+    // The deployed Lambda predated the medal counters and returned a budget WITHOUT
+    // them. Reading that as {runs:0, shots:0} would un-earn a real medal, and reading it
+    // as a foreclosure would be the "NaN — out of reach" bug on this surface. The record
+    // is UNKNOWN — the same state as a failed fetch.
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockResolvedValue({
+      capMicros: 2_500_000,
+      spentMicros: 445_000,
+      remainingMicros: 2_055_000,
+      credentialed: true,
+      completedRuns: null,
+      completedShots: null,
+      tasks: [],
+    });
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() => expect(hardware).toHaveTextContent(/Unverified/i));
+    for (const li of Array.from(hardware.querySelectorAll("li"))) {
+      expect(li).toHaveTextContent(/Unverified/i);
+      expect(li).not.toHaveTextContent(/Locked/i);
+      expect(li).not.toHaveTextContent(/Out of reach/i);
+    }
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
   it("never calls a medal out of reach when the budget is UNKNOWN (signed out)", () => {
     // An unknown must never be reported as a foreclosure.
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);

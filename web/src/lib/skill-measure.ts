@@ -50,6 +50,28 @@ export function getBest(id: string): Measurement | null {
   }
 }
 
+/**
+ * Every stored personal-best measurement, keyed by its card id — a `qc:measure:*`
+ * prefix scan, the same shape getAllCardIds uses. The Records zone titles each with
+ * getCardContent(id).prompt and shows the shortest solutions the learner has found.
+ * Guarded like its siblings; returns [] when storage is unavailable.
+ */
+export function getAllMeasurements(): { id: string; gates: number }[] {
+  try {
+    const out: { id: string; gates: number }[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(MEASURE_PREFIX)) {
+        const m = getBest(k.slice(MEASURE_PREFIX.length));
+        if (m) out.push({ id: k.slice(MEASURE_PREFIX.length), gates: m.gates });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /** Record a solve's measurement, keeping only the better value. */
 export function recordBest(id: string, m: Measurement): void {
   try {

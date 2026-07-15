@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { betterMeasurement, getBest, recordBest } from "@/lib/skill-measure";
+import { betterMeasurement, getAllMeasurements, getBest, recordBest } from "@/lib/skill-measure";
 
 describe("betterMeasurement", () => {
   it("keeps the fewer-gates solution", () => {
@@ -51,5 +51,30 @@ describe("recordBest / getBest", () => {
     };
     expect(() => recordBest("challenge:a", { gates: 2 })).not.toThrow();
     Storage.prototype.setItem = orig;
+  });
+});
+
+describe("getAllMeasurements", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("returns every stored personal best, keyed by card id", () => {
+    recordBest("challenge:bell", { gates: 2 });
+    recordBest("challenge:ghz", { gates: 4 });
+    localStorage.setItem("qc:card:other", "{}"); // a non-measure key is ignored
+    const all = getAllMeasurements().sort((a, b) => a.gates - b.gates);
+    expect(all).toEqual([
+      { id: "challenge:bell", gates: 2 },
+      { id: "challenge:ghz", gates: 4 },
+    ]);
+  });
+
+  it("skips a corrupt measurement record", () => {
+    recordBest("challenge:bell", { gates: 2 });
+    localStorage.setItem("qc:measure:bad", "{}");
+    expect(getAllMeasurements()).toEqual([{ id: "challenge:bell", gates: 2 }]);
+  });
+
+  it("is empty when nothing has been measured", () => {
+    expect(getAllMeasurements()).toEqual([]);
   });
 });

@@ -14,14 +14,14 @@ import {
  * Hidden entirely until NEXT_PUBLIC_REVIEW_PREFS_URL (and auth) are configured,
  * so the static site is unaffected when the backend is absent.
  */
-export function ReminderPrefs() {
+export function ReminderPrefs({ className }: { className?: string }) {
   if (!isReviewPrefsConfigured()) return null;
-  return <Panel />;
+  return <Panel className={className} />;
 }
 
 type State = "loading" | "ready" | "saving" | "error";
 
-function Panel() {
+function Panel({ className }: { className?: string }) {
   const id = useId();
   const [on, setOn] = useState(false); // opt-in: default OFF until the server says on
   const [state, setState] = useState<State>("loading");
@@ -57,10 +57,10 @@ function Panel() {
   };
 
   return (
-    <section
-      aria-label="Email reminders"
-      className="mt-4 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 shadow-(--shadow-resting)"
-    >
+    // De-carded: the workspace Console panel owns the card, the region label, and
+    // the spacing now (§1 refactor). This is an unstyled inline row that accepts a
+    // className from its single consumer, /workspace.
+    <div className={className}>
       <div className="flex items-start gap-3">
         <input
           id={checkboxId}
@@ -95,6 +95,6 @@ function Panel() {
           </p>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

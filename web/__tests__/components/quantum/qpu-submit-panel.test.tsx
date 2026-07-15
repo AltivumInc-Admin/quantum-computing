@@ -417,6 +417,46 @@ test("the budget bar carries the medal ladder, single-sourced and derived", asyn
   }
 });
 
+// ---- the production defect: a budget with NO medal counters -------------------
+// The deployed Lambda predated completedRuns/completedShots, so they arrived as null.
+// The old panel walked that straight into the ladder arithmetic and printed "NaN of 1
+// run — out of reach" on the founder's own screen: an unknown record rendered as a
+// medal declared permanently lost. Unknown must read as unknown everywhere here.
+describe("an unknown hardware record (older Lambda, null counters)", () => {
+  const noCounters = { completedRuns: null, completedShots: null };
+
+  it("says the record is unavailable — never 'NaN', never 'out of reach'", async () => {
+    m.getBudget.mockResolvedValue(budget(noCounters));
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    render(<QpuSubmitPanel />);
+    await screen.findByText("Lifetime sponsored QPU budget");
+    const panel = screen.getByLabelText("Run on real quantum hardware");
+    expect(panel).toHaveTextContent(/hardware record is unavailable/i);
+    expect(panel).not.toHaveTextContent(/NaN/);
+    expect(panel).not.toHaveTextContent(/out of reach/i);
+  });
+
+  it("does not foreclose a medal it cannot measure — the confirm step stays silent", async () => {
+    m.getBudget.mockResolvedValue(budget(noCounters));
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    render(<QpuSubmitPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+    expect(screen.queryByText(/closes off/i)).not.toBeInTheDocument();
+  });
+
+  it("the SPENT card renders without inventing counts it does not have", async () => {
+    m.getBudget.mockResolvedValue(
+      budget({ ...noCounters, spentMicros: CAP - 1_000, remainingMicros: 1_000 }),
+    );
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    render(<QpuSubmitPanel />);
+    const spent = await screen.findByText(/sponsored budget spent/i);
+    const card = spent.closest("div")!;
+    expect(card).toHaveTextContent(/your completed runs stay on your record/i);
+    expect(card).not.toHaveTextContent(/NaN/);
+  });
+});
+
 // ---- H2/H5: the medal that can be silently foreclosed FOREVER -----------------
 describe("foreclosure — the relocated bug", () => {
   // Three runs at the panel's own 100-shot default cost $1.335 of the $2.50 lifetime

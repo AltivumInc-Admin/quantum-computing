@@ -8,6 +8,9 @@ import {
   getAllCardIds,
   dueCardIds,
   dueCount,
+  dueByKind,
+  setCardContent,
+  KIND_LABELS,
   subscribe,
   PROGRESS_EVENT_NAME,
 } from "@/lib/review-store";
@@ -101,6 +104,42 @@ describe("review-store", () => {
       const advanced = gradeCardIfDue("x", "good", 1 * DAY);
       expect(advanced).not.toBeNull();
       expect(advanced!.reps).toBe(2);
+    });
+  });
+
+  describe("KIND_LABELS + dueByKind (the Valve breakdown)", () => {
+    it("names all six Rep kinds", () => {
+      expect(KIND_LABELS).toEqual({
+        challenge: "Circuit challenge",
+        predict: "Prediction",
+        bloch: "Bloch target",
+        cost: "Cost estimate",
+        debug: "Fix the circuit",
+        expect: "Expectation value",
+      });
+    });
+
+    it("breaks the due count down by kind, and the parts sum to dueCount", () => {
+      // Grade at day 0 (due at day 1); tag each with its kind; read at day 2.
+      gradeCard("challenge:a", "good", 0);
+      setCardContent("challenge:a", { prompt: "p", answer: "a", kind: "challenge" });
+      gradeCard("challenge:b", "good", 0);
+      setCardContent("challenge:b", { prompt: "p", answer: "a", kind: "challenge" });
+      gradeCard("predict:c", "good", 0);
+      setCardContent("predict:c", { prompt: "p", answer: "a", kind: "predict" });
+
+      const at = 2 * DAY;
+      const counts = dueByKind(at);
+      expect(counts.challenge).toBe(2);
+      expect(counts.predict).toBe(1);
+      const total = Object.values(counts).reduce((n, c) => n + c, 0);
+      expect(total).toBe(dueCount(at));
+    });
+
+    it("counts a due card with no cached kind under 'unknown'", () => {
+      gradeCard("authored:z", "good", 0); // no setCardContent → no kind
+      const counts = dueByKind(2 * DAY);
+      expect(counts.unknown).toBe(1);
     });
   });
 });

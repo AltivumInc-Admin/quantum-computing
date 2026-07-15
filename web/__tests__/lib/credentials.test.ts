@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import path from "path";
 import {
   computeCredentials,
+  nextUnearnedTier,
   MASTERY_TIERS,
   CONSISTENCY_TIERS,
   HARDWARE_TIERS,
@@ -177,5 +178,30 @@ describe("computeCredentials", () => {
     const earned = creds.filter((c) => c.earned).length;
     // 1 completion + 2 mastery (1,5) + 1 consistency (4) = 4.
     expect(earned).toBe(4);
+  });
+});
+
+describe("nextUnearnedTier — the Within-reach objective", () => {
+  it("returns the first tier above the value and its distance", () => {
+    // MASTERY_TIERS are 1/5/15/30/50. At 12 the next rung is Fluent (15), 3 away.
+    const next = nextUnearnedTier(MASTERY_TIERS, 12);
+    expect(next).toEqual({ tier: { n: 15, title: "Fluent" }, distance: 3 });
+  });
+
+  it("skips already-earned rungs (strictly greater than the value)", () => {
+    // At exactly 5 (Practiced earned), the next is Fluent (15).
+    expect(nextUnearnedTier(MASTERY_TIERS, 5)?.tier.n).toBe(15);
+  });
+
+  it("returns null when every tier is already reached", () => {
+    expect(nextUnearnedTier(CONSISTENCY_TIERS, 26)).toBeNull(); // top tier is 26 weeks
+    expect(nextUnearnedTier(MASTERY_TIERS, 999)).toBeNull();
+  });
+
+  it("returns the first tier from zero", () => {
+    expect(nextUnearnedTier(CONSISTENCY_TIERS, 0)).toEqual({
+      tier: { n: 4, title: "Consistent" },
+      distance: 4,
+    });
   });
 });
