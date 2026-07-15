@@ -66,6 +66,8 @@ beforeEach(() => {
 
 const sourceBox = () => screen.getByLabelText("qsim circuit source") as HTMLTextAreaElement;
 const stateRegion = () => screen.getByRole("region", { name: "State" });
+const diagramRegion = () => screen.getByRole("region", { name: "Circuit diagram, scrollable" });
+const diagramImg = () => within(diagramRegion()).getByRole("img");
 
 describe("PlaygroundBench", () => {
   it("renders the default Bell source with a live parse status and all five panels", () => {
@@ -329,5 +331,30 @@ describe("PlaygroundBench", () => {
     expect(within(sampling).getAllByRole("img")[0]).toHaveAccessibleName(
       expect.stringContaining("exact 50.0%"),
     );
+  });
+
+  describe("circuit diagram", () => {
+    it("renders a live diagram of the default Bell circuit", () => {
+      render(<PlaygroundBench />);
+      expect(diagramImg()).toHaveAccessibleName(expect.stringContaining("CNOT 0→1"));
+    });
+
+    it("keeps the last-good diagram but marks it stale on a parse error", () => {
+      render(<PlaygroundBench />);
+      fireEvent.change(sourceBox(), { target: { value: "H 0\nFLURB 1" } });
+      // The Bell diagram survives the broken keystroke (the Quirk principle)...
+      expect(diagramImg()).toHaveAccessibleName(expect.stringContaining("CNOT 0→1"));
+      // ...but dims to signal it no longer matches the editor.
+      expect(diagramRegion().className).toContain("opacity-50");
+    });
+
+    it("updates and un-dims when a new valid source is typed", () => {
+      render(<PlaygroundBench />);
+      fireEvent.change(sourceBox(), { target: { value: "H 0\nH 1\nH 2" } });
+      expect(diagramImg()).toHaveAccessibleName(
+        "Quantum circuit: 3 qubits, depth 1. H q0; H q1; H q2. All qubits measured.",
+      );
+      expect(diagramRegion().className).not.toContain("opacity-50");
+    });
   });
 });

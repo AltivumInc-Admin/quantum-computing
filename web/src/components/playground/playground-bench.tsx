@@ -95,6 +95,7 @@ export function PlaygroundBench() {
           source={source}
           onSourceChange={setSource}
           onPreset={() => setEditing(null)}
+          program={program}
           parsed={parsed}
           showTheta={program.hasTheta}
           theta={theta}
