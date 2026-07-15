@@ -64,7 +64,12 @@ export function Lab({
       <div className="-mx-1 overflow-x-auto px-1 pb-1">
         <div role="radiogroup" aria-label="Curriculum section" className="flex gap-2">
           {sections.map((s, i) => {
-            const short = `${String(s.index).padStart(2, "0")} ${s.slug.replace(/^\d+-/, "").replace(/-/g, " ")}`;
+            // Chip label from the real manifest title (correctly cased), not the
+            // slug — slug-recasing turned "04-quantum-ml" into "Quantum Ml". Trim
+            // a leading "Quantum " and any ": subtitle" so the chip stays tight;
+            // the full title is the accessible name + tooltip below.
+            const label = s.title.replace(/:.*$/, "").replace(/^Quantum\s+/, "");
+            const short = `${String(s.index).padStart(2, "0")} ${label}`;
             const on = i === selected;
             return (
               <button
@@ -81,7 +86,7 @@ export function Lab({
                 onClick={() => setSelected(i)}
                 onKeyDown={(e) => onKeyDown(e, i)}
                 style={{ "--hue": s.hue } as React.CSSProperties}
-                className={`shrink-0 whitespace-nowrap rounded-chip border px-2.5 py-1 text-xs font-semibold capitalize interactive focus-ring ${
+                className={`shrink-0 whitespace-nowrap rounded-chip border px-2.5 py-1 text-xs font-semibold interactive focus-ring ${
                   on
                     ? "hue-border hue-soft-bg hue-text"
                     : "border-gray-200 text-gray-600 dark:border-white/[0.08] dark:text-gray-300"
