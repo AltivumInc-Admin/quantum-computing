@@ -156,7 +156,10 @@ function Bench({
               can breathe (info left, the editor + run history right), instead of towering in
               the rail. Env-gated: absent entirely when QPU is not configured. */}
           {qpuOn && (
-            <div className="mt-4">
+            // #hardware — the playground's handoff target (/workspace#hardware).
+            // scroll-mt backs up the global scroll-padding-top so intra-page jumps
+            // land clear of the sticky nav.
+            <div id="hardware" className="mt-4 scroll-mt-24">
               <QpuSubmitPanel className={QPU_SHELL} />
             </div>
           )}

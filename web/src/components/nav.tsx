@@ -23,6 +23,12 @@ export function Nav() {
         </Link>
         <div className="flex items-center gap-1.5">
           <Link
+            href="/playground"
+            className="hidden sm:inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+          >
+            Playground
+          </Link>
+          <Link
             href="/runbook"
             className="hidden sm:inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
           >

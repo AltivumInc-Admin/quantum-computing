@@ -8,6 +8,7 @@ describe("sitemap", () => {
   it("includes top routes, every lesson, and every term, all absolute", () => {
     const urls = sitemap().map((e) => e.url);
     expect(urls).toContain(`${SITE_URL}`);
+    expect(urls).toContain(`${SITE_URL}/playground`);
     expect(urls).toContain(`${SITE_URL}/glossary`);
     expect(urls).toContain(`${SITE_URL}/review`);
     expect(urls).toContain(`${SITE_URL}/runbook`);
@@ -15,7 +16,7 @@ describe("sitemap", () => {
     expect(urls).toContain(`${SITE_URL}/privacy`);
     for (const s of getSections()) expect(urls).toContain(`${SITE_URL}/learn/${s.slug}`);
     expect(urls).toContain(`${SITE_URL}/glossary/${termSlug(GLOSSARY[0].term)}`);
-    expect(urls).toHaveLength(6 + getSections().length + GLOSSARY.length);
+    expect(urls).toHaveLength(7 + getSections().length + GLOSSARY.length);
     expect(urls.every((u) => u.startsWith("https://"))).toBe(true);
   });
 });

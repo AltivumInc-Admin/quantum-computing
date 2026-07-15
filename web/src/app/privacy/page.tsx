@@ -40,6 +40,11 @@ export default function PrivacyPage() {
             fetch the site itself.
           </p>
           <p>
+            Circuits you save in the playground follow the same rule: they live in your
+            browser&apos;s local storage and, if you sign in, are included in the synced
+            progress snapshot described below.
+          </p>
+          <p>
             If you create an account and use sync, we store on our servers (AWS,
             us-east-2 region):
           </p>

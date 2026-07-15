@@ -18,6 +18,13 @@
 //   qc:measure:*                   personal best (a NUMERIC minimum) — keep the
 //                                  fewer-gates copy; lexMax would wrongly pick
 //                                  the LARGER (worse) count.
+//   qc:circuit:*                   saved playground circuit (or its deletion
+//                                  tombstone) — the more recently touched copy
+//                                  wins AS A UNIT by updatedAt, with the same
+//                                  clock-skew quarantine as cards (a fast-
+//                                  clocked device must not win every edit
+//                                  forever); a tombstone is just a copy whose
+//                                  recency competes like any other.
 //   anything else under qc:*       no domain rule
 //
 // EVERY genuine tie resolves by lexicographic string comparison — symmetric
@@ -139,6 +146,35 @@ function mergeMeasurement(a: string, b: string): string {
   return lexMax(a, b);
 }
 
+/**
+ * A saved playground circuit (or its deletion tombstone) wins AS A UNIT by
+ * updatedAt recency. Corrupt JSON loses to valid; a stamp implausibly far in
+ * the future is clock skew and loses to any plausible copy (without this, one
+ * fast-clocked device wins every merge until its timestamp passes — the exact
+ * pathology the card rule quarantines); every genuine tie resolves lexMax.
+ */
+function mergeCircuit(a: string, b: string, todayEpochDay: number): string {
+  const stampOf = (raw: string): number | null => {
+    try {
+      const c = JSON.parse(raw) as { v?: unknown; updatedAt?: unknown };
+      return c.v === 1 && typeof c.updatedAt === "number" && Number.isFinite(c.updatedAt)
+        ? c.updatedAt
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const sa = stampOf(a);
+  const sb = stampOf(b);
+  if (sa === null) return sb === null ? lexMax(a, b) : b;
+  if (sb === null) return a;
+  const pa = epochDay(sa) <= todayEpochDay + CLOCK_SKEW_GRACE_DAYS;
+  const pb = epochDay(sb) <= todayEpochDay + CLOCK_SKEW_GRACE_DAYS;
+  if (pa !== pb) return pa ? a : b;
+  if (sa !== sb) return sa > sb ? a : b;
+  return lexMax(a, b);
+}
+
 function mergeContent(a: string, b: string): string {
   const liveReady = (raw: string): boolean => {
     try {
@@ -175,6 +211,8 @@ export function mergeSnapshots(
       merged[key] = mergeCard(l, r, todayEpochDay);
     } else if (key.startsWith("qc:measure:")) {
       merged[key] = mergeMeasurement(l, r);
+    } else if (key.startsWith("qc:circuit:")) {
+      merged[key] = mergeCircuit(l, r, todayEpochDay);
     } else {
       // Flags ("1") and future families: identical values already matched
       // above; a genuine difference resolves symmetrically.
