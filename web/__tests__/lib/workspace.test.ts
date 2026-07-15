@@ -96,6 +96,20 @@ describe("readWorkspace — the single local read", () => {
     expect(m.runnableTotal).toBe(32);
   });
 
+  it("builds a Lab launcher href that resolves to a real manifest notebook path", () => {
+    const m = readWorkspace(100);
+    const foundations = m.sections.find((s) => s.slug === "01-foundations")!;
+    const nb = foundations.runnable.find((n) => n.filename === "01-first-circuit.ipynb")!;
+    // The exact route NotebookLink builds — path-encoded dirName/notebooks/filename.
+    expect(nb.href).toBe(
+      "/lab/lab/index.html?path=01-foundations%2Fnotebooks%2F01-first-circuit.ipynb",
+    );
+    expect(nb.index).toBe("01");
+    expect(nb.label).toBe("first circuit");
+    // 06-hybrid-jobs has zero browser-runnable notebooks — honest, never faked.
+    expect(m.sections.find((s) => s.slug === "06-hybrid-jobs")!.runnable).toEqual([]);
+  });
+
   it("reflects graded cards and a completed section", () => {
     // A due card (graded day 0, read at day 5).
     gradeCard("challenge:bell", "again", 0);
