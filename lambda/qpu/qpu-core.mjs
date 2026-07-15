@@ -437,9 +437,21 @@ export function createHandlerCore({
       );
       taskArn = res.quantumTaskArn;
     } catch (submitErr) {
-      // No task was created — refund. Do NOT swallow a failed refund: log it so
-      // a burned reservation is visible/alarmable (the durable reconciler that
-      // covers a mid-flight Lambda death lands in PR-4).
+      // No task was created — refund. Log WHY Braket rejected: without this the
+      // 502 is a black box (a real submit failed with no operator-visible reason,
+      // which is exactly what made the first hardware run undebuggable). Name +
+      // message are safe to log; the QASM/sub are not secret but the message is
+      // what actually diagnoses a rejected device submission.
+      console.error("qpu-braket-submit-failed", {
+        sub,
+        idempotencyKey,
+        device: DEVICE,
+        shots,
+        errName: submitErr?.name,
+        errMessage: submitErr?.message,
+      });
+      // Do NOT swallow a failed refund either: log it so a burned reservation is
+      // visible/alarmable (the durable reconciler covers a mid-flight death).
       await releaseReservation(sub, day, cost, idempotencyKey).catch((e) =>
         console.error("qpu-release-failed", { sub, idempotencyKey, day, cost, err: e?.name }),
       );
