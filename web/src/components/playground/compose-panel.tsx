@@ -5,6 +5,7 @@ import { Panel } from "@/components/workspace/panel";
 import { LabeledSlider } from "@/components/quantum/widget-ui";
 import { formatRadians } from "@/components/quantum/format";
 import { MAX_QUBITS, type Program } from "@/components/quantum/qsim-dsl";
+import { CircuitDiagram } from "@/components/quantum/circuit-diagram";
 import { MAX_SHARE_SRC } from "@/lib/circuit-url";
 import { benchButtonClass, benchGroupLabelClass } from "./controls";
 
@@ -44,6 +45,7 @@ const PRESETS: { name: string; src: string }[] = [
 export function ComposePanel({
   source,
   onSourceChange,
+  program,
   parsed,
   showTheta,
   theta,
@@ -55,6 +57,8 @@ export function ComposePanel({
   onSourceChange: (src: string) => void;
   /** A preset REPLACES the circuit — the bench uses this to end "editing" mode. */
   onPreset?: () => void;
+  /** The LAST-GOOD program — the diagram renders from this, never from a broken parse (the Quirk principle). */
+  program: Program;
   /** The CURRENT parse (may carry an error) — drives the status line. */
   parsed: Program;
   /** From the LAST-GOOD program, so mid-edit errors don't flash the slider away. */
@@ -171,6 +175,8 @@ export function ComposePanel({
           <span className="tabular-nums text-caption">{statusText}</span>
         )}
       </p>
+
+      <CircuitDiagram program={program} stale={Boolean(parsed.error)} />
 
       <div className="mt-4 space-y-2">
         {PALETTE.map((row) => (
