@@ -807,6 +807,26 @@ test("submitTask reuses ONE idempotency key across a retry of the same run", asy
   expect(firstKey).toBe(retryKey); // same intent → same key → server dedupes
 });
 
+test("after braket-submit-failed (hold released) a retry mints a NEW key — a same-key retry would only fetch the cached RELEASED row and never reach the device", async () => {
+  m.getBudget.mockResolvedValue(budget());
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  m.submitTask
+    .mockResolvedValueOnce({ ok: false, status: 502, error: "braket-submit-failed" })
+    .mockResolvedValueOnce({ ok: true, taskArn: "arn:x/y", estMicros: costMicros(100) });
+  render(<QpuSubmitPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+  });
+  const firstKey = (m.submitTask.mock.calls[0] as unknown[])[2];
+  const retryKey = (m.submitTask.mock.calls[1] as unknown[])[2];
+  expect(retryKey).not.toBe(firstKey); // definitively refunded → new intent → new key
+  expect(typeof retryKey).toBe("string");
+});
+
 // ---- outcomes: every message is true of the code as written ------------------
 test("a network throw does NOT claim the budget is untouched, and keeps the key for a safe retry", async () => {
   m.getBudget.mockResolvedValue(budget());
