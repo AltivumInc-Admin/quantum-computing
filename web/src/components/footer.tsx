@@ -13,6 +13,9 @@ export function Footer() {
           Quantum Workspace — learn quantum computing with Amazon Braket.
         </p>
         <nav aria-label="Footer" className="flex items-center gap-6 text-sm font-medium">
+          <Link href="/playground" className={linkClass}>
+            Playground
+          </Link>
           <Link href="/glossary" className={linkClass}>
             Glossary
           </Link>

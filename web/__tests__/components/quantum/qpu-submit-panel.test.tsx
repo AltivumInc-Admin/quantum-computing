@@ -911,3 +911,72 @@ test("a 402 names the learner's OWN cap and re-fetches so the panel isn't a dead
   await waitFor(() => expect(m.getBudget).toHaveBeenCalledTimes(2));
   expectNeverSaysTheLearnerPays();
 });
+
+// ---- the playground handoff ---------------------------------------------------
+// The playground writes a one-shot circuit to sessionStorage (qpu-handoff.ts, key
+// qcp:handoff:v1) and routes to /workspace#hardware; SubmitForm consumes it in its
+// qasm state INITIALIZER — form mount, not panel mount, so it survives the
+// CredentialGate detour. These tests use the REAL qpu-handoff lib against jsdom's
+// sessionStorage: mocking it would only re-encode our assumptions about it.
+describe("playground handoff", () => {
+  const HANDOFF_KEY = "qcp:handoff:v1";
+  const HANDOFF_QASM = "OPENQASM 3.0;\nqubit[1] q;\nh q[0];\nbit[1] c;\nc = measure q;";
+  // PRESETS is module-private by design; the Bell preset text is pinned here so a
+  // preset edit that breaks the no-handoff default reddens this suite.
+  const BELL_QASM =
+    "OPENQASM 3.0;\nqubit[2] q;\nh q[0];\ncnot q[0], q[1];\nbit[2] c;\nc = measure q;";
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    m.getBudget.mockResolvedValue(budget());
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+  });
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("initializes the editor from a valid handoff, names the circuit, and clears the storage", async () => {
+    sessionStorage.setItem(
+      HANDOFF_KEY,
+      JSON.stringify({ v: 1, qasm: HANDOFF_QASM, name: "Ramsey sweep", ts: Date.now() }),
+    );
+    render(<QpuSubmitPanel />);
+    expect(await screen.findByLabelText(/circuit \(openqasm/i)).toHaveValue(HANDOFF_QASM);
+    const note = screen.getByText(/loaded from the playground/i);
+    expect(note).toHaveTextContent(/Ramsey sweep/);
+    // One-shot: consumed at form mount, so a reload gets a clean panel.
+    expect(sessionStorage.getItem(HANDOFF_KEY)).toBeNull();
+    expectNeverSaysTheLearnerPays();
+  });
+
+  it("shows the note without a name when the handoff is anonymous", async () => {
+    sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ v: 1, qasm: HANDOFF_QASM, ts: Date.now() }));
+    render(<QpuSubmitPanel />);
+    expect(await screen.findByText(/loaded from the playground/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/circuit \(openqasm/i)).toHaveValue(HANDOFF_QASM);
+  });
+
+  it("the note dismisses on click — the circuit stays in the editor", async () => {
+    sessionStorage.setItem(HANDOFF_KEY, JSON.stringify({ v: 1, qasm: HANDOFF_QASM, ts: Date.now() }));
+    render(<QpuSubmitPanel />);
+    await screen.findByText(/loaded from the playground/i);
+    fireEvent.click(screen.getByRole("button", { name: /dismiss the playground note/i }));
+    expect(screen.queryByText(/loaded from the playground/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/circuit \(openqasm/i)).toHaveValue(HANDOFF_QASM);
+  });
+
+  it("without a handoff the editor is the Bell preset and no note renders", async () => {
+    render(<QpuSubmitPanel />);
+    expect(await screen.findByLabelText(/circuit \(openqasm/i)).toHaveValue(BELL_QASM);
+    expect(screen.queryByText(/loaded from the playground/i)).not.toBeInTheDocument();
+  });
+
+  it("a corrupt handoff value falls back to the preset silently — and is cleared", async () => {
+    sessionStorage.setItem(HANDOFF_KEY, "{not json");
+    render(<QpuSubmitPanel />);
+    expect(await screen.findByLabelText(/circuit \(openqasm/i)).toHaveValue(BELL_QASM);
+    expect(screen.queryByText(/loaded from the playground/i)).not.toBeInTheDocument();
+    // consumeHandoff clears even garbage, so it can never linger across visits.
+    expect(sessionStorage.getItem(HANDOFF_KEY)).toBeNull();
+  });
+});

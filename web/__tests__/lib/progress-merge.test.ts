@@ -235,3 +235,96 @@ describe("un-complete does not self-revert (progress-store tombstone wiring)", (
     expect(localStorage.getItem("qc:section:qubits")).toBe("1");
   });
 });
+
+describe("qc:circuit:* — saved playground circuits merge by updatedAt recency", () => {
+  const DAY_MS = 86_400_000;
+  const K = "qc:circuit:abc";
+  const live = (updatedAt: number, name = "Bell") =>
+    JSON.stringify({ v: 1, name, src: "H 0\nCNOT 0 1", updatedAt });
+  const tomb = (updatedAt: number) => JSON.stringify({ v: 1, deleted: true, updatedAt });
+  // Timestamps in ms, anchored to the injectable TODAY epoch-day.
+  const at = (day: number, offsetMs = 0) => day * DAY_MS + offsetMs;
+  const pick = (a: string, b: string) => mergeSnapshots({ [K]: a }, { [K]: b }, TODAY)[K];
+
+  it("the more recently touched copy wins, in BOTH argument orders", () => {
+    const older = live(at(TODAY - 5), "old draft");
+    const newer = live(at(TODAY - 1), "new draft");
+    expect(pick(older, newer)).toBe(newer);
+    expect(pick(newer, older)).toBe(newer);
+  });
+
+  it("a NEWER tombstone beats an older live copy (deletion propagates)", () => {
+    const edited = live(at(TODAY - 3));
+    const deleted = tomb(at(TODAY - 1));
+    expect(pick(edited, deleted)).toBe(deleted);
+    expect(pick(deleted, edited)).toBe(deleted);
+  });
+
+  it("a NEWER live copy beats an older tombstone (re-save after delete wins)", () => {
+    const deleted = tomb(at(TODAY - 3));
+    const revived = live(at(TODAY - 1));
+    expect(pick(deleted, revived)).toBe(revived);
+    expect(pick(revived, deleted)).toBe(revived);
+  });
+
+  it("corrupt loses to valid regardless of order; both-corrupt falls to lexMax", () => {
+    const good = live(at(TODAY - 1));
+    for (const bad of ["{broken", JSON.stringify({ v: 2, updatedAt: at(TODAY) }), JSON.stringify({ v: 1, updatedAt: "soon" })]) {
+      expect(pick(bad, good)).toBe(good);
+      expect(pick(good, bad)).toBe(good);
+    }
+    expect(pick("{a", "{b")).toBe("{b");
+    expect(pick("{b", "{a")).toBe("{b");
+  });
+
+  it("clock skew: an updatedAt days in the future loses to ANY plausible copy", () => {
+    // A fast-clocked device would otherwise win every merge until its stamp
+    // passes — even though the plausible copy is the genuinely newer edit.
+    const skewed = live(at(TODAY + CLOCK_SKEW_GRACE_DAYS + 1), "fast clock");
+    const plausibleOlder = live(at(TODAY - 10), "honest but old");
+    expect(pick(skewed, plausibleOlder)).toBe(plausibleOlder);
+    expect(pick(plausibleOlder, skewed)).toBe(plausibleOlder);
+    // The grace window itself is NOT skew (UTC-boundary saves are legitimate).
+    const graceEdge = live(at(TODAY + CLOCK_SKEW_GRACE_DAYS), "boundary");
+    expect(pick(graceEdge, plausibleOlder)).toBe(graceEdge);
+  });
+
+  it("both implausible falls through to plain recency", () => {
+    const far = live(at(TODAY + 50), "far");
+    const farther = live(at(TODAY + 90), "farther");
+    expect(pick(far, farther)).toBe(farther);
+    expect(pick(farther, far)).toBe(farther);
+  });
+
+  it("an exact updatedAt tie resolves lexMax (symmetric, so devices converge)", () => {
+    const a = live(at(TODAY - 1), "alpha");
+    const b = live(at(TODAY - 1), "beta");
+    const expected = a >= b ? a : b;
+    expect(pick(a, b)).toBe(expected);
+    expect(pick(b, a)).toBe(expected);
+  });
+
+  it("SYMMETRY property: mergeSnapshots(a,b) === mergeSnapshots(b,a) across the whole case matrix", () => {
+    const values = [
+      live(at(TODAY - 7)),
+      live(at(TODAY - 1), "zeta"),
+      live(at(TODAY - 1), "alpha"),
+      live(at(TODAY + CLOCK_SKEW_GRACE_DAYS + 5), "skewed"),
+      live(at(TODAY + 40), "more skewed"),
+      tomb(at(TODAY - 4)),
+      tomb(at(TODAY)),
+      tomb(at(TODAY + 30)),
+      "{corrupt",
+      JSON.stringify({ v: 1, updatedAt: "NaN" }),
+      "",
+    ];
+    for (const a of values) {
+      for (const b of values) {
+        const ab = mergeSnapshots({ [K]: a }, { [K]: b }, TODAY)[K];
+        const ba = mergeSnapshots({ [K]: b }, { [K]: a }, TODAY)[K];
+        expect(ab).toBe(ba);
+        expect([a, b]).toContain(ab); // the winner is always one of the inputs, whole
+      }
+    }
+  });
+});

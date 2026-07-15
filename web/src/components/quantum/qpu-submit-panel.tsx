@@ -12,6 +12,7 @@ import {
   type CredentialChallenge,
 } from "@/lib/qpu-client";
 import { HARDWARE_TIERS } from "@/lib/credentials";
+import { consumeHandoff } from "@/lib/qpu-handoff";
 import {
   IQM_TASK_MICROS,
   IQM_SHOT_MICROS,
@@ -694,7 +695,13 @@ function CredentialGate({
 }
 
 function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () => void }) {
-  const [qasm, setQasm] = useState(PRESETS[0].qasm);
+  // The one-shot playground handoff, consumed HERE (form mount, not panel mount) so
+  // it survives the CredentialGate detour: a first-time learner prices a run, earns
+  // the credential, and the form still finds the circuit waiting when it mounts.
+  // State initializers run exactly once, so the consume never re-fires on re-render.
+  const [handoff] = useState(() => consumeHandoff());
+  const [handoffNoteShown, setHandoffNoteShown] = useState(handoff !== null);
+  const [qasm, setQasm] = useState(handoff?.qasm ?? PRESETS[0].qasm);
   const [shots, setShots] = useState(100);
   const [phase, setPhase] = useState<"form" | "confirm" | "submitting" | "done">("form");
   const [outcome, setOutcome] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -851,6 +858,33 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           </button>
         ))}
       </div>
+      {handoffNoteShown && handoff && (
+        // The handoff acknowledgement — same informational styling as the confirm
+        // note (accent border + wash), sized down. Dismiss only hides the note; the
+        // circuit stays in the editor.
+        <div
+          role="status"
+          className="mt-2 flex items-start justify-between gap-3 rounded-control border border-accent/40 bg-accent/[0.06] px-3 py-2"
+        >
+          <p className="text-xs leading-relaxed text-gray-700 dark:text-gray-200">
+            Loaded from the playground
+            {handoff.name ? (
+              <>
+                : <span className="font-medium">{handoff.name}</span>
+              </>
+            ) : null}
+            .
+          </p>
+          <button
+            type="button"
+            onClick={() => setHandoffNoteShown(false)}
+            aria-label="Dismiss the playground note"
+            className="shrink-0 rounded-control px-1 text-sm leading-none text-gray-500 dark:text-gray-400 interactive focus-ring"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+      )}
       <textarea
         id="qpu-qasm"
         value={qasm}
