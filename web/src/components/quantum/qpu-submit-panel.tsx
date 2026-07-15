@@ -8,6 +8,7 @@ import {
   claimCredential,
   submitTask,
   NotSignedInError,
+  classifySubmitFailure,
   type Budget,
   type CredentialChallenge,
 } from "@/lib/qpu-client";
@@ -759,9 +760,58 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
     if (phase === "confirm") submitRef.current?.focus();
   }, [phase]);
 
+  // A thrown submit whose truth is unknown: the intent key awaiting resolution
+  // against the server's run history. Any NEW intent cancels the wait.
+  const [unresolvedKey, setUnresolvedKey] = useState<string | null>(null);
+
+  // Resolve an ambiguous (thrown) submit against the run history. The reserve
+  // transaction writes the task row atomically with the spend, so the key's
+  // presence in the newest rows IS the truth: present means the run committed
+  // before the connection died; absent means it never reached us and no budget
+  // was spent — the claim the message below is then entitled to make. Tries
+  // immediately (the drop may have been momentary) and again on every browser
+  // "online" event; cleanup cancels when the intent changes or the form unmounts.
+  useEffect(() => {
+    if (unresolvedKey === null) return;
+    let cancelled = false;
+    const attempt = async () => {
+      try {
+        const fresh = await getBudget();
+        if (cancelled) return;
+        const hit = fresh.tasks.find((t) => t.idempotencyKey === unresolvedKey);
+        setUnresolvedKey(null);
+        if (hit) {
+          setOutcome({
+            ok: true,
+            msg: `Good news — this run had already reached us before the connection dropped: task ${
+              hit.taskArn ? hit.taskArn.split("/").pop() : hit.idempotencyKey.slice(0, 8)
+            } is in your run history. No retry needed.`,
+          });
+          setPhase("done");
+          onSubmitted();
+        } else {
+          setOutcome({
+            ok: false,
+            msg: "Connection restored. This run never reached us, so no budget was spent — submit again when you're ready; it will not double-spend.",
+          });
+        }
+      } catch {
+        /* still unreachable — the next "online" event retries */
+      }
+    };
+    void attempt();
+    const onOnline = () => void attempt();
+    window.addEventListener("online", onOnline);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", onOnline);
+    };
+  }, [unresolvedKey, onSubmitted]);
+
   const editForm = () => {
     setPhase("form");
     setIdem(null); // editing = a new intent
+    setUnresolvedKey(null); // and abandons any pending truth-check
   };
 
   const openConfirm = () => {
@@ -777,6 +827,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
     if (!idem) setIdem(key);
     setPhase("submitting");
     setOutcome(null);
+    setUnresolvedKey(null); // this attempt supersedes any pending truth-check
     try {
       const res = await submitTask(shots, qasm, key);
       if (res.ok) {
@@ -809,14 +860,29 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
       // thrown submit must NOT claim the budget was untouched. `idem` is untouched
       // and the phase returns to "confirm", so a retry reuses the SAME key and the
       // server dedupes instead of double-spending — which is what makes the
-      // "retrying is safe" sentence true.
-      setOutcome({
-        ok: false,
-        msg:
-          e instanceof NotSignedInError
-            ? "Your session expired before this run was sent — nothing was submitted and no budget was spent. Sign in again."
-            : "We couldn't confirm this run. Check your run history; retrying is safe and will not double-spend your budget.",
-      });
+      // "retrying is safe" sentence true. Beyond the message, the unresolvedKey
+      // effect above settles the ambiguity for real: it checks the run history
+      // (now, and again when connectivity returns) and reports what actually
+      // happened. First live report (2026-07-15): a wifi drop read as a software
+      // failure — name the connection when we can tell it was one.
+      if (e instanceof NotSignedInError) {
+        setOutcome({
+          ok: false,
+          msg: "Your session expired before this run was sent — nothing was submitted and no budget was spent. Sign in again.",
+        });
+      } else {
+        const kind = classifySubmitFailure(e);
+        setOutcome({
+          ok: false,
+          msg:
+            kind === "offline"
+              ? "Your connection dropped — you appear to be offline. This was a network problem, not a hardware failure. Once you are back online, this panel checks your run history and reports whether the run went through."
+              : kind === "network"
+                ? "The connection was interrupted before this run could be confirmed — a network drop, not a hardware failure. Checking your run history to see whether it went through."
+                : "We couldn't confirm this run. Checking your run history; retrying is safe and will not double-spend your budget.",
+        });
+        setUnresolvedKey(key);
+      }
       setPhase("confirm");
     }
   };

@@ -23,6 +23,31 @@ export class NotSignedInError extends Error {
   }
 }
 
+/**
+ * Why a THROWN submit happened, as far as the browser can tell. This is a
+ * connection-vs-service distinction, not a truth verdict — a dropped wifi link
+ * can kill the request before OR after it reached the server, so the caller
+ * still resolves the actual outcome against the run history. First live user
+ * report (2026-07-15): wifi dropped mid-submit and the generic message read
+ * like a software failure.
+ *
+ * `navigator.onLine === false` is trustworthy only in that direction: false
+ * means definitely offline; true means merely "not provably offline". A fetch
+ * network failure surfaces as TypeError in every browser.
+ */
+export type SubmitFailureKind = "offline" | "network" | "unknown";
+
+export function classifySubmitFailure(e: unknown): SubmitFailureKind {
+  if (e instanceof NotSignedInError) return "unknown"; // callers branch on sign-in first
+  try {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+  } catch {
+    /* navigator unavailable — fall through */
+  }
+  if (e instanceof TypeError) return "network";
+  return "unknown";
+}
+
 export interface QpuTask {
   idempotencyKey: string;
   device: string;
