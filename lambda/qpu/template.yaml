@@ -181,7 +181,14 @@ Resources:
                 - braket:CreateQuantumTask
                 - braket:GetQuantumTask
               Resource:
+                # Both device ARN forms. Braket documents devices account-less
+                # (devices are AWS-owned), but IAM evaluates CreateQuantumTask
+                # against the ACCOUNT-QUALIFIED device ARN. The live denial named
+                # arn:aws:braket:eu-north-1:<acct>:device/qpu/iqm/Garnet, so a
+                # policy granting only the account-less form never matches and
+                # every real submit was rejected. Still Garnet-only either way.
                 - arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet
+                - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:device/qpu/iqm/Garnet
                 - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
         # Braket writes results here under the caller's identity.
         - Statement:

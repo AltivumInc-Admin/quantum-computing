@@ -753,7 +753,11 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
   };
 
   const doSubmit = async () => {
+    // idem is null right after a braket-submit-failed retry-reset; mint the new
+    // key AND persist it, so an AMBIGUOUS failure of this attempt still reuses
+    // the same key on the next retry (the double-spend protection).
     const key = idem ?? crypto.randomUUID();
+    if (!idem) setIdem(key);
     setPhase("submitting");
     setOutcome(null);
     try {
@@ -769,7 +773,14 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         onSubmitted();
       } else {
         setOutcome({ ok: false, msg: outcomeMessage(res.status, res.error, budget.capMicros) });
-        setPhase("confirm"); // keep the key so a retry reuses it
+        setPhase("confirm"); // keep the key so a retry reuses it...
+        // ...EXCEPT after braket-submit-failed: the server has already released
+        // the hold and a RELEASED row now owns this key, so a same-key retry
+        // returns that cached failure and never reaches the device again — the
+        // learner is told "Try again" but the retry can never succeed. The
+        // refund is definitive (nothing was charged), so the retry is a NEW
+        // intent and safely mints a new key.
+        if (res.error === "braket-submit-failed") setIdem(null);
         // A 402 means the budget is gone. Re-fetch so the panel flips to the terminal
         // BudgetSpent card instead of stranding the learner on a dead form under a red
         // banner, which is what shipped before.
