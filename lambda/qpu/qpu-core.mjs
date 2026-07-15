@@ -293,6 +293,22 @@ export function createHandlerCore({
     const day = utcDay(ts);
     const dayTtl = Math.floor(ts / 1000) + 2 * 86_400;
 
+    // A DynamoDB ConditionExpression CANNOT do arithmetic, so `spent + cost <= cap`
+    // is a syntax error (the client-side rejection every real submit hit). Express
+    // it as `spent <= cap - cost` with the subtraction precomputed here. The per-user
+    // cap is read from the row so a grandfathered allowance is honored: capMicros is
+    // stamped once via if_not_exists and never rewritten, so it is safe to read once
+    // and immutable under the concurrent submit the condition still guards against. A
+    // first submit has no row, so effectiveCap defaults to the constant the same
+    // if_not_exists is about to stamp. Both thresholds are > 0 (shots <= MAX_SHOTS
+    // caps cost well under either allowance), so a fresh row's spent(0) always passes.
+    const userRow = await ddb.send(
+      new GetItemCommand({ TableName: ledgerTable, Key: { pk: { S: `USER#${sub}` } } }),
+    );
+    const effectiveCap = Number(userRow.Item?.capMicros?.N ?? LIFETIME_CAP_MICROS);
+    const userThreshold = effectiveCap - cost;
+    const dayThreshold = DAILY_CAP_MICROS - cost;
+
     // --- The atomic reservation: cap + daily + idempotency + kill, all-or-none.
     try {
       await ddb.send(
@@ -313,12 +329,17 @@ export function createHandlerCore({
                 // capMicros this row returns.)
                 UpdateExpression:
                   "SET capMicros = if_not_exists(capMicros, :cap) ADD spentMicros :cost",
+                // `spent <= cap - cost`, threshold precomputed. A ConditionExpression
+                // allows NEITHER arithmetic NOR if_not_exists (both are the original
+                // bug), so the missing-attribute case is spelled out: a first submit
+                // has no spentMicros and passes; an existing row must be within
+                // threshold. :capMinusCost carries the grandfathered cap - cost (> 0).
                 ConditionExpression:
-                  "if_not_exists(spentMicros, :z) + :cost <= if_not_exists(capMicros, :cap)",
+                  "attribute_not_exists(spentMicros) OR spentMicros <= :capMinusCost",
                 ExpressionAttributeValues: {
                   ":cap": { N: String(LIFETIME_CAP_MICROS) },
                   ":cost": { N: String(cost) },
-                  ":z": { N: "0" },
+                  ":capMinusCost": { N: String(userThreshold) },
                 },
               },
             },
@@ -327,11 +348,13 @@ export function createHandlerCore({
                 TableName: ledgerTable,
                 Key: { pk: { S: `DAY#${day}` } },
                 UpdateExpression: "ADD dayMicros :cost SET expiresAt = :ttl",
-                ConditionExpression: "if_not_exists(dayMicros, :z) + :cost <= :daily",
+                // `dayMicros <= daily - cost`, threshold precomputed; missing-attribute
+                // spelled out (no arithmetic, no if_not_exists in a condition).
+                ConditionExpression:
+                  "attribute_not_exists(dayMicros) OR dayMicros <= :dayMinusCost",
                 ExpressionAttributeValues: {
                   ":cost": { N: String(cost) },
-                  ":z": { N: "0" },
-                  ":daily": { N: String(DAILY_CAP_MICROS) },
+                  ":dayMinusCost": { N: String(dayThreshold) },
                   ":ttl": { N: String(dayTtl) },
                 },
               },

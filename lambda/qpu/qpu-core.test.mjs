@@ -527,3 +527,31 @@ test("a refunded run earns nothing: only COMPLETED rows tally toward a medal", a
   assert.deepEqual(byUser.get("u1"), { runs: 2, shots: 1247 });
   assert.deepEqual(byUser.get("u2"), { runs: 1, shots: 5 });
 });
+
+// A DynamoDB ConditionExpression allows NEITHER arithmetic NOR if_not_exists.
+// The reserve transaction originally used both ("if_not_exists(spent,:z)+:cost
+// <= if_not_exists(cap,:cap)"); the stub never evaluates the expression, so all
+// tests passed while every REAL submit failed with a ValidationException. This
+// static guard scans the actual source so that class can never regress — it is
+// the tripwire the mocks structurally cannot be.
+test("no ConditionExpression uses arithmetic or if_not_exists (real DynamoDB forbids both)", () => {
+  for (const file of ["qpu-core.mjs", "reconcile.mjs"]) {
+    const src = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+    const re = /ConditionExpression:\s*"([^"]+)"/g;
+    let m;
+    let count = 0;
+    while ((m = re.exec(src))) {
+      const expr = m[1];
+      count++;
+      assert.ok(
+        !expr.includes("if_not_exists"),
+        `${file}: if_not_exists is not allowed in a ConditionExpression: ${expr}`,
+      );
+      assert.ok(
+        !/[+*/]/.test(expr) && !/\s-\s/.test(expr),
+        `${file}: arithmetic is not allowed in a ConditionExpression: ${expr}`,
+      );
+    }
+    assert.ok(count > 0, `${file}: expected to find ConditionExpressions to check`);
+  }
+});
