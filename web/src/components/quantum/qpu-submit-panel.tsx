@@ -191,22 +191,30 @@ function Panel({ className }: { className?: string }) {
       )}
 
       {load === "ready" && budget && challenge && (
-        <div className="mt-4 animate-fade-up space-y-4">
-          <BudgetBar budget={budget} />
-          {/* The plan surface: the cost model is the only thing that lets a learner
-              plan a path to all three medals BEFORE spending. OPEN until they have
-              spent anything — a learner who has never run has everything to lose. */}
-          <BudgetGuide budget={budget} />
-          {budget.credentialed ? (
-            isSpent(budget) ? (
-              <BudgetSpent budget={budget} />
+        // Full-width band: money + plan on the LEFT, the interactive run + history on
+        // the RIGHT. Below lg it collapses to one column in this exact DOM order
+        // (budget, guide, run, history) — the same order the narrow rail always used,
+        // so reading order and focus order never diverge from the visual.
+        <div className="mt-4 animate-fade-up grid gap-4 lg:grid-cols-2 lg:items-start">
+          <div className="flex flex-col gap-4">
+            <BudgetBar budget={budget} />
+            {/* The plan surface: the cost model is the only thing that lets a learner
+                plan a path to all three medals BEFORE spending. OPEN until they have
+                spent anything — a learner who has never run has everything to lose. */}
+            <BudgetGuide budget={budget} />
+          </div>
+          <div className="flex flex-col gap-4">
+            {budget.credentialed ? (
+              isSpent(budget) ? (
+                <BudgetSpent budget={budget} />
+              ) : (
+                <SubmitForm budget={budget} onSubmitted={refresh} />
+              )
             ) : (
-              <SubmitForm budget={budget} onSubmitted={refresh} />
-            )
-          ) : (
-            <CredentialGate challenge={challenge} onEarned={refresh} />
-          )}
-          {budget.tasks.length > 0 && <RunHistory tasks={budget.tasks} />}
+              <CredentialGate challenge={challenge} onEarned={refresh} />
+            )}
+            {budget.tasks.length > 0 && <RunHistory tasks={budget.tasks} />}
+          </div>
         </div>
       )}
     </section>
@@ -223,7 +231,9 @@ function Panel({ className }: { className?: string }) {
 function SponsorNote() {
   return (
     <div className="rounded-card border border-accent/30 bg-accent/[0.06] px-5 py-4">
-      <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-200">
+      {/* Cap the reading measure: the banner spans the full-width band, but the prose
+          stays near 70ch so it never becomes an unreadable wide line. */}
+      <p className="max-w-[70ch] text-sm leading-relaxed text-gray-700 dark:text-gray-200">
         <span className="font-semibold text-gray-900 dark:text-white">
           The platform pays for these runs. You are never charged.
         </span>{" "}

@@ -128,7 +128,10 @@ function Bench({
             </section>
           </div>
 
-          {/* THE WORK BAND — the work on the left, the chrome that serves it on the right. */}
+          {/* THE WORK BAND — the learning work on the left, the light chrome on the right.
+              The hardware tool no longer lives in this narrow rail (see below): it was a
+              1,900px tower next to a 700px column, and its editor/cost/history were cramped
+              at rail width. */}
           <div className="mt-4 grid gap-4 lg:grid-cols-12">
             <div className="flex flex-col gap-4 lg:col-span-8">
               <Lab sections={model.sections} runnableTotal={model.runnableTotal} />
@@ -136,7 +139,6 @@ function Bench({
               <Records records={model.records} />
             </div>
             <aside className="flex flex-col gap-4 lg:col-span-4">
-              {qpuOn && <QpuSubmitPanel className={QPU_SHELL} />}
               <WithinReach
                 reachMastery={model.reachMastery}
                 reachConsistency={model.reachConsistency}
@@ -149,6 +151,15 @@ function Bench({
               )}
             </aside>
           </div>
+
+          {/* THE HARDWARE BAND — the one interactive tool on the page gets full width so it
+              can breathe (info left, the editor + run history right), instead of towering in
+              the rail. Env-gated: absent entirely when QPU is not configured. */}
+          {qpuOn && (
+            <div className="mt-4">
+              <QpuSubmitPanel className={QPU_SHELL} />
+            </div>
+          )}
         </div>
       )}
     </Container>
