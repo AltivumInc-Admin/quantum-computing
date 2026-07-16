@@ -7,6 +7,7 @@ import { render, screen } from "@testing-library/react";
 import HomePage, { metadata } from "@/app/page";
 import { getSections } from "@/lib/sections";
 import { GLOSSARY } from "@/lib/glossary";
+import { SINGLE, ROT } from "@/components/quantum/qsim-dsl";
 
 jest.mock("@/components/transition-link", () => {
   const React = require("react");
@@ -119,7 +120,32 @@ describe("HomePage (welcome page)", () => {
     const sections = getSections();
     const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
     expect(screen.getByText(String(notebookTotal))).toBeInTheDocument();
-    expect(screen.getByText(String(GLOSSARY.length))).toBeInTheDocument();
+    // The third stat is the playground's gate count, derived from the same
+    // DSL registry the editor parses (single-qubit + rotations + CNOT).
+    const playgroundGates = SINGLE.size + ROT.size + 1;
+    expect(screen.getByText(String(playgroundGates))).toBeInTheDocument();
+    // The label appears twice by design: an sr-only <dt> plus the visible <dd>.
+    expect(screen.getAllByText(/gates in the live playground/i)).toHaveLength(2);
+    // The glossary count moved out of the hero but still appears on its
+    // toolkit card, sourced from the real glossary.
+    expect(screen.getByText(new RegExp(`${GLOSSARY.length} terms`))).toBeInTheDocument();
+  });
+
+  it("presents the AI tutor band with honest included-free copy", async () => {
+    await renderHome();
+    expect(
+      screen.getByRole("heading", { name: /an ai tutor that knows exactly where you are/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/included free for every learner/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /meet it inside any lesson/i })).toHaveAttribute(
+      "href",
+      "#curriculum"
+    );
+  });
+
+  it("replaces the tutor toolkit card with the self-grading challenges card", async () => {
+    await renderHome();
+    expect(screen.getByText(/challenges that grade themselves/i)).toBeInTheDocument();
   });
 
   it("keeps the hero image decorative and gives feature imagery descriptive alt text", async () => {
