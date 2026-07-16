@@ -44,7 +44,7 @@ export function AccountMenu() {
     return (
       <Link
         href="/login"
-        className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+        className="inline-flex items-center whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
       >
         Sign in
       </Link>
