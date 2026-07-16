@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  quantum-ci-standby: warm-standby CI mirror on AWS CodeBuild. Runs the same
+  test/lint/build-smoke matrix as .github/workflows/ci.yml and reports a single
+  GitHub commit status ("CI (CodeBuild standby)"). Idle by default (no webhook,
+  zero standing cost); infra/ci-standby/failover.sh engages it when GitHub
+  Actions is unavailable and stands it down afterwards.
+
+Parameters:
+  ConnectionArn:
+    Type: String
+    Description: >-
+      ARN of the CodeConnections GitHub App connection (must be AVAILABLE,
+      i.e. the one-time console handshake is complete).
+  RepoUrl:
+    Type: String
+    Default: https://github.com/AltivumInc-Admin/quantum-computing.git
+    Description: HTTPS clone URL of the GitHub repository to mirror CI for.
+
+Resources:
+  CacheBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub quantum-ci-standby-cache-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-stale-cache
+            Status: Enabled
+            ExpirationInDays: 30
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/codebuild/quantum-ci-standby
+      RetentionInDays: 30
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: quantum-ci-standby-codebuild
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub ${LogGroup.Arn}:*
+        - PolicyName: cache
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub ${CacheBucket.Arn}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !GetAtt CacheBucket.Arn
+        - PolicyName: github-connection
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Both namespaces: codeconnections is the current service; some
+              # CodeBuild code paths still authorize via codestar-connections.
+              - Effect: Allow
+                Action:
+                  - codeconnections:GetConnection
+                  - codeconnections:GetConnectionToken
+                  - codeconnections:UseConnection
+                  - codestar-connections:GetConnection
+                  - codestar-connections:GetConnectionToken
+                  - codestar-connections:UseConnection
+                Resource: !Ref ConnectionArn
+
+  Project:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: quantum-ci-standby
+      Description: >-
+        Standby mirror of the GitHub Actions CI matrix (python, web, lambdas,
+        build-smoke). Engaged by infra/ci-standby/failover.sh during a GitHub
+        Actions outage; posts commit status context "CI (CodeBuild standby)".
+      ServiceRole: !GetAtt ServiceRole.Arn
+      TimeoutInMinutes: 60
+      QueuedTimeoutInMinutes: 60
+      ConcurrentBuildLimit: 4
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Cache:
+        Type: S3
+        Location: !Sub ${CacheBucket}/build-cache
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref LogGroup
+      Environment:
+        Type: LINUX_CONTAINER
+        # Ubuntu 22.04 standard:7.0 carries python 3.12 + nodejs 20 (the exact
+        # pins in ci.yml) and apt, which `playwright install --with-deps` needs.
+        Image: aws/codebuild/standard:7.0
+        ComputeType: BUILD_GENERAL1_LARGE
+        EnvironmentVariables:
+          - Name: CI
+            Value: "true"
+      Source:
+        Type: GITHUB
+        Location: !Ref RepoUrl
+        GitCloneDepth: 1
+        ReportBuildStatus: true
+        BuildStatusConfig:
+          Context: CI (CodeBuild standby)
+        Auth:
+          Type: CODECONNECTIONS
+          Resource: !Ref ConnectionArn
+        # The buildspec is deliberately INLINE, not a path in the repo: the
+        # standby must be able to build any commit (including PR heads opened
+        # before this stack existed) and must not be breakable by a PR that
+        # edits or deletes a buildspec file. Trade-off: when ci.yml changes,
+        # update this mirror and redeploy the stack (see README).
+        #
+        # NOTE: no Fn::Sub here — the buildspec is full of shell ${...} which
+        # must reach CodeBuild verbatim.
+        BuildSpec: |
+          version: 0.2
+          # Mirror of .github/workflows/ci.yml (jobs: web, lambdas, python,
+          # build-smoke) as one sequential build, ordered fastest-fail-first.
+          # Every command is self-contained (explicit cd) — no reliance on
+          # cwd or env persisting between commands.
+          phases:
+            install:
+              runtime-versions:
+                python: 3.12
+                nodejs: 20
+            build:
+              commands:
+                # --- Web tests + lint ---
+                - cd "$CODEBUILD_SRC_DIR/web" && npm ci
+                - cd "$CODEBUILD_SRC_DIR/web" && npm run lint
+                - cd "$CODEBUILD_SRC_DIR/web" && npm test
+                # --- Lambda tests (tutor, qpu, sync, review-email) ---
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  for d in tutor qpu sync review-email; do
+                    echo "=== lambda/$d ==="
+                    (cd "lambda/$d" && npm ci && npm test) || exit 1
+                  done
+                # --- Python tests + lint ---
+                - cd "$CODEBUILD_SRC_DIR" && python -m pip install --upgrade pip
+                # MUST be .[dev,full] (not .[dev]) or the pytest.importorskip
+                # tests for pennylane / openfermion silently skip (green-but-blind).
+                - cd "$CODEBUILD_SRC_DIR" && pip install -e ".[dev,full]"
+                # qcsim is a separate package the parity + contract tests import.
+                - cd "$CODEBUILD_SRC_DIR" && pip install -e ./qcsim
+                - cd "$CODEBUILD_SRC_DIR" && make test
+                - cd "$CODEBUILD_SRC_DIR" && make lint
+                # Drift gate: committed manifests must match a fresh scan.
+                - cd "$CODEBUILD_SRC_DIR" && python scripts/validate_runnable.py --check
+                # --- JupyterLite + static export build smoke ---
+                - cd "$CODEBUILD_SRC_DIR" && bash web/jupyterlite-build/build.sh
+                # build.sh regenerates the committed jupyter_lite_config.json;
+                # assert the committed pin matches (catches stale kernel pins).
+                - cd "$CODEBUILD_SRC_DIR" && git diff --exit-code -- web/jupyterlite-build/jupyter_lite_config.json
+                # Assert the self-hosted lesson-runtime Pyodide matches the
+                # runtime constant and its wheel closure is staged.
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  test -f web/public/pyodide/pyodide.js || { echo "self-hosted pyodide.js missing"; exit 1; }
+                  ver=$(grep -oE 'PYODIDE_VERSION *= *"[0-9.]+"' web/src/lib/pyodide-runtime.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+                  # package.json carries the release version; pyodide-lock.json's
+                  # info.version can be an unstamped dev version (false failure).
+                  python3 -c "import json,sys; v=json.load(open('web/public/pyodide/package.json'))['version']; sys.exit(0 if v == '$ver' else 'self-hosted pyodide '+v+' != runtime $ver')"
+                  for w in micropip numpy; do
+                    ls web/public/pyodide/$w-*.whl >/dev/null 2>&1 || { echo "missing closure root wheel: $w"; exit 1; }
+                  done
+                  echo "self-hosted Pyodide $ver OK (core + micropip/numpy dependency closure)"
+                # Assert the LAB kernel is wired fully same-origin (no CDN/PyPI).
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  base=web/public/lab/static/pyodide
+                  test -f "$base/pyodide.js" || { echo "lab self-hosted pyodide.js missing"; exit 1; }
+                  for w in micropip sqlite3 ipython jedi numpy matplotlib; do
+                    ls "$base/$w"-*.whl >/dev/null 2>&1 || { echo "missing lab closure root wheel: $w"; exit 1; }
+                  done
+                  python3 -c "import json,sys; d=json.load(open('web/public/lab/pypi/all.json')); sys.exit(0 if 'comm' in d else 'comm missing from local piplite index')"
+                  python3 -c "import json,sys; d=json.load(open('web/public/lab/jupyter-lite.json')); s=d.get('jupyter-config-data',d); ks=s['litePluginSettings']['@jupyterlite/pyodide-kernel-extension:kernel']; u=ks.get('pyodideUrl',''); assert 'jsdelivr' not in u and u.startswith('./'), 'pyodideUrl not same-origin: '+repr(u); assert ks.get('disablePyPIFallback') is True, 'disablePyPIFallback not set'; print('lab kernel same-origin OK: pyodideUrl='+u)"
+                  echo "LAB self-host OK (Pyodide + closure + comm, no third-party CDN)"
+                # Static export (node_modules already installed by the web job).
+                - cd "$CODEBUILD_SRC_DIR/web" && npm run build
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  test -d web/out || { echo "missing web/out (static export)"; exit 1; }
+                  test -d web/public/lab || { echo "missing web/public/lab (JupyterLite)"; exit 1; }
+                  echo "Build artifacts present: web/out/ and web/public/lab/"
+                # Real in-browser smoke: a browser-runnable notebook under actual
+                # Pyodide + the local qcsim wheel, deterministic output asserted.
+                - cd "$CODEBUILD_SRC_DIR/web" && npx playwright install --with-deps chromium
+                - cd "$CODEBUILD_SRC_DIR/web" && npx playwright test
+          cache:
+            paths:
+              - /root/.cache/pip/**/*
+              - /root/.npm/**/*
+              - /root/.cache/ms-playwright/**/*
+
+Outputs:
+  ProjectName:
+    Value: !Ref Project
+  StatusContext:
+    Description: The GitHub commit-status context this project reports.
+    Value: CI (CodeBuild standby)
+  CacheBucketName:
+    Value: !Ref CacheBucket
