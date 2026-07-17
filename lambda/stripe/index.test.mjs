@@ -206,6 +206,32 @@ test("POST /checkout builds a one-time payment session for a top-up", async () =
   assert.equal("subscription_data" in s, false);
 });
 
+test("POST /checkout accepts a custom whole-dollar top-up and prices it ad hoc", async () => {
+  const stripe = stubStripe();
+  const core = createHandlerCore({ stripe, ddb: stubDdb({ GetItemCommand: {} }), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd: 37 } }));
+  assert.equal(res.statusCode, 200);
+  const s = stripe.calls.sessionsCreate[0];
+  assert.equal(s.mode, "payment");
+  // ad hoc price against the shared credits product, $37.00
+  assert.equal(s.line_items[0].price_data.product, "ql_credits");
+  assert.equal(s.line_items[0].price_data.unit_amount, 3700);
+  assert.equal(s.line_items[0].price_data.currency, "usd");
+  // credits computed SERVER-side at the 1:1 peg
+  assert.equal(s.metadata.credits, "3700");
+  assert.equal(s.metadata.kind, "topup");
+  // no lookup-key price resolution happened
+  assert.equal(stripe.calls.pricesList.length, 0);
+});
+
+test("POST /checkout rejects out-of-bounds or fractional custom amounts", async () => {
+  const core = mk();
+  for (const amountUsd of [4, 501, 12.5, -5, "20", 0]) {
+    const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd } }));
+    assert.equal(res.statusCode, 400, `amountUsd=${amountUsd} must be rejected`);
+  }
+});
+
 // ---- POST /portal ----------------------------------------------------------
 
 test("POST /portal 400s before a customer exists, else returns a portal URL", async () => {
