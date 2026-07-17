@@ -13,6 +13,7 @@ import {
 import { expectCardId, ratingForPrediction } from "@/lib/challenge-review";
 import { gradeCardIfDue, getCardState, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
+import { usePersistentSolved } from "./use-persistent-solved";
 import { Chip, ErrorCard, WidgetCard, primaryActionClass } from "./widget-ui";
 
 /**
@@ -74,6 +75,10 @@ export function ExpectationWidget({
   const truth = truthResult.truth;
 
   const cardId = expectCardId(spec?.id ?? "invalid");
+  // The uniform solved-once-ever flag (qc:expect:<id>). Only a correct commit
+  // marks it; the header chip stays a verdict of THIS commit (a pre-commit
+  // "Correct" would misdescribe the fresh attempt), so the read is unused.
+  const [, markSolved] = usePersistentSolved("expect", spec?.id ?? "invalid");
   const [selected, setSelected] = useState<number | null>(null);
   const [committed, setCommitted] = useState(false);
   const [correct, setCorrect] = useState(false);
@@ -117,6 +122,7 @@ export function ExpectationWidget({
     setCommitted(true);
     const graded = gradeCardIfDue(cardId, ratingForPrediction(isCorrect));
     if (graded) setScheduled(nextIntervalDays(graded));
+    if (isCorrect) markSolved();
   };
 
   const optionTone = (i: number): string => {

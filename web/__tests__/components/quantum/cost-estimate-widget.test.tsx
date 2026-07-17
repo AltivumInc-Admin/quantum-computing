@@ -63,6 +63,22 @@ describe("CostEstimateWidget", () => {
     expect(card.lapses).toBe(1);
   });
 
+  // The uniform solved-once-ever flag: qc:cost:<id> uses the same set-once
+  // "1" shape as qc:challenge:/qc:debug:, so solved-counting surfaces and the
+  // sync snapshot see one shape across every Rep kind.
+  it("a correct commit persists the qc:cost solved flag; a miss never writes it", () => {
+    const first = render(<CostEstimateWidget source={ionq2000} />);
+    fireEvent.click(screen.getByRole("button", { name: "$160.00" })); // forgot the task fee
+    fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
+    expect(localStorage.getItem("qc:cost:t-cost")).toBeNull();
+    first.unmount();
+
+    render(<CostEstimateWidget source={ionq2000} />);
+    fireEvent.click(screen.getByRole("button", { name: "$160.30" }));
+    fireEvent.click(screen.getByRole("button", { name: /lock in estimate/i }));
+    expect(localStorage.getItem("qc:cost:t-cost")).toBe("1");
+  });
+
   it("locks the options after commit", () => {
     render(<CostEstimateWidget source={ionq2000} />);
     fireEvent.click(screen.getByRole("button", { name: "$160.30" }));

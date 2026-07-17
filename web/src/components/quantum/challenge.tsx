@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { parseChallenge } from "@/lib/challenge-schema";
 import { gradeTs, type GradeResult } from "@/lib/challenge-grade";
 import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { challengeCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { recordBest, getBest } from "@/lib/skill-measure";
+import { usePersistentSolved } from "./use-persistent-solved";
 
 /**
  * A self-checking coding challenge rendered from a ```qchallenge fenced block.
@@ -16,34 +17,6 @@ import { recordBest, getBest } from "@/lib/skill-measure";
  * Tier "py" defers to the Pyodide grader (free-form Braket Python), loaded
  * lazily only when such a challenge is checked.
  */
-
-const PROGRESS_EVENT = "qc-progress";
-
-function usePersistentSolved(key: string): [boolean, () => void] {
-  const solved = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener(PROGRESS_EVENT, cb);
-      return () => window.removeEventListener(PROGRESS_EVENT, cb);
-    },
-    () => {
-      try {
-        return localStorage.getItem(key) === "1";
-      } catch {
-        return false;
-      }
-    },
-    () => false
-  );
-  const mark = () => {
-    try {
-      localStorage.setItem(key, "1");
-      window.dispatchEvent(new Event(PROGRESS_EVENT));
-    } catch {
-      /* storage unavailable — grading still works, just not remembered */
-    }
-  };
-  return [solved, mark];
-}
 
 function CheckIcon() {
   return (
@@ -91,7 +64,9 @@ export function Challenge({
   const [result, setResult] = useState<GradeResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [solved, markSolved] = usePersistentSolved(
-    `qc:challenge:${spec?.id ?? "invalid"}`
+    "challenge",
+    spec?.id ?? "invalid",
+    persist
   );
   const editorId = useId();
 

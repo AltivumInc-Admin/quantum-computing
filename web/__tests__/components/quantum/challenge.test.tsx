@@ -52,6 +52,13 @@ describe("Challenge", () => {
     expect(screen.getByText(/entangle after a hadamard/i)).toBeInTheDocument();
   });
 
+  it("a wrong attempt never writes the solved flag", () => {
+    render(<Challenge source={bell} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "H 0" } });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(localStorage.getItem("qc:challenge:bell-widget-1")).toBeNull();
+  });
+
   // The grade -> CardState adapter: a solved challenge becomes a review card.
   const challengeCardKey = () =>
     Object.keys(localStorage).find((k) => k.startsWith("qc:card:challenge:"));

@@ -74,6 +74,22 @@ describe("ExpectationWidget", () => {
     expect(screen.getByRole("button", { name: "1.00" })).toBeDisabled();
   });
 
+  // The uniform solved-once-ever flag: qc:expect:<id> uses the same set-once
+  // "1" shape as qc:challenge:/qc:debug:, so solved-counting surfaces and the
+  // sync snapshot see one shape across every Rep kind.
+  it("a correct commit persists the qc:expect solved flag; a miss never writes it", () => {
+    const first = render(<ExpectationWidget source={zOnPlus} />);
+    fireEvent.click(screen.getByRole("button", { name: "0.50" })); // P(+1) confusion
+    fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
+    expect(localStorage.getItem("qc:expect:t-expect")).toBeNull();
+    first.unmount();
+
+    render(<ExpectationWidget source={zOnPlus} />);
+    fireEvent.click(screen.getByRole("button", { name: "0.00" }));
+    fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
+    expect(localStorage.getItem("qc:expect:t-expect")).toBe("1");
+  });
+
   it("caches its kind + raw fence source so /review can re-mount the live widget", () => {
     render(<ExpectationWidget source={zOnPlus} />);
     const content = JSON.parse(localStorage.getItem("qc:card-content:expect:t-expect")!);
