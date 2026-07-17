@@ -17,16 +17,24 @@
 // (never per keystroke) so the sync debounce and workspace re-reads stay calm.
 
 import { recordActivity } from "./activity-log";
+import { sanitizeTheta } from "./circuit-url";
 import { PROGRESS_EVENT_NAME } from "./progress-store";
 
-export type SavedCircuit = { id: string; name: string; src: string; updatedAt: number };
+export type SavedCircuit = {
+  id: string;
+  name: string;
+  src: string;
+  /** Slider-bound rotation angle; absent on pre-theta records — callers default pi/2. */
+  theta?: number;
+  updatedAt: number;
+};
 
 export const CIRCUIT_KEY_PREFIX = "qc:circuit:";
 export const MAX_SAVED_CIRCUITS = 20;
 export const MAX_CIRCUIT_SRC = 2000;
 export const MAX_CIRCUIT_NAME = 80;
 
-type StoredLive = { v: 1; name: string; src: string; updatedAt: number };
+type StoredLive = { v: 1; name: string; src: string; theta?: number; updatedAt: number };
 type StoredTombstone = { v: 1; deleted: true; updatedAt: number };
 
 const circuitKey = (id: string) => `${CIRCUIT_KEY_PREFIX}${id}`;
@@ -40,8 +48,12 @@ function parseStored(raw: string): StoredLive | StoredTombstone | null {
     if (o.deleted === true) return { v: 1, deleted: true, updatedAt: o.updatedAt };
     if (typeof o.name !== "string" || typeof o.src !== "string") return null;
     // Lenient on read: length caps are save-time policy, not read-time — a
-    // synced copy from an older/newer cap regime must still load.
-    return { v: 1, name: o.name, src: o.src, updatedAt: o.updatedAt };
+    // synced copy from an older/newer cap regime must still load. A corrupt
+    // theta is dropped (never rejects the row); pre-theta records simply lack it.
+    const theta = sanitizeTheta(o.theta);
+    return theta !== undefined
+      ? { v: 1, name: o.name, src: o.src, theta, updatedAt: o.updatedAt }
+      : { v: 1, name: o.name, src: o.src, updatedAt: o.updatedAt };
   } catch {
     return null;
   }
@@ -66,6 +78,7 @@ export function listCircuits(): SavedCircuit[] {
         id: key.slice(CIRCUIT_KEY_PREFIX.length),
         name: stored.name,
         src: stored.src,
+        ...(stored.theta !== undefined && { theta: stored.theta }),
         updatedAt: stored.updatedAt,
       });
     }
@@ -81,14 +94,20 @@ export function readCircuit(id: string): SavedCircuit | null {
     if (raw === null) return null;
     const stored = parseStored(raw);
     if (!stored || "deleted" in stored) return null;
-    return { id, name: stored.name, src: stored.src, updatedAt: stored.updatedAt };
+    return {
+      id,
+      name: stored.name,
+      src: stored.src,
+      ...(stored.theta !== undefined && { theta: stored.theta }),
+      updatedAt: stored.updatedAt,
+    };
   } catch {
     return null;
   }
 }
 
 export function saveCircuit(
-  input: { id?: string; name: string; src: string },
+  input: { id?: string; name: string; src: string; theta?: number },
   nowMs: number = Date.now(),
 ): { ok: true; circuit: SavedCircuit } | { ok: false; error: string } {
   const name = input.name.trim();
@@ -110,11 +129,25 @@ export function saveCircuit(
         error: `save limit reached (${MAX_SAVED_CIRCUITS}) — delete a circuit first`,
       };
     }
-    const stored: StoredLive = { v: 1, name, src: input.src, updatedAt: nowMs };
+    // Same discipline on write as on read: a non-finite theta is never stored.
+    const theta = sanitizeTheta(input.theta);
+    const stored: StoredLive =
+      theta !== undefined
+        ? { v: 1, name, src: input.src, theta, updatedAt: nowMs }
+        : { v: 1, name, src: input.src, updatedAt: nowMs };
     localStorage.setItem(circuitKey(id), JSON.stringify(stored));
     recordActivity(nowMs); // building circuits is Runbook activity (rides this dispatch)
     dispatchProgress();
-    return { ok: true, circuit: { id, name, src: input.src, updatedAt: nowMs } };
+    return {
+      ok: true,
+      circuit: {
+        id,
+        name,
+        src: input.src,
+        ...(theta !== undefined && { theta }),
+        updatedAt: nowMs,
+      },
+    };
   } catch {
     return { ok: false, error: "could not save — storage is unavailable" };
   }
