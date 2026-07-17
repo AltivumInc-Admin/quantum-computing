@@ -258,6 +258,12 @@ circuit = Circuit().h(0).cnot(0, 1)
 print(circuit.state_vector())
 ```
 
+One caveat before you paste that into a local notebook: `circuit.state_vector()`
+returning the amplitudes directly is a convenience of the browser kernel. Against
+the real Braket SDK the same call instead *registers a result type* on the circuit
+— locally, use the portable helper the course notebooks use:
+`from lib.utils.statevector import statevector`, then `print(statevector(circuit))`.
+
 That two-line circuit is the climax of this whole module. Let's earn it.
 
 ## Two qubits, and the gates that bind them

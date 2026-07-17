@@ -36,6 +36,33 @@ already imported.
 
 All gate methods mutate the circuit in place AND return `self` for chaining.
 
+### `Circuit.state_vector()` — DIVERGES from the real SDK
+
+qcsim's `.state_vector()` computes the final amplitudes and returns a
+`numpy.ndarray`. The real SDK's `Circuit.state_vector()` does something
+entirely different: it registers a `StateVector` **result type** on the
+circuit and returns the *circuit* (for chaining) — the amplitudes only
+exist on a device result, via `device.run(circuit, shots=0).result().values[0]`.
+So `sv = circuit.state_vector()` works in the browser but raises `TypeError`
+under the documented local path (`make setup` installs the real SDK) the
+moment `sv` is used as an array.
+
+Curriculum notebooks must NOT call `.state_vector()` directly —
+`scripts/validate_runnable.py` rejects it in browser-runnable notebooks
+(`DIVERGENT_CALL_ATTRS`) — and use the portable helper instead, which
+branches on the engine and returns the amplitudes as a complex ndarray
+under both:
+
+```python
+from lib.utils.statevector import statevector
+
+sv = statevector(circuit)   # numpy.ndarray under qcsim AND the real SDK
+```
+
+qcsim's method remains the browser-side workhorse: the helper delegates to
+it, and `web/src/lib/pyodide-grader.ts` calls it directly (Pyodide-only
+code, never executed under the real SDK).
+
 ### `braket.devices.LocalSimulator`
 
 | Method | Notes |

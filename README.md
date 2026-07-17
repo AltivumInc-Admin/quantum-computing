@@ -404,7 +404,7 @@ result.measurement_counts                 # Counter({"00": ~500, "11": ~500})
 | Area | Coverage |
 |---|---|
 | **Gates** | `h x y z s t i`, `rx ry rz`, `cnot cz cphaseshift swap`, `ccnot` (Toffoli) — up to 3-qubit gates |
-| **Circuit** | chaining, `.add_circuit()`, `.adjoint()`, `.instructions`, `.qubit_count`, `.depth`, `.state_vector()`, ASCII `str()` |
+| **Circuit** | chaining, `.add_circuit()`, `.adjoint()`, `.instructions`, `.qubit_count`, `.depth`, ASCII `str()`. (`.state_vector()` exists but DIVERGES from the real SDK — notebooks read amplitudes via the portable `lib.utils.statevector.statevector(circuit)` helper instead; see `qcsim/API.md`.) |
 | **Execution** | `LocalSimulator().run(circuit, shots)` → `.result()` with `.measurement_counts`, `.measurements`, `.measurement_probabilities` |
 | **Braket parallels** | `qcsim.Circuit ↔ braket.circuits.Circuit`, `qcsim.LocalSimulator ↔ braket.devices.LocalSimulator`, result types mirror `GateModelQuantumTaskResult` |
 | **Intentionally *not* covered** | `braket.aws` / real hardware, noise channels, mid-circuit measurement, managed simulators, `.expectation()`/`.probability()` result types |

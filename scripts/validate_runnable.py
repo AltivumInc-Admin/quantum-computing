@@ -80,14 +80,25 @@ DENIED_IMPORT_PREFIXES = (
 # Names that only exist in the real Braket SDK (hardware / managed jobs).
 DENIED_NAMES = {"AwsDevice", "AwsQuantumJob", "AwsSession", "AwsQuantumJobResult"}
 
-# Braket result-type methods qcsim does not implement (it exposes state_vector()
-# directly and computes expectations from counts instead).
+# Braket result-type methods qcsim does not implement (notebooks compute
+# expectations from counts instead).
 DENIED_CALL_ATTRS = {
     "probability",
     "expectation",
     "amplitude",
     "density_matrix",
     "add_result_type",
+}
+
+# Methods whose SEMANTICS diverge between qcsim and the real SDK, mapped to the
+# sanctioned portable replacement. qcsim's Circuit.state_vector() computes and
+# returns the amplitudes as an ndarray; the real SDK's registers a StateVector
+# result type and returns the circuit, so `sv = circuit.state_vector()` runs in
+# the browser but crashes under the documented local path (make setup + make
+# lab installs the REAL SDK). Runnable notebooks must use the helper, which
+# branches on the engine and returns the amplitudes under both.
+DIVERGENT_CALL_ATTRS = {
+    "state_vector": "from lib.utils.statevector import statevector; sv = statevector(circuit)",
 }
 
 
@@ -185,6 +196,12 @@ def scan_notebook(notebook_path: Path) -> list[str]:
                     violations.append(
                         f"cell {idx}: forbidden call '.{node.func.attr}()' "
                         f"(qcsim has no Braket result types)"
+                    )
+                elif node.func.attr in DIVERGENT_CALL_ATTRS:
+                    violations.append(
+                        f"cell {idx}: forbidden call '.{node.func.attr}()' "
+                        f"(semantics diverge between qcsim and the real Braket SDK; "
+                        f"use the portable helper: {DIVERGENT_CALL_ATTRS[node.func.attr]})"
                     )
     return violations
 
