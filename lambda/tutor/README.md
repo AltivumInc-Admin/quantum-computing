@@ -157,13 +157,61 @@ curl -N -X POST "<FunctionUrl>" \
      throttled rather than fanning out into unbounded paid generations. The
      template also scopes the Bedrock IAM `Resource` to the inference-profile + its
      foundation-model ARNs (least privilege, not `*`) and caps `maxTokens` at 800.
-     A CloudWatch alarm `quantum-tutor-high-invocations` (hourly Invocations > 500)
-     notifies the `quantum-tutor-alerts` SNS topic (managed separately). Log
-     retention is now **stack-managed** by the `TutorLogGroup` resource
-     (`LogRetentionInDays`, default 30) — see [Log retention](#log-retention).
+     Monitoring is now **stack-managed** (see [Alarms](#alarms)): the
+     `quantum-tutor-high-invocations-stack` alarm (hourly Invocations Sum > 500)
+     and the `quantum-tutor-errors` metric-filter alarm (any `tutorError` log line
+     in 5 minutes) both notify the stack's own `quantum-tutor-stack-alerts` SNS
+     topic (`AlertEmail` parameter). Log retention is likewise stack-managed by
+     the `TutorLogGroup` resource (`LogRetentionInDays`, default 30) — see
+     [Log retention](#log-retention).
 - **Teardown:** `sam delete` (SAM) or `aws lambda delete-function-url-config` +
   `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`. Also
   delete the application inference profile (below).
+
+## Alarms
+
+Two CloudWatch alarms are declared in `template.yaml`, both notifying the
+stack-managed `quantum-tutor-stack-alerts` SNS topic (email subscription via the
+`AlertEmail` parameter, default christian.perez@altivum.io):
+
+- **`quantum-tutor-high-invocations-stack`** — hourly Invocations Sum > 500.
+  The stack-managed successor to the console-created
+  `quantum-tutor-high-invocations` alarm (same metric, statistic, period, and
+  threshold). The name is deliberately different: `PutMetricAlarm` upserts by
+  name, so reusing the existing name would either fail stack creation or
+  silently seize the console-created resource — and then delete it on rollback.
+- **`quantum-tutor-errors`** — fed by the `TutorErrorMetricFilter` on the
+  function's log group (`QuantumTutor/TutorError`, Sum over 5 minutes > 0).
+  `index.mjs` streams inside a committed HTTP 200, so a Bedrock failure raises
+  neither the HTTP status nor the Lambda `Errors` metric; its only trace is the
+  `console.error(JSON.stringify({ tutorError: true, ... }))` line, which the
+  filter turns into a metric. The pattern is the literal term `"tutorError"`,
+  not a JSON selector — Lambda's default text log format prefixes
+  `console.error` output with timestamp/request-id, so a JSON selector would
+  never match. `template.test.mjs` pins the term to the actual emission in
+  `index.mjs` so the two cannot drift.
+
+The topic is named `quantum-tutor-stack-alerts`, **not** `quantum-tutor-alerts`:
+that topic already exists in the account, created by hand for the old
+console-managed alarm, and SNS `CreateTopic` is idempotent by name — reusing it
+would let CloudFormation silently claim the live topic and delete it (with its
+confirmed subscriptions) on stack delete or rollback.
+
+**Migration runbook (one-time, right after the first deploy of this version):**
+
+1. Manually delete the console-created alarm — it now duplicates the
+   stack-managed one:
+   ```bash
+   aws cloudwatch delete-alarms --region us-east-2 --alarm-names quantum-tutor-high-invocations
+   ```
+2. Optionally retire the hand-created `quantum-tutor-alerts` SNS topic once
+   nothing references it (step 1 removes its last consumer):
+   ```bash
+   aws sns delete-topic --region us-east-2 \
+     --topic-arn arn:aws:sns:us-east-2:<ACCOUNT_ID>:quantum-tutor-alerts
+   ```
+3. Confirm the new topic's email subscription from the `AlertEmail` inbox —
+   an SNS email subscription delivers nothing until confirmed once.
 
 ## Log retention
 
