@@ -127,3 +127,17 @@ test("every alarm in the template notifies the alerts topic", () => {
     assert.match(body(alarm), /AlarmActions: \[!Ref AlertsTopic\]/, `${alarm}: must notify the alerts topic`);
   }
 });
+
+test("the tutor log group keeps its LITERAL name (import-compatibility)", () => {
+  const b = body("TutorLogGroup");
+  assert.ok(b, "TutorLogGroup resource must exist");
+  // The group was adopted via CloudFormation resource IMPORT, which stores the
+  // literal physical name. A raw !Sub expression here is flagged as a
+  // LogGroupName CHANGE (RequiresRecreation: Always) on every subsequent
+  // deploy, planning a replacement that fails on the existing name. The
+  // function name is pinned (FunctionName: quantum-tutor), so the literal can
+  // never drift from the resolved expression.
+  assert.match(b, /LogGroupName: \/aws\/lambda\/quantum-tutor$/m, "LogGroupName must be the literal string");
+  assert.ok(!/LogGroupName: !Sub/.test(b), "LogGroupName must NOT be a !Sub expression (breaks post-import deploys)");
+  assert.match(b, /DeletionPolicy: Retain/, "imported resources require a DeletionPolicy");
+});

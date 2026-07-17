@@ -141,7 +141,14 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${TutorFunction}"
+      # Literal, NOT !Sub "/aws/lambda/${TutorFunction}": the group was adopted
+      # into the stack via resource IMPORT, which stores the literal physical
+      # name. CloudFormation compares the stored literal against a raw !Sub
+      # expression, flags LogGroupName as changed (RequiresRecreation: Always),
+      # and plans a REPLACEMENT that would fail on the existing name. The
+      # function name is pinned (FunctionName: quantum-tutor), so the literal
+      # can never drift from the resolved expression.
+      LogGroupName: /aws/lambda/quantum-tutor
       RetentionInDays: !Ref LogRetentionInDays
 
   # ---- Human notification path (pattern proven in lambda/qpu/template.yaml) ----
