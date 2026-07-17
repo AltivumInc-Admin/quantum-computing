@@ -40,6 +40,12 @@ export function Nav() {
           >
             Credentials
           </Link>
+          <Link
+            href="/pricing"
+            className="hidden sm:inline-flex items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+          >
+            Pricing
+          </Link>
           <ReviewNavBadge />
           <AccountMenu />
           <ThemeToggle />

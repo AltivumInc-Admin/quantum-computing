@@ -46,12 +46,17 @@ describe("Footer", () => {
     expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/review");
   });
 
+  it("links to the pricing page", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
+  });
+
   it("links to the privacy page", () => {
     render(<Footer />);
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
   });
 
-  it("lets the nav row wrap so seven links fit on narrow viewports", () => {
+  it("lets the nav row wrap so eight links fit on narrow viewports", () => {
     render(<Footer />);
     const nav = screen.getByRole("navigation", { name: "Footer" });
     expect(nav).toHaveClass("flex-wrap");

@@ -31,6 +31,9 @@ export function Footer() {
           <Link href="/review" className={linkClass}>
             Review
           </Link>
+          <Link href="/pricing" className={linkClass}>
+            Pricing
+          </Link>
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={linkClass}>
             GitHub
           </a>

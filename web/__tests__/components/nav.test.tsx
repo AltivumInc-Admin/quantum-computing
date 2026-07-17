@@ -45,6 +45,11 @@ describe("Nav", () => {
     expect(link).toHaveAttribute("href", "/");
   });
 
+  it("should link to the pricing page", () => {
+    render(<Nav />);
+    expect(screen.getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
+  });
+
   it("should render the ThemeToggle component", () => {
     render(<Nav />);
     expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
