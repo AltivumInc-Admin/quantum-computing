@@ -16,7 +16,12 @@ import {
   SyncAccountMismatchError,
   SYNC_META_KEY,
   KEEPALIVE_BODY_LIMIT,
+  getSyncHealth,
+  subscribeSyncHealth,
+  resetSyncHealth,
+  DEGRADED_AFTER,
 } from "@/lib/sync-client";
+import { fetchAuthSession } from "aws-amplify/auth";
 
 jest.mock("aws-amplify/auth", () => ({
   fetchAuthSession: jest.fn(async () => ({
@@ -304,5 +309,87 @@ describe("exitFlush", () => {
     localStorage.setItem("qc:section:c", "1");
     expect(exitFlush()).toBe(true);
     expect(JSON.parse(String(calls[1].init?.body)).baseVersion).toBe(4);
+  });
+});
+
+describe("sync health", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLastGoodSync();
+    resetSyncHealth();
+    process.env.NEXT_PUBLIC_SYNC_URL = "https://sync.example";
+  });
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_SYNC_URL;
+  });
+
+  const failOnce = async (status: number) => {
+    mockFetch([{ status }]);
+    await expect(syncNow()).rejects.toThrow();
+  };
+
+  it("starts ok", () => {
+    expect(getSyncHealth()).toBe("ok");
+  });
+
+  it("one transient network/server failure shows nothing; consecutive failures degrade", async () => {
+    await failOnce(500);
+    expect(getSyncHealth()).toBe("ok"); // a single blip must not alarm
+    for (let i = 1; i < DEGRADED_AFTER; i++) await failOnce(500);
+    expect(getSyncHealth()).toBe("degraded");
+  });
+
+  it("an auth rejection (401) flips to auth immediately — retrying cannot fix it", async () => {
+    await failOnce(401);
+    expect(getSyncHealth()).toBe("auth");
+  });
+
+  it("a missing session token also classifies as auth", async () => {
+    (fetchAuthSession as jest.Mock).mockResolvedValueOnce({ tokens: undefined });
+    await expect(syncNow()).rejects.toThrow(/not signed in/);
+    expect(getSyncHealth()).toBe("auth");
+  });
+
+  it("a successful sync resets both the state and the consecutive-failure count", async () => {
+    for (let i = 0; i < DEGRADED_AFTER; i++) await failOnce(503);
+    expect(getSyncHealth()).toBe("degraded");
+
+    mockFetch([{ status: 200, body: { version: 1, data: {} } }]);
+    await syncNow();
+    expect(getSyncHealth()).toBe("ok");
+
+    // The counter reset too: one fresh failure is a blip again, not degradation.
+    await failOnce(500);
+    expect(getSyncHealth()).toBe("ok");
+  });
+
+  it("SyncAccountMismatch is an explicit choice, not a health event", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    for (let i = 0; i < DEGRADED_AFTER; i++) {
+      mockFetch([]);
+      await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
+    }
+    expect(getSyncHealth()).toBe("ok");
+  });
+
+  it("notifies subscribers on transitions only, and unsubscribes cleanly", async () => {
+    const seen: string[] = [];
+    const unsubscribe = subscribeSyncHealth(() => seen.push(getSyncHealth()));
+
+    await failOnce(500); // ok -> ok: no transition, no notification
+    expect(seen).toEqual([]);
+
+    await failOnce(500); // -> degraded
+    await failOnce(500); // degraded -> degraded: silent
+    expect(seen).toEqual(["degraded"]);
+
+    mockFetch([{ status: 200, body: { version: 1, data: {} } }]);
+    await syncNow(); // -> ok
+    expect(seen).toEqual(["degraded", "ok"]);
+
+    unsubscribe();
+    await failOnce(401);
+    expect(seen).toEqual(["degraded", "ok"]); // no longer listening
+    expect(getSyncHealth()).toBe("auth");
   });
 });

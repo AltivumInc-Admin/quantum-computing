@@ -34,6 +34,87 @@ export class SyncAccountMismatchError extends Error {
 
 export type AccountChange = "adopt" | "reset";
 
+/** A sync HTTP round trip the server refused — carries the status for triage. */
+class SyncHttpError extends Error {
+  constructor(
+    op: "pull" | "push",
+    readonly status: number,
+  ) {
+    super(`sync ${op} failed (${status})`);
+    this.name = "SyncHttpError";
+  }
+}
+
+/** fetchAuthSession produced no usable token — the session is gone, not the network. */
+class SyncAuthError extends Error {
+  constructor() {
+    super("not signed in");
+    this.name = "SyncAuthError";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sync health — a tiny external store (getSnapshot/subscribe, the same shape
+// review-store exposes) so the UI can say, quietly, that background sync has
+// stopped working. Without it a permanently failing sync (expired session,
+// server down) is invisible: progress silently stops crossing devices.
+//
+//   ok       — no signal; the last attempt succeeded (or none has run yet)
+//   degraded — repeated network/server failures; retries continue
+//   auth     — the session is unusable; only signing in again can fix it
+//
+// One transient failure on a flaky network is normal and shows nothing; the
+// degraded signal appears only after DEGRADED_AFTER consecutive failures.
+// Any successful sync resets to ok. SyncAccountMismatch is NOT a health event —
+// it has its own explicit adopt-vs-reset flow in the workspace masthead.
+// ---------------------------------------------------------------------------
+
+export type SyncHealth = "ok" | "degraded" | "auth";
+
+export const DEGRADED_AFTER = 2;
+
+let consecutiveFailures = 0;
+let health: SyncHealth = "ok";
+const healthListeners = new Set<() => void>();
+
+function setHealth(next: SyncHealth): void {
+  if (health === next) return;
+  health = next;
+  for (const listener of [...healthListeners]) listener();
+}
+
+export function getSyncHealth(): SyncHealth {
+  return health;
+}
+
+export function subscribeSyncHealth(listener: () => void): () => void {
+  healthListeners.add(listener);
+  return () => {
+    healthListeners.delete(listener);
+  };
+}
+
+/** Test hook — health is module state, like the exit-flush cache. */
+export function resetSyncHealth(): void {
+  consecutiveFailures = 0;
+  setHealth("ok");
+}
+
+function recordSyncSuccess(): void {
+  consecutiveFailures = 0;
+  setHealth("ok");
+}
+
+function recordSyncFailure(e: unknown): void {
+  if (e instanceof SyncAccountMismatchError) return; // an explicit choice, not a fault
+  consecutiveFailures += 1;
+  const isAuth =
+    e instanceof SyncAuthError ||
+    (e instanceof SyncHttpError && (e.status === 401 || e.status === 403));
+  if (isAuth) setHealth("auth");
+  else if (consecutiveFailures >= DEGRADED_AFTER) setHealth("degraded");
+}
+
 export function syncUrl(): string | null {
   return process.env.NEXT_PUBLIC_SYNC_URL || null;
 }
@@ -79,13 +160,13 @@ async function session(): Promise<{ auth: string; sub: string }> {
   const { tokens } = await fetchAuthSession();
   const token = tokens?.idToken?.toString();
   const sub = tokens?.idToken?.payload?.sub;
-  if (!token || typeof sub !== "string") throw new Error("not signed in");
+  if (!token || typeof sub !== "string") throw new SyncAuthError();
   return { auth: `Bearer ${token}`, sub };
 }
 
 async function pull(base: string, auth: string): Promise<Remote> {
   const res = await fetch(`${base}/progress`, { headers: { authorization: auth } });
-  if (!res.ok) throw new Error(`sync pull failed (${res.status})`);
+  if (!res.ok) throw new SyncHttpError("pull", res.status);
   return (await res.json()) as Remote;
 }
 
@@ -101,7 +182,7 @@ async function push(
     body: JSON.stringify({ baseVersion, data }),
   });
   if (res.status === 409) return "conflict";
-  if (!res.ok) throw new Error(`sync push failed (${res.status})`);
+  if (!res.ok) throw new SyncHttpError("push", res.status);
   return "ok";
 }
 
@@ -172,7 +253,21 @@ export async function deleteProgress(): Promise<void> {
 
 export async function syncNow(options?: { accountChange?: AccountChange }): Promise<SyncResult> {
   const base = syncUrl();
-  if (!base || !isAuthConfigured()) throw new Error("sync not configured");
+  if (!base || !isAuthConfigured()) throw new Error("sync not configured"); // config, not health
+  try {
+    const result = await runSync(base, options);
+    recordSyncSuccess();
+    return result;
+  } catch (e) {
+    recordSyncFailure(e);
+    throw e;
+  }
+}
+
+async function runSync(
+  base: string,
+  options?: { accountChange?: AccountChange },
+): Promise<SyncResult> {
   const { auth, sub } = await session();
 
   // Account binding: first-ever sync adopts the device's progress (the normal
@@ -272,6 +367,7 @@ export function exitFlush(): boolean {
         if (res.ok) {
           lastGood = { auth, sub, version: nextVersion, data: merged };
           recordSynced(sub);
+          recordSyncSuccess(); // a survived flush is a successful sync
         }
       })
       .catch(() => {
