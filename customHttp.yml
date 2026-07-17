@@ -1,14 +1,55 @@
 # AWS Amplify Hosting custom HTTP response headers.
 # Schema + monorepo placement verified against AWS docs:
+#   https://docs.aws.amazon.com/amplify/latest/userguide/setting-custom-headers.html
 #   https://docs.aws.amazon.com/amplify/latest/userguide/custom-header-YAML-format.html
 #   https://docs.aws.amazon.com/amplify/latest/userguide/monorepo-custom-headers.html
 # For a monorepo (appRoot: web) this file MUST live at the repository root.
 #
-# JupyterLite emits content-hashed asset filenames under /lab/build/ and
-# version-pinned wheels under /lab/files/wheels/, so both are safe to cache
-# immutably — any rebuild changes the filename (and thus the URL), busting the
-# cache automatically. This makes repeat visits to the in-browser lab instant.
+# Pattern composition (per custom-header-YAML-format.html): headers are
+# "applied to all URL file paths that match the pattern" — every matching
+# pattern block contributes its headers, and the docs define no precedence
+# when the SAME key appears in multiple blocks matching one path. To keep the
+# result unambiguous, header keys are kept disjoint by design:
+#   - the '/**' block carries ONLY security headers (no Cache-Control),
+#   - the per-tree blocks below carry ONLY Cache-Control.
+# A given response therefore composes from at most one block per header key.
+#
+# This file is the ONLY response-header surface for the static export — there
+# is no server. HTML documents deliberately get NO Cache-Control override:
+# Amplify invalidates them per deploy, which is exactly the freshness we want.
 customHeaders:
+  # ---------------------------------------------------------------- security
+  # Baseline security headers on every response. Deliberately NOT a full CSP:
+  # Pyodide needs wasm-unsafe-eval + worker-src blob:, and Next.js emits
+  # inline scripts — a script-src/style-src policy is staged for later.
+  #
+  # frame-ancestors 'self' (not 'none'): nothing in web/src or web/public
+  # frames same-origin content today (the /lab JupyterLite surface is opened
+  # by top-level navigation, not an <iframe>), but the bundled JupyterLab UI
+  # includes viewers that can render same-origin files in iframes. 'self'
+  # blocks all third-party framing (the clickjacking threat) without ever
+  # breaking the lab. X-Frame-Options: SAMEORIGIN mirrors it for legacy UAs.
+  - pattern: '/**'
+    headers:
+      - key: 'Strict-Transport-Security'
+        value: 'max-age=63072000; includeSubDomains'
+      - key: 'X-Content-Type-Options'
+        value: 'nosniff'
+      - key: 'Referrer-Policy'
+        value: 'strict-origin-when-cross-origin'
+      - key: 'Permissions-Policy'
+        value: 'camera=(), microphone=(), geolocation=()'
+      - key: 'Content-Security-Policy'
+        value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"
+      - key: 'X-Frame-Options'
+        value: 'SAMEORIGIN'
+
+  # ----------------------------------------------------------------- caching
+  # JupyterLite emits content-hashed asset filenames under /lab/build/ and
+  # version-pinned wheels under /lab/files/wheels/, so both are safe to cache
+  # immutably — any rebuild changes the filename (and thus the URL), busting
+  # the cache automatically. This makes repeat visits to the in-browser lab
+  # instant.
   - pattern: '/lab/build/**'
     headers:
       - key: 'Cache-Control'
@@ -17,3 +58,27 @@ customHeaders:
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  # Next.js static chunks are content-hashed (/_next/static/<hash>/…), and the
+  # self-hosted Pyodide lesson runtime under /pyodide/ and the Monaco editor
+  # core under /monaco/ are version-pinned trees restaged wholesale on
+  # upgrade — the same immutable contract as the lab assets above. Without
+  # these rules the 8.6 MB pyodide.asm.wasm re-downloads with max-age=0 on
+  # every revisit (live prod headers verified 2026-07-17).
+  - pattern: '/_next/static/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  - pattern: '/pyodide/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  - pattern: '/monaco/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  # Welcome-page imagery keeps its filenames across deploys (unhashed), so it
+  # gets a bounded 1-day cache instead of immutable.
+  - pattern: '/welcome/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
