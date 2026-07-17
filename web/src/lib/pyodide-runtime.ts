@@ -62,6 +62,15 @@ const WORKER_URL = "/pyodide.worker.js";
 const DEFAULT_RUN_TIMEOUT_MS = 30_000;
 let runTimeoutMs = DEFAULT_RUN_TIMEOUT_MS;
 
+// Hard per-BOOT wall-clock budget. The worker's boot phase (importScripts of
+// the bootstrap, the ~3 MB brotli'd wasm fetch, micropip's wheel installs) is
+// all network I/O with no reply until it finishes -- a stalled fetch would
+// otherwise neither resolve nor reject bootFrom(), so the CDN fallback would
+// never be attempted and every runnable cell would hang until a page reload.
+// Generous for a slow link; the common same-origin case completes in seconds.
+const DEFAULT_BOOT_TIMEOUT_MS = 75_000;
+let bootTimeoutMs = DEFAULT_BOOT_TIMEOUT_MS;
+
 /**
  * Test-only override for the run timeout (the timeout e2e would otherwise wait
  * the full default before it can assert the kill/reboot path). Production code
@@ -69,6 +78,14 @@ let runTimeoutMs = DEFAULT_RUN_TIMEOUT_MS;
  */
 export function __setRunTimeoutMsForTests(ms: number): void {
   runTimeoutMs = ms;
+}
+
+/**
+ * Test-only override for the boot timeout, mirroring the run-timeout override
+ * above. Production code must never call this.
+ */
+export function __setBootTimeoutMsForTests(ms: number): void {
+  bootTimeoutMs = ms;
 }
 
 /**
@@ -213,21 +230,34 @@ function invalidate(handle: Pyodide): void {
  * package index, and install the qcsim wheel (plus its numpy dep, which
  * resolves from the same index). If any step fails the worker is terminated
  * and the attempt rejects so the caller can fall back to the next origin with
- * a completely fresh worker.
+ * a completely fresh worker. A watchdog bounds the whole attempt: a STALLED
+ * fetch inside the worker's boot never replies at all (no "boot-error", no
+ * worker 'error' event), so without the timer this promise would simply never
+ * settle -- the fallback chain in getPyodide() only runs from a rejection.
  */
 function bootFrom(base: string, integrity?: string): Promise<Pyodide> {
   return new Promise<Pyodide>((resolve, reject) => {
     const worker = new Worker(WORKER_URL);
     const fail = (message: string) => {
+      clearTimeout(watchdog);
       worker.terminate();
       reject(new Error(message));
     };
+    const watchdog = setTimeout(() => {
+      const source = base === PYODIDE_LOCAL_BASE ? "this site" : "the CDN";
+      fail(
+        `booting the Python runtime from ${source} timed out after ` +
+          `${Math.round(bootTimeoutMs / 1000)} seconds`
+      );
+    }, bootTimeoutMs);
     // Fires when the worker script itself fails to load/parse.
     worker.onerror = (e: ErrorEvent) => fail(e.message || `failed to load ${WORKER_URL}`);
     worker.onmessage = (ev: MessageEvent) => {
       const msg = ev.data as WorkerReply;
-      if (msg?.type === "ready") resolve(new Pyodide(worker));
-      else if (msg?.type === "boot-error") fail(msg.message);
+      if (msg?.type === "ready") {
+        clearTimeout(watchdog);
+        resolve(new Pyodide(worker));
+      } else if (msg?.type === "boot-error") fail(msg.message);
     };
     const boot: BootMessage = {
       type: "boot",

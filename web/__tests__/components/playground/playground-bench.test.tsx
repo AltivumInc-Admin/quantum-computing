@@ -3,7 +3,7 @@
  */
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, within, act } from "@testing-library/react";
-import { encodeShareHash } from "@/lib/circuit-url";
+import { decodeShareHash, encodeShareHash } from "@/lib/circuit-url";
 import { peekHandoff } from "@/lib/qpu-handoff";
 import { QASM_SUBMIT_BYTE_CAP } from "@/lib/compile-qasm";
 import { parseProgram, opsFor } from "@/components/quantum/qsim-dsl";
@@ -195,6 +195,47 @@ describe("PlaygroundBench", () => {
     expect(screen.getByText(/nothing saved yet/i)).toBeInTheDocument();
   });
 
+  it("round-trips the tuned theta through save and load", () => {
+    render(<PlaygroundBench />);
+    fireEvent.change(sourceBox(), { target: { value: "RY 0 theta" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Rotation angle theta in radians" }), {
+      target: { value: String(Math.PI) },
+    });
+    fireEvent.change(screen.getByLabelText("Circuit name"), { target: { value: "Tuned" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText('Saved "Tuned"')).toBeInTheDocument();
+
+    // Perturb both the source and the angle, then Load restores them together.
+    fireEvent.change(screen.getByRole("slider", { name: "Rotation angle theta in radians" }), {
+      target: { value: "0" },
+    });
+    fireEvent.change(sourceBox(), { target: { value: "H 0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load Tuned" }));
+    expect(sourceBox()).toHaveValue("RY 0 theta");
+    expect(
+      screen.getByRole("slider", { name: "Rotation angle theta in radians" }),
+    ).toHaveAttribute("aria-valuetext", "3.14 radians");
+    expect(document.querySelector("pre")?.textContent).toContain("ry(3.141593) q[0];");
+  });
+
+  it("loads a pre-theta saved record at the pi/2 default", () => {
+    localStorage.setItem(
+      "qc:circuit:legacy",
+      JSON.stringify({ v: 1, name: "Old Ramsey", src: "H 0\nRZ 0 theta\nH 0", updatedAt: 7 }),
+    );
+    render(<PlaygroundBench />);
+    // Tune the live angle away from the default first — Load must reset it.
+    fireEvent.change(sourceBox(), { target: { value: "RY 0 theta" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Rotation angle theta in radians" }), {
+      target: { value: String(Math.PI) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load Old Ramsey" }));
+    expect(sourceBox()).toHaveValue("H 0\nRZ 0 theta\nH 0");
+    expect(
+      screen.getByRole("slider", { name: "Rotation angle theta in radians" }),
+    ).toHaveAttribute("aria-valuetext", "1.57 radians");
+  });
+
   it("surfaces the store's error when a save is rejected", () => {
     render(<PlaygroundBench />);
     fireEvent.click(screen.getByRole("button", { name: "Save" })); // no name
@@ -210,7 +251,28 @@ describe("PlaygroundBench", () => {
     });
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0][0]).toContain(`#${encodeShareHash({ src: DEFAULT_SOURCE })}`);
+    // Theta always rides the payload, so the link carries the pi/2 default too.
+    expect(writeText.mock.calls[0][0]).toContain(
+      `#${encodeShareHash({ src: DEFAULT_SOURCE, t: Math.PI / 2 })}`,
+    );
+  });
+
+  it("copies a share link that carries the tuned theta", async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<PlaygroundBench />);
+    fireEvent.change(sourceBox(), { target: { value: "RY 0 theta" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Rotation angle theta in radians" }), {
+      target: { value: String(Math.PI) },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy share link" }));
+    });
+    expect(writeText.mock.calls[0][0]).toContain(
+      `#${encodeShareHash({ src: "RY 0 theta", t: Math.PI })}`,
+    );
+    // and the recipient decodes the same angle the sender's .qasm download bakes in
+    expect(decodeShareHash(writeText.mock.calls[0][0].split("#")[1])?.t).toBe(3.141593);
   });
 
   it("applies a #c= share payload on mount (source and name)", () => {
@@ -219,6 +281,38 @@ describe("PlaygroundBench", () => {
     expect(sourceBox()).toHaveValue("H 0\nH 1\nH 2");
     expect(screen.getByLabelText("Circuit name")).toHaveValue("From a friend");
     expect(screen.getByText("3 qubits — 3 gates")).toBeInTheDocument();
+  });
+
+  it("applies a shared theta on mount — the tuned angle reaches slider and compiler", () => {
+    window.location.hash = `#${encodeShareHash({ src: "RY 0 theta", t: Math.PI })}`;
+    render(<PlaygroundBench />);
+    expect(sourceBox()).toHaveValue("RY 0 theta");
+    expect(
+      screen.getByRole("slider", { name: "Rotation angle theta in radians" }),
+    ).toHaveAttribute("aria-valuetext", "3.14 radians");
+    expect(document.querySelector("pre")?.textContent).toContain("ry(3.141593) q[0];");
+  });
+
+  it("keeps the pi/2 default for a legacy share link without t", () => {
+    window.location.hash = `#${encodeShareHash({ src: "RY 0 theta" })}`;
+    render(<PlaygroundBench />);
+    expect(
+      screen.getByRole("slider", { name: "Rotation angle theta in radians" }),
+    ).toHaveAttribute("aria-valuetext", "1.57 radians");
+    expect(document.querySelector("pre")?.textContent).toContain("ry(1.570796) q[0];");
+  });
+
+  it("ignores a forged non-numeric t and keeps the pi/2 default", () => {
+    const forged = Buffer.from(
+      JSON.stringify({ v: 1, src: "RY 0 theta", t: "3.0" }),
+      "utf8",
+    ).toString("base64url");
+    window.location.hash = `#c=${forged}`;
+    render(<PlaygroundBench />);
+    expect(sourceBox()).toHaveValue("RY 0 theta"); // the circuit itself still loads
+    expect(
+      screen.getByRole("slider", { name: "Rotation angle theta in radians" }),
+    ).toHaveAttribute("aria-valuetext", "1.57 radians");
   });
 
   it("falls back to the default source when the hash payload is invalid", () => {

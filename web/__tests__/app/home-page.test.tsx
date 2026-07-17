@@ -48,6 +48,18 @@ describe("HomePage (welcome page)", () => {
     expect(String(metadata.description)).toMatch(/braket/i);
   });
 
+  it("exports canonical + Open Graph + Twitter metadata", () => {
+    expect(metadata.alternates?.canonical).toBe("/");
+    const og = metadata.openGraph as Record<string, unknown>;
+    expect(og.title).toBe("Quantum Computing Workspace");
+    expect(og.url).toBe("/");
+    expect(og.type).toBe("website");
+    expect(og.description).toBe(metadata.description);
+    const twitter = metadata.twitter as Record<string, unknown>;
+    expect(twitter.card).toBe("summary");
+    expect(twitter.description).toBe(metadata.description);
+  });
+
   it("renders the hero headline and eyebrow", async () => {
     await renderHome();
     expect(

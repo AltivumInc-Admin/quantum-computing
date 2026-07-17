@@ -53,18 +53,24 @@ export function PlaygroundBench() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSource(payload.src);
       if (payload.name) setName(payload.name);
+      // Old links carry no t and keep the pi/2 default — exactly as before.
+      if (payload.t !== undefined) setTheta(payload.t);
     }
   }, []);
 
   // The name that rides the share hash, the QPU handoff, and the .qasm filename.
   const circuitName = name.trim() || editing?.name || "";
 
+  // Theta ALWAYS rides the payload (not only when the source binds it): one
+  // invariant, one short number, and the tuned angle survives even through an
+  // edit that temporarily drops the theta token. The downloaded .qasm bakes the
+  // live theta in, so the link and the file now describe the same circuit.
   const shareHash = useMemo(
     () =>
       parsed.error
         ? null
-        : encodeShareHash({ name: circuitName || undefined, src: source }),
-    [parsed, circuitName, source],
+        : encodeShareHash({ name: circuitName || undefined, src: source, t: theta }),
+    [parsed, circuitName, source, theta],
   );
 
   useEffect(() => {
@@ -83,6 +89,7 @@ export function PlaygroundBench() {
     setSource(c.src);
     setEditing({ id: c.id, name: c.name });
     setName(c.name);
+    setTheta(c.theta ?? Math.PI / 2); // pre-theta saves restore the old default
   };
 
   return (
@@ -113,6 +120,7 @@ export function PlaygroundBench() {
       <div className="lg:col-span-5 lg:col-start-1 lg:row-start-2 lg:self-start">
         <SavedPanel
           source={source}
+          theta={theta}
           name={name}
           onNameChange={setName}
           editing={editing}

@@ -29,6 +29,13 @@ Parameters:
   LogRetentionInDays:
     Type: Number
     Default: 30
+  AlertEmail:
+    Type: String
+    Default: christian.perez@altivum.io
+    Description: >
+      Operator email for the human notification path. Receives every CloudWatch
+      alarm in this stack. Each SNS email subscription must be confirmed once
+      from the inbox before it delivers.
 
 Resources:
   ProgressTable:
@@ -55,6 +62,19 @@ Resources:
   SyncApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      # Stage-wide throttle, sized from the client's actual cadence: the sync
+      # client PUTs one snapshot per debounce window (20s trailing / 60s
+      # maxWait — web/src/components/progress-sync.tsx), i.e. at most ~1
+      # PUT/user/min plus a GET at page load, so 5 rps steady with a burst of
+      # 10 never touches a real user. Without it, the only ceiling is
+      # ReservedConcurrentExecutions=10; a flood of MAX_SNAPSHOT_BYTES (256KB,
+      # index.mjs) PUTs at ~100-200 rps inside that ceiling is ~256 WCU per
+      # write against the PAY_PER_REQUEST table — roughly $115-230/hr of
+      # on-demand DynamoDB write cost. The throttle caps that blast radius at
+      # the front door; excess requests get 429 before invoking anything.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 5
+        ThrottlingBurstLimit: 10
       CorsConfiguration:
         AllowOrigins:
           - !Ref SiteOrigin
@@ -123,9 +143,117 @@ Resources:
       LogGroupName: !Sub /aws/lambda/${SyncFunction}
       RetentionInDays: !Ref LogRetentionInDays
 
+  # ---- Human notification path (pattern proven in lambda/qpu/template.yaml) ----
+  # This stack holds the crown jewels (learner progress) behind a paid,
+  # internet-facing API, so silent failure modes are not acceptable: a
+  # throwing function loses syncs, sustained throttling means learners are
+  # being turned away, and a write-capacity spike is money burning.
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-workspace-sync-alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  SyncErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-workspace-sync-errors
+      AlarmDescription: >-
+        The quantum-workspace-sync function threw at least one error in 5
+        minutes. Learner progress snapshots may not be saving or loading.
+        Check the function's log group.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SyncFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  SyncThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-workspace-sync-throttles
+      AlarmDescription: >-
+        The quantum-workspace-sync function was throttled (reserved
+        concurrency exhausted) in the last 5 minutes. Either real traffic
+        outgrew MaxConcurrency or something is flooding the API past the
+        stage throttle. Check API request counts before raising the ceiling.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SyncFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # Legitimate peak is small: ~1 snapshot PUT/user/min (client debounce 20s /
+  # maxWait 60s), each a few KB — even 50 concurrently active learners is on
+  # the order of 1,000 write units per 5 minutes. 10,000 per 5-minute period
+  # is ~10x that peak, yet a 256KB-PUT flood (256 WCU each) trips it inside
+  # one period. Three consecutive periods = sustained, not a blip.
+  TableWriteSpikeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-workspace-sync-write-spike
+      AlarmDescription: >-
+        The quantum-workspace-progress table consumed >10,000 write capacity
+        units per 5 minutes for 15 sustained minutes — roughly 10x the
+        legitimate peak. Likely a large-snapshot flood; on-demand billing
+        means this is direct spend. Check API traffic and consider lowering
+        the stage throttle.
+      Namespace: AWS/DynamoDB
+      MetricName: ConsumedWriteCapacityUnits
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ProgressTable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 10000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  Api5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-workspace-sync-5xx
+      AlarmDescription: >-
+        The sync HTTP API returned at least one 5xx in 5 minutes. The
+        function, its DynamoDB access, or the JWT authorizer integration is
+        failing server-side; syncs are being lost while this persists.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref SyncApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
 Outputs:
   SyncUrl:
     Description: Set as NEXT_PUBLIC_SYNC_URL in the Amplify app environment.
     Value: !Sub https://${SyncApi}.execute-api.${AWS::Region}.amazonaws.com
   TableName:
     Value: !Ref ProgressTable
+  AlertsTopicArn:
+    Description: The SNS topic every CloudWatch alarm in this stack notifies.
+    Value: !Ref AlertsTopic

@@ -8,9 +8,20 @@ import { pitchFor } from "@/lib/section-pitch";
 import { SINGLE, ROT } from "@/components/quantum/qsim-dsl";
 import { CurriculumGrid } from "@/components/curriculum-grid";
 
+const HOME_TITLE = "Quantum Computing Workspace";
+const HOME_DESCRIPTION =
+  "Learn quantum computing from first principles with Amazon Braket: a hands-on curriculum, a live circuit playground, real QPU access with transparent costs, and an AI tutor in the margin.";
+
 export const metadata: Metadata = {
-  description:
-    "Learn quantum computing from first principles with Amazon Braket: a hands-on curriculum, a live circuit playground, real QPU access with transparent costs, and an AI tutor in the margin.",
+  description: HOME_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    url: "/",
+    type: "website",
+  },
+  twitter: { card: "summary", title: HOME_TITLE, description: HOME_DESCRIPTION },
 };
 
 // Sign up / sign in pair, gated on the Cognito env vars exactly like the

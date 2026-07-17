@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSections, getSectionBySlug, hueFor } from "@/lib/sections";
-import { getContent } from "@/lib/content";
+import { getContent, getContentSummary } from "@/lib/content";
+import { articleMetadata, truncateAtWord } from "@/lib/seo";
 import { extractHeadings } from "@/lib/extract-headings";
 import { Sidebar } from "@/components/sidebar";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -17,14 +19,22 @@ export function generateStaticParams() {
   return getSections().map((s) => ({ section: s.slug }));
 }
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { section: slug } = await params;
   const section = getSectionBySlug(slug);
   if (!section) return { title: "Not Found" };
-  return {
+  // Describe the lesson with its own opening prose (the same summary the home
+  // curriculum cards show), truncated to meta-description length.
+  const summary = await getContentSummary(slug);
+  const description = summary
+    ? truncateAtWord(summary, 155)
+    : `${section.title}: hands-on lessons and runnable notebooks in the Quantum Workspace curriculum.`;
+  return articleMetadata({
     title: `${section.title} — Quantum Workspace`,
-    description: `Learn ${section.title.toLowerCase()} with Amazon Braket`,
-  };
+    ogTitle: section.title,
+    description,
+    path: `/learn/${section.slug}`,
+  });
 }
 
 export default async function SectionPage({ params }: PageProps) {

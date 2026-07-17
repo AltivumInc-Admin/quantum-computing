@@ -1,14 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { GLOSSARY, getTermBySlug, termSlug, plainText } from "@/lib/glossary";
+import { articleMetadata, truncateAtWord } from "@/lib/seo";
 import { TermDetail } from "@/components/glossary/term-detail";
-
-function truncateAtWord(s: string, max: number): string {
-  if (s.length <= max) return s;
-  const cut = s.slice(0, max);
-  const lastSpace = cut.lastIndexOf(" ");
-  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…";
-}
 
 interface PageProps {
   params: Promise<{ term: string }>;
@@ -24,15 +18,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { term: slug } = await params;
   const term = getTermBySlug(slug);
   if (!term) return { title: "Not Found" };
-  const description = truncateAtWord(plainText(term.definition), 155);
-  const url = `/glossary/${termSlug(term.term)}`;
-  return {
+  return articleMetadata({
     title: `${term.term} — Quantum Glossary`,
-    description,
-    alternates: { canonical: url },
-    openGraph: { title: term.term, description, url, type: "article" },
-    twitter: { card: "summary", title: term.term, description },
-  };
+    ogTitle: term.term,
+    description: truncateAtWord(plainText(term.definition), 155),
+    path: `/glossary/${termSlug(term.term)}`,
+  });
 }
 
 export default async function GlossaryTermPage({ params }: PageProps) {

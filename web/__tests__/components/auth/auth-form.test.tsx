@@ -258,4 +258,57 @@ describe("AuthForm", () => {
     fireEvent.click(resendBtn); // immediately again — guarded by sending/cooldown + disabled
     await waitFor(() => expect(resendSignUpCode).toHaveBeenCalledTimes(1));
   });
+
+  // WCAG 1.3.5 (identify input purpose): every field states its autofill purpose
+  // so password managers and mobile keyboards can do their job.
+  describe("input-purpose autofill attributes", () => {
+    it("sign-in email is the login identifier (autocomplete=username, per WHATWG)", () => {
+      render(<AuthForm />);
+      const email = screen.getByLabelText("Email");
+      expect(email).toHaveAttribute("autocomplete", "username");
+      expect(email).toHaveAttribute("name", "email");
+    });
+
+    it("sign-up email is a new address (autocomplete=email)", () => {
+      mockSearch = "mode=signup";
+      render(<AuthForm />);
+      const email = screen.getByLabelText("Email");
+      expect(email).toHaveAttribute("autocomplete", "email");
+      expect(email).toHaveAttribute("name", "email");
+    });
+
+    it("forgot-password email is the login identifier (autocomplete=username)", () => {
+      render(<AuthForm />);
+      fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
+      expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "username");
+    });
+
+    it("confirmation code is a numeric one-time-code field", async () => {
+      mockSearch = "mode=signup";
+      signUp.mockResolvedValue({ isSignUpComplete: false });
+      render(<AuthForm />);
+      fill("Email", "new@b.com");
+      fill("Password", "Password1");
+      fill("Confirm password", "Password1");
+      fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+      const codeInput = await screen.findByLabelText("Confirmation code");
+      expect(codeInput).toHaveAttribute("autocomplete", "one-time-code");
+      expect(codeInput).toHaveAttribute("inputmode", "numeric");
+      expect(codeInput).toHaveAttribute("pattern", "[0-9]*");
+      expect(codeInput).toHaveAttribute("name", "code");
+    });
+
+    it("reset code is a numeric one-time-code field", async () => {
+      resetPassword.mockResolvedValue({});
+      render(<AuthForm />);
+      fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
+      fill("Email", "a@b.com");
+      fireEvent.click(screen.getByRole("button", { name: /send reset code/i }));
+      const codeInput = await screen.findByLabelText("Reset code");
+      expect(codeInput).toHaveAttribute("autocomplete", "one-time-code");
+      expect(codeInput).toHaveAttribute("inputmode", "numeric");
+      expect(codeInput).toHaveAttribute("pattern", "[0-9]*");
+      expect(codeInput).toHaveAttribute("name", "code");
+    });
+  });
 });

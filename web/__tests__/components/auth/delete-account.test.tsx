@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
+import { StrictMode } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const signOut = jest.fn();
@@ -156,5 +157,32 @@ describe("DeleteAccount", () => {
     expect(deleteProgress).not.toHaveBeenCalled();
     expect(deleteReminderPrefs).toHaveBeenCalled();
     expect(deleteUser).toHaveBeenCalled();
+  });
+
+  // WCAG 2.4.3 (focus order): opening replaces the focused trigger with a whole
+  // new section, and cancelling replaces it back — focus must follow, and the
+  // first render must never steal it.
+  describe("focus management", () => {
+    it("does not steal focus on initial mount (even under StrictMode's double-invoke)", () => {
+      render(
+        <StrictMode>
+          <DeleteAccount />
+        </StrictMode>
+      );
+      expect(screen.getByRole("button", { name: /^delete account$/i })).not.toHaveFocus();
+    });
+
+    it("moves focus to the section heading when the confirmation opens", () => {
+      render(<DeleteAccount />);
+      fireEvent.click(screen.getByRole("button", { name: /^delete account$/i }));
+      expect(screen.getByRole("heading", { name: /delete account/i })).toHaveFocus();
+    });
+
+    it("returns focus to the re-mounted trigger on Cancel", () => {
+      render(<DeleteAccount />);
+      fireEvent.click(screen.getByRole("button", { name: /^delete account$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+      expect(screen.getByRole("button", { name: /^delete account$/i })).toHaveFocus();
+    });
   });
 });

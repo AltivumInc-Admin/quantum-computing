@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { isSyncConfigured } from "@/lib/sync-client";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import {
+  isSyncConfigured,
+  subscribeSyncHealth,
+  getSyncHealth,
+  type SyncHealth,
+} from "@/lib/sync-client";
 
 /**
  * Z0 — the masthead: h1 "Workspace", the account email, and a right-aligned sync
@@ -33,10 +38,16 @@ type SyncState = "idle" | "syncing" | "error" | "mismatch";
  * honestly, with no future-tense marketing. A mismatch expands the adopt/reset choice
  * inline as an alert.
  */
+const OK_HEALTH: SyncHealth = "ok";
+
 function SyncReadout() {
   const configured = isSyncConfigured();
   const [state, setState] = useState<SyncState>("idle");
   const [lastSynced, setLastSynced] = useState<number | null>(null);
+  // Background sync health (sync-client's external store). "ok" renders exactly
+  // what always rendered; the degraded/auth lines replace the timestamp INSIDE
+  // the persistent role="status" span, so the change is announced reliably.
+  const health = useSyncExternalStore(subscribeSyncHealth, getSyncHealth, () => OK_HEALTH);
 
   useEffect(() => {
     if (!configured) return;
@@ -99,26 +110,31 @@ function SyncReadout() {
     ? new Date(lastSynced).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
     : null;
 
+  const attention = state === "error" || health !== "ok";
   return (
     <div className="flex items-center gap-2.5 text-sm">
       <span
         aria-hidden="true"
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          state === "error" ? "bg-warm-dark dark:bg-warm-light" : "bg-accent-dark dark:bg-accent"
+          attention ? "bg-warm-dark dark:bg-warm-light" : "bg-accent-dark dark:bg-accent"
         }`}
       />
       <span role="status" className="text-gray-600 dark:text-gray-300 tabular-nums">
-        {state === "syncing"
-          ? "Syncing…"
-          : state === "error"
-            ? "Sync failed"
-            : clock ? (
-                <>
-                  Synced <time dateTime={iso}>{clock}</time>
-                </>
-              ) : (
-                "Not yet synced"
-              )}
+        {state === "syncing" ? (
+          "Syncing…"
+        ) : health === "auth" ? (
+          "Session expired — sign in to resume sync"
+        ) : health === "degraded" ? (
+          "Sync paused — retrying"
+        ) : state === "error" ? (
+          "Sync failed"
+        ) : clock ? (
+          <>
+            Synced <time dateTime={iso}>{clock}</time>
+          </>
+        ) : (
+          "Not yet synced"
+        )}
       </span>
       <button
         type="button"
