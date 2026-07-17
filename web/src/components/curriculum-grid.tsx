@@ -48,6 +48,9 @@ export function CurriculumGrid({ sections }: { sections: CurriculumSection[] }) 
               onClick={
                 gate
                   ? (e) => {
+                      // Only plain primary clicks are gated — modified clicks
+                      // (new tab/window) keep their native browser behavior.
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                       e.preventDefault();
                       setGatedSection(section);
                     }

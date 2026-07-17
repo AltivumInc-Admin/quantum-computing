@@ -51,6 +51,7 @@ const SECTIONS: CurriculumSection[] = [
     index: 0,
     title: "Prerequisites",
     notebookCount: 6,
+    runnableCount: 6,
     summary: "Math and Python groundwork.",
     pitch: "Every piece of math the curriculum uses, built from zero.",
   },
@@ -59,8 +60,29 @@ const SECTIONS: CurriculumSection[] = [
     index: 1,
     title: "Quantum Foundations",
     notebookCount: 5,
+    runnableCount: 5,
     summary: "Qubits and entanglement.",
     pitch: "Qubits, superposition, and your first Bell state.",
+  },
+  // Partial and zero browser coverage — the dialog's notebook note must state
+  // each section's own truth instead of a blanket "most run in your browser".
+  {
+    slug: "02-hardware",
+    index: 2,
+    title: "Quantum Hardware",
+    notebookCount: 6,
+    runnableCount: 4,
+    summary: "Real devices and their trade-offs.",
+    pitch: "Real hardware families, noise, and costs.",
+  },
+  {
+    slug: "06-hybrid-jobs",
+    index: 6,
+    title: "Hybrid Jobs",
+    notebookCount: 7,
+    runnableCount: 0,
+    summary: "Production quantum-classical workloads.",
+    pitch: "From notebook to production.",
   },
 ];
 
@@ -122,7 +144,7 @@ describe("CurriculumGrid", () => {
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveTextContent("Quantum Foundations");
       expect(dialog).toHaveTextContent(SECTIONS[1].pitch);
-      expect(dialog).toHaveTextContent(/5 hands-on notebooks/i);
+      expect(dialog).toHaveTextContent(/5 hands-on notebooks — all run right in your browser/i);
       expect(screen.getByRole("link", { name: /create a free account/i })).toHaveAttribute(
         "href",
         "/login?mode=signup"
@@ -133,6 +155,37 @@ describe("CurriculumGrid", () => {
       );
       expect(screen.queryByRole("link", { name: /continue to section/i })).not.toBeInTheDocument();
     });
+
+    it("tells each section's own truth about browser-runnable notebooks", () => {
+      render(<CurriculumGrid sections={SECTIONS} />);
+
+      // Partial coverage: the exact count, not "most".
+      fireEvent.click(cardFor("Quantum Hardware"));
+      expect(screen.getByRole("dialog")).toHaveTextContent(
+        /6 hands-on notebooks — 4 run right in your browser/i
+      );
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+      // Zero coverage (06-hybrid-jobs): no browser promise at all.
+      fireEvent.click(cardFor("Hybrid Jobs"));
+      const dialog = screen.getByRole("dialog");
+      expect(dialog).toHaveTextContent(
+        /7 hands-on notebooks — built to run in your own Braket environment/i
+      );
+      expect(dialog).not.toHaveTextContent(/in your browser/i);
+    });
+
+    it.each(["metaKey", "ctrlKey", "shiftKey", "altKey"] as const)(
+      "lets %s-modified clicks keep their native browser behavior instead of gating",
+      (modifier) => {
+        render(<CurriculumGrid sections={SECTIONS} />);
+        const card = cardFor("Prerequisites");
+        // fireEvent.click returns true when preventDefault was NOT called —
+        // the click must fall through so the browser can open a new tab.
+        expect(fireEvent.click(card, { [modifier]: true })).toBe(true);
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      }
+    );
 
     it("closes via the close button", () => {
       render(<CurriculumGrid sections={SECTIONS} />);

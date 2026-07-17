@@ -78,9 +78,11 @@ export default async function HomePage() {
   const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
 
   // The playground earns the third hero stat: its gate count is derived from
-  // the same DSL registry the editor parses (named single-qubit gates +
-  // rotations + CNOT), so the number can never drift from what actually runs.
-  const playgroundGates = SINGLE.size + ROT.size + 1;
+  // the same DSL registry the editor parses — minus the identity gate, which
+  // the palette never surfaces and QASM export drops as a physical no-op —
+  // plus rotations and CNOT. The number therefore matches what a visitor can
+  // actually count in the playground (the test couples it to the palette).
+  const playgroundGates = SINGLE.size - 1 + ROT.size + 1;
 
   const stats = [
     { value: sections.length, label: "curriculum sections" },
@@ -115,7 +117,7 @@ export default async function HomePage() {
     {
       kicker: "Curriculum",
       title: "Learn by running real notebooks",
-      body: `${notebookTotal} hands-on notebooks across ${sections.length} sections take you from your first qubit to production hybrid quantum-classical jobs. Most run directly in your browser — no installation, no setup, no account required to start.`,
+      body: `${notebookTotal} hands-on notebooks across ${sections.length} sections take you from your first qubit to production hybrid quantum-classical jobs. Most run directly in your browser — no installation, no setup, just a free account.`,
       href: "#curriculum",
       linkLabel: "Browse the learning path",
       image: {
@@ -280,10 +282,10 @@ export default async function HomePage() {
                   An AI tutor that knows exactly where you are
                 </h3>
                 <p className="mt-4 text-base sm:text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
-                  Every lesson carries Ask the margin: press Cmd-K, ask what confuses
-                  you, and a Claude-powered tutor streams an answer grounded in the
-                  exact page you are reading — no tab-switching, no pasting context.
-                  Included free for every learner.
+                  Every lesson carries Ask the margin: press Cmd-K or Ctrl-K, ask what
+                  confuses you, and a Claude-powered tutor streams an answer grounded
+                  in the exact page you are reading — no tab-switching, no pasting
+                  context. Included free for every learner.
                 </p>
                 <Link
                   href="#curriculum"
@@ -438,6 +440,7 @@ export default async function HomePage() {
                 index: section.index,
                 title: section.title,
                 notebookCount: section.notebookCount,
+                runnableCount: section.runnableCount,
                 summary,
                 pitch: pitchFor(section.slug, summary),
               };

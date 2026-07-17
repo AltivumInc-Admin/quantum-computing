@@ -14,7 +14,7 @@ const PITCHES: Record<string, string> = {
   "01-foundations":
     "Qubits, superposition, entanglement, and measurement — taught by running circuits, not by staring at equations. You will build your first Bell state in the browser and understand exactly why it cannot be explained classically.",
   "02-hardware":
-    "What a qubit physically is: superconducting circuits, trapped ions, and neutral atoms, and how each trades speed against fidelity. You will read real device calibration data from Amazon Braket and learn what QPU time actually costs before you ever spend a cent.",
+    "What a qubit physically is: superconducting circuits, trapped ions, and neutral atoms, and how each trades speed against fidelity. You will explore Braket's real device catalog, see how noise shapes what each machine can run, and learn what QPU time actually costs before you ever spend a cent.",
   "03-algorithms":
     "The canon, hands-on: Deutsch-Jozsa, Grover search, the quantum Fourier transform, and phase estimation. Each notebook builds the algorithm gate by gate so you see where the quantum advantage comes from — and where it does not.",
   "04-quantum-ml":

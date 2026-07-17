@@ -7,7 +7,7 @@ import { render, screen } from "@testing-library/react";
 import HomePage, { metadata } from "@/app/page";
 import { getSections } from "@/lib/sections";
 import { GLOSSARY } from "@/lib/glossary";
-import { SINGLE, ROT } from "@/components/quantum/qsim-dsl";
+import { PALETTE } from "@/components/playground/compose-panel";
 
 jest.mock("@/components/transition-link", () => {
   const React = require("react");
@@ -120,10 +120,14 @@ describe("HomePage (welcome page)", () => {
     const sections = getSections();
     const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
     expect(screen.getByText(String(notebookTotal))).toBeInTheDocument();
-    // The third stat is the playground's gate count, derived from the same
-    // DSL registry the editor parses (single-qubit + rotations + CNOT).
-    const playgroundGates = SINGLE.size + ROT.size + 1;
-    expect(screen.getByText(String(playgroundGates))).toBeInTheDocument();
+    // The third stat is the playground's gate count. It must equal what a
+    // visitor can actually count there — the compose palette's chips — NOT
+    // the DSL registry alone (which also holds the identity gate the palette
+    // never surfaces). Adding a gate to either side without the other breaks
+    // this on purpose.
+    const paletteGates = PALETTE.reduce((n, group) => n + group.chips.length, 0);
+    expect(paletteGates).toBe(10);
+    expect(screen.getByText(String(paletteGates))).toBeInTheDocument();
     // The label appears twice by design: an sr-only <dt> plus the visible <dd>.
     expect(screen.getAllByText(/gates in the live playground/i)).toHaveLength(2);
     // The glossary count moved out of the hero but still appears on its
@@ -137,10 +141,22 @@ describe("HomePage (welcome page)", () => {
       screen.getByRole("heading", { name: /an ai tutor that knows exactly where you are/i })
     ).toBeInTheDocument();
     expect(screen.getByText(/included free for every learner/i)).toBeInTheDocument();
+    // The real binding is metaKey OR ctrlKey — the copy must not be Mac-only.
+    expect(screen.getByText(/press Cmd-K or Ctrl-K/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /meet it inside any lesson/i })).toHaveAttribute(
       "href",
       "#curriculum"
     );
+  });
+
+  it("keeps the curriculum band's promise consistent with the sign-up gate", async () => {
+    await renderHome();
+    // The gate asks signed-out visitors for an account before opening a
+    // section, so the page must not simultaneously promise account-free entry.
+    expect(screen.queryByText(/no account required/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/no installation, no setup, just a free account/i)
+    ).toBeInTheDocument();
   });
 
   it("replaces the tutor toolkit card with the self-grading challenges card", async () => {

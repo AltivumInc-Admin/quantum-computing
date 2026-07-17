@@ -18,7 +18,9 @@ import { benchButtonClass, benchGroupLabelClass } from "./controls";
  * last-good program (the Quirk principle — never blank the readouts).
  */
 
-const PALETTE: {
+// Exported so the welcome page's hero-stat test can assert the advertised
+// gate count equals what this palette actually surfaces.
+export const PALETTE: {
   group: string;
   chips: { label: string; template: string }[];
   hint?: string;

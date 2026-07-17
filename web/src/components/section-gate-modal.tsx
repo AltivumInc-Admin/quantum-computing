@@ -11,6 +11,9 @@ export interface GateSection {
   index: number;
   title: string;
   notebookCount: number;
+  /** Manifest-verified browser-runnable count — the notebook note derives from
+      it so the dialog never overpromises (06-hybrid-jobs runs on AWS, not here). */
+  runnableCount: number;
   pitch: string;
 }
 
@@ -37,6 +40,18 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
   const titleId = useId();
   const descId = useId();
   const hue = hueFor(section.index);
+
+  // Truthful per-section runnable note. Coverage varies (all of 01, 4 of 6 in
+  // 02, none of 06), so the copy states each section's own number instead of
+  // a blanket "most" that is false for 06-hybrid-jobs.
+  const runNote =
+    section.runnableCount === 0
+      ? "built to run in your own Braket environment"
+      : section.runnableCount === section.notebookCount
+        ? section.notebookCount === 1
+          ? "it runs right in your browser"
+          : "all run right in your browser"
+        : `${section.runnableCount} run${section.runnableCount === 1 ? "s" : ""} right in your browser`;
 
   // Move focus into the dialog on open, hand it back on close (aria-modal
   // claims the page, so it must return what it took). Also lock body scroll.
@@ -98,10 +113,10 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
         aria-describedby={descId}
         tabIndex={-1}
         style={{ "--hue": hue } as React.CSSProperties}
-        className="animate-modal-pop relative w-full max-w-lg overflow-hidden rounded-card border border-gray-200/60 bg-(--surface-1) shadow-(--shadow-raised) outline-none dark:border-white/[0.08]"
+        className="animate-modal-pop relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-card border border-gray-200/60 bg-(--surface-1) shadow-(--shadow-raised) outline-none dark:border-white/[0.08]"
       >
         {/* Hue bleed header — the same identity the card established. */}
-        <div className="section-bleed relative h-16">
+        <div className="section-bleed relative h-16 shrink-0">
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-(--surface-1)" />
         </div>
 
@@ -116,7 +131,11 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
           </svg>
         </button>
 
-        <div className="relative -mt-8 p-6 pt-0 sm:p-8 sm:pt-0">
+        {/* Body scroll is locked while the dialog is open, so the dialog caps
+            itself at the viewport (max-h-full on the panel) and this region
+            scrolls internally — otherwise short viewports and 200% zoom push
+            the close button off-screen with no way to reach it. */}
+        <div className="relative -mt-8 min-h-0 overflow-y-auto overscroll-contain p-6 pt-0 sm:p-8 sm:pt-0">
           <div className="mb-4 flex items-center gap-3">
             <span
               aria-hidden="true"
@@ -142,8 +161,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
 
           <p className="mt-4 text-xs text-caption tabular-nums">
             {section.notebookCount} hands-on{" "}
-            {section.notebookCount === 1 ? "notebook" : "notebooks"} — most run right in
-            your browser
+            {section.notebookCount === 1 ? "notebook" : "notebooks"} — {runNote}
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
