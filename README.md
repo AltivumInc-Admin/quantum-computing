@@ -496,7 +496,7 @@ The portal treats these as optional: front-end features gate on their configurat
 | `npm ci` | Install that backend's pinned dependencies |
 | `npm test` | Offline handler tests (`node --test`, AWS clients stubbed) |
 
-> **Dependency extras:** core install gives you Braket + NumPy/SciPy/Matplotlib. `.[dev]` adds pytest/ruff/nbstripout + the notebook-contract runtime. `.[full]` adds **PennyLane**, **OpenFermion/PySCF**, and JupyterLab — required for modules 03–04 and for CI to not silently skip those tests.
+> **Dependency extras:** core install gives you Braket + NumPy/SciPy/Matplotlib. `.[dev]` adds pytest/ruff/nbstripout + the notebook-contract runtime. `.[full]` adds **PennyLane**, **OpenFermion/PySCF**, and JupyterLab — required for modules 04–05 and for CI to not silently skip those tests.
 
 ---
 
