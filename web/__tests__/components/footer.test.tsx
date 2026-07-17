@@ -15,6 +15,27 @@ jest.mock("next/link", () => {
 });
 
 describe("Footer", () => {
+  it("links to the playground", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Playground" })).toHaveAttribute(
+      "href",
+      "/playground",
+    );
+  });
+
+  it("links to the runbook", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Runbook" })).toHaveAttribute("href", "/runbook");
+  });
+
+  it("links to the credentials page", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Credentials" })).toHaveAttribute(
+      "href",
+      "/credentials",
+    );
+  });
+
   it("links to the glossary", () => {
     render(<Footer />);
     expect(screen.getByRole("link", { name: "Glossary" })).toHaveAttribute("href", "/glossary");
@@ -28,6 +49,12 @@ describe("Footer", () => {
   it("links to the privacy page", () => {
     render(<Footer />);
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
+  });
+
+  it("lets the nav row wrap so seven links fit on narrow viewports", () => {
+    render(<Footer />);
+    const nav = screen.getByRole("navigation", { name: "Footer" });
+    expect(nav).toHaveClass("flex-wrap");
   });
 
   it("links to the GitHub repo in a new tab, safely", () => {
