@@ -163,7 +163,18 @@ export function AuthForm() {
 
       {view === "signIn" && (
         <form onSubmit={doSignIn} className="mt-6 space-y-4">
-          <Field id="email" label="Email" type="email" value={email} onChange={setEmail} />
+          {/* autocomplete="username" (not "email"): per the WHATWG autofill spec the
+              login identifier field is "username" even when that identifier is an
+              email address — it pairs with current-password in password managers. */}
+          <Field
+            id="email"
+            name="email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            autoComplete="username"
+          />
           <PasswordField
             id="password"
             label="Password"
@@ -190,7 +201,15 @@ export function AuthForm() {
 
       {view === "signUp" && (
         <form onSubmit={doSignUp} className="mt-6 space-y-4">
-          <Field id="email" label="Email" type="email" value={email} onChange={setEmail} />
+          <Field
+            id="email"
+            name="email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            autoComplete="email"
+          />
           <PasswordField
             id="password"
             label="Password"
@@ -224,7 +243,19 @@ export function AuthForm() {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Enter the 6-digit code we emailed to {email || "your address"}.
           </p>
-          <Field id="code" label="Confirmation code" type="text" value={code} onChange={setCode} />
+          {/* one-time-code + numeric: Mail/Messages offer the emailed code as an
+              autofill suggestion, and mobile keyboards open on digits. */}
+          <Field
+            id="code"
+            name="code"
+            label="Confirmation code"
+            type="text"
+            value={code}
+            onChange={setCode}
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            pattern="[0-9]*"
+          />
           <button type="submit" disabled={busy} className={primaryBtn}>
             {busy ? "Confirming…" : "Confirm"}
           </button>
@@ -252,7 +283,16 @@ export function AuthForm() {
 
       {view === "forgot" && (
         <form onSubmit={doForgot} className="mt-6 space-y-4">
-          <Field id="email" label="Email" type="email" value={email} onChange={setEmail} />
+          {/* "username" for the same reason as sign-in: this is the login identifier. */}
+          <Field
+            id="email"
+            name="email"
+            label="Email"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            autoComplete="username"
+          />
           <button type="submit" disabled={busy} className={primaryBtn}>
             {busy ? "Sending…" : "Send reset code"}
           </button>
@@ -266,7 +306,17 @@ export function AuthForm() {
 
       {view === "reset" && (
         <form onSubmit={doReset} className="mt-6 space-y-4">
-          <Field id="code" label="Reset code" type="text" value={code} onChange={setCode} />
+          <Field
+            id="code"
+            name="code"
+            label="Reset code"
+            type="text"
+            value={code}
+            onChange={setCode}
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            pattern="[0-9]*"
+          />
           <PasswordField
             id="newPassword"
             label="New password"
@@ -298,12 +348,20 @@ function Field({
   type,
   value,
   onChange,
+  name,
+  autoComplete,
+  inputMode,
+  pattern,
 }: {
   id: string;
   label: string;
   type: string;
   value: string;
   onChange: (v: string) => void;
+  name?: string;
+  autoComplete?: string;
+  inputMode?: "numeric";
+  pattern?: string;
 }) {
   return (
     <div>
@@ -312,9 +370,13 @@ function Field({
       </label>
       <input
         id={id}
+        name={name}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
+        pattern={pattern}
         className="w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
       />
     </div>
