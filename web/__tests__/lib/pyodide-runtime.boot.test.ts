@@ -46,11 +46,18 @@ function loadRuntime() {
   return require("@/lib/pyodide-runtime") as typeof import("@/lib/pyodide-runtime");
 }
 
+// Matches DEFAULT_BOOT_TIMEOUT_MS in pyodide-runtime.ts.
+const BOOT_TIMEOUT_MS = 75_000;
+
 beforeEach(() => {
   jest.resetModules();
   FakeWorker.instances = [];
   FakeWorker.onBoot = (w) => w.emit({ type: "ready" });
   (globalThis as unknown as { Worker: unknown }).Worker = FakeWorker;
+});
+
+afterEach(() => {
+  jest.useRealTimers();
 });
 
 describe("getPyodide boot: same-origin first, CDN fallback, actionable error", () => {
@@ -119,5 +126,70 @@ describe("getPyodide boot: same-origin first, CDN fallback, actionable error", (
     await expect(getPyodide()).rejects.toThrow(/this site or the CDN/i);
     expect(FakeWorker.instances).toHaveLength(2);
     expect(FakeWorker.instances.every((w) => w.terminated)).toBe(true);
+  });
+});
+
+describe("getPyodide boot watchdog: a stalled boot must reject, not hang", () => {
+  // A stalled network fetch inside the worker's boot (bootstrap importScripts,
+  // the wasm download, micropip) sends NO reply and fires NO 'error' event, so
+  // only the watchdog can settle the attempt. Without it the CDN fallback is
+  // never reached and consumers hang forever.
+
+  it("falls back to the CDN when the same-origin boot stalls (never replies)", async () => {
+    jest.useFakeTimers({ doNotFake: ["queueMicrotask"] });
+    FakeWorker.onBoot = (w) => {
+      // Same-origin attempt: total silence. CDN attempt: boots fine.
+      if (FakeWorker.instances.length > 1) w.emit({ type: "ready" });
+    };
+    const { getPyodide } = loadRuntime();
+    const boot = getPyodide();
+
+    // Fire the same-origin watchdog; the rejection then triggers the CDN
+    // attempt (async variant so the chained microtasks run too).
+    await jest.advanceTimersByTimeAsync(BOOT_TIMEOUT_MS);
+    await expect(boot).resolves.toBeDefined();
+
+    expect(FakeWorker.instances).toHaveLength(2);
+    // The stalled same-origin worker was put down by the watchdog...
+    expect(FakeWorker.instances[0].terminated).toBe(true);
+    // ...and the fallback really is the CDN.
+    expect(FakeWorker.instances[1].bootMsg().pyodideJsUrl).toBe(`${CDN_BASE}pyodide.js`);
+    expect(FakeWorker.instances[1].terminated).toBe(false);
+  });
+
+  it("rejects with the actionable message when BOTH origins stall, and clears the cache for a retry", async () => {
+    jest.useFakeTimers({ doNotFake: ["queueMicrotask"] });
+    let stalled = true;
+    FakeWorker.onBoot = (w) => {
+      if (!stalled) w.emit({ type: "ready" });
+    };
+    const { getPyodide } = loadRuntime();
+    const boot = getPyodide();
+    const rejection = expect(boot).rejects.toThrow(/this site or the CDN/i);
+
+    await jest.advanceTimersByTimeAsync(BOOT_TIMEOUT_MS); // same-origin watchdog
+    await jest.advanceTimersByTimeAsync(BOOT_TIMEOUT_MS); // CDN watchdog
+    await rejection;
+
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(FakeWorker.instances.every((w) => w.terminated)).toBe(true);
+
+    // The rejection must not be cached: a later retry re-boots and succeeds.
+    stalled = false;
+    await expect(getPyodide()).resolves.toBeDefined();
+    expect(FakeWorker.instances.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("never fires the watchdog after a successful boot (timer cleared, worker kept)", async () => {
+    jest.useFakeTimers({ doNotFake: ["queueMicrotask"] });
+    const { getPyodide } = loadRuntime();
+    await getPyodide();
+    expect(FakeWorker.instances).toHaveLength(1);
+
+    // Run far past the boot budget: a leaked watchdog would terminate the
+    // healthy worker here.
+    await jest.advanceTimersByTimeAsync(BOOT_TIMEOUT_MS * 3);
+    expect(FakeWorker.instances[0].terminated).toBe(false);
+    expect(FakeWorker.instances).toHaveLength(1);
   });
 });
