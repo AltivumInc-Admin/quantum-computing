@@ -90,6 +90,25 @@ test("getWallet returns the tier, balance, and status", async () => {
   expect(endpoint).toBe("https://billing.example.com/wallet");
 });
 
+test("startTopUp posts the custom amount and returns the URL", async () => {
+  const { startTopUp } = await import("@/lib/billing-client");
+  (global.fetch as jest.Mock).mockResolvedValue({
+    ok: true,
+    json: async () => ({ url: "https://checkout.stripe.com/c/pay/cs_37" }),
+  });
+  expect(await startTopUp(37)).toBe("https://checkout.stripe.com/c/pay/cs_37");
+  const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+  expect(JSON.parse(init.body)).toEqual({ amountUsd: 37 });
+});
+
+test("startTopUp rejects out-of-range amounts client-side without a request", async () => {
+  const { startTopUp } = await import("@/lib/billing-client");
+  for (const bad of [4, 501, 12.5]) {
+    await expect(startTopUp(bad)).rejects.toThrow(/whole dollar amount/);
+  }
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
 test("openPortal returns the portal URL", async () => {
   (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ url: "https://billing.stripe.com/p/1" }) });
   expect(await openPortal()).toBe("https://billing.stripe.com/p/1");

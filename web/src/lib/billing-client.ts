@@ -59,22 +59,41 @@ async function authHeader(): Promise<string> {
   return `Bearer ${token}`;
 }
 
-/**
- * Create a Checkout Session for a subscription tier or a credit top-up and
- * return its hosted URL. The caller redirects the browser there.
- */
-export async function startCheckout(lookupKey: CheckoutLookupKey): Promise<string> {
+/** Custom top-up bounds — mirrors the server's validation (whole dollars). */
+export const TOPUP_MIN_USD = 5;
+export const TOPUP_MAX_USD = 500;
+
+async function createSession(body: Record<string, unknown>): Promise<string> {
   const base = billingUrl();
   if (!base) throw new Error("billing not configured");
   const auth = await authHeader();
   const res = await fetch(`${base}/checkout`, {
     method: "POST",
     headers: { authorization: auth, "content-type": "application/json" },
-    body: JSON.stringify({ lookupKey }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new BillingHttpError("checkout", res.status);
   const { url } = (await res.json()) as { url: string };
   return url;
+}
+
+/**
+ * Create a Checkout Session for a subscription tier or a fixed credit pack and
+ * return its hosted URL. The caller redirects the browser there.
+ */
+export async function startCheckout(lookupKey: CheckoutLookupKey): Promise<string> {
+  return createSession({ lookupKey });
+}
+
+/**
+ * Create a Checkout Session for a custom whole-dollar top-up (credits are
+ * granted 1:1 at the $0.01 peg, computed server-side).
+ */
+export async function startTopUp(amountUsd: number): Promise<string> {
+  if (!Number.isInteger(amountUsd) || amountUsd < TOPUP_MIN_USD || amountUsd > TOPUP_MAX_USD) {
+    throw new Error(`top-up must be a whole dollar amount from ${TOPUP_MIN_USD} to ${TOPUP_MAX_USD}`);
+  }
+  return createSession({ amountUsd });
 }
 
 /** Open the Stripe Billing Portal for the signed-in customer; returns its URL. */

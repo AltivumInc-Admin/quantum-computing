@@ -19,6 +19,7 @@ import { isBillingConfigured } from "@/lib/billing-client";
 import { CostEstimator } from "@/components/pricing/cost-estimator";
 import { CheckoutButton } from "@/components/pricing/checkout-button";
 import { WalletBadge } from "@/components/pricing/wallet-badge";
+import { TopUp } from "@/components/pricing/top-up";
 
 const PAGE_TITLE = "Pricing";
 const PAGE_DESCRIPTION =
@@ -72,7 +73,7 @@ const principles = [
   },
 ];
 
-const faqs = [
+const faqsBase = [
   {
     q: "Is learning really free forever?",
     a: "Yes. The full curriculum, the browser simulator, the playground, the glossary, and spaced-repetition review are free with a free account — email or Google, no credit card. That is the product, not a trial.",
@@ -93,15 +94,22 @@ const faqs = [
     q: "What happens when a provider changes its prices?",
     a: `Hardware rates track the providers' published price sheets (currently the ${PRICES_AS_OF} revision). When a provider reprices, our credit rates follow, and the pre-flight estimate always reflects the live rate at submission time.`,
   },
-  {
-    q: "When can I buy credits?",
-    a: "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create a free account and your 500-credit welcome grant will be waiting at launch.",
-  },
 ];
+
+const faqBuyWhenLive = {
+  q: "How do I buy credits?",
+  a: "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire.",
+};
+
+const faqBuyPrelaunch = {
+  q: "When can I buy credits?",
+  a: "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create a free account and your 500-credit welcome grant will be waiting at launch.",
+};
 
 export default function PricingPage() {
   const configured = isAuthConfigured();
   const billingLive = isBillingConfigured();
+  const faqs = [...faqsBase, billingLive ? faqBuyWhenLive : faqBuyPrelaunch];
   const exampleShots = 1000;
 
   return (
@@ -270,14 +278,33 @@ export default function PricingPage() {
             })}
           </div>
 
-          {/* Early-access honesty note — keeps this page consistent with the
-              sponsored-runs story the curriculum tells today. */}
-          <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
-            <span className="font-semibold">Early access:</span> billing has not
-            launched yet — these are launch prices. Today the tutor is free to
-            try, and hardware runs inside the curriculum are sponsored. Your
-            welcome grant is credited when wallets go live.
-          </div>
+          {/* Pay-as-you-go top-up — presets or any custom amount. Only rendered
+              once billing is live; before that the tiers' "Launching soon"
+              carries the story alone. */}
+          {billingLive && (
+            <div className="mt-8">
+              <TopUp />
+            </div>
+          )}
+
+          {/* Honesty note, phase-aware: pre-launch it prevents this page from
+              contradicting the sponsored-runs story; live, it tells the truth
+              about the transition window instead. */}
+          {billingLive ? (
+            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+              <span className="font-semibold">Launch pricing:</span> wallets are
+              live. During the transition, the in-lesson tutor remains free to
+              try and existing curriculum hardware runs stay sponsored — your
+              credits meter new wallet-billed usage as it rolls out.
+            </div>
+          ) : (
+            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+              <span className="font-semibold">Early access:</span> billing has
+              not launched yet — these are launch prices. Today the tutor is
+              free to try, and hardware runs inside the curriculum are
+              sponsored. Your welcome grant is credited when wallets go live.
+            </div>
+          )}
         </section>
 
         {/* ------------------------------------------------------------ */}

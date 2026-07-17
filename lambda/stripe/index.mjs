@@ -60,6 +60,15 @@ export const CATALOG = {
   ql_credits_10000: { mode: "payment", tier: null, credits: 10000 },
 };
 
+// Custom top-ups: any whole-dollar amount in [MIN, MAX], credited 1:1 at the
+// $0.01 peg (100 credits per dollar). Priced ad hoc via price_data against the
+// catalog's ql_credits product, so the Stripe dashboard groups every top-up —
+// fixed pack or custom — under one product. The ceiling bounds fraud and
+// chargeback exposure per transaction, not legitimate use.
+export const CUSTOM_TOPUP_MIN_USD = 5;
+export const CUSTOM_TOPUP_MAX_USD = 500;
+export const CUSTOM_TOPUP_PRODUCT = "ql_credits";
+
 export function createHandlerCore({
   stripe,
   ddb,
@@ -290,6 +299,42 @@ export function createHandlerCore({
       } catch {
         return json(400, { error: "invalid JSON body" });
       }
+
+      // ---- Custom top-up: { amountUsd } — whole dollars, bounded, 1:1 credits ----
+      if (body?.amountUsd !== undefined) {
+        const amountUsd = body.amountUsd;
+        if (
+          !Number.isInteger(amountUsd) ||
+          amountUsd < CUSTOM_TOPUP_MIN_USD ||
+          amountUsd > CUSTOM_TOPUP_MAX_USD
+        ) {
+          return json(400, {
+            error: `amountUsd must be a whole dollar amount from ${CUSTOM_TOPUP_MIN_USD} to ${CUSTOM_TOPUP_MAX_USD}`,
+          });
+        }
+        const credits = amountUsd * 100; // the $0.01 peg, server-computed
+        const customer = await ensureCustomer(sub, email);
+        const session = await stripe.checkout.sessions.create({
+          customer,
+          client_reference_id: sub,
+          mode: "payment",
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product: CUSTOM_TOPUP_PRODUCT,
+                unit_amount: amountUsd * 100,
+              },
+              quantity: 1,
+            },
+          ],
+          metadata: { userId: sub, credits: String(credits), kind: "topup" },
+          success_url: `${siteOrigin}/workspace?checkout=success`,
+          cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+        });
+        return json(200, { url: session.url });
+      }
+
       const spec = CATALOG[body?.lookupKey];
       if (!spec) return json(400, { error: "unknown lookupKey" });
 

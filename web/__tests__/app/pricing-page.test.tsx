@@ -65,6 +65,29 @@ describe("PricingPage", () => {
     expect(note.parentElement?.textContent).toMatch(/tutor is free to try/i);
   });
 
+  it("switches to live checkout + custom top-up when billing is configured", () => {
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    try {
+      render(<PricingPage />);
+      // Paid tiers become real checkout buttons; the teaser is gone.
+      expect(screen.getByRole("button", { name: "Get Plus" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Get Pro" })).toBeInTheDocument();
+      expect(screen.queryByText("Launching soon")).not.toBeInTheDocument();
+      // The custom top-up is offered, honoring the published bounds.
+      expect(screen.getByText("Top up any amount")).toBeInTheDocument();
+      expect(screen.getByLabelText("Custom amount (USD)")).toBeInTheDocument();
+      // The honesty note flips to the live-transition wording.
+      expect(screen.queryByText(/billing has not launched yet/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/wallets are live/i)).toBeInTheDocument();
+      // The FAQ answers "how", not "when".
+      expect(screen.getByText("How do I buy credits?")).toBeInTheDocument();
+      expect(screen.queryByText("When can I buy credits?")).not.toBeInTheDocument();
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
   it("gates sign-up CTAs on the Cognito env (configured)", () => {
     setAuthEnv(true);
     render(<PricingPage />);
