@@ -225,14 +225,24 @@ the first deploy, before it was in the template, so a plain `sam deploy` now fai
 `TutorLogGroup ... already exists`. Pick one (region is **us-east-2**; confirm the
 stack name with `aws cloudformation list-stacks`):
 
-- **Preserve existing logs — CloudFormation resource import.** `sam build`, then
-  create an `IMPORT` change set that adopts the existing group into the stack
-  (`ResourceType: AWS::Logs::LogGroup`, `LogicalResourceId: TutorLogGroup`,
-  `ResourceIdentifier: {"LogGroupName": "/aws/lambda/quantum-tutor"}`) against the
-  built `.aws-sam/build/template.yaml`, passing the stack's current parameter
-  values, then execute it. After import, normal `sam deploy` manages the group.
-  (`TutorLogGroup` carries `DeletionPolicy: Retain`, which CloudFormation requires
-  on every resource being imported.)
+- **Preserve existing logs — CloudFormation resource import (two steps; an
+  `IMPORT` change set may contain ONLY imports, so it cannot use the full new
+  template while that template also adds other resources).**
+  1. Fetch the currently deployed template (`aws cloudformation get-template
+     --template-stage Original`), append ONLY the `TutorLogGroup` resource
+     (literal `LogGroupName: /aws/lambda/quantum-tutor`, `RetentionInDays: 30`,
+     `DeletionPolicy: Retain` — CloudFormation requires a DeletionPolicy on
+     every imported resource), and create + execute an `IMPORT` change set
+     against that template (`ResourceType: AWS::Logs::LogGroup`,
+     `LogicalResourceId: TutorLogGroup`, `ResourceIdentifier:
+     {"LogGroupName": "/aws/lambda/quantum-tutor"}`), passing
+     `UsePreviousValue` for the stack's existing parameters.
+  2. After `IMPORT_COMPLETE`, a normal `sam deploy` manages the group. The
+     template names the group with the LITERAL string (not
+     `!Sub "/aws/lambda/${TutorFunction}"`) deliberately: import stores the
+     literal physical name, and CloudFormation flags a raw `!Sub` against it
+     as a LogGroupName change — planning a replacement that fails on the
+     existing name.
 - **Simplest, drops existing logs.**
   ```bash
   aws logs delete-log-group --region us-east-2 --log-group-name /aws/lambda/quantum-tutor
