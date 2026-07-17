@@ -57,6 +57,38 @@ def test_real_sdk_does_not_mutate_the_circuit():
     np.testing.assert_allclose(first, second, atol=1e-15)
 
 
+def test_real_sdk_reuses_one_simulator_instance(monkeypatch):
+    """Loop-friendly: notebook energy functions call the helper inside
+    optimization/grid loops, so consecutive real-SDK calls must share a single
+    lazily-built ``LocalSimulator`` instead of constructing one per call."""
+    import braket.devices
+
+    # ``lib.utils``'s __init__ re-exports the FUNCTION under the same name, so
+    # ``import lib.utils.statevector as m`` would bind the function; go through
+    # sys.modules to reach the actual module and its cache variable.
+    sv_module = sys.modules["lib.utils.statevector"]
+
+    real_cls = braket.devices.LocalSimulator
+    constructions = []
+
+    def counting_local_simulator(*args, **kwargs):
+        constructions.append(1)
+        return real_cls(*args, **kwargs)
+
+    monkeypatch.setattr(sv_module, "_local_simulator", None)  # force a cold cache
+    monkeypatch.setattr(braket.devices, "LocalSimulator", counting_local_simulator)
+
+    circuit = Circuit().h(0).cnot(0, 1)
+    first = statevector(circuit)
+    second = statevector(circuit)
+
+    assert len(constructions) == 1, (
+        f"expected exactly one LocalSimulator construction, got {len(constructions)}"
+    )
+    np.testing.assert_allclose(first, BELL, atol=1e-12)
+    np.testing.assert_allclose(second, BELL, atol=1e-12)
+
+
 def test_real_sdk_compacted_register():
     """Sparse qubit labels span the COMPACTED register — the same convention
     qcsim implements (h(0).cnot(0, 2) is a 4-element Bell state, not 8)."""

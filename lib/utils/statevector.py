@@ -18,6 +18,13 @@ from __future__ import annotations
 
 import numpy as np
 
+# Lazily-initialized LocalSimulator shared by every real-SDK call. Notebook
+# energy functions call ``statevector`` inside optimization/grid loops, and
+# constructing a fresh simulator per call is measurable overhead. The variable
+# lives at module level but is only ever populated inside the real-SDK branch
+# below, so importing this module never touches braket (browser-safety).
+_local_simulator = None
+
 
 def statevector(circuit) -> np.ndarray:
     """Return the exact final state vector of ``circuit`` as a complex ndarray.
@@ -39,9 +46,13 @@ def statevector(circuit) -> np.ndarray:
     # SDK is installed, and a module-level import would drag braket into the
     # import graph of the browser bundle (web/jupyterlite-build/build.sh stages
     # lib/ wholesale into the Pyodide lab, where only qcsim exists).
-    from braket.devices import LocalSimulator
+    global _local_simulator
+    if _local_simulator is None:
+        from braket.devices import LocalSimulator
+
+        _local_simulator = LocalSimulator()
 
     working = circuit.copy()
     working.state_vector()  # registers the StateVector result type on the copy
-    result = LocalSimulator().run(working, shots=0).result()
+    result = _local_simulator.run(working, shots=0).result()
     return np.asarray(result.values[0], dtype=np.complex128)
