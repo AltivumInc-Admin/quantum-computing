@@ -6,6 +6,8 @@ export interface Section {
   index: number;
   dirName: string;
   notebookCount: number;
+  /** How many of the section's notebooks are browser-runnable (manifest-verified). */
+  runnableCount: number;
 }
 
 // Derived from the generated content manifest (the single source of truth).
@@ -17,6 +19,7 @@ const sections: Section[] = getManifestSections().map((s) => ({
   index: s.index,
   dirName: s.dirName,
   notebookCount: s.notebookCount,
+  runnableCount: s.notebooks.filter((n) => n.runnable).length,
 }));
 
 // One hue per section (oklch hue angle). Single source of truth shared by the

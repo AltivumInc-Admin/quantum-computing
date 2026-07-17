@@ -7,17 +7,33 @@ interface SectionCardProps {
   title: string;
   summary: string;
   notebookCount: number;
+  /** Intercept the click (the welcome page's sign-up gate). Call
+      e.preventDefault() to stop navigation; the href stays real so new-tab,
+      copy-link, and no-JS all still reach the section. */
+  onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  /** Set when a click opens a dialog instead of navigating. */
+  hasPopup?: boolean;
 }
 
 // One hue per section is the single source of truth (sectionHue in lib/sections).
 // The gradient bleed, the number badge, and the hover glow are all derived from
 // this value in CSS (see .section-* classes in globals.css), so they always agree.
-export function SectionCard({ slug, index, title, summary, notebookCount }: SectionCardProps) {
+export function SectionCard({
+  slug,
+  index,
+  title,
+  summary,
+  notebookCount,
+  onClick,
+  hasPopup,
+}: SectionCardProps) {
   const hue = hueFor(index);
 
   return (
     <TransitionLink
       href={`/learn/${slug}`}
+      onClick={onClick}
+      aria-haspopup={hasPopup ? "dialog" : undefined}
       aria-label={`${title}, section ${String(index).padStart(2, "0")}`}
       style={{ "--hue": hue } as React.CSSProperties}
       className="group relative block rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) backdrop-blur-md overflow-hidden interactive focus-ring shadow-(--shadow-resting) hover:-translate-y-1.5 hover:shadow-(--shadow-raised) hover:border-gray-300/80 dark:hover:border-white/[0.12] transition-all duration-300"

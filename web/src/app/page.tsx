@@ -4,8 +4,9 @@ import { getSections } from "@/lib/sections";
 import { getContentSummary } from "@/lib/content";
 import { GLOSSARY } from "@/lib/glossary";
 import { isAuthConfigured } from "@/lib/auth-config";
-import { SectionCard } from "@/components/section-card";
-import { GlossaryCard } from "@/components/glossary-card";
+import { pitchFor } from "@/lib/section-pitch";
+import { SINGLE, ROT } from "@/components/quantum/qsim-dsl";
+import { CurriculumGrid } from "@/components/curriculum-grid";
 
 const HOME_TITLE = "Quantum Computing Workspace";
 const HOME_DESCRIPTION =
@@ -87,10 +88,17 @@ export default async function HomePage() {
   );
   const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
 
+  // The playground earns the third hero stat: its gate count is derived from
+  // the same DSL registry the editor parses — minus the identity gate, which
+  // the palette never surfaces and QASM export drops as a physical no-op —
+  // plus rotations and CNOT. The number therefore matches what a visitor can
+  // actually count in the playground (the test couples it to the palette).
+  const playgroundGates = SINGLE.size - 1 + ROT.size + 1;
+
   const stats = [
     { value: sections.length, label: "curriculum sections" },
     { value: notebookTotal, label: "hands-on notebooks" },
-    { value: GLOSSARY.length, label: "glossary terms" },
+    { value: playgroundGates, label: "gates in the live playground" },
   ];
 
   const bands: FeatureBand[] = [
@@ -120,7 +128,7 @@ export default async function HomePage() {
     {
       kicker: "Curriculum",
       title: "Learn by running real notebooks",
-      body: `${notebookTotal} hands-on notebooks across ${sections.length} sections take you from your first qubit to production hybrid quantum-classical jobs. Most run directly in your browser — no installation, no setup, no account required to start.`,
+      body: `${notebookTotal} hands-on notebooks across ${sections.length} sections take you from your first qubit to production hybrid quantum-classical jobs. Most run directly in your browser — no installation, no setup, just a free account.`,
       href: "#curriculum",
       linkLabel: "Browse the learning path",
       image: {
@@ -130,10 +138,12 @@ export default async function HomePage() {
     },
   ];
 
+  // The AI tutor graduated to its own feature band below, freeing this slot
+  // for the in-lesson challenge graders.
   const toolkit = [
     {
-      title: "Ask the margin",
-      body: "An AI tutor lives beside every lesson. Highlight what confuses you and ask — answers arrive in context, without leaving the page.",
+      title: "Challenges that grade themselves",
+      body: "Lessons end with hands-on checks — predict a measurement, debug a circuit, estimate a QPU bill — graded instantly in your browser, so you know an idea stuck before you build on it.",
       href: null,
     },
     {
@@ -269,6 +279,80 @@ export default async function HomePage() {
                 </div>
               </div>
             ))}
+
+            {/* AI tutor band — the visual is a working mock of the actual
+                Ask-the-margin panel rather than a photo: it shows the product
+                interaction itself, costs no asset bytes, and adapts to theme.
+                The mock is decorative (aria-hidden); the copy carries the facts. */}
+            <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center reveal">
+              <div className="lg:order-2">
+                <p className="text-xs font-semibold tracking-widest uppercase text-accent dark:text-accent-light mb-3">
+                  AI tutor
+                </p>
+                <h3 className="font-display text-display-lg text-gray-900 dark:text-white text-balance">
+                  An AI tutor that knows exactly where you are
+                </h3>
+                <p className="mt-4 text-base sm:text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                  Every lesson carries Ask the margin: press Cmd-K or Ctrl-K, ask what
+                  confuses you, and a Claude-powered tutor streams an answer grounded
+                  in the exact page you are reading — no tab-switching, no pasting
+                  context. Included free for every learner.
+                </p>
+                <Link
+                  href="#curriculum"
+                  className="mt-6 inline-flex items-center gap-1.5 text-base font-medium text-accent-dark dark:text-accent-light hover:underline underline-offset-4 interactive focus-ring rounded"
+                >
+                  Meet it inside any lesson
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                  </svg>
+                </Link>
+              </div>
+              <div className="lg:order-1">
+                <div
+                  aria-hidden="true"
+                  className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-[#080c14] shadow-(--shadow-resting) p-6 sm:p-8"
+                >
+                  <div className="flex items-center justify-between gap-4 mb-5">
+                    <p className="text-xs font-semibold tracking-widest uppercase text-accent-light">
+                      Ask the margin
+                    </p>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-gray-300">
+                        Cmd
+                      </kbd>
+                      <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-gray-300">
+                        K
+                      </kbd>
+                    </span>
+                  </div>
+                  {/* The frame pins #080c14 in both themes, so both resting
+                      colors here sit on that dark ground — .text-caption's
+                      gray-500 light value would be sub-AA on it. */}
+                  <p className="text-[11px] text-gray-400 dark:text-gray-300 mb-2">
+                    Reading: 03 — Quantum Algorithms
+                  </p>
+                  <div className="rounded-control border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-gray-200">
+                    Why does Grover&apos;s search only need about &radic;N queries?
+                  </div>
+                  <p className="mt-4 text-sm leading-relaxed text-gray-300">
+                    Each Grover iteration rotates the state a fixed angle toward the
+                    marked item, so its amplitude — not just its probability — grows
+                    with every step. Amplitudes square into probabilities, which is
+                    where the quadratic speedup lives: about &pi;/4&middot;&radic;N
+                    iterations instead of N/2 checks.
+                    <span className="animate-caret ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] bg-accent-light" />
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Toolkit trio — the retention layer. */}
@@ -356,29 +440,23 @@ export default async function HomePage() {
               {sections.length} sections
             </span>
           </div>
-          <ul role="list" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {sections.map((section, i) => (
-              <li
-                key={section.slug}
-                className="animate-card-enter"
-                style={{ animationDelay: `${150 + i * 80}ms` }}
-              >
-                <SectionCard
-                  slug={section.slug}
-                  index={section.index}
-                  title={section.title}
-                  summary={summaries[i] || "Hands-on lessons and exercises."}
-                  notebookCount={section.notebookCount}
-                />
-              </li>
-            ))}
-            <li
-              className="animate-card-enter"
-              style={{ animationDelay: `${150 + sections.length * 80}ms` }}
-            >
-              <GlossaryCard />
-            </li>
-          </ul>
+          {/* Browsing is free for everyone; opening a section is where the
+              sign-up gate lives (see CurriculumGrid). Each card carries its
+              hand-written gate pitch alongside the content summary. */}
+          <CurriculumGrid
+            sections={sections.map((section, i) => {
+              const summary = summaries[i] || "Hands-on lessons and exercises.";
+              return {
+                slug: section.slug,
+                index: section.index,
+                title: section.title,
+                notebookCount: section.notebookCount,
+                runnableCount: section.runnableCount,
+                summary,
+                pitch: pitchFor(section.slug, summary),
+              };
+            })}
+          />
         </div>
       </section>
     </div>
