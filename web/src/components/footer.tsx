@@ -16,6 +16,12 @@ export function Footer() {
           <Link href="/playground" className={linkClass}>
             Playground
           </Link>
+          <Link href="/runbook" className={linkClass}>
+            Runbook
+          </Link>
+          <Link href="/credentials" className={linkClass}>
+            Credentials
+          </Link>
           <Link href="/glossary" className={linkClass}>
             Glossary
           </Link>

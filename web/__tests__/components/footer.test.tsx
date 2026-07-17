@@ -15,6 +15,27 @@ jest.mock("next/link", () => {
 });
 
 describe("Footer", () => {
+  it("links to the playground", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Playground" })).toHaveAttribute(
+      "href",
+      "/playground",
+    );
+  });
+
+  it("links to the runbook", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Runbook" })).toHaveAttribute("href", "/runbook");
+  });
+
+  it("links to the credentials page", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Credentials" })).toHaveAttribute(
+      "href",
+      "/credentials",
+    );
+  });
+
   it("links to the glossary", () => {
     render(<Footer />);
     expect(screen.getByRole("link", { name: "Glossary" })).toHaveAttribute("href", "/glossary");
