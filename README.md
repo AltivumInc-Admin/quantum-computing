@@ -28,6 +28,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 - **In-browser, zero-install notebooks**: 32 of the 45 notebooks run entirely in your browser via **JupyterLite + Pyodide**, with a custom NumPy simulator (`qcsim`) that drop-in replaces the Braket SDK.
 - **A shared Python toolkit** (`lib/`) of circuits, device abstractions, QML, and quantum-chemistry building blocks the notebooks import instead of reinventing.
 - **Production AWS infrastructure as code** (`infra/`) — least-privilege IAM, encrypted result storage with lifecycle cleanup, and a hard monthly budget alarm.
+- **Four serverless backends** (`lambda/`) — the streaming lesson tutor (Bedrock), per-user progress sync, the hard-capped real-QPU submission path, and an opt-in review-email sender — each an independently tested Node.js Lambda with its own SAM template.
 - **A CI gate and an auto-deploy pipeline** so `main` is always green and the live site is always built from a passing commit.
 
 > **Philosophy:** prototype on the **free local simulator** first, validate, then spend. Real QPU/managed-simulator runs are always opt-in and cost-estimated before execution. (On quantum.altivum.ai the platform pays for QPU runs; in this repo, running against your own AWS account bills you.)
@@ -43,7 +44,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 | **Math-native portal** | KaTeX everywhere, plus `​```qsim` fenced blocks that become **live circuit simulators** (probability bars, Dirac state, Bloch dial, θ slider) right inside the prose. |
 | **Simulator parity, proven** | `qcsim` (Python) and `math.ts` (TypeScript) both mirror Braket's conventions and are **tested for parity** against the real SDK to 4σ / `1e-10`. |
 | **Cost-safe by construction** | Per-provider cost estimators, a `make cost` Cost-Explorer report, and a CloudFormation **budget alarm** at 50 % / 80 % / 100 %. |
-| **Real engineering rigor** | 3-job CI (Python + web + build-smoke), protected `main` with required checks, a "runnable-notebook contract" that statically *and* dynamically proves browser-runnability, `nbstripout` clean diffs, and `ruff`. |
+| **Real engineering rigor** | 4-job CI (Python + web + Lambda backends + build-smoke), protected `main` with required checks, a "runnable-notebook contract" that statically *and* dynamically proves browser-runnability, `nbstripout` clean diffs, and `ruff`. |
 
 ---
 
@@ -69,6 +70,7 @@ The path has three rungs — **Newcomer → Practitioner → Subject-matter expe
 - [The `lib/` toolkit](#-the-lib-toolkit)
 - [`qcsim` — the in-browser simulator](#-qcsim--the-in-browser-simulator)
 - [The web portal](#-the-web-portal)
+- [The serverless backends](#-the-serverless-backends-lambda)
 - [Command reference](#-command-reference)
 - [Testing & CI](#-testing--ci)
 - [AWS infrastructure & cost controls](#-aws-infrastructure--cost-controls)
@@ -167,11 +169,11 @@ Configure AWS via `~/.aws` and the variables in [`.env.example`](.env.example) (
 
 ## 🌐 Run notebooks in your browser (JupyterLite + qcsim)
 
-The headline feature: **32 notebooks run with zero install**, directly in the browser. There's no backend — it's all static assets plus a WebAssembly Python kernel.
+The headline feature: **32 notebooks run with zero install**, directly in the browser. The site is a fully static export, and every circuit, simulator, and grader executes client-side on a WebAssembly Python kernel — the only servers involved are the four small [serverless backends](#-the-serverless-backends-lambda) powering optional, env-gated features (tutor, progress sync, QPU submission, review email). The learning core needs nothing but a browser tab.
 
 ### How it works
 
-The real `amazon-braket-sdk` cannot be installed inside Pyodide. So this repo ships **[`qcsim`](qcsim/)** — a ~480-line, pure-NumPy state-vector simulator that **registers itself in `sys.modules` as `braket`, `braket.circuits`, and `braket.devices`**. That means a notebook's `from braket.circuits import Circuit` runs **unmodified** in the browser.
+The real `amazon-braket-sdk` cannot be installed inside Pyodide. So this repo ships **[`qcsim`](qcsim/)** — a compact, pure-NumPy state-vector simulator that **registers itself in `sys.modules` as `braket`, `braket.circuits`, and `braket.devices`**. That means a notebook's `from braket.circuits import Circuit` runs **unmodified** in the browser.
 
 ```mermaid
 flowchart TB
@@ -255,7 +257,7 @@ flowchart TB
     lab --> amplify
 
     subgraph ci["🔁 CI gate"]
-        gate["python · web · build-smoke"]
+        gate["python · web · lambdas · build-smoke"]
     end
     py --> gate
     web --> gate
@@ -300,17 +302,26 @@ quantum-computing/
 │   ├── jupyterlite-build/   #   build.sh → builds the in-browser lab into public/lab/
 │   └── public/lab/          #   generated JupyterLite + Pyodide distribution
 │
+├── lambda/                  # Serverless backends — each is its own npm package + SAM template
+│   ├── tutor/               #   "Ask the margin" lesson tutor: streaming Bedrock Lambda (see its README)
+│   ├── sync/                #   versioned per-user progress KV behind a Cognito-authorized API
+│   ├── qpu/                 #   hard-capped real-QPU submission path (see its README)
+│   └── review-email/        #   opt-in spaced-repetition reminder sender (see its README)
+│
 ├── infra/                   # AWS infrastructure as code
 │   ├── cloudformation/      #   main + s3 + iam + budget + (optional) notebook
-│   └── scripts/             #   deploy / teardown / validate-setup / cost-report
+│   ├── scripts/             #   deploy / teardown / validate-setup / cost-report
+│   ├── workspace/           #   Cognito user pool for the Workspace login
+│   ├── redirect/            #   quantumlearner.dev → quantum.altivum.ai (CloudFront)
+│   └── ci-standby/          #   CodeBuild warm-standby CI mirror + failover script
 │
-├── tests/                   # 13 pytest modules (lib + qcsim parity + notebook contract)
-├── scripts/                 # validate_runnable.py · gen_h2_fixture.py · build_tutor_corpus.mjs
+├── tests/                   # pytest suite (lib + qcsim parity + notebook contract + content guards)
+├── scripts/                 # validate_runnable.py · fixture generators · web build helpers
 ├── docs/                    # design specs & implementation plans
 ├── Makefile                 # setup · lab · test · devices · cost · lint · deploy-infra …
 ├── pyproject.toml           # deps (core / dev / full extras), ruff, pytest config
 ├── amplify.yml              # AWS Amplify build pipeline
-└── .github/workflows/ci.yml # python · web · build-smoke
+└── .github/workflows/ci.yml # python · web · lambdas · build-smoke
 ```
 
 ---
@@ -417,15 +428,38 @@ Notebooks that import `braket.aws` **must not** be marked browser-runnable — t
 
 **Design system.** A token-driven system in `globals.css`: a cascading surface scale (`--surface-*`), two-step elevation shadows, a radius scale (`--radius-chip/-control/-card`), an OKLCH accent (cyan) + warm (amber) palette, fluid `clamp()` typography with `text-wrap: balance`, per-section hues, and comprehensive `prefers-reduced-motion` coverage. Accessibility is first-class (focus-visible rings everywhere, `aria-*` on every interactive control, reduced-motion, decorative SVG hidden from AT).
 
-**Quality:** **85 Jest tests / 12 suites**, all green (components, content pipeline, and the `math.ts`↔`qcsim` gate-fixture parity).
+**Quality:** a **170+-suite Jest test bed** (components, content pipeline, contrast/accessibility guards, and the `math.ts`↔`qcsim` gate-fixture parity), plus a Playwright e2e smoke that boots real Pyodide in the built lab (`npm run test:e2e`, needs `npm run build` first — see [`web/e2e/README.md`](web/e2e/README.md)).
 
 ```bash
 cd web
 npm install
 npm run dev      # http://localhost:3000
-npm test         # 85 tests
+npm test         # Jest unit suite
 npm run build    # static export → web/out/
 ```
+
+---
+
+## 🔌 The serverless backends (`lambda/`)
+
+The static site is backed by four small, independently deployed Node.js Lambdas — each a self-contained npm package with its own SAM `template.yaml`, tests that stub AWS, and (where noted) a README with deploy and ops details:
+
+| Backend | What it does | Docs |
+|---|---|---|
+| [`lambda/tutor/`](lambda/tutor/) | "Ask the margin" — a stateless, response-streaming lesson tutor grounded in the current lesson via Amazon Bedrock | [`README`](lambda/tutor/README.md) |
+| [`lambda/sync/`](lambda/sync/) | Versioned per-user KV for progress snapshots with optimistic concurrency; identity from the API's Cognito JWT authorizer | header comment in [`index.mjs`](lambda/sync/index.mjs) |
+| [`lambda/qpu/`](lambda/qpu/) | The hard-capped, server-side path by which a learner runs a circuit on real QPU hardware | [`README`](lambda/qpu/README.md) |
+| [`lambda/review-email/`](lambda/review-email/) | Scheduled sender that emails only opted-in learners with spaced-repetition cards actually due, with tokenized unsubscribe | [`README`](lambda/review-email/README.md) |
+
+Local dev loop for any of them:
+
+```bash
+cd lambda/<tutor|sync|qpu|review-email>
+npm ci
+npm test        # node --test, offline (AWS clients stubbed)
+```
+
+The portal treats these as optional: front-end features gate on their configuration (e.g. the tutor affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set), so the static export builds and deploys cleanly without any of them.
 
 ---
 
@@ -451,43 +485,41 @@ npm run build    # static export → web/out/
 |---|---|
 | `npm run dev` | Dev server on port 3000 |
 | `npm run build` | Static export to `web/out/` |
-| `npm test` | Jest test suite (85 tests) |
+| `npm test` | Jest unit suite |
+| `npm run test:e2e` | Playwright in-browser smoke (run `npm run build` first) |
 | `npm run lint` | ESLint |
 
-> **Dependency extras:** core install gives you Braket + NumPy/SciPy/Matplotlib. `.[dev]` adds pytest/ruff/nbstripout + the notebook-contract runtime. `.[full]` adds **PennyLane**, **OpenFermion/PySCF**, and JupyterLab — required for modules 03–04 and for CI to not silently skip those tests.
+### Lambda backends (`cd lambda/<name>`)
+
+| Command | What it does |
+|---|---|
+| `npm ci` | Install that backend's pinned dependencies |
+| `npm test` | Offline handler tests (`node --test`, AWS clients stubbed) |
+
+> **Dependency extras:** core install gives you Braket + NumPy/SciPy/Matplotlib. `.[dev]` adds pytest/ruff/nbstripout + the notebook-contract runtime. `.[full]` adds **PennyLane**, **OpenFermion/PySCF**, and JupyterLab — required for modules 04–05 and for CI to not silently skip those tests.
 
 ---
 
 ## ✅ Testing & CI
 
-Every PR and every push to `main` runs three jobs; `main` is a **protected branch** with all three as **required status checks**, so Amplify only ever builds a commit that already passed CI.
+Every PR and every push to `main` runs four jobs ([`ci.yml`](.github/workflows/ci.yml)); `main` is a **protected branch** with required status checks, so Amplify only ever builds a commit that already passed CI.
 
 ```mermaid
 flowchart LR
-    pr["PR / push to main"] --> ci{"CI — 3 required checks"}
+    pr["PR / push to main"] --> ci{"CI — 4 jobs"}
     ci --> py["<b>python</b><br/>pytest + ruff<br/>.[dev,full] + qcsim"]
     ci --> wb["<b>web</b><br/>jest + eslint"]
+    ci --> lm["<b>lambdas</b><br/>node --test × 4 backends"]
     ci --> sm["<b>build-smoke</b><br/>JupyterLite build<br/>+ next build"]
     py --> ok{"all green?"}
     wb --> ok
+    lm --> ok
     sm --> ok
     ok -- yes --> merge["merge to main"]
     merge --> amp["Amplify auto-build & deploy"]
 ```
 
-**Python test suite (13 modules, `tests/`):**
-
-| Module | Validates |
-|---|---|
-| `test_circuits.py` | `bell_pair` / `ghz_state` / `qft_circuit` behavior |
-| `test_devices.py` | `get_device`, `run_circuit`, S3-required guard, ARN format |
-| `test_cost.py` | Per-provider cost math & warnings |
-| `test_results.py` · `test_visualization.py` | Count parsing, expectations; Matplotlib figures |
-| `test_feature_maps.py` · `test_classifiers.py` · `test_training.py` | QML encodings, VQC/kernels, training loop (PennyLane-gated) |
-| `test_hamiltonians.py` · `test_ansatz.py` | Chemistry: H₂/LiH Hamiltonians, HEA/UCCSD ansätze (OpenFermion-gated) |
-| `test_qcsim_parity.py` | **`qcsim` vs real Braket** to 4σ + exact state-vector / norm / adjoint checks |
-| `test_notebook_contract.py` | Static AST scan + manifest drift guard + **live execution** of every runnable notebook |
-| `test_prereqs.py` | `00-prereqs` structure + the linear-algebra/Born-rule invariants the notebooks teach |
+**Python test suite ([`tests/`](tests/)):** one pytest module per concern, covering the `lib/` toolkit (circuits, devices, cost math, results, visualization), QML and chemistry (gated on the PennyLane / OpenFermion extras), and the platform's own guarantees — `test_qcsim_parity.py` (**`qcsim` vs the real Braket SDK** to 4σ, plus exact state-vector / norm / adjoint checks), `test_notebook_contract.py` (static AST scan + manifest drift guard + **live execution** of every runnable notebook), and content guards (notebook links, pricing prose, the `00-prereqs` invariants). Browse `tests/` for the full, current list.
 
 Pinning: **Python 3.12** (matches the Amplify image; `pyscf`/`openfermionpyscf` wheels exist for 3.12), **Node 20**. Run the fast subset locally with `pytest -m "not slow"`.
 
@@ -549,7 +581,7 @@ Because `main` is protected by the CI gate, **only CI-green commits ever deploy.
 
 ## 🤝 Contributing
 
-1. **Branch from `main`** (it's protected — changes land via PR with the 3 CI checks green).
+1. **Branch from `main`** (it's protected — changes land via PR with CI green).
 2. **`make setup`** then `make test` / `make lint`; for web changes, `cd web && npm test && npm run lint`.
 3. **Notebooks** are committed **output-stripped** automatically via the `nbstripout` git filter (installed by `make setup`) — keep diffs clean.
 4. **Making a notebook browser-runnable?** Add `<!-- browser-runnable -->` to its first markdown cell, ensure it imports only the qcsim-supported Braket surface, then run `python scripts/validate_runnable.py --write-manifest` and commit the updated `runnable-manifest.json`. CI will reject drift.
@@ -568,7 +600,7 @@ Design specs and implementation plans live in [`docs/`](docs/).
 | **Scientific Python** | NumPy · SciPy · Matplotlib · boto3 |
 | **Notebooks** | JupyterLab · JupyterLite · Pyodide · nbclient · nbstripout |
 | **Web** | Next.js 16 · React 19 · Tailwind CSS v4 · KaTeX · react-markdown · next-themes |
-| **Cloud** | AWS Braket · S3 · IAM · Budgets · SageMaker · CloudFormation · Amplify Hosting |
+| **Cloud** | AWS Braket · Lambda · DynamoDB · Bedrock · Cognito · S3 · IAM · Budgets · SageMaker · CloudFormation · CloudFront · Amplify Hosting |
 | **Tooling** | pytest · ruff · pip-tools · Jest · ESLint · GitHub Actions |
 
 ---
