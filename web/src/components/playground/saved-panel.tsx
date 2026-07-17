@@ -25,6 +25,7 @@ const CONFIRM_MS = 3000;
 
 export function SavedPanel({
   source,
+  theta,
   name,
   onNameChange,
   editing,
@@ -33,6 +34,8 @@ export function SavedPanel({
   onDeleted,
 }: {
   source: string;
+  /** The bench's live slider angle — saved with the source so a Load restores it. */
+  theta: number;
   name: string;
   onNameChange: (v: string) => void;
   /** The loaded circuit this bench is editing — Save updates it in place. */
@@ -63,7 +66,7 @@ export function SavedPanel({
   const handleSave = () => {
     // An empty field while editing means "keep the name" — Save is the update.
     const effectiveName = name.trim() || editing?.name || "";
-    const res = saveCircuit({ id: editing?.id, name: effectiveName, src: source });
+    const res = saveCircuit({ id: editing?.id, name: effectiveName, src: source, theta });
     if (res.ok) {
       onSaved(res.circuit);
       onNameChange("");

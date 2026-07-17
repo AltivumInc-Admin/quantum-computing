@@ -71,6 +71,32 @@ describe("saveCircuit — fresh save", () => {
     const result = saveCircuit({ name: "  Bell  ", src: "H 0" }, 1);
     expect(result.ok && result.circuit.name).toBe("Bell");
   });
+
+  it("persists theta with the record and round-trips it through readCircuit", () => {
+    const result = saveCircuit({ name: "Ramsey", src: "H 0\nRZ 0 theta\nH 0", theta: 2.5 }, 1000);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.circuit.theta).toBe(2.5);
+    expect(JSON.parse(localStorage.getItem(key(result.circuit.id))!)).toEqual({
+      v: 1,
+      name: "Ramsey",
+      src: "H 0\nRZ 0 theta\nH 0",
+      theta: 2.5,
+      updatedAt: 1000,
+    });
+    expect(readCircuit(result.circuit.id)?.theta).toBe(2.5);
+    expect(listCircuits()[0].theta).toBe(2.5);
+  });
+
+  it("clamps an out-of-range theta and drops a non-finite one at save time", () => {
+    const over = saveCircuit({ name: "over", src: "RY 0 theta", theta: 100 }, 1);
+    expect(over.ok && over.circuit.theta).toBe(2 * Math.PI);
+    const nan = saveCircuit({ name: "nan", src: "RY 0 theta", theta: NaN }, 2);
+    expect(nan.ok).toBe(true);
+    if (!nan.ok) return;
+    expect(nan.circuit.theta).toBeUndefined();
+    expect("theta" in JSON.parse(localStorage.getItem(key(nan.circuit.id))!)).toBe(false);
+  });
 });
 
 describe("saveCircuit — caps and rejections", () => {
@@ -197,5 +223,31 @@ describe("readCircuit", () => {
       src: "H 0",
       updatedAt: 42,
     });
+  });
+
+  it("loads a pre-theta record without a theta (callers default pi/2)", () => {
+    localStorage.setItem(
+      key("legacy"),
+      JSON.stringify({ v: 1, name: "Old", src: "RY 0 theta", updatedAt: 7 }),
+    );
+    expect(readCircuit("legacy")).toEqual({ id: "legacy", name: "Old", src: "RY 0 theta", updatedAt: 7 });
+    expect(readCircuit("legacy")?.theta).toBeUndefined();
+  });
+
+  it("drops a corrupt theta on read but keeps the circuit (validate-on-read)", () => {
+    localStorage.setItem(
+      key("bad-theta"),
+      JSON.stringify({ v: 1, name: "Odd", src: "RY 0 theta", theta: "wide", updatedAt: 7 }),
+    );
+    expect(readCircuit("bad-theta")).toEqual({ id: "bad-theta", name: "Odd", src: "RY 0 theta", updatedAt: 7 });
+    expect(listCircuits().map((c) => c.name)).toEqual(["Odd"]);
+  });
+
+  it("clamps an out-of-range synced theta on read", () => {
+    localStorage.setItem(
+      key("hot"),
+      JSON.stringify({ v: 1, name: "Hot", src: "RY 0 theta", theta: 9.5, updatedAt: 7 }),
+    );
+    expect(readCircuit("hot")?.theta).toBe(2 * Math.PI);
   });
 });

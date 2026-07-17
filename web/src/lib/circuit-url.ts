@@ -11,10 +11,23 @@
 
 import { utf8Decode, utf8Encode } from "./utf8";
 
-export type SharePayload = { name?: string; src: string };
+export type SharePayload = { name?: string; src: string; t?: number };
 
 export const MAX_SHARE_SRC = 4000;
 export const MAX_SHARE_NAME = 80;
+/** Theta's clamp ceiling — the compose slider's own upper bound. */
+export const MAX_SHARE_THETA = 2 * Math.PI;
+
+/**
+ * Validate-on-read discipline for a persisted theta (shared with the circuit
+ * store): finite numbers clamp to the slider's [0, 2π] range; anything else —
+ * strings, NaN, Infinity (both JSON.stringify to null), missing — is absent,
+ * and callers fall back to the pi/2 default.
+ */
+export function sanitizeTheta(t: unknown): number | undefined {
+  if (typeof t !== "number" || !Number.isFinite(t)) return undefined;
+  return Math.min(Math.max(t, 0), MAX_SHARE_THETA);
+}
 // A base64url payload longer than this cannot decode to an in-cap circuit.
 const MAX_PAYLOAD_CHARS = 24000;
 
@@ -58,10 +71,12 @@ function fromBase64Url(s: string): number[] | null {
 
 /** Fragment body (no leading '#') encoding this circuit, e.g. "c=eyJ2IjoxLC...". */
 export function encodeShareHash(p: SharePayload): string {
-  const payload =
-    p.name !== undefined && p.name !== ""
-      ? { v: 1, name: p.name, src: p.src }
-      : { v: 1, src: p.src };
+  const payload: { v: 1; name?: string; src: string; t?: number } = { v: 1, src: p.src };
+  if (p.name !== undefined && p.name !== "") payload.name = p.name;
+  // Still v:1 — t is additive and optional, so old decoders and old links both
+  // keep working. Six decimals matches the QASM compiler's angle precision and
+  // keeps the fragment short.
+  if (p.t !== undefined && Number.isFinite(p.t)) payload.t = Math.round(p.t * 1e6) / 1e6;
   return `c=${toBase64Url(utf8Encode(JSON.stringify(payload)))}`;
 }
 
@@ -75,7 +90,7 @@ export function decodeShareHash(hash: string): SharePayload | null {
   const json = utf8Decode(bytes);
   if (json === null) return null;
   try {
-    const obj = JSON.parse(json) as { v?: unknown; name?: unknown; src?: unknown };
+    const obj = JSON.parse(json) as { v?: unknown; name?: unknown; src?: unknown; t?: unknown };
     if (obj.v !== 1) return null;
     if (typeof obj.src !== "string" || obj.src.length === 0 || obj.src.length > MAX_SHARE_SRC) {
       return null;
@@ -84,7 +99,12 @@ export function decodeShareHash(hash: string): SharePayload | null {
       typeof obj.name === "string" && obj.name.length > 0 && obj.name.length <= MAX_SHARE_NAME
         ? obj.name
         : undefined;
-    return name !== undefined ? { name, src: obj.src } : { src: obj.src };
+    // Like a bad name, a bad theta is DROPPED but the circuit survives.
+    const t = sanitizeTheta(obj.t);
+    const out: SharePayload = { src: obj.src };
+    if (name !== undefined) out.name = name;
+    if (t !== undefined) out.t = t;
+    return out;
   } catch {
     return null;
   }

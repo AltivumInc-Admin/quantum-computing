@@ -3,6 +3,8 @@ import {
   encodeShareHash,
   MAX_SHARE_NAME,
   MAX_SHARE_SRC,
+  MAX_SHARE_THETA,
+  sanitizeTheta,
 } from "@/lib/circuit-url";
 
 // Node's own base64url codec, used to cross-check the hand-rolled one and to
@@ -28,6 +30,28 @@ describe("encodeShareHash / decodeShareHash round-trips", () => {
 
   it("an empty-string name encodes as nameless (mirrors the omit-on-undefined path)", () => {
     expect(decodeShareHash(encodeShareHash({ name: "", src: "H 0" }))).toEqual({ src: "H 0" });
+  });
+
+  it("round-trips theta alongside name and src", () => {
+    const p = { name: "Ramsey", src: "H 0\nRZ 0 theta\nH 0", t: 2.5 };
+    expect(decodeShareHash(encodeShareHash(p))).toEqual(p);
+  });
+
+  it("round-trips theta on a nameless circuit", () => {
+    expect(decodeShareHash(encodeShareHash({ src: "RY 0 theta", t: 0.75 }))).toEqual({
+      src: "RY 0 theta",
+      t: 0.75,
+    });
+  });
+
+  it("rounds theta to six decimals in the fragment (QASM's own angle precision)", () => {
+    const decoded = decodeShareHash(encodeShareHash({ src: "RY 0 theta", t: Math.PI / 2 }));
+    expect(decoded?.t).toBe(1.570796);
+  });
+
+  it("a payload without t decodes without one (old links keep the pi/2 default)", () => {
+    expect(decodeShareHash(encodeShareHash({ src: "H 0" }))).toEqual({ src: "H 0" });
+    expect(decodeShareHash(forge({ v: 1, src: "H 0" }))).toEqual({ src: "H 0" });
   });
 
   it("agrees with Node's base64url codec in both directions", () => {
@@ -122,5 +146,47 @@ describe("hostile payloads decode to null, never a throw", () => {
 
   it("a payload past the sanity cap is refused without decoding", () => {
     expect(decodeShareHash(`c=${"A".repeat(24_004)}`)).toBeNull();
+  });
+
+  it("a non-numeric or non-finite t is DROPPED but the circuit survives", () => {
+    const src = "RY 0 theta";
+    expect(decodeShareHash(forge({ v: 1, src, t: "1.57" }))).toEqual({ src });
+    expect(decodeShareHash(forge({ v: 1, src, t: null }))).toEqual({ src });
+    expect(decodeShareHash(forge({ v: 1, src, t: { rad: 1 } }))).toEqual({ src });
+    // NaN/Infinity can't ride JSON as numbers (JSON.stringify emits null) — the
+    // null branch above already covers what a forger can actually send; a raw
+    // NaN token is invalid JSON and refuses the whole payload.
+    expect(
+      decodeShareHash(`c=${Buffer.from(`{"v":1,"src":"${src}","t":NaN}`).toString("base64url")}`),
+    ).toBeNull();
+  });
+
+  it("an out-of-range t clamps to the slider's [0, 2*pi]", () => {
+    const src = "RY 0 theta";
+    expect(decodeShareHash(forge({ v: 1, src, t: -3 }))).toEqual({ src, t: 0 });
+    expect(decodeShareHash(forge({ v: 1, src, t: 1e9 }))).toEqual({ src, t: MAX_SHARE_THETA });
+  });
+});
+
+describe("sanitizeTheta (shared with the circuit store)", () => {
+  it.each([
+    ["a string", "1.5"],
+    ["null", null],
+    ["undefined", undefined],
+    ["NaN", NaN],
+    ["Infinity", Infinity],
+    ["-Infinity", -Infinity],
+    ["an object", { t: 1 }],
+    ["a boolean", true],
+  ])("%s is absent", (_label, value) => {
+    expect(sanitizeTheta(value)).toBeUndefined();
+  });
+
+  it("passes in-range values through and clamps out-of-range ones", () => {
+    expect(sanitizeTheta(0)).toBe(0);
+    expect(sanitizeTheta(Math.PI)).toBe(Math.PI);
+    expect(sanitizeTheta(MAX_SHARE_THETA)).toBe(MAX_SHARE_THETA);
+    expect(sanitizeTheta(-0.01)).toBe(0);
+    expect(sanitizeTheta(7)).toBe(MAX_SHARE_THETA);
   });
 });
