@@ -15,7 +15,10 @@ import {
   formatCredits,
   formatUsd,
 } from "@/lib/pricing";
+import { isBillingConfigured } from "@/lib/billing-client";
 import { CostEstimator } from "@/components/pricing/cost-estimator";
+import { CheckoutButton } from "@/components/pricing/checkout-button";
+import { WalletBadge } from "@/components/pricing/wallet-badge";
 
 const PAGE_TITLE = "Pricing";
 const PAGE_DESCRIPTION =
@@ -98,6 +101,7 @@ const faqs = [
 
 export default function PricingPage() {
   const configured = isAuthConfigured();
+  const billingLive = isBillingConfigured();
   const exampleShots = 1000;
 
   return (
@@ -133,6 +137,7 @@ export default function PricingPage() {
             <span className="inline-flex items-center rounded-chip border border-gray-200 dark:border-white/10 bg-(--surface-1) px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 tabular-nums">
               {STARTER_GRANT_CREDITS}-credit welcome grant with every account
             </span>
+            <WalletBadge />
           </div>
         </header>
 
@@ -238,6 +243,11 @@ export default function PricingPage() {
                   <div className="mt-7 pt-5 border-t border-gray-200/60 dark:border-white/[0.08]">
                     {tier.id === "free" ? (
                       <SignupCta size="sm" />
+                    ) : billingLive && tier.checkoutLookupKey ? (
+                      <CheckoutButton
+                        lookupKey={tier.checkoutLookupKey}
+                        label={`Get ${tier.name}`}
+                      />
                     ) : (
                       <div className="flex flex-col gap-2">
                         <span className="inline-flex w-fit items-center rounded-control border border-gray-200 dark:border-white/10 px-4 py-2 text-sm font-medium text-caption">

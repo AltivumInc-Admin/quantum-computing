@@ -207,6 +207,12 @@ export interface Tier {
   priceUsdPerMonth: number;
   /** Credits included every month (0 for Free — it gets the one-time grant). */
   monthlyCredits: number;
+  /**
+   * The Stripe price lookup key checkout uses for this tier (undefined for Free,
+   * which has nothing to buy). Must match a key in the backend CATALOG and the
+   * Stripe catalog.
+   */
+  checkoutLookupKey?: "ql_plus_monthly" | "ql_pro_monthly";
   /** Feature bullets, in display order. */
   features: string[];
   footnote: string;
@@ -235,6 +241,7 @@ export const TIERS: Tier[] = [
     tagline: "Monthly credits and stronger tutor models.",
     priceUsdPerMonth: 18,
     monthlyCredits: 1890,
+    checkoutLookupKey: "ql_plus_monthly",
     features: [
       "Everything in Free",
       "1,890 credits every month — a 5% bonus over pay-as-you-go",
@@ -250,6 +257,7 @@ export const TIERS: Tier[] = [
     tagline: "The full model roster and first in line for metal.",
     priceUsdPerMonth: 59,
     monthlyCredits: 6200,
+    checkoutLookupKey: "ql_pro_monthly",
     features: [
       "Everything in Plus",
       "6,200 credits every month",

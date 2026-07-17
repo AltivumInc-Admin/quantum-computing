@@ -1,0 +1,273 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  quantum-stripe: billing for the Quantum Learner credit wallet. One HTTP API
+  v2 Lambda with three Cognito-authorized routes (POST /checkout, POST /portal,
+  GET /wallet) and one PUBLIC, Stripe-signature-verified route (POST /webhook)
+  that is the sole writer of credits and tier. One DynamoDB table holds pk-
+  prefixed rows (WALLET#<sub>, EVENT#<id> with TTL); money -> credits is exactly
+  once via a conditional TransactWriteItems. Stripe keys arrive from Secrets
+  Manager at deploy time (never in the template or on the CLI). Deploy in
+  us-east-2 (the Cognito pool's region).
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Default: us-east-2_aRydPmAjj
+    Description: The existing quantum-workspace Cognito user pool.
+  UserPoolClientId:
+    Type: String
+    Default: 2sg8nejrf2j8p28j6khjil99ir
+    Description: The quantum-workspace-web app client (JWT audience).
+  SiteOrigin:
+    Type: String
+    Default: https://quantum.altivum.ai
+    Description: Production origin allowed by CORS and used for Checkout return URLs.
+  StripeSecretName:
+    Type: String
+    Default: quantum-stripe
+    Description: >
+      Name of the Secrets Manager secret holding the Stripe keys as JSON
+      { "secretKey": "sk_...", "webhookSecret": "whsec_..." }. Only the NAME is
+      referenced here; the function reads the value at runtime with its own
+      least-privilege role, so the plaintext never enters the template, git, or
+      any command line. Provision the secret from 1Password before deploy
+      (see README).
+  MaxConcurrency:
+    Type: Number
+    Default: 10
+    Description: Reserved concurrency — a hard ceiling on cost and abuse.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+  AlertEmail:
+    Type: String
+    Default: christian.perez@altivum.io
+    Description: >
+      Operator email for the human notification path. Receives every CloudWatch
+      alarm in this stack. The SNS email subscription must be confirmed once
+      from the inbox before it delivers.
+
+Resources:
+  WalletTable:
+    Type: AWS::DynamoDB::Table
+    # Purchased credit balances are money the learner paid for — never delete
+    # with the stack, and keep point-in-time recovery.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: quantum-stripe-wallet
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      # EVENT#<id> idempotency rows self-expire; WALLET#<sub> rows carry no
+      # expiresAt and so are never reclaimed.
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - { Key: Project, Value: quantum }
+        - { Key: Feature, Value: billing }
+        - { Key: CostCategory, Value: billing }
+
+  StripeApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      # Billing endpoints are low-volume (a human clicking Subscribe, Stripe
+      # delivering a webhook). 10 rps steady / 20 burst never touches real use,
+      # and caps a flood at the front door alongside ReservedConcurrentExecutions.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 10
+        ThrottlingBurstLimit: 20
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref SiteOrigin
+          - http://localhost:3000
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+
+  StripeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-stripe
+      Runtime: nodejs22.x
+      Handler: index.handler
+      MemorySize: 256
+      # Stripe API round trips (customer + session creation, subscription
+      # retrieve) push past sync's 10s; 15s leaves headroom without inviting hangs.
+      Timeout: 15
+      ReservedConcurrentExecutions: !Ref MaxConcurrency
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WalletTable
+          SITE_ORIGIN: !Ref SiteOrigin
+          # Only the secret's NAME — never its value. The function fetches the
+          # Stripe keys at runtime (see the GetSecretValue policy below), so the
+          # plaintext is never an environment variable and never visible via
+          # GetFunctionConfiguration.
+          SECRET_ID: !Ref StripeSecretName
+      Policies:
+        - Statement:
+            # TransactWriteItems checks the per-item actions; GetItem/PutItem/
+            # UpdateItem cover every access this handler makes, scoped to the
+            # one table.
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt WalletTable.Arn
+            # Read exactly the one Stripe secret (the -* suffix matches the
+            # random 6-char suffix Secrets Manager appends to the ARN).
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${StripeSecretName}-*"
+      Events:
+        Checkout:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StripeApi
+            Method: POST
+            Path: /checkout
+        Portal:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StripeApi
+            Method: POST
+            Path: /portal
+        Wallet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StripeApi
+            Method: GET
+            Path: /wallet
+        Webhook:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref StripeApi
+            Method: POST
+            Path: /webhook
+            # Stripe cannot present a Cognito JWT — this route is public and
+            # authenticated in-handler by the Stripe-Signature HMAC. It is the
+            # ONLY route excluded from the default authorizer.
+            Auth:
+              Authorizer: NONE
+      Tags:
+        Project: quantum
+        Feature: billing
+        CostCategory: billing
+
+  StripeLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StripeFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+  # ---- Human notification path (pattern from lambda/sync + lambda/qpu) ----
+  # This stack takes real money and grants the credits it buys, so silent
+  # failure is unacceptable: a throwing function may drop a paid webhook (a
+  # learner charged but not credited), sustained throttling turns buyers away,
+  # and a 5xx on /webhook means Stripe is retrying into a wall.
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-stripe-alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  StripeErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-errors
+      AlarmDescription: >-
+        The quantum-stripe function threw at least one error in 5 minutes. A
+        paid checkout webhook may have failed to grant credits (Stripe will
+        retry, but investigate). Check the function's log group.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StripeFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  StripeThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-throttles
+      AlarmDescription: >-
+        The quantum-stripe function was throttled (reserved concurrency
+        exhausted) in the last 5 minutes. Either real traffic outgrew
+        MaxConcurrency or something is flooding the API. A throttled webhook is
+        a delayed credit grant. Check request counts before raising the ceiling.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref StripeFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  Api5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-5xx
+      AlarmDescription: >-
+        The billing HTTP API returned at least one 5xx in 5 minutes (v2 metric
+        name is 5xx, not 5XXError). The function, its DynamoDB access, or the
+        JWT authorizer is failing server-side; checkouts and webhook grants are
+        being lost while this persists.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref StripeApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+Outputs:
+  BillingUrl:
+    Description: Set as NEXT_PUBLIC_BILLING_URL in the Amplify app environment.
+    Value: !Sub https://${StripeApi}.execute-api.${AWS::Region}.amazonaws.com
+  WebhookUrl:
+    Description: >-
+      Register this exact URL as the endpoint in the Stripe Dashboard (Developers
+      -> Webhooks); its signing secret is the webhookSecret half of the
+      Secrets Manager secret.
+    Value: !Sub https://${StripeApi}.execute-api.${AWS::Region}.amazonaws.com/webhook
+  TableName:
+    Value: !Ref WalletTable
+  AlertsTopicArn:
+    Description: The SNS topic every CloudWatch alarm in this stack notifies.
+    Value: !Ref AlertsTopic
