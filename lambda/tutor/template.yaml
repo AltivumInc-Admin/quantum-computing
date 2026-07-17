@@ -9,9 +9,11 @@ Description: >
 # us-east-1 stack); requests over the per-IP limit get a 429 before reaching this
 # function. With OAC in front, set FunctionUrlAuthType=AWS_IAM so the raw Function
 # URL cannot be hit directly, bypassing the edge. (2) ReservedConcurrentExecutions
-# remains a hard ceiling on simultaneous billable invocations. A CloudWatch alarm
-# "quantum-tutor-high-invocations" (Invocations Sum 1h >500 -> "quantum-tutor-alerts"
-# SNS topic) is managed separately and not re-declared here.
+# remains a hard ceiling on simultaneous billable invocations. The high-invocations
+# alarm (Invocations Sum 1h >500) is now stack-managed below as
+# HighInvocationsAlarm; its console-created predecessor "quantum-tutor-high-invocations"
+# must be deleted manually after the first deploy of this version (see README /
+# the PR runbook) — CloudFormation cannot adopt a live alarm by reusing its name.
 
 Parameters:
   ModelId:
@@ -63,6 +65,13 @@ Parameters:
       CloudWatch Logs retention (days) for the function's log group, which is
       declared explicitly below so it is stack-managed with a finite retention
       instead of the Lambda-auto-created group's never-expire default.
+  AlertEmail:
+    Type: String
+    Default: christian.perez@altivum.io
+    Description: >
+      Operator email for the human notification path. Receives every CloudWatch
+      alarm in this stack. Each SNS email subscription must be confirmed once
+      from the inbox before it delivers.
 
 Resources:
   TutorFunction:
@@ -135,7 +144,93 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${TutorFunction}"
       RetentionInDays: !Ref LogRetentionInDays
 
+  # ---- Human notification path (pattern proven in lambda/qpu/template.yaml) ----
+  # NOT named "quantum-tutor-alerts": that topic already exists in this account,
+  # created by hand for the old console-managed alarm. SNS CreateTopic is
+  # idempotent by name, so CloudFormation would silently claim the live topic
+  # (and delete it — with its confirmed subscriptions — on stack delete or
+  # rollback). A distinct name keeps ownership unambiguous; the old topic can
+  # be retired manually once nothing references it.
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-tutor-stack-alerts
+      Subscription:
+        - Endpoint: !Ref AlertEmail
+          Protocol: email
+
+  # index.mjs streams inside a committed HTTP 200, so a Bedrock failure raises
+  # neither the HTTP status nor the Lambda Errors metric; its only trace is the
+  # console.error(JSON.stringify({ tutorError: true, ... })) line. This filter
+  # turns that line into a metric. The pattern is a literal quoted term, NOT the
+  # JSON selector { $.tutorError IS TRUE }: JSON selectors only match log events
+  # that are valid JSON in full, and this function logs in Lambda's default text
+  # format, which prefixes console.error output with timestamp/request-id — the
+  # selector would never fire. template.test.mjs pins the term to the actual
+  # emission in index.mjs, so the two cannot drift.
+  TutorErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorError"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorError
+          MetricValue: "1"
+          Unit: Count
+
+  TutorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-errors
+      AlarmDescription: >-
+        The tutor emitted at least one tutorError log line in 5 minutes — a
+        Bedrock call failed after the 200 was committed, so learners saw the
+        in-band error sentinel. Neither HTTP status nor Lambda Errors ever
+        reflects this. Check the function's log group for the error detail.
+      Namespace: QuantumTutor
+      MetricName: TutorError
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # Stack-managed successor to the console-created "quantum-tutor-high-invocations"
+  # alarm (same metric, statistic, period, and threshold — verified against the
+  # live alarm before folding it in). The name is deliberately DIFFERENT:
+  # PutMetricAlarm upserts by name, so reusing the existing name would either
+  # fail stack creation ("resource already exists") or silently seize a resource
+  # this stack did not create — and then delete it on rollback. Runbook: delete
+  # the console alarm immediately after the first deploy of this version.
+  HighInvocationsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-high-invocations-stack
+      AlarmDescription: >-
+        The tutor Lambda was invoked more than 500 times in an hour —
+        possible abuse of the Function URL past the edge WAF, and every
+        invocation is a paid Bedrock generation. Check the edge WAF metrics
+        and consider lowering MaxConcurrency while investigating.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TutorFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 500
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
 Outputs:
   TutorUrl:
     Description: Set this as NEXT_PUBLIC_TUTOR_URL in Amplify.
     Value: !GetAtt TutorFunctionUrl.FunctionUrl
+  AlertsTopicArn:
+    Description: The SNS topic every CloudWatch alarm in this stack notifies.
+    Value: !Ref AlertsTopic
