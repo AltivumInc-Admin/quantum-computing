@@ -206,6 +206,20 @@ There is a circuit-level picture of what those two stretched atoms are sharing. 
 
 VQE is only as good as the states its ansatz can reach. The trial circuit $U(\theta)$ is the whole ballgame, and there are two philosophies for building it.
 
+Both start from the same place: the Hartree-Fock reference, the mean-field occupation the ansatz then dresses with correlation. Build it once yourself, in real Braket Python — graded by running your code in the browser:
+
+```qchallenge
+{
+  "id": "chem-hf-ref-py-1",
+  "prompt": "Prepare the Hartree-Fock reference for H₂ in the minimal two-orbital picture, in real Braket Python: the occupation state |11⟩, both spin-orbitals filled. Assign your circuit to `circuit`.",
+  "qubits": 2,
+  "target": { "program": "X 0\nX 1" },
+  "starter": "from braket.circuits import Circuit\ncircuit = Circuit()",
+  "hint": "The Hartree-Fock reference is a single occupation state — no superposition, no entanglement. Occupied means |1⟩, so flip both qubits from |0⟩ with an X on each to land on |11⟩.",
+  "tier": "py"
+}
+```
+
 **Unitary Coupled Cluster (UCC)** borrows the structure of classical coupled cluster, the gold standard of quantum chemistry. UCCSD builds excitations on top of the Hartree-Fock state:
 
 $$U(\theta) = e^{T - T^\dagger}, \quad T = T_1 + T_2$$

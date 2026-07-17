@@ -16,12 +16,17 @@
 //      every basis state ties, would mint free FSRS cards with zero learner
 //      effort.
 //
-// Contributions are TS-graded only: `tier` is rejected outright, because the
-// Pyodide ("py") grading path cannot be exercised in CI (pyodide-grader.ts
-// requires a real browser), and a gate that green-lights content down an
-// unverified grading path is not a gate.
+// Grading tier: `tier` is now an ALLOWED challenge key, but tier:"py" is gated,
+// not free. The Pyodide ("py") path cannot be exercised in CI (pyodide-grader.ts
+// requires a real browser), so a py Rep validates ONLY if its id appears in the
+// e2e-coverage manifest (./py-reps), where each listed id is graded for real,
+// in a real browser, by web/e2e/py-reps.e2e.ts. Authoring a py Rep without that
+// coverage fails here with an actionable message — the gate green-lights a py
+// Rep exactly when there is browser-run proof behind it, and never otherwise.
+// tier:"ts" is the default and always allowed.
 
 import { parseChallenge } from "./challenge-schema";
+import { isPyRepE2ECovered } from "./py-reps";
 import { gradeTs } from "./challenge-grade";
 import { parsePredict } from "./predict-schema";
 import { predictionTruth } from "./predict-grade";
@@ -47,15 +52,16 @@ export const FENCE_TOKENS: Record<RepKind, string> = {
   expect: "qexpect",
 };
 
-// Every key a contribution may carry, per kind. NOTE: challenge deliberately
-// excludes `tier` (see the header) even though the fence parser accepts it.
+// Every key a contribution may carry, per kind. challenge includes `tier` (the
+// fence parser accepts it); tier:"py" is additionally gated on e2e coverage in
+// the challenge case below.
 /**
  * Exported for the GUIDE-fence corpus test (guide-reps.test.ts): lesson fences
  * carry the same spec keys minus the `kind` envelope, so one list serves both
  * gates and cannot drift.
  */
 export const ALLOWED_KEYS: Record<RepKind, readonly string[]> = {
-  challenge: ["kind", "id", "prompt", "qubits", "target", "starter", "allowedGates", "hint"],
+  challenge: ["kind", "id", "prompt", "qubits", "target", "starter", "allowedGates", "hint", "tier"],
   predict: ["kind", "id", "prompt", "program", "mode", "hint"],
   blochtarget: ["kind", "id", "prompt", "target", "toleranceDeg", "blind", "hint"],
   costestimate: ["kind", "id", "prompt", "provider", "shots", "tasks", "hint"],
@@ -110,12 +116,7 @@ export function validateRep(source: string): RepValidation {
   const allowed = ALLOWED_KEYS[kind as RepKind];
   for (const key of Object.keys(data)) {
     if (!allowed.includes(key)) {
-      return {
-        error:
-          key === "tier"
-            ? 'contributed challenges are TS-graded only — remove "tier" (the Pyodide path cannot be CI-verified)'
-            : `unknown key "${key}" for kind "${kind}" — allowed: ${allowed.join(", ")}`,
-      };
+      return { error: `unknown key "${key}" for kind "${kind}" — allowed: ${allowed.join(", ")}` };
     }
   }
   const target = data.target as Record<string, unknown> | undefined;
@@ -141,6 +142,17 @@ export function validateRep(source: string): RepValidation {
     case "challenge": {
       const parsed = parseChallenge(fenceSource);
       if (parsed.error) return { error: parsed.error };
+      // tier:"py" is graded in a real browser (pyodide-grader.ts), which CI
+      // cannot run — so it validates ONLY with e2e coverage behind it. An id
+      // absent from the manifest is a py Rep with no browser-run proof.
+      if (parsed.spec!.tier === "py" && !isPyRepE2ECovered(parsed.spec!.id)) {
+        return {
+          error:
+            `tier:"py" Rep "${parsed.spec!.id}" has no in-browser e2e coverage — ` +
+            "add its id to PY_REP_E2E_IDS in src/lib/py-reps.ts and a case to " +
+            "web/e2e/py-reps.e2e.ts (the Pyodide path cannot be verified in CI otherwise)",
+        };
+      }
       // The reference solution must actually solve its own challenge...
       const grade = gradeTs(parsed.spec!.target.program, parsed.spec!);
       if (grade.status !== "solved") {

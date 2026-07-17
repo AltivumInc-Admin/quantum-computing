@@ -12,19 +12,62 @@
 // message. The module is imported lazily (only when a tier:"py" challenge is
 // checked) so it never touches the main bundle.
 //
+// GRADING INTEGRITY: the learner's source and the grader's state-vector
+// extraction used to share one namespace, so a submission could shadow the
+// extraction's own names (a fake `json`/`numpy`, a redefined `float`, a
+// pre-seeded result) and false-pass. It no longer does: the learner source runs
+// via exec() in its OWN dict and crosses in only as DATA (a JSON-encoded string
+// literal), while the extraction reads through readout callables captured as
+// default-argument LOCALS before the learner runs — immune to shadowing, and to
+// a circuit that monkeypatches numpy after it is built. See __grader_extract
+// below and the isolation cases in pyodide-grader.test.ts.
+//
 // NOTE: requires a live browser (Pyodide/WebAssembly/Worker); it cannot run
-// under jsdom. All shipped challenges currently use the instant Tier-A TS
-// grader. This path IS verified end-to-end in a real browser by
-// web/e2e/challenge-py-grader.e2e.ts (solved / wrong / fresh-namespace error,
-// same-origin boot) and web/e2e/py-grader-timeout.e2e.ts (watchdog kill +
-// fresh-runtime regrade) against the fixture page at /e2e-fixtures/py-challenge
-// — keep those specs in lockstep when changing grading semantics here.
+// under jsdom. The shipped tier:"py" Reps are enumerated in ./py-reps (the
+// e2e-coverage manifest) and each is graded for real, in-browser, by
+// web/e2e/py-reps.e2e.ts. The grader's own solve / wrong / fresh-namespace and
+// watchdog semantics are proven by web/e2e/challenge-py-grader.e2e.ts and
+// web/e2e/py-grader-timeout.e2e.ts against the fixture page at
+// /e2e-fixtures/py-challenge — keep those specs in lockstep when changing
+// grading semantics here.
 
 import { simulate, statesApproxEqual, type Complex } from "@/components/quantum/math";
 import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";
 import { getPyodide, runSerialized, PythonTimeoutError, type Pyodide } from "./pyodide-runtime";
 import type { ChallengeSpec } from "./challenge-schema";
 import type { GradeResult } from "./challenge-grade";
+
+// The grading harness, invariant to learner input. It imports json/numpy and
+// binds the readout callables as default-argument LOCALS (evaluated at def time,
+// before any learner code runs), then execs the learner source in a throwaway
+// dict and reads `circuit` back out of THAT dict. Because the learner never
+// shares a scope with the extraction, it cannot shadow `float`, swap in a fake
+// json/numpy, or pre-seed the result; and because the callables are locals, a
+// circuit that monkeypatches numpy while being built cannot reach them either.
+// The learner source is appended exactly once, as a JSON string literal passed
+// to __grader_extract — the only thing that varies between grades.
+const GRADER_HEAD =
+  "import json as __grader_json\n" +
+  "import numpy as __grader_np\n" +
+  "\n" +
+  "def __grader_extract(\n" +
+  "    __grader_src,\n" +
+  "    __grader_dumps=__grader_json.dumps,\n" +
+  "    __grader_real=__grader_np.real,\n" +
+  "    __grader_imag=__grader_np.imag,\n" +
+  "    __grader_as_float=float,\n" +
+  "):\n" +
+  "    __grader_ns = {}\n" +
+  "    exec(__grader_src, __grader_ns)\n" +
+  "    __grader_circuit = __grader_ns.get('circuit')\n" +
+  "    if __grader_circuit is None:\n" +
+  "        raise NameError(\"name 'circuit' is not defined\")\n" +
+  "    __grader_sv = __grader_circuit.state_vector()\n" +
+  "    return __grader_dumps(\n" +
+  "        [[__grader_as_float(__grader_real(z)), __grader_as_float(__grader_imag(z))]\n" +
+  "         for z in __grader_sv]\n" +
+  "    )\n" +
+  "\n";
 
 export async function gradePy(
   learnerSource: string,
@@ -38,11 +81,11 @@ export async function gradePy(
   }
 
   // The challenge convention: the learner assigns their circuit to `circuit`.
-  const program =
-    `${learnerSource}\n` +
-    `import json as _json, numpy as _np\n` +
-    `_sv = circuit.state_vector()\n` +
-    `_json.dumps([[float(_np.real(z)), float(_np.imag(z))] for z in _sv])\n`;
+  // The learner source is executed in an ISOLATED dict (see the header) — it
+  // enters only as the JSON-encoded literal below, never as sibling code — and
+  // the readout is done through callables captured as default-argument locals
+  // BEFORE the learner runs, so no shadowing or monkeypatch can bend it.
+  const program = `${GRADER_HEAD}__grader_extract(${JSON.stringify(learnerSource)})\n`;
 
   // Run in a fresh, serialized namespace so a `circuit` left over from an earlier
   // editor/grader run can never stand in for one the submission failed to define.

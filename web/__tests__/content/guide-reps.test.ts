@@ -18,16 +18,19 @@
  *     a copy-edit to the prompt orphaned every learner's card, so it was
  *     removed (the two legacy fences were backfilled with their then-current
  *     hashes).
- *   - challenge may carry `tier`, but NOT "py": a py-tier fence cannot be
- *     graded in CI (pyodide needs a real browser), so authored py content is
- *     rejected here until a browser-gated path exists for it (the e2e fixture
- *     page is the only sanctioned tier:"py" mount).
+ *   - challenge may carry `tier`. tier:"py" cannot be graded in CI (pyodide
+ *     needs a real browser), so a py fence is accepted here ONLY if its id is in
+ *     the e2e-coverage manifest (src/lib/py-reps.ts), where web/e2e/py-reps.e2e.ts
+ *     grades it for real. This test additionally asserts the manifest and the set
+ *     of tier:"py" fences match 1:1 in both directions — no uncovered py fence
+ *     ships, and no manifest id lacks a shipped fence.
  *   - Rep ids must be unique ACROSS all GUIDEs (reps-corpus.test.ts already
  *     guards corpus-vs-GUIDE collisions; this closes GUIDE-vs-GUIDE).
  */
 import { readFileSync, readdirSync, existsSync } from "fs";
 import path from "path";
 import { ALLOWED_KEYS, type RepKind } from "@/lib/rep-schema";
+import { PY_REP_E2E_IDS } from "@/lib/py-reps";
 import { parseChallenge } from "@/lib/challenge-schema";
 import { gradeTs } from "@/lib/challenge-grade";
 import { parsePredict } from "@/lib/predict-schema";
@@ -102,12 +105,20 @@ describe.each(fences.map((f, i) => [`${f.guide} ${f.token} #${i}`, f] as const))
         case "challenge": {
           const parsed = parseChallenge(f.body);
           expect(parsed.error).toBeUndefined();
-          // Authored py-tier content cannot be graded in CI — see the header.
-          expect(parsed.spec!.tier).not.toBe("py");
-          // The reference must solve itself; the untouched editor must not
-          // (the free-card degenerate class).
+          // The reference target must be a valid, concrete, self-solving qsim
+          // circuit for BOTH tiers — gradePy simulates exactly this program as
+          // its reference state (see pyodide-grader.ts).
           expect(gradeTs(parsed.spec!.target.program, parsed.spec!).status).toBe("solved");
-          expect(gradeTs(parsed.spec!.starter, parsed.spec!).status).not.toBe("solved");
+          if (parsed.spec!.tier === "py") {
+            // py content is graded in a real browser only — CI trusts it via the
+            // e2e-coverage manifest (its actual solve/wrong grading is proven by
+            // web/e2e/py-reps.e2e.ts). The starter is Braket Python, not qsim DSL,
+            // so the ts untouched-editor guard does not apply here.
+            expect(PY_REP_E2E_IDS as readonly string[]).toContain(parsed.spec!.id);
+          } else {
+            // The untouched editor must NOT already solve (the free-card class).
+            expect(gradeTs(parsed.spec!.starter, parsed.spec!).status).not.toBe("solved");
+          }
           break;
         }
         case "predict": {
@@ -149,6 +160,17 @@ describe.each(fences.map((f, i) => [`${f.guide} ${f.token} #${i}`, f] as const))
     });
   }
 );
+
+it("the tier:'py' GUIDE fences map 1:1 to the e2e-coverage manifest (both directions)", () => {
+  const pyFenceIds = fences
+    .filter((f) => f.kind === "challenge" && (JSON.parse(f.body) as { tier?: string }).tier === "py")
+    .map((f) => (JSON.parse(f.body) as { id: string }).id)
+    .sort();
+  const manifest = [...PY_REP_E2E_IDS].sort();
+  // A mismatch is a half-landed py Rep: either a fence with no browser proof, or
+  // a manifest id (and its e2e case) with no shipped content behind it.
+  expect(pyFenceIds).toEqual(manifest);
+});
 
 it("every Rep has an explicit id, unique across every GUIDE (an id is a permanent schedule key)", () => {
   const seen = new Map<string, string>();
