@@ -51,6 +51,14 @@ jobs:
           # is NOT installed by the root project, so install it explicitly.
           pip install -e ./qcsim
 
+      # make test = pytest tests/, which includes BOTH notebook engines:
+      #   - tests/test_notebook_contract.py: every browser-runnable notebook
+      #     executes under qcsim (the Pyodide stand-in), and
+      #   - tests/test_notebook_real_sdk.py: a representative sample executes
+      #     under the REAL amazon-braket-sdk with no qcsim bootstrap — the
+      #     engine `make setup` installs locally. This tier exists because a
+      #     qcsim-only idiom (e.g. `sv = circuit.state_vector()`) can be fully
+      #     green under the contract tests yet crash for every local learner.
       - name: Run tests
         run: make test
 
