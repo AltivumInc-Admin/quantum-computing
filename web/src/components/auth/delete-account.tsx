@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
 import { isReviewPrefsConfigured, deleteReminderPrefs } from "@/lib/review-prefs-client";
@@ -22,6 +22,26 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Opening swaps the focused trigger for a whole new <section> (and closing
+  // swaps it back), so without help keyboard focus falls to <body> and screen
+  // readers never hear that the confirmation UI appeared. Move focus to the
+  // section heading on open and back to the re-mounted trigger on close.
+  // Comparing the prior value skips the initial mount — and StrictMode's mount
+  // double-invoke — so first render never steals focus. (Same pattern as
+  // auth-form's view-change heading focus.)
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const prevOpenRef = useRef(open);
+  useEffect(() => {
+    if (prevOpenRef.current === open) return;
+    prevOpenRef.current = open;
+    if (open) {
+      headingRef.current?.focus({ preventScroll: true });
+    } else {
+      triggerRef.current?.focus({ preventScroll: true });
+    }
+  }, [open]);
 
   const syncConfigured = Boolean(process.env.NEXT_PUBLIC_SYNC_URL);
   const prefsConfigured = isReviewPrefsConfigured();
@@ -104,6 +124,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
     return (
       <div className={className}>
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen(true)}
           className="inline-flex items-center rounded-control border border-red-300/70 dark:border-red-500/30 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 interactive focus-ring"
@@ -122,7 +143,13 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
       aria-label="Delete account"
       className={`rounded-card border border-red-300/70 dark:border-red-500/30 bg-(--surface-1) p-6 shadow-(--shadow-resting) ${className}`}
     >
-      <h2 className="text-sm font-medium text-gray-900 dark:text-white">Delete account</h2>
+      <h2
+        ref={headingRef}
+        tabIndex={-1}
+        className="text-sm font-medium text-gray-900 dark:text-white outline-none"
+      >
+        Delete account
+      </h2>
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
         This permanently deletes:
       </p>
