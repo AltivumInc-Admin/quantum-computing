@@ -12,7 +12,10 @@ export function Footer() {
         <p className="text-sm text-caption">
           Quantum Workspace — learn quantum computing with Amazon Braket.
         </p>
-        <nav aria-label="Footer" className="flex items-center gap-6 text-sm font-medium">
+        <nav
+          aria-label="Footer"
+          className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium"
+        >
           <Link href="/playground" className={linkClass}>
             Playground
           </Link>

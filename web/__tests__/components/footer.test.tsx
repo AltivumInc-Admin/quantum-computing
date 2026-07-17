@@ -51,6 +51,12 @@ describe("Footer", () => {
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
   });
 
+  it("lets the nav row wrap so seven links fit on narrow viewports", () => {
+    render(<Footer />);
+    const nav = screen.getByRole("navigation", { name: "Footer" });
+    expect(nav).toHaveClass("flex-wrap");
+  });
+
   it("links to the GitHub repo in a new tab, safely", () => {
     render(<Footer />);
     const gh = screen.getByRole("link", { name: "GitHub" });
