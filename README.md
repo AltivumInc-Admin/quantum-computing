@@ -169,7 +169,7 @@ Configure AWS via `~/.aws` and the variables in [`.env.example`](.env.example) (
 
 ## 🌐 Run notebooks in your browser (JupyterLite + qcsim)
 
-The headline feature: **32 notebooks run with zero install**, directly in the browser. There's no backend — it's all static assets plus a WebAssembly Python kernel.
+The headline feature: **32 notebooks run with zero install**, directly in the browser. The site is a fully static export, and every circuit, simulator, and grader executes client-side on a WebAssembly Python kernel — the only servers involved are the four small [serverless backends](#-the-serverless-backends-lambda) powering optional, env-gated features (tutor, progress sync, QPU submission, review email). The learning core needs nothing but a browser tab.
 
 ### How it works
 
