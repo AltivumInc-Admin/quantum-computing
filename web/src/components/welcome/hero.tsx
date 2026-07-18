@@ -45,14 +45,14 @@ function Node({ node }: { node: NodeDatum }) {
         <span className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 backdrop-blur-md">
           {node.glyph}
         </span>
-        <span className="h-px w-8 bg-gradient-to-r from-white/25 to-transparent" style={rightSide ? { transform: "scaleX(-1)" } : undefined} />
+        <span className="h-px w-9 bg-gradient-to-r from-white/45 to-transparent" style={rightSide ? { transform: "scaleX(-1)" } : undefined} />
       </div>
       <div className={`mt-2 ${rightSide ? "pr-11 text-right" : "pl-11"}`}>
-        <div className="flex items-center gap-1.5 text-[13px] font-medium text-white/85">
-          <span className="h-1 w-1 rounded-full bg-accent" />
+        <div className="flex items-center gap-1.5 text-[13px] font-medium text-white/95">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           {node.label}
         </div>
-        <div className="font-mono text-[11px] tracking-wider text-white/40">{node.value}</div>
+        <div className="font-mono text-[11px] tracking-wider text-white/55">{node.value}</div>
       </div>
     </div>
   );
@@ -114,8 +114,8 @@ export function WelcomeHero({
           preserveAspectRatio="none"
           className="absolute inset-0 hidden h-full w-full lg:block"
         >
-          <path d="M150 250 C 480 130, 960 130, 1290 300" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="1" />
-          <path d="M150 560 C 520 700, 940 700, 1300 560" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
+          <path d="M150 250 C 480 130, 960 130, 1290 300" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.25" />
+          <path d="M150 560 C 520 700, 940 700, 1300 560" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.25" />
         </svg>
 
         {nodeData.map((n) => (
