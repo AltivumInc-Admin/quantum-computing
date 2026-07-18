@@ -101,6 +101,13 @@ describe("DebugCircuitWidget", () => {
     expect(screen.queryByText(/haven't changed the bug/i)).not.toBeInTheDocument();
   });
 
+  it("a genuine miss never writes the solved flag", () => {
+    render(<DebugCircuitWidget source={bell} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "H 0\nX 1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^check$/i }));
+    expect(localStorage.getItem("qc:debug:t-debug-bell")).toBeNull();
+  });
+
   it("a fix after a genuine miss rates 'hard'", () => {
     render(<DebugCircuitWidget source={bell} />);
     const textbox = screen.getByRole("textbox");

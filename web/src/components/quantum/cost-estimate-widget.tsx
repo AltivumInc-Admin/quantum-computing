@@ -12,6 +12,7 @@ import { costCardId, ratingForPrediction } from "@/lib/challenge-review";
 import { gradeCardIfDue, getCardState, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { PRICING, costLabel } from "./cost";
+import { usePersistentSolved } from "./use-persistent-solved";
 import { Chip, ErrorCard, WidgetCard, primaryActionClass } from "./widget-ui";
 import { formatFixed } from "./format";
 
@@ -78,6 +79,10 @@ export function CostEstimateWidget({
   const truth = truthResult.truth;
 
   const cardId = costCardId(spec?.id ?? "invalid");
+  // The uniform solved-once-ever flag (qc:cost:<id>). Only a correct commit
+  // marks it; the header chip stays a verdict of THIS commit (a pre-commit
+  // "Correct" would misdescribe the fresh attempt), so the read is unused.
+  const [, markSolved] = usePersistentSolved("cost", spec?.id ?? "invalid");
   const [selected, setSelected] = useState<number | null>(null);
   const [committed, setCommitted] = useState(false);
   const [correct, setCorrect] = useState(false);
@@ -124,6 +129,7 @@ export function CostEstimateWidget({
     setCommitted(true);
     const graded = gradeCardIfDue(cardId, ratingForPrediction(isCorrect));
     if (graded) setScheduled(nextIntervalDays(graded));
+    if (isCorrect) markSolved();
   };
 
   const optionTone = (i: number): string => {

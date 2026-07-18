@@ -74,6 +74,10 @@ ALLOWLIST = {
     # A rough "~$0.02 on the simulator" comparison (SV1 seconds-of-compute; an
     # order-of-magnitude figure, not derivable exactly from a rate).
     ("07-production-patterns.ipynb", 0.02),
+    # A compute-instance cost illustration in the custom-containers job exercise:
+    # "one hour on a $1/hr instance is $1.00" — a round teaching figure for
+    # estimate_job_cost, not a Braket rate.
+    ("05-custom-containers.ipynb", 1.0),
 }
 
 # An amount followed by k/M or more digits is not a literal price ("$10k/seat").

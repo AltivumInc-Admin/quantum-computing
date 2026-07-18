@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { parseDebugCircuit } from "@/lib/debug-circuit-schema";
 import { debugTruth, gradeDebug } from "@/lib/debug-circuit-grade";
 import type { GradeResult } from "@/lib/challenge-grade";
@@ -8,6 +8,7 @@ import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { debugCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { recordBest, getBest } from "@/lib/skill-measure";
+import { usePersistentSolved } from "./use-persistent-solved";
 
 /**
  * A debug-a-circuit Rep rendered from a ```qdebug fenced block. The editor is
@@ -18,34 +19,6 @@ import { recordBest, getBest } from "@/lib/skill-measure";
  * the hint. Retryable like a challenge, so a solve rates via ratingForSolve
  * (clean first Check "good", any genuine miss first "hard").
  */
-
-const PROGRESS_EVENT = "qc-progress";
-
-function usePersistentSolved(key: string): [boolean, () => void] {
-  const solved = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener(PROGRESS_EVENT, cb);
-      return () => window.removeEventListener(PROGRESS_EVENT, cb);
-    },
-    () => {
-      try {
-        return localStorage.getItem(key) === "1";
-      } catch {
-        return false;
-      }
-    },
-    () => false
-  );
-  const mark = () => {
-    try {
-      localStorage.setItem(key, "1");
-      window.dispatchEvent(new Event(PROGRESS_EVENT));
-    } catch {
-      /* storage unavailable — grading still works, just not remembered */
-    }
-  };
-  return [solved, mark];
-}
 
 function CheckIcon() {
   return (
@@ -87,7 +60,7 @@ export function DebugCircuitWidget({
   // Session-sticky solve so a post-solve Reset on /review can't un-complete
   // the badge while the "Reviewed" schedule note (accurately) stands.
   const [sessionSolved, setSessionSolved] = useState(false);
-  const [solved, markSolved] = usePersistentSolved(`qc:debug:${spec?.id ?? "invalid"}`);
+  const [solved, markSolved] = usePersistentSolved("debug", spec?.id ?? "invalid");
   const editorId = useId();
 
   const cardId = debugCardId(spec?.id ?? "invalid");
