@@ -63,7 +63,7 @@ export function HardwarePanel({
     <Panel title="Hardware" id="hardware-export" sub="OpenQASM 3.0">
       {compiled.ok ? (
         <>
-          <pre className="overflow-x-auto rounded-control border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-xs leading-relaxed text-gray-800 dark:border-gray-700/50 dark:bg-gray-900/50 dark:text-gray-200">
+          <pre className="overflow-x-auto rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--ink)">
             {compiled.qasm}
           </pre>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -92,7 +92,7 @@ export function HardwarePanel({
       )}
 
       {configured ? (
-        <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <div className="mt-4 border-t border-(--bd) pt-4">
           <button
             type="button"
             onClick={send}

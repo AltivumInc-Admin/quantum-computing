@@ -6,9 +6,18 @@
 @custom-variant can-hover (@media (hover: hover));
 
 @theme inline {
-  --color-accent: oklch(0.72 0.15 192);
-  --color-accent-light: oklch(0.82 0.12 192);
-  --color-accent-dark: oklch(0.5 0.15 192);
+  /* Signature = a single muted OLIVE signal on smoke-and-glass. Resolved from a
+     runtime var so `text-accent`/`ring-accent` are theme-aware (the @theme value
+     is inlined as `var(--accent)`, exactly like --font-* below): olive on the
+     dark primary theme, olive-dim on the light daylight theme (set in @layer
+     base). Olive is reserved for MICRO-labels — eyebrows, status dots, active
+     nav/dot-nav, ket/state labels, focus accents — and small active fills; it is
+     never a large filled surface (primary CTAs use the neutral high-contrast
+     .surface-accent instead). */
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-accent-dark: var(--accent-dark);
+
   --color-warm: oklch(0.78 0.12 75);
   --color-warm-light: oklch(0.88 0.08 75);
   --color-warm-dark: oklch(0.52 0.12 75);
@@ -18,11 +27,16 @@
   --color-danger: oklch(0.62 0.2 25);
   --color-danger-light: oklch(0.72 0.17 25);
   --color-danger-dark: oklch(0.5 0.18 25);
-  --font-sans: var(--font-jakarta), system-ui, sans-serif;
-  --font-display: var(--font-instrument), Georgia, serif;
-  --radius-chip: 0.5rem;
+
+  --font-sans: var(--font-geist), system-ui, sans-serif;
+  --font-display: var(--font-sora), var(--font-geist), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  /* Geometry — pill chips, rounded controls/cards, a soft outer frame. */
+  --radius-chip: 999px;
   --radius-control: 0.75rem;
   --radius-card: 1rem;
+  --radius-frame: 1.25rem;
 
   /* Fluid display scale for the app chrome (hero, page/section headers, card
      titles). Continuous clamp() sizing — no breakpoint jumps — mirroring the
@@ -32,11 +46,11 @@
      --text-* key into a text-* utility; the --line-height companion pairs the
      leading so callers no longer hand-tune it. */
   --text-display-2xl: clamp(2.75rem, 1.9rem + 4.2vw, 4.5rem);
-  --text-display-2xl--line-height: 1.05;
+  --text-display-2xl--line-height: 1.02;
   --text-display-xl: clamp(1.875rem, 1.4rem + 2.4vw, 3rem);
-  --text-display-xl--line-height: 1.1;
+  --text-display-xl--line-height: 1.05;
   --text-display-lg: clamp(1.5rem, 1.25rem + 1.2vw, 2rem);
-  --text-display-lg--line-height: 1.15;
+  --text-display-lg--line-height: 1.12;
   --text-display-md: clamp(1.25rem, 1.1rem + 0.7vw, 1.5rem);
   --text-display-md--line-height: 1.3;
 }
@@ -100,6 +114,21 @@
   50% { opacity: 1; transform: scale(1.5); }
 }
 
+/* A slow "connected/live" pulse for status dots (the olive signal). */
+@keyframes signal-pulse {
+  50% { opacity: 0.4; }
+}
+
+/* One-shot shimmer sweep across a data bar after it settles. */
+@keyframes bar-shimmer {
+  60%, 100% { transform: translateX(240%); }
+}
+
+/* Ambient background drift for the fog/glow layers. */
+@keyframes atmos-drift {
+  to { transform: translate3d(-2%, 1.5%, 0) scale(1.05); }
+}
+
 @keyframes modal-pop {
   from {
     opacity: 0;
@@ -123,38 +152,84 @@
 
 @layer base {
   :root {
-    --surface-base: #f8fafb;
-    --surface-1: #ffffff;
-    --surface-2: #f1f5f7;
+    /* ── Light "daylight" theme ─────────────────────────────────────────── */
+    --accent: oklch(0.66 0.1 118);        /* olive-dim (legible on light bg) */
+    --accent-light: oklch(0.72 0.09 118);
+    --accent-dark: oklch(0.52 0.1 118);
 
-    /* Two-step elevation modelling a fixed top-down light: a top-edge rim
-       highlight (the light catching the surface) PLUS ambient + contact drop
-       shadows (the light blocked below). The inset rim is near-invisible on the
-       white light surfaces and does its real work on tinted surfaces and the
-       accent button; dark mode (below) is where it most reads. Theme-aware
-       alphas keep depth legible on both surfaces. */
-    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.35),
-      0 1px 2px oklch(0 0 0 / 0.04), 0 4px 8px -2px oklch(0 0 0 / 0.05);
-    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.45),
-      0 2px 4px oklch(0 0 0 / 0.05), 0 12px 20px -6px oklch(0 0 0 / 0.12),
-      0 24px 40px -12px oklch(0 0 0 / 0.1);
+    --surface-base: oklch(0.97 0.004 88);
+    --surface-base-2: oklch(0.93 0.006 88);
+    --surface-1: oklch(0.99 0.003 88);
+    --surface-2: oklch(0.95 0.005 88);
+
+    /* Glass + hairline + track tokens for the smoke-and-glass surfaces. */
+    --glass: oklch(1 0 0 / 0.6);
+    --glass-2: oklch(1 0 0 / 0.8);
+    --bd: oklch(0.28 0.01 88 / 0.13);
+    --bd-2: oklch(0.28 0.02 88 / 0.22);
+    --track: oklch(0.28 0.01 88 / 0.1);
+    --field: oklch(1 0 0 / 0.45);
+    --ink: oklch(0.23 0.008 82);
+    --mut: oklch(0.46 0.008 82);
+    --cap: oklch(0.58 0.008 82);
+
+    /* Neutral high-contrast primary button (dark fill on the light theme). */
+    --btn-fill: oklch(0.2 0.006 82);
+    --btn-ink: oklch(0.96 0.004 90);
+    --btn-fill-hover: oklch(0.14 0.006 82);
+
+    /* Glass elevation: a 1px inset top highlight + a soft, far outer shadow —
+       depth from light and blur, not a heavy drop. */
+    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.5),
+      0 1px 2px oklch(0 0 0 / 0.04), 0 18px 36px -28px oklch(0 0 0 / 0.35);
+    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.6),
+      0 2px 4px oklch(0 0 0 / 0.05), 0 28px 56px -30px oklch(0 0 0 / 0.4);
+
+    /* Data-viz: a single warm tan→olive gradient for probability/magnitude bars
+       (NOT the phase spectrum — magnitude is one hue, phase is chromatic). */
+    --bar-fill: linear-gradient(90deg, oklch(0.6 0.06 68), oklch(0.72 0.09 108));
+    --bar-glow: oklch(0.7 0.08 100 / 0.4);
   }
 
   .dark {
-    --surface-base: #080c14;
-    --surface-1: #0d1320;
-    --surface-2: #0a0f1a;
+    /* ── Dark "primary" theme — near-black smoke ─────────────────────────── */
+    --accent: oklch(0.85 0.11 118);        /* olive */
+    --accent-light: oklch(0.9 0.09 118);
+    --accent-dark: oklch(0.66 0.1 118);
+
+    --surface-base: oklch(0.145 0.004 80);
+    --surface-base-2: oklch(0.11 0.004 80);
+    --surface-1: oklch(0.185 0.004 80);
+    --surface-2: oklch(0.16 0.004 80);
+
+    --glass: oklch(1 0 0 / 0.045);
+    --glass-2: oklch(1 0 0 / 0.075);
+    --bd: oklch(1 0 0 / 0.08);
+    --bd-2: oklch(1 0 0 / 0.15);
+    --track: oklch(1 0 0 / 0.06);
+    --field: oklch(1 0 0 / 0.03);
+    --ink: oklch(0.96 0.004 88);
+    --mut: oklch(0.66 0.006 88);
+    --cap: oklch(0.47 0.006 88);
+
+    /* Neutral high-contrast primary button (near-white fill on the dark theme). */
+    --btn-fill: oklch(0.95 0.004 92);
+    --btn-ink: oklch(0.16 0.004 82);
+    --btn-fill-hover: oklch(0.98 0.004 92);
 
     --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.06),
-      0 1px 2px oklch(0 0 0 / 0.3), 0 4px 8px -2px oklch(0 0 0 / 0.4);
+      0 20px 40px -30px oklch(0 0 0 / 0.7);
     --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.08),
-      0 2px 4px oklch(0 0 0 / 0.4), 0 12px 24px -6px oklch(0 0 0 / 0.55),
-      0 24px 48px -12px oklch(0 0 0 / 0.45);
+      0 30px 60px -30px oklch(0 0 0 / 0.8);
+
+    --bar-fill: linear-gradient(90deg, oklch(0.64 0.06 68), oklch(0.88 0.09 108));
+    --bar-glow: oklch(0.82 0.08 100 / 0.6);
   }
 
   body {
-    @apply text-gray-800 dark:text-gray-200;
-    background: var(--surface-base);
+    color: var(--ink);
+    background: linear-gradient(180deg, var(--surface-base), var(--surface-base-2));
+    background-attachment: fixed;
   }
 
   /* Anchor landings (and skip-link focus) clear the 4rem sticky nav. */
@@ -167,7 +242,8 @@
   /* Section accents driven by a single --hue token set on the card. One hue
      feeds the gradient bleed, the number badge, and the hover glow, so they
      can never drift out of agreement (oklch keeps lightness perceptually
-     matched across hues). */
+     matched across hues). Orthogonal to the olive signal — these are the six
+     per-section identity hues. */
   .section-bleed {
     background: linear-gradient(
       135deg,
@@ -221,40 +297,52 @@
     );
   }
 
-  /* The accessible filled-brand surface for primary CTAs. The body sits on
-     accent-dark so white text clears WCAG AA (5.09:1) in BOTH themes — the flat
-     bg-accent it replaces was only 2.25:1. The top-down rim arrives via
-     --shadow-resting (see @layer base), so the lit sheen and the card elevation
-     model stay one source of truth; hover lifts to --shadow-raised without
-     touching the background, so contrast can never regress on interaction. The
-     lift is scoped to :not(:disabled): several consumers are disabled mid-action
+  /* Glass surface recipe — the smoke-and-glass card/panel: a translucent fill,
+     a backdrop blur+saturate, a hairline border, and the two-part glass
+     elevation (inset top highlight + soft outer shadow). Falls back to the
+     opaque --surface-1 where backdrop-filter is unsupported. */
+  .glass {
+    background-color: var(--surface-1);
+    background-color: var(--glass);
+    border: 1px solid var(--bd);
+    box-shadow: var(--shadow-resting);
+  }
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .glass {
+      -webkit-backdrop-filter: blur(20px) saturate(1.3);
+      backdrop-filter: blur(20px) saturate(1.3);
+    }
+  }
+  .glass-2 {
+    background-color: var(--glass-2);
+  }
+
+  /* The primary CTA is a NEUTRAL high-contrast button — near-white on the dark
+     theme, near-black on light — NEVER a filled olive surface (olive is signal,
+     not a button colour). White/dark text clears WCAG AAA on its own fill in
+     both themes; the inset rim + soft shadow give it lift. The lift on hover is
+     scoped to :not(:disabled): several consumers are disabled mid-action
      (Stream/Optimize/Ask/Run while busy) and Chromium still fires :hover on a
-     disabled <button>, which would otherwise make a dimmed button advertise an
-     interactivity it does not have. (:disabled never matches the one <a>
-     consumer, so the guard is a no-op there.) */
+     disabled <button>. (:disabled never matches the one <a> consumer, so the
+     guard is a no-op there.) */
   .surface-accent {
-    background-color: var(--color-accent-dark);
-    color: #fff;
+    background-color: var(--btn-fill);
+    color: var(--btn-ink);
     box-shadow: var(--shadow-resting);
   }
   .surface-accent:not(:disabled):hover {
+    background-color: var(--btn-fill-hover);
     box-shadow: var(--shadow-raised);
   }
 
   /* The single source for a SELECTED/active chip fill (gate pills, shot presets,
-     spin-orbital + creation/annihilation toggles, Pauli factor cells). Vibrant
-     accent with dark text — gray-950 clears AAA on both the accent (~9:1) and the
-     brighter accent-light used in dark mode (~12:1; the lighter fill on dark text
-     is the higher-contrast case AND reads more clearly as "on" against the dark
-     card). Mirrors how .surface-accent single-sources the primary CTA fill,
-     replacing three hand-rolled variants that had drifted (some brightened in
-     dark mode, some did not). */
+     spin-orbital + creation/annihilation toggles, Pauli factor cells). A small
+     ACTIVE fill is the one place olive fills a surface — kept legible with dark
+     text: gray-950 on the bright olive clears AAA. Mirrors how .surface-accent
+     single-sources the primary CTA fill. */
   .chip-selected {
     background-color: var(--color-accent);
     color: var(--color-gray-950);
-  }
-  .dark .chip-selected {
-    background-color: var(--color-accent-light);
   }
 
   .prose pre {
@@ -266,7 +354,7 @@
   .prose :not(pre) > code {
     @apply font-medium;
     padding: 0.1em 0.4em;
-    border-radius: var(--radius-chip);
+    border-radius: var(--radius-control);
     /* color + background are set unlayered at the bottom of this file so they
        win over @tailwindcss/typography's later-layer `.prose :where(code)`
        color rule (a @layer components rule loses to it). */
@@ -287,6 +375,8 @@
   .prose h2,
   .prose h3 {
     font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.01em;
   }
 
   /* Fluid heading scale: continuous sizing with no breakpoint jumps; balanced
@@ -294,14 +384,12 @@
   .prose h1 {
     font-size: clamp(2rem, 1.4rem + 2.6vw, 3rem);
     text-wrap: balance;
-    letter-spacing: -0.02em;
-    line-height: 1.1;
+    line-height: 1.05;
   }
 
   .prose h2 {
     font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2rem);
     text-wrap: balance;
-    letter-spacing: -0.01em;
   }
 
   .prose h3 {
@@ -358,49 +446,74 @@
     animation: caret-blink 1.1s step-end infinite;
   }
 
+  /* Slow "live/connected" pulse for the olive status dot. */
+  .animate-signal {
+    animation: signal-pulse 2.4s ease-in-out infinite;
+  }
+
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:focus-visible:ring-offset-(--surface-2);
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-base) dark:focus-visible:ring-offset-(--surface-base);
   }
 
   .interactive {
     @apply transition-[transform,background-color,box-shadow,border-color,opacity] duration-200 ease-out active:scale-[0.97];
   }
 
-  /* Accent range thumb so the scrub/theta sliders aren't the tiny native default. */
+  /* Olive range thumb on a hairline track — the phase/scrub sliders. */
   .slider {
-    @apply h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 accent-accent;
+    @apply h-1 rounded-full;
+    background: var(--track);
+    accent-color: var(--color-accent);
   }
   .slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 24px;
-    height: 24px;
+    width: 16px;
+    height: 16px;
     border-radius: 9999px;
     background: var(--color-accent);
-    box-shadow: 0 0 0 3px oklch(0.72 0.15 192 / 0.18);
+    border: 2px solid var(--surface-base);
+    box-shadow: 0 0 0 1px var(--bd-2), 0 2px 8px -2px var(--bar-glow);
     cursor: pointer;
   }
   .slider::-moz-range-thumb {
-    width: 24px;
-    height: 24px;
-    border: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--surface-base);
     border-radius: 9999px;
     background: var(--color-accent);
-    box-shadow: 0 0 0 3px oklch(0.72 0.15 192 / 0.18);
+    box-shadow: 0 0 0 1px var(--bd-2);
     cursor: pointer;
   }
 
-  /* De-emphasized footnote/caption text. Single source for the muted tier so it
-     stays provably WCAG-AA in both themes: gray-500 on white ~4.6:1, gray-400 on
-     the dark card ~6.9:1. Replaces the inverted, sub-AA `text-gray-400
-     dark:text-gray-500` literal that was copy-pasted across the explorables. */
+  /* De-emphasized footnote/caption text. Single source for the muted tier,
+     mapped to the AA-safe --mut token (≈6:1 on the dark smoke, ≈4.9:1 on the
+     light surface). The fainter --cap tier is reserved for large/decorative
+     labels only — it is deliberately NOT used for body-sized caption text. */
   .text-caption {
-    @apply text-gray-500 dark:text-gray-400;
+    color: var(--mut);
+  }
+
+  /* The warm tan→olive magnitude fill for probability/amplitude bars. */
+  .bar-fill {
+    background: var(--bar-fill);
+    box-shadow: 0 0 12px -2px var(--bar-glow);
+  }
+
+  /* One-shot shimmer sweep overlay (place inside a positioned, clipped bar). */
+  .bar-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.4), transparent);
+    transform: translateX(-100%);
+    animation: bar-shimmer 2.8s ease-in-out infinite;
+    animation-delay: 1.1s;
   }
 
   .text-gradient {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, oklch(0.82 0.12 192), oklch(0.78 0.12 75));
+    background-image: linear-gradient(135deg, var(--color-accent), oklch(0.78 0.12 75));
   }
 
   .card-glow {
@@ -411,7 +524,7 @@
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    background: linear-gradient(135deg, oklch(0.72 0.15 192 / 0.15), oklch(0.78 0.12 75 / 0.1));
+    background: linear-gradient(135deg, oklch(0.82 0.1 118 / 0.15), oklch(0.78 0.12 75 / 0.1));
     z-index: -1;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -420,27 +533,36 @@
     opacity: 1;
   }
 
+  /* Atmospheric fog glow — layered soft radial lights over the smoke base. The
+     drift is gated to no-preference below. */
   .bg-atmosphere {
     background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.25 0.08 200 / 0.4), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 50%, oklch(0.2 0.06 280 / 0.2), transparent),
-      radial-gradient(ellipse 50% 60% at 20% 80%, oklch(0.18 0.05 150 / 0.15), transparent);
+      radial-gradient(ellipse 75% 90% at 72% -12%, oklch(0.95 0.02 105 / 0.12), transparent 52%),
+      radial-gradient(ellipse 60% 70% at 100% 30%, oklch(1 0 0 / 0.06), transparent 55%),
+      radial-gradient(ellipse 55% 60% at 2% 100%, oklch(1 0 0 / 0.05), transparent 58%);
   }
 
   .bg-atmosphere-light {
     background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.92 0.04 200 / 0.3), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 50%, oklch(0.94 0.03 280 / 0.2), transparent),
-      radial-gradient(ellipse 50% 60% at 20% 80%, oklch(0.93 0.03 150 / 0.15), transparent);
+      radial-gradient(ellipse 75% 90% at 74% -12%, oklch(0.9 0.03 108 / 0.5), transparent 55%),
+      radial-gradient(ellipse 60% 70% at 100% 20%, oklch(1 0 0 / 0.7), transparent 55%),
+      radial-gradient(ellipse 55% 60% at 0% 100%, oklch(0.86 0.01 90 / 0.5), transparent 60%);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .bg-atmosphere,
+    .bg-atmosphere-light {
+      animation: atmos-drift 30s ease-in-out infinite alternate;
+    }
   }
 
   .bg-grid-dots {
-    background-image: radial-gradient(circle, oklch(0.4 0.02 250 / 0.15) 1px, transparent 1px);
+    background-image: radial-gradient(circle, oklch(0.7 0.01 90 / 0.1) 1px, transparent 1px);
     background-size: 32px 32px;
   }
 
   .bg-grid-dots-light {
-    background-image: radial-gradient(circle, oklch(0.7 0.01 250 / 0.12) 1px, transparent 1px);
+    background-image: radial-gradient(circle, oklch(0.3 0.01 90 / 0.1) 1px, transparent 1px);
     background-size: 32px 32px;
   }
 }
@@ -484,12 +606,12 @@
 }
 
 ::selection {
-  background: oklch(0.72 0.15 192 / 0.25);
+  background: oklch(0.85 0.11 118 / 0.25);
 }
 
 /* Brighter selection on the dark github-dark code blocks for legible manual copy. */
 .prose pre ::selection {
-  background: oklch(0.82 0.12 192 / 0.35);
+  background: oklch(0.9 0.09 118 / 0.35);
 }
 
 /* Page-turn navigation between lessons (View Transitions API, driven by
@@ -531,10 +653,17 @@
     transform: none;
   }
 
-  /* The tutor-mock caret holds steady instead of blinking. */
-  .animate-caret {
+  /* The tutor-mock caret and the signal dot hold steady instead of blinking. */
+  .animate-caret,
+  .animate-signal {
     animation: none;
     opacity: 1;
+  }
+
+  /* One-shot shimmer never runs under reduced-motion. */
+  .bar-shimmer::after {
+    animation: none;
+    opacity: 0;
   }
 
   /* Neutralize the .interactive press-squish (a transform, not a transition). */
@@ -553,10 +682,10 @@
    later-layer `.prose :where(code)` color rule regardless of specificity, so the
    hue tint only takes effect from here, outside the layer system. */
 .prose :not(pre) > code {
-  color: oklch(0.5 0.16 var(--hue, 192));
-  background-color: oklch(0.72 0.15 var(--hue, 192) / 0.1);
+  color: oklch(0.5 0.16 var(--hue, 118));
+  background-color: oklch(0.72 0.15 var(--hue, 118) / 0.1);
 }
 
 .dark .prose :not(pre) > code {
-  color: oklch(0.82 0.13 var(--hue, 192));
+  color: oklch(0.82 0.13 var(--hue, 118));
 }

@@ -150,7 +150,7 @@ export function AuthForm() {
       <h1
         ref={headingRef}
         tabIndex={-1}
-        className="font-display text-display-md tracking-tight text-gray-900 dark:text-white outline-none"
+        className="font-display text-display-md tracking-tight text-(--ink) outline-none"
       >
         {title[view]}
       </h1>
@@ -240,7 +240,7 @@ export function AuthForm() {
 
       {view === "confirm" && (
         <form onSubmit={doConfirm} className="mt-6 space-y-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-(--mut)">
             Enter the 6-digit code we emailed to {email || "your address"}.
           </p>
           {/* one-time-code + numeric: Mail/Messages offer the emailed code as an
@@ -273,7 +273,7 @@ export function AuthForm() {
                   : "Resend code"}
             </button>
             {resendState === "sent" && (
-              <p role="status" className="text-xs text-gray-500 dark:text-gray-400">
+              <p role="status" className="text-xs text-caption">
                 A new code is on its way.
               </p>
             )}
@@ -365,7 +365,7 @@ function Field({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-(--mut)">
         {label}
       </label>
       <input
@@ -377,7 +377,7 @@ function Field({
         autoComplete={autoComplete}
         inputMode={inputMode}
         pattern={pattern}
-        className="w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+        className="w-full rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 text-sm text-(--ink) focus-ring"
       />
     </div>
   );
@@ -387,14 +387,14 @@ function GoogleBlock({ onClick }: { onClick: () => void }) {
   return (
     <>
       <div className="flex items-center gap-3 py-1">
-        <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700/60" />
+        <span className="h-px flex-1 bg-(--bd)" />
         <span className="text-xs text-caption">or</span>
-        <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700/60" />
+        <span className="h-px flex-1 bg-(--bd)" />
       </div>
       <button
         type="button"
         onClick={onClick}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 interactive focus-ring"
+        className="w-full inline-flex items-center justify-center gap-2 rounded-control border border-(--bd) px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring"
       >
         Continue with Google
       </button>

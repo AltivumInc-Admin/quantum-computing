@@ -39,7 +39,7 @@ export function SamplingPanel({ program, theta }: { program: Program; theta: num
   return (
     <Panel title="Sampling" id="sampling" sub={`${shots.toLocaleString()} shots`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-xs text-gray-500 dark:text-gray-400">Shots:</span>
+        <span className="mr-1 text-xs text-caption">Shots:</span>
         {SHOT_CHOICES.map((n) => (
           <button
             key={n}
@@ -51,13 +51,13 @@ export function SamplingPanel({ program, theta }: { program: Program; theta: num
               "rounded px-2.5 py-1 font-mono text-xs font-medium transition-colors interactive focus-ring",
               shots === n
                 ? "chip-selected"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700",
+                : "border border-(--bd) bg-(--field) text-(--mut) hover:text-(--ink)",
             ].join(" ")}
           >
             {n}
           </button>
         ))}
-        <label className="ml-2 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <label className="ml-2 flex items-center gap-1.5 text-xs text-caption">
           Seed
           <input
             type="number"
@@ -91,7 +91,7 @@ export function SamplingPanel({ program, theta }: { program: Program; theta: num
               ariaLabel={`Basis ${basisLabel(idx, program.n)}: sampled ${empiricalPct}, exact ${exactPct}`}
               valueText={
                 <>
-                  <span className="text-gray-700 dark:text-gray-200">{empiricalPct}</span>
+                  <span className="text-(--mut)">{empiricalPct}</span>
                   <span className="text-caption"> / {exactPct}</span>
                 </>
               }

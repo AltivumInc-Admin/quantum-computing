@@ -95,9 +95,9 @@ function factorClass(label: string): string {
     return "border-transparent chip-selected";
   }
   if (label === "Z") {
-    return "border-transparent bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-gray-800 dark:text-gray-100";
+    return "border-transparent bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-(--ink)";
   }
-  return "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40 text-gray-500 dark:text-gray-400";
+  return "border border-(--bd) bg-(--field) text-caption";
 }
 
 // ---------------------------------------------------------------------------
@@ -183,11 +183,11 @@ export function JwExplorer({ source }: { source: string }) {
 
         {/* Hartree-Fock occupation ket */}
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent">
             Hartree-Fock reference
           </p>
           <div className="mt-2 flex items-center gap-2">
-            <span className="font-mono text-lg text-gray-700 dark:text-gray-200">
+            <span className="font-mono text-lg text-(--mut)">
               |
             </span>
             <div
@@ -200,19 +200,19 @@ export function JwExplorer({ source }: { source: string }) {
                   <span
                     className={`flex h-8 w-8 items-center justify-center rounded-control font-mono text-sm tabular-nums ${
                       bit === 1
-                        ? "bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-gray-800 dark:text-gray-100"
-                        : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40 text-gray-500 dark:text-gray-400"
+                        ? "bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-(--ink)"
+                        : "border border-(--bd) bg-(--field) text-caption"
                     }`}
                   >
                     {bit}
                   </span>
-                  <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
+                  <span className="font-mono text-[10px] text-caption">
                     q{q}
                   </span>
                 </div>
               ))}
             </div>
-            <span className="font-mono text-lg text-gray-700 dark:text-gray-200">
+            <span className="font-mono text-lg text-(--mut)">
               &#10217;
             </span>
           </div>
@@ -223,7 +223,7 @@ export function JwExplorer({ source }: { source: string }) {
           <div>
             <p
               id={groupId}
-              className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+              className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent"
             >
               Operator mode
             </p>
@@ -284,7 +284,7 @@ export function JwExplorer({ source }: { source: string }) {
 
         {/* Pauli string image */}
         <div>
-          <p className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
+          <p className="font-mono text-sm tabular-nums text-(--ink)">
             {opName}
             {" = "}
             <span className="text-accent dark:text-accent-light">
@@ -293,7 +293,7 @@ export function JwExplorer({ source }: { source: string }) {
               {" iY) / 2"}
             </span>
             {image.zChain.length > 0 && (
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-caption">
                 {" "}
                 &middot; Z-string on q0&hellip;q{activeMode - 1}
               </span>
@@ -316,7 +316,7 @@ export function JwExplorer({ source }: { source: string }) {
                   >
                     {f.label}
                   </span>
-                  <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
+                  <span className="font-mono text-[10px] text-caption">
                     q{f.qubit}
                   </span>
                 </div>
@@ -324,13 +324,13 @@ export function JwExplorer({ source }: { source: string }) {
             </div>
           </div>
 
-          <p className="mt-2 font-mono text-[11px] text-gray-500 dark:text-gray-400">
+          <p className="mt-2 font-mono text-[11px] text-caption">
             X-string {image.xString} &middot; Y-string {image.yString}
           </p>
         </div>
 
         {/* Plain-English note */}
-        <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p className="text-xs leading-relaxed text-caption">
           {image.zChain.length > 0 ? (
             <>
               The trailing Z-string counts the parity of every lower-index

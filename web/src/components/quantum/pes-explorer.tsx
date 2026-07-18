@@ -294,7 +294,7 @@ export function PesExplorer({ source }: { source: string }) {
           </svg>
 
           {/* legend */}
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-mono text-gray-500 dark:text-gray-400">
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] font-mono text-caption">
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-0.5 w-4 bg-accent dark:bg-accent-light" aria-hidden="true" />
               STO-3G FCI
@@ -345,45 +345,45 @@ export function PesExplorer({ source }: { source: string }) {
           <dl className="mt-4 space-y-1.5 font-mono text-xs tabular-nums">
             <div className="flex items-center justify-between gap-2">
               <dt className="text-accent dark:text-accent-light">FCI</dt>
-              <dd className="text-gray-800 dark:text-gray-100">{formatHartree(readout.fci)}</dd>
+              <dd className="text-(--ink)">{formatHartree(readout.fci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-gray-500 dark:text-gray-400">HF</dt>
-              <dd className="text-gray-800 dark:text-gray-100">{formatHartree(readout.hf)}</dd>
+              <dt className="text-caption">HF</dt>
+              <dd className="text-(--ink)">{formatHartree(readout.hf)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-gray-500 dark:text-gray-400">HF &minus; FCI gap</dt>
-              <dd className="font-semibold text-gray-900 dark:text-white">
+              <dt className="text-caption">HF &minus; FCI gap</dt>
+              <dd className="font-semibold text-(--ink)">
                 {formatHartree(readout.gap)}
               </dd>
             </div>
           </dl>
 
           {/* equilibrium / well-depth facts */}
-          <dl className="mt-3 space-y-1.5 border-t border-gray-100 dark:border-gray-800 pt-3 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+          <dl className="mt-3 space-y-1.5 border-t border-(--bd) pt-3 font-mono text-xs tabular-nums text-caption">
             <div className="flex items-center justify-between gap-2">
               <dt>equilibrium R</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{formatAngstrom(geom.eqR)}</dd>
+              <dd className="text-(--mut)">{formatAngstrom(geom.eqR)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>min FCI</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{formatHartree(geom.eqFci)}</dd>
+              <dd className="text-(--mut)">{formatHartree(geom.eqFci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>well depth</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{formatHartree(geom.wellDepth)}</dd>
+              <dd className="text-(--mut)">{formatHartree(geom.wellDepth)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt>asymptote</dt>
-              <dd className="text-gray-700 dark:text-gray-200">{formatHartree(geom.asymptote)}</dd>
+              <dd className="text-(--mut)">{formatHartree(geom.asymptote)}</dd>
             </div>
           </dl>
         </div>
       </div>
 
       {/* Teaching callout */}
-      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+      <div className="border-t border-(--bd) px-4 py-3">
+        <p className="text-xs leading-relaxed text-(--mut)">
           As the bond breaks, the HF&minus;FCI gap (static correlation) widens:
           restricted Hartree-Fock keeps both electrons paired in one spatial
           orbital and cannot describe the two atoms pulling apart, so it fails to

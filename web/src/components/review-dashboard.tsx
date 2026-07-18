@@ -45,7 +45,7 @@ function liveSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="my-8 min-h-[240px] animate-pulse rounded-card border border-gray-200/80 bg-gray-50/70 dark:border-gray-700/40 dark:bg-white/[0.02] motion-reduce:animate-none"
+      className="my-8 min-h-[240px] animate-pulse rounded-card glass motion-reduce:animate-none"
     />
   );
 }
@@ -165,25 +165,25 @@ export function ReviewDashboard() {
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-16">
       <div className="mb-10">
-        <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-3">
+        <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent dark:text-accent-light mb-3">
           Spaced repetition
         </p>
-        <h1 className="font-display text-display-xl tracking-tight text-gray-900 dark:text-white">
+        <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
           Review
         </h1>
-        <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+        <p className="mt-4 text-lg text-(--mut) leading-relaxed">
           Cards you have studied resurface here exactly when you are about to
           forget them. A few minutes now keeps the whole curriculum fresh.
         </p>
 
-        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm tabular-nums text-gray-500 dark:text-gray-400">
+        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm tabular-nums text-caption">
           <span>
-            <span className="font-semibold text-gray-700 dark:text-gray-200">{dueIds.length}</span> due
+            <span className="font-semibold text-(--mut)">{dueIds.length}</span> due
             now
           </span>
           <span className="text-gray-300 dark:text-gray-700">/</span>
           <span>
-            <span className="font-semibold text-gray-700 dark:text-gray-200">{total}</span> card
+            <span className="font-semibold text-(--mut)">{total}</span> card
             {total === 1 ? "" : "s"} tracked
           </span>
         </div>
@@ -205,11 +205,11 @@ export function ReviewDashboard() {
       )}
 
       {entries.length === 0 ? (
-        <div className="rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-6 py-12 text-center">
-          <p className="text-base font-medium text-gray-700 dark:text-gray-200">
+        <div className="rounded-card glass shadow-(--shadow-resting) px-6 py-12 text-center">
+          <p className="text-base font-medium text-(--mut)">
             {total === 0 ? "No cards yet" : "Nothing due — you're caught up"}
           </p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-2 text-sm text-caption">
             {total === 0
               ? "Work through a lesson and grade its recall cards to start building a review schedule."
               : "Come back when more cards come due, or keep reading new lessons."}
@@ -242,7 +242,7 @@ export function ReviewDashboard() {
                       Reviewed
                     </span>
                   ) : (
-                    <span className="rounded-chip bg-gray-100 px-2 py-0.5 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                    <span className="rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-(--mut)">
                       Due
                     </span>
                   )}
@@ -265,7 +265,7 @@ export function ReviewDashboard() {
                     <summary className="inline-block cursor-pointer rounded-control px-1 text-xs text-caption focus-ring">
                       Stuck? Show a correct answer
                     </summary>
-                    <p className="mt-1 px-1 font-mono text-sm text-gray-600 dark:text-gray-300">
+                    <p className="mt-1 px-1 font-mono text-sm text-(--mut)">
                       {content.answer}
                     </p>
                   </details>

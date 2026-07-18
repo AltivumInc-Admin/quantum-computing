@@ -16,7 +16,7 @@ export function ReviewNavBadge() {
   return (
     <Link
       href="/review"
-      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-accent dark:hover:text-accent-light interactive focus-ring"
     >
       Review
       {count > 0 && (

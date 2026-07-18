@@ -35,14 +35,14 @@ export function SectionProgress({ slug }: { slug: string }) {
       className={`group inline-flex items-center gap-2.5 rounded-control px-4 py-2.5 text-sm font-medium interactive focus-ring transition-[color,background-color,border-color,box-shadow] duration-200 ${
         complete
           ? "border hue-border hue-soft-bg hue-text shadow-sm"
-          : "border border-gray-200 dark:border-gray-700/50 text-gray-600 dark:text-gray-300 hover:border-accent/30 hover:bg-accent/5 hover:text-accent-dark dark:hover:text-accent-light"
+          : "border border-(--bd) text-(--mut) hover:border-accent/30 hover:bg-accent/5 hover:text-accent-dark dark:hover:text-accent-light"
       }`}
     >
       <span
         className={`flex h-5 w-5 items-center justify-center rounded-full transition-all duration-300 ${
           complete
             ? "bg-accent-dark text-white shadow-sm shadow-accent/40"
-            : "border border-gray-300 text-transparent dark:border-gray-600 group-hover:border-accent/50"
+            : "border border-(--bd-2) text-transparent group-hover:border-accent/50"
         }`}
       >
         <CheckIcon />

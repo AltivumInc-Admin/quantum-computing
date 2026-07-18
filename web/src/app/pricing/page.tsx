@@ -51,7 +51,7 @@ function SignupCta({ size = "base" }: { size?: "base" | "sm" }) {
     </Link>
   ) : (
     <span
-      className={`inline-flex items-center rounded-control border border-gray-200 dark:border-white/10 font-medium text-caption ${pad}`}
+      className={`inline-flex items-center rounded-control border border-(--bd) font-medium text-caption ${pad}`}
     >
       Sign-up coming soon
     </span>
@@ -122,27 +122,27 @@ export default function PricingPage() {
         {/* Hero — the thesis.                                            */}
         {/* ------------------------------------------------------------ */}
         <header className="max-w-3xl animate-hero-enter">
-          <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-5">
+          <p className="text-sm font-medium tracking-[0.2em] uppercase text-accent dark:text-accent-light font-mono mb-5">
             Pricing
           </p>
-          <h1 className="font-display text-display-2xl tracking-tight text-gray-900 dark:text-white">
+          <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">
             The learning is{" "}
             <span className="bg-gradient-to-br from-accent-dark to-warm-dark dark:from-accent-light dark:to-warm-light bg-clip-text text-transparent">
               free
             </span>
             . The metal is metered.
           </h1>
-          <p className="mt-6 text-lg sm:text-xl text-gray-600 dark:text-gray-300 leading-relaxed">
+          <p className="mt-6 text-lg sm:text-xl text-(--mut) leading-relaxed">
             The entire curriculum, simulator, and playground are free with a
             free account — forever. One credit wallet meters the only two
             things that cost real money: frontier AI tutoring and real quantum
             hardware. One credit is one cent, always.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3 animate-slide-in" style={{ animationDelay: "200ms" }}>
-            <span className="inline-flex items-center rounded-chip border border-gray-200 dark:border-white/10 bg-(--surface-1) px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 tabular-nums">
+            <span className="inline-flex items-center rounded-chip border border-(--bd) bg-(--field) px-3 py-1.5 text-sm font-medium text-(--mut) tabular-nums">
               1 credit = $0.01
             </span>
-            <span className="inline-flex items-center rounded-chip border border-gray-200 dark:border-white/10 bg-(--surface-1) px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 tabular-nums">
+            <span className="inline-flex items-center rounded-chip border border-(--bd) bg-(--field) px-3 py-1.5 text-sm font-medium text-(--mut) tabular-nums">
               {STARTER_GRANT_CREDITS}-credit welcome grant with every account
             </span>
             <WalletBadge />
@@ -156,12 +156,12 @@ export default function PricingPage() {
           {principles.map((p) => (
             <div
               key={p.title}
-              className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 shadow-(--shadow-resting)"
+              className="rounded-card glass p-6 shadow-(--shadow-resting)"
             >
-              <h2 className="font-display text-display-md text-gray-900 dark:text-white">
+              <h2 className="font-display text-display-md text-(--ink)">
                 {p.title}
               </h2>
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              <p className="mt-2 text-sm text-(--mut) leading-relaxed">
                 {p.body}
               </p>
             </div>
@@ -175,13 +175,13 @@ export default function PricingPage() {
           <div className="flex items-center gap-4 mb-4">
             <h2
               id="tiers-heading"
-              className="font-display text-display-xl text-gray-900 dark:text-white"
+              className="font-display text-display-xl text-(--ink)"
             >
               Three ways to fund the wallet
             </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
+            <div className="flex-1 h-px bg-gradient-to-r from-(--bd) to-transparent" />
           </div>
-          <p className="max-w-3xl text-base text-gray-600 dark:text-gray-400 mb-12">
+          <p className="max-w-3xl text-base text-(--mut) mb-12">
             Every account is pay-as-you-go at heart: top up any amount, spend it
             on anything metered. Plus and Pro are monthly credit bundles with
             stronger tutor models — never an all-you-can-eat plan, so the deal
@@ -194,10 +194,10 @@ export default function PricingPage() {
               return (
                 <div
                   key={tier.id}
-                  className={`relative rounded-card border bg-(--surface-1) p-7 flex flex-col ${
+                  className={`relative rounded-card glass p-7 flex flex-col ${
                     featured
                       ? "border-accent/60 shadow-(--shadow-raised) lg:-translate-y-2"
-                      : "border-gray-200/60 dark:border-white/[0.06] shadow-(--shadow-resting)"
+                      : "shadow-(--shadow-resting)"
                   }`}
                 >
                   {featured && (
@@ -205,19 +205,19 @@ export default function PricingPage() {
                       Best for regulars
                     </span>
                   )}
-                  <h3 className="font-display text-display-md text-gray-900 dark:text-white">
+                  <h3 className="font-display text-display-md text-(--ink)">
                     {tier.name}
                   </h3>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 min-h-10">
+                  <p className="mt-1 text-sm text-(--mut) min-h-10">
                     {tier.tagline}
                   </p>
                   <p className="mt-5 flex items-baseline gap-1.5 tabular-nums">
-                    <span className="font-display text-display-lg text-gray-900 dark:text-white">
+                    <span className="font-display text-display-lg text-(--ink)">
                       {tier.priceUsdPerMonth === 0
                         ? "$0"
                         : formatUsd(tier.priceUsdPerMonth).replace(".00", "")}
                     </span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                    <span className="text-sm text-caption">
                       {tier.priceUsdPerMonth === 0 ? "forever" : "/ month"}
                     </span>
                   </p>
@@ -231,7 +231,7 @@ export default function PricingPage() {
                     {tier.features.map((f) => (
                       <li
                         key={f}
-                        className="flex gap-2.5 text-sm text-gray-600 dark:text-gray-400"
+                        className="flex gap-2.5 text-sm text-(--mut)"
                       >
                         <svg
                           className="w-4 h-4 mt-0.5 shrink-0 text-accent dark:text-accent-light"
@@ -248,7 +248,7 @@ export default function PricingPage() {
                     ))}
                   </ul>
 
-                  <div className="mt-7 pt-5 border-t border-gray-200/60 dark:border-white/[0.08]">
+                  <div className="mt-7 pt-5 border-t border-(--bd)">
                     {tier.id === "free" ? (
                       <SignupCta size="sm" />
                     ) : billingLive && tier.checkoutLookupKey ? (
@@ -258,7 +258,7 @@ export default function PricingPage() {
                       />
                     ) : (
                       <div className="flex flex-col gap-2">
-                        <span className="inline-flex w-fit items-center rounded-control border border-gray-200 dark:border-white/10 px-4 py-2 text-sm font-medium text-caption">
+                        <span className="inline-flex w-fit items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-caption">
                           Launching soon
                         </span>
                         {configured && (
@@ -291,14 +291,14 @@ export default function PricingPage() {
               contradicting the sponsored-runs story; live, it tells the truth
               about the transition window instead. */}
           {billingLive ? (
-            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-(--mut)">
               <span className="font-semibold">Launch pricing:</span> wallets are
               live. During the transition, the in-lesson tutor remains free to
               try and existing curriculum hardware runs stay sponsored — your
               credits meter new wallet-billed usage as it rolls out.
             </div>
           ) : (
-            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
+            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-(--mut)">
               <span className="font-semibold">Early access:</span> billing has
               not launched yet — these are launch prices. Today the tutor is
               free to try, and hardware runs inside the curriculum are
@@ -314,13 +314,13 @@ export default function PricingPage() {
           <div className="flex items-center gap-4 mb-4">
             <h2
               id="estimator-heading"
-              className="font-display text-display-xl text-gray-900 dark:text-white"
+              className="font-display text-display-xl text-(--ink)"
             >
               Know the number before you run
             </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
+            <div className="flex-1 h-px bg-gradient-to-r from-(--bd) to-transparent" />
           </div>
-          <p className="max-w-3xl text-base text-gray-600 dark:text-gray-400 mb-10">
+          <p className="max-w-3xl text-base text-(--mut) mb-10">
             No quantum platform should surprise you with a bill. Price any
             backend and any tutor habit here — the identical estimate gates
             every real submission.
@@ -335,16 +335,16 @@ export default function PricingPage() {
           <div className="flex items-center gap-4 mb-4">
             <h2
               id="rates-heading"
-              className="font-display text-display-xl text-gray-900 dark:text-white"
+              className="font-display text-display-xl text-(--ink)"
             >
               Every rate, published
             </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
-            <span className="text-sm text-gray-500 dark:text-gray-500">
+            <div className="flex-1 h-px bg-gradient-to-r from-(--bd) to-transparent" />
+            <span className="text-sm text-caption">
               {PRICES_AS_OF} rates
             </span>
           </div>
-          <p className="max-w-3xl text-base text-gray-600 dark:text-gray-400 mb-10">
+          <p className="max-w-3xl text-base text-(--mut) mb-10">
             The full price list — no enterprise-sales veil. QPU runs add a flat{" "}
             {TASK_FEE_CREDITS}-credit task fee; managed simulators bill by the
             minute; the browser simulator is free and always will be.
@@ -352,16 +352,16 @@ export default function PricingPage() {
 
           <div className="grid gap-5 lg:grid-cols-5">
             {/* Tutor rates */}
-            <div className="lg:col-span-2 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) shadow-(--shadow-resting) overflow-hidden">
-              <h3 className="font-display text-display-md text-gray-900 dark:text-white px-6 pt-6">
+            <div className="lg:col-span-2 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
+              <h3 className="font-display text-display-md text-(--ink) px-6 pt-6">
                 AI tutor
               </h3>
-              <p className="px-6 pt-1 pb-4 text-sm text-gray-600 dark:text-gray-400">
+              <p className="px-6 pt-1 pb-4 text-sm text-(--mut)">
                 Typical credits per question.
               </p>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-t border-gray-200/60 dark:border-white/[0.08] text-left">
+                  <tr className="border-t border-(--bd) text-left">
                     <th scope="col" className="px-6 py-2.5 font-medium text-caption">Model</th>
                     <th scope="col" className="px-3 py-2.5 font-medium text-caption">Tier</th>
                     <th scope="col" className="px-6 py-2.5 font-medium text-caption text-right">Credits</th>
@@ -371,9 +371,9 @@ export default function PricingPage() {
                   {TUTOR_RATES.map((r) => (
                     <tr
                       key={r.model}
-                      className="border-t border-gray-200/60 dark:border-white/[0.08]"
+                      className="border-t border-(--bd)"
                     >
-                      <td className="px-6 py-3 font-medium text-gray-900 dark:text-white">
+                      <td className="px-6 py-3 font-medium text-(--ink)">
                         {r.model}
                       </td>
                       <td className="px-3 py-3">
@@ -381,7 +381,7 @@ export default function PricingPage() {
                           {r.tier}
                         </span>
                       </td>
-                      <td className="px-6 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
+                      <td className="px-6 py-3 text-right tabular-nums text-(--mut)">
                         ~{r.typicalCreditsPerQuestion}
                       </td>
                     </tr>
@@ -391,17 +391,17 @@ export default function PricingPage() {
             </div>
 
             {/* Hardware rates */}
-            <div className="lg:col-span-3 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) shadow-(--shadow-resting) overflow-hidden">
-              <h3 className="font-display text-display-md text-gray-900 dark:text-white px-6 pt-6">
+            <div className="lg:col-span-3 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
+              <h3 className="font-display text-display-md text-(--ink) px-6 pt-6">
                 Quantum hardware
               </h3>
-              <p className="px-6 pt-1 pb-4 text-sm text-gray-600 dark:text-gray-400">
+              <p className="px-6 pt-1 pb-4 text-sm text-(--mut)">
                 Credits per shot, plus the {TASK_FEE_CREDITS}-credit task fee.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
-                    <tr className="border-t border-gray-200/60 dark:border-white/[0.08] text-left">
+                    <tr className="border-t border-(--bd) text-left">
                       <th scope="col" className="px-6 py-2.5 font-medium text-caption">Backend</th>
                       <th scope="col" className="px-3 py-2.5 font-medium text-caption text-right">Per shot</th>
                       <th scope="col" className="px-6 py-2.5 font-medium text-caption text-right">
@@ -415,20 +415,20 @@ export default function PricingPage() {
                       return (
                         <tr
                           key={r.name}
-                          className="border-t border-gray-200/60 dark:border-white/[0.08]"
+                          className="border-t border-(--bd)"
                         >
                           <td className="px-6 py-3">
-                            <span className="font-medium text-gray-900 dark:text-white">
+                            <span className="font-medium text-(--ink)">
                               {r.name}
                             </span>
                             <span className="block text-xs text-caption">
                               {r.technology}
                             </span>
                           </td>
-                          <td className="px-3 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
+                          <td className="px-3 py-3 text-right tabular-nums text-(--mut)">
                             {r.creditsPerShot}
                           </td>
-                          <td className="px-6 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300">
+                          <td className="px-6 py-3 text-right tabular-nums text-(--mut)">
                             {formatCredits(total)}
                             <span className="block text-xs text-caption">
                               {formatUsd(creditsToUsd(total))}
@@ -440,16 +440,16 @@ export default function PricingPage() {
                     {SIMULATOR_RATES.map((s) => (
                       <tr
                         key={s.name}
-                        className="border-t border-gray-200/60 dark:border-white/[0.08]"
+                        className="border-t border-(--bd)"
                       >
                         <td className="px-6 py-3">
-                          <span className="font-medium text-gray-900 dark:text-white">
+                          <span className="font-medium text-(--ink)">
                             {s.name}
                           </span>
                           <span className="block text-xs text-caption">{s.description}</span>
                         </td>
                         <td
-                          className="px-3 py-3 text-right tabular-nums text-gray-700 dark:text-gray-300"
+                          className="px-3 py-3 text-right tabular-nums text-(--mut)"
                           colSpan={2}
                         >
                           {s.creditsPerMinute} credits / minute
@@ -469,7 +469,7 @@ export default function PricingPage() {
         <section aria-labelledby="faq-heading" className="mt-24 max-w-3xl reveal">
           <h2
             id="faq-heading"
-            className="font-display text-display-xl text-gray-900 dark:text-white mb-8"
+            className="font-display text-display-xl text-(--ink) mb-8"
           >
             Fair questions
           </h2>
@@ -477,9 +477,9 @@ export default function PricingPage() {
             {faqs.map((f) => (
               <details
                 key={f.q}
-                className="group rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) shadow-(--shadow-resting)"
+                className="group rounded-card glass shadow-(--shadow-resting)"
               >
-                <summary className="cursor-pointer list-none px-6 py-4 flex items-center justify-between gap-4 font-medium text-gray-900 dark:text-white focus-ring rounded-card">
+                <summary className="cursor-pointer list-none px-6 py-4 flex items-center justify-between gap-4 font-medium text-(--ink) focus-ring rounded-card">
                   {f.q}
                   <svg
                     className="w-4 h-4 shrink-0 text-caption transition-transform group-open:rotate-45"
@@ -492,7 +492,7 @@ export default function PricingPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                   </svg>
                 </summary>
-                <p className="px-6 pb-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                <p className="px-6 pb-5 text-sm text-(--mut) leading-relaxed">
                   {f.a}
                 </p>
               </details>
@@ -505,15 +505,15 @@ export default function PricingPage() {
         {/* ------------------------------------------------------------ */}
         <section
           aria-labelledby="pricing-cta-heading"
-          className="mt-24 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) shadow-(--shadow-raised) px-6 py-12 sm:px-12 text-center reveal"
+          className="mt-24 rounded-card glass shadow-(--shadow-raised) px-6 py-12 sm:px-12 text-center reveal"
         >
           <h2
             id="pricing-cta-heading"
-            className="font-display text-display-xl text-gray-900 dark:text-white text-balance"
+            className="font-display text-display-xl text-(--ink) text-balance"
           >
             Start learning today. The wallet can wait.
           </h2>
-          <p className="mt-4 max-w-xl mx-auto text-base text-gray-600 dark:text-gray-400">
+          <p className="mt-4 max-w-xl mx-auto text-base text-(--mut)">
             Everything you need to learn quantum computing is already free —
             just a free account. Email or Google, no credit card.
           </p>

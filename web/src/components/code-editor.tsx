@@ -28,7 +28,7 @@ const LOAD_TIMEOUT_MS = 15_000;
 // height — no layout shift on mount regardless of the height prop.
 function EditorNotice({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2.5 bg-gray-50 dark:bg-gray-900/60 px-4 text-center text-sm text-caption">
+    <div className="flex h-full flex-col items-center justify-center gap-2.5 bg-(--field) px-4 text-center text-sm text-caption">
       {children}
     </div>
   );
@@ -80,7 +80,7 @@ export function CodeEditor({
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded-control border border-gray-300 dark:border-gray-700 px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 hover:border-accent/50 interactive focus-ring"
+              className="rounded-control border border-(--bd) px-3 py-1 text-xs font-medium text-(--mut) hover:border-accent/50 interactive focus-ring"
             >
               Reload page
             </button>
@@ -111,7 +111,7 @@ export function CodeEditor({
         )}
       </div>
       {/* Visible, SR-reachable disclosure of the keyboard exit (WCAG 2.1.2). */}
-      <p className="border-t border-gray-100 dark:border-gray-800 px-4 py-1.5 text-[11px] leading-relaxed text-caption">
+      <p className="border-t border-(--bd) px-4 py-1.5 text-[11px] leading-relaxed text-caption">
         Tab indents. To move focus out of the editor, press Escape, then Tab —
         or toggle with Ctrl+M (Ctrl+Shift+M on macOS).
       </p>

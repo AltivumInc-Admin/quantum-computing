@@ -227,7 +227,7 @@ export function MetricsExplorer({ source }: { source: string }) {
   return (
     <WidgetCard
       header={
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-(--bd) px-4 py-2">
           <EyebrowLabel>Live job metrics</EyebrowLabel>
           <Chip>R = {formatAngstrom(parsed.R)}</Chip>
           <Chip>metric: energy</Chip>
@@ -371,20 +371,20 @@ export function MetricsExplorer({ source }: { source: string }) {
           </p>
           <dl className="space-y-1.5 font-mono text-xs tabular-nums">
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-gray-500 dark:text-gray-400">iteration</dt>
-              <dd className="text-gray-800 dark:text-gray-100">
+              <dt className="text-caption">iteration</dt>
+              <dd className="text-(--ink)">
                 {lastIndex} / {total - 1}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
               <dt className="text-accent dark:text-accent-light">energy</dt>
-              <dd className="text-gray-800 dark:text-gray-100">
+              <dd className="text-(--ink)">
                 {formatHartree(lastEnergy)}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-gray-500 dark:text-gray-400">threshold</dt>
-              <dd className="text-gray-800 dark:text-gray-100">
+              <dt className="text-caption">threshold</dt>
+              <dd className="text-(--ink)">
                 {formatHartree(threshold)}
               </dd>
             </div>
@@ -412,8 +412,8 @@ export function MetricsExplorer({ source }: { source: string }) {
       </div>
 
       {/* Caption */}
-      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+      <div className="border-t border-(--bd) px-4 py-3">
+        <p className="text-xs leading-relaxed text-(--mut)">
           This is what <span className="font-mono">log_metric</span> &rarr;
           CloudWatch shows while a Hybrid Job runs: each point is one optimizer
           iteration the managed device reports back, and the dashed line is the

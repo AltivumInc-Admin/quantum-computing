@@ -39,7 +39,7 @@ export function RetentionSpectrum({ spectrum }: { spectrum: Spectrum }) {
             const pct = b.count === 0 ? 0 : (b.count / max) * 100;
             return (
               <div key={b.label} className="flex h-full flex-col items-center justify-end gap-1">
-                <span aria-hidden="true" className="text-xs font-semibold tabular-nums text-gray-600 dark:text-gray-300">
+                <span aria-hidden="true" className="text-xs font-semibold tabular-nums text-(--mut)">
                   {b.count > 0 ? b.count : ""}
                 </span>
                 <div
@@ -75,11 +75,11 @@ export function RetentionSpectrum({ spectrum }: { spectrum: Spectrum }) {
       </div>
 
       {/* Halves + footer */}
-      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-gray-200/60 pt-3 text-xs text-caption dark:border-white/[0.06]">
+      <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-(--bd) pt-3 text-xs text-caption">
         <span className="flex gap-4">
           <span>
             <span aria-hidden="true">← </span>maturing{" "}
-            <span className="font-semibold tabular-nums text-gray-700 dark:text-gray-200">{maturing}</span>
+            <span className="font-semibold tabular-nums text-(--mut)">{maturing}</span>
           </span>
           <span className="text-accent-dark dark:text-accent-light">
             retained{" "}
@@ -88,7 +88,7 @@ export function RetentionSpectrum({ spectrum }: { spectrum: Spectrum }) {
           </span>
         </span>
         <span className="tabular-nums">
-          <span className="font-semibold text-gray-700 dark:text-gray-200">{tracked}</span> tracked
+          <span className="font-semibold text-(--mut)">{tracked}</span> tracked
         </span>
       </div>
 
@@ -103,7 +103,7 @@ export function RetentionSpectrum({ spectrum }: { spectrum: Spectrum }) {
               retention threshold
             </caption>
             <thead>
-              <tr className="text-gray-600 dark:text-gray-300">
+              <tr className="text-(--mut)">
                 <th scope="col" className="py-1 pr-4 font-medium">Interval</th>
                 <th scope="col" className="py-1 pr-4 font-medium">Skills</th>
                 <th scope="col" className="py-1 font-medium">State</th>
@@ -111,7 +111,7 @@ export function RetentionSpectrum({ spectrum }: { spectrum: Spectrum }) {
             </thead>
             <tbody>
               {bins.map((b) => (
-                <tr key={b.label} className="border-t border-gray-200/60 dark:border-white/[0.06]">
+                <tr key={b.label} className="border-t border-(--bd)">
                   <td className="py-1 pr-4">{b.label}</td>
                   <td className="py-1 pr-4">{b.count}</td>
                   <td className="py-1">{b.retained ? "retained" : "maturing"}</td>

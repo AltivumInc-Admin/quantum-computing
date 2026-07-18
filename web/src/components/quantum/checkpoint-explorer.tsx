@@ -228,7 +228,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
       </LiveStatus>
 
       <div className="px-4 py-4">
-        <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p className="text-xs leading-relaxed text-caption">
           A long VQE sweep over the H2 curve ({bondLengths} bond lengths) runs as{" "}
           {iterations} job iterations. When the managed instance is reclaimed at
           the failure point, a restart redoes the shaded work.
@@ -238,7 +238,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
         {/* Timelines */}
         <div className="mt-4 flex flex-col gap-3">
           <div>
-            <p className="mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-300">
+            <p className="mb-1 text-[11px] font-medium text-(--mut)">
               No checkpoint
             </p>
             <TimelineRow
@@ -253,7 +253,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
           </div>
 
           <div>
-            <p className="mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-300">
+            <p className="mb-1 text-[11px] font-medium text-(--mut)">
               Checkpoint every {clampedEvery}
             </p>
             <TimelineRow
@@ -281,7 +281,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
             ariaLabel="Iteration at which the managed instance is reclaimed"
             ariaValueText={`${clampedFail} iterations`}
             display={clampedFail}
-            labelClassName="w-28 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
+            labelClassName="w-28 shrink-0 font-mono text-xs text-(--mut)"
             valueWidth="w-10"
           />
 
@@ -296,30 +296,30 @@ export function CheckpointExplorer({ source }: { source: string }) {
             ariaLabel="Checkpoint interval in iterations"
             ariaValueText={`${clampedEvery} iterations`}
             display={clampedEvery}
-            labelClassName="w-28 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300"
+            labelClassName="w-28 shrink-0 font-mono text-xs text-(--mut)"
             valueWidth="w-10"
           />
         </div>
 
         {/* Readout */}
         <div className="mt-5 grid grid-cols-3 gap-3 text-center">
-          <div className="rounded-control border border-gray-200/70 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
-            <p className="font-mono text-lg font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+          <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
+            <p className="font-mono text-lg font-semibold tabular-nums text-(--ink)">
               {wastedNo.toFixed(0)}
             </p>
             <p className="text-[10px] uppercase tracking-wide text-caption">
               wasted, no checkpoint
             </p>
           </div>
-          <div className="rounded-control border border-gray-200/70 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
-            <p className="font-mono text-lg font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+          <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
+            <p className="font-mono text-lg font-semibold tabular-nums text-(--ink)">
               {wastedWith.toFixed(0)}
             </p>
             <p className="text-[10px] uppercase tracking-wide text-caption">
               wasted, with checkpoint
             </p>
           </div>
-          <div className="rounded-control border border-gray-200/70 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+          <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
             <p className="font-mono text-lg font-semibold tabular-nums text-accent dark:text-accent-light">
               {saving.toFixed(0)}
             </p>

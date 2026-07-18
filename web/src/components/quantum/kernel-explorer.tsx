@@ -218,11 +218,11 @@ export function KernelExplorer({ source }: { source: string }) {
         {/* Controls + readout */}
         <div className="min-w-0 flex-1">
           <div role="status" aria-live="polite">
-            <p className="text-sm text-gray-800 dark:text-gray-200">
+            <p className="text-sm text-(--ink)">
               quantum-kernel accuracy ={" "}
               <span className="font-semibold tabular-nums">{formatPercent(acc * 100, 0)}</span>
             </p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p className="mt-1 text-sm text-caption">
               linear baseline ={" "}
               <span className="font-semibold tabular-nums">{formatPercent(baseline * 100, 0)}</span>
             </p>
@@ -230,14 +230,14 @@ export function KernelExplorer({ source }: { source: string }) {
 
           {/* map toggle */}
           <div className="mt-4 flex items-center gap-3">
-            <label htmlFor={mapId} className="w-16 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300">
+            <label htmlFor={mapId} className="w-16 shrink-0 font-mono text-sm text-(--mut)">
               map
             </label>
             <select
               id={mapId}
               value={map}
               onChange={(e) => setMap(e.target.value as FeatureMap)}
-              className="flex-1 rounded-control border border-gray-200 dark:border-gray-700 bg-transparent px-2 py-1 text-sm font-mono focus-ring"
+              className="flex-1 rounded-control border border-(--bd) bg-transparent px-2 py-1 text-sm font-mono focus-ring"
               aria-label="Quantum feature map"
             >
               <option value="angle">angle</option>
@@ -257,11 +257,11 @@ export function KernelExplorer({ source }: { source: string }) {
             ariaValueText={`${scale.toFixed(2)}`}
             display={scale.toFixed(2)}
             rowClassName="mt-3 flex items-center gap-3"
-            labelClassName="w-16 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-16 shrink-0 font-mono text-sm text-(--mut)"
             valueWidth="w-12"
           />
 
-          <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-4 text-xs text-caption">
             The fidelity kernel lifts the data into Hilbert space, so a quantum
             map separates rings a linear baseline cannot. Push the scale high and
             the boundary starts to alias.

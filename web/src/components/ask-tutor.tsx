@@ -186,10 +186,10 @@ export function AskTutor() {
         type="button"
         aria-label="Ask about this lesson"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-gray-200/70 dark:border-gray-700/50 bg-white/90 dark:bg-[color-mix(in_oklab,var(--surface-2)_85%,transparent)] px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-(--shadow-resting) backdrop-blur-xl interactive focus-ring hover:text-accent dark:hover:text-accent-light"
+        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring hover:text-accent dark:hover:text-accent-light"
       >
         Ask
-        <kbd className="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 font-mono text-[10px] text-gray-500 dark:text-gray-400">
+        <kbd className="rounded bg-(--field) border border-(--bd) px-1.5 py-0.5 font-mono text-[10px] text-caption">
           ⌘K
         </kbd>
       </button>
@@ -201,12 +201,12 @@ export function AskTutor() {
           aria-modal="true"
           aria-label="Lesson tutor"
           onKeyDown={onDialogKeyDown}
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-gray-200/70 dark:border-gray-800/60 bg-white dark:bg-[color-mix(in_oklab,var(--surface-2)_92%,transparent)] shadow-2xl backdrop-blur-xl animate-slide-in"
+          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-(--bd) bg-(--glass) shadow-2xl backdrop-blur-xl animate-slide-in"
         >
-          <div className="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-4">
+          <div className="flex items-start justify-between gap-3 border-b border-(--bd) px-5 py-4">
             <div>
-              <p className="font-display text-lg text-gray-900 dark:text-white">Ask the margin</p>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              <p className="font-display text-lg text-(--ink)">Ask the margin</p>
+              <p className="mt-0.5 text-xs text-caption">
                 Grounded in: <span className="text-accent dark:text-accent-light">{lessonLabel(slug)}</span>
               </p>
             </div>
@@ -214,7 +214,7 @@ export function AskTutor() {
               type="button"
               aria-label="Close tutor"
               onClick={close}
-              className="rounded-control p-1.5 text-caption hover:text-gray-700 dark:hover:text-gray-200 interactive focus-ring"
+              className="rounded-control p-1.5 text-caption hover:text-(--mut) interactive focus-ring"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
@@ -227,7 +227,7 @@ export function AskTutor() {
                 incrementally to screen readers as they arrive. */}
             <div aria-live="polite" aria-atomic="false" aria-busy={busy}>
               {answer ? (
-                <p className="whitespace-pre-wrap text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">
+                <p className="whitespace-pre-wrap text-[0.95rem] leading-relaxed text-(--ink)">
                   {answer}
                 </p>
               ) : (
@@ -250,7 +250,7 @@ export function AskTutor() {
               e.preventDefault();
               void ask();
             }}
-            className="border-t border-gray-100 dark:border-gray-800 px-5 py-4"
+            className="border-t border-(--bd) px-5 py-4"
           >
             <label htmlFor="ask-tutor-input" className="sr-only">
               Your question
@@ -268,7 +268,7 @@ export function AskTutor() {
               }}
               rows={3}
               placeholder="e.g. why does the Z-string only act on the lower modes?"
-              className="w-full resize-y rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+              className="w-full resize-y rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 text-sm text-(--ink) focus-ring"
             />
             <div className="mt-2 flex items-center justify-end">
               <button

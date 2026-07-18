@@ -39,7 +39,7 @@ export function CircuitLab({ source }: { source: string }) {
       }
     >
       {"error" in sim ? (
-        <p className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">
+        <p className="px-4 py-3 text-sm text-caption font-mono">
           qsim parse error: {sim.error}
         </p>
       ) : (
@@ -64,8 +64,8 @@ export function CircuitLab({ source }: { source: string }) {
           ariaLabel="Rotation angle theta in radians"
           ariaValueText={`${theta.toFixed(2)} radians`}
           display={formatRadians(theta)}
-          rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
-          labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+          rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
+          labelClassName="font-mono text-sm text-(--mut)"
         />
       )}
     </WidgetCard>

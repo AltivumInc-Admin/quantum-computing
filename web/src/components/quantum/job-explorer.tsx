@@ -174,9 +174,9 @@ function CompareBar({
     : "color-mix(in oklab, var(--accent) 24%, transparent)";
 
   return (
-    <div className="rounded-control border border-gray-200/80 dark:border-gray-700/40 bg-gray-50 dark:bg-gray-900/40 px-3 py-3">
+    <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+        <span className="text-xs font-semibold uppercase tracking-wide text-(--mut)">
           {label}
         </span>
         <span className="text-[11px] text-caption">{note}</span>
@@ -231,8 +231,8 @@ function SubBar({
   return (
     <div className={className}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[11px] text-gray-500 dark:text-gray-400">{title}</span>
-        <span className="font-mono text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+        <span className="text-[11px] text-caption">{title}</span>
+        <span className="font-mono text-sm font-semibold tabular-nums text-(--ink)">
           {valueText}
         </span>
       </div>
@@ -315,7 +315,7 @@ export function JobExplorer({ source }: { source: string }) {
   return (
     <WidgetCard
       header={
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-(--bd) px-4 py-2">
           <EyebrowLabel>Standalone vs Hybrid Job</EyebrowLabel>
           <Chip>{iterations} iter</Chip>
           <Chip>{provider}</Chip>
@@ -341,7 +341,7 @@ export function JobExplorer({ source }: { source: string }) {
             ariaValueText={`${iterations} iterations`}
             display={iterations}
             rowClassName="flex flex-col gap-1"
-            labelClassName="font-mono text-xs text-gray-600 dark:text-gray-300"
+            labelClassName="font-mono text-xs text-(--mut)"
             valueWidth="w-12"
           />
 
@@ -358,7 +358,7 @@ export function JobExplorer({ source }: { source: string }) {
             ariaValueText={`${queueWaitSec.toFixed(0)} seconds`}
             display={`${queueWaitSec.toFixed(0)}s`}
             rowClassName="flex flex-col gap-1"
-            labelClassName="font-mono text-xs text-gray-600 dark:text-gray-300"
+            labelClassName="font-mono text-xs text-(--mut)"
             valueWidth="w-12"
           />
 
@@ -375,7 +375,7 @@ export function JobExplorer({ source }: { source: string }) {
             ariaValueText={`${iterSec.toFixed(1)} seconds`}
             display={`${iterSec.toFixed(1)}s`}
             rowClassName="flex flex-col gap-1"
-            labelClassName="font-mono text-xs text-gray-600 dark:text-gray-300"
+            labelClassName="font-mono text-xs text-(--mut)"
             valueWidth="w-12"
           />
 
@@ -384,7 +384,7 @@ export function JobExplorer({ source }: { source: string }) {
             <div className="flex flex-col gap-1">
               <label
                 htmlFor={providerId}
-                className="font-mono text-xs text-gray-600 dark:text-gray-300"
+                className="font-mono text-xs text-(--mut)"
               >
                 provider
               </label>
@@ -393,7 +393,7 @@ export function JobExplorer({ source }: { source: string }) {
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as Provider)}
                 aria-label="Quantum provider (per-shot QPU rates)"
-                className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/50 px-2 py-1.5 font-mono text-xs text-gray-700 dark:text-gray-200 focus-ring"
+                className="rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 font-mono text-xs text-(--mut) focus-ring"
               >
                 {PROVIDERS.map((p) => (
                   <option key={p} value={p}>
@@ -406,7 +406,7 @@ export function JobExplorer({ source }: { source: string }) {
             <div className="flex flex-col gap-1">
               <label
                 htmlFor={instanceId}
-                className="font-mono text-xs text-gray-600 dark:text-gray-300"
+                className="font-mono text-xs text-(--mut)"
               >
                 instance
               </label>
@@ -415,7 +415,7 @@ export function JobExplorer({ source }: { source: string }) {
                 value={instance}
                 onChange={(e) => setInstance(e.target.value as InstanceType)}
                 aria-label="SageMaker ML instance for the Hybrid Job classical code"
-                className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/50 px-2 py-1.5 font-mono text-xs text-gray-700 dark:text-gray-200 focus-ring"
+                className="rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 font-mono text-xs text-(--mut) focus-ring"
               >
                 {INSTANCE_KEYS.map((k) => (
                   <option key={k} value={k}>
@@ -452,7 +452,7 @@ export function JobExplorer({ source }: { source: string }) {
         </div>
 
         {/* Delta line */}
-        <p role="status" aria-live="polite" className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
+        <p role="status" aria-live="polite" className="font-mono text-sm tabular-nums text-(--ink)">
           priority access saves{" "}
           <span className="font-semibold text-accent dark:text-accent-light">
             {formatDuration(result.savedWall)}
@@ -465,13 +465,13 @@ export function JobExplorer({ source }: { source: string }) {
         </p>
 
         {/* Honesty notes */}
-        <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p className="text-xs leading-relaxed text-caption">
           The queue wait is an{" "}
-          <span className="font-medium text-gray-600 dark:text-gray-300">
+          <span className="font-medium text-(--mut)">
             illustrative estimate
           </span>{" "}
           — real device queue times vary widely with demand. The cost rates are{" "}
-          <span className="font-medium text-gray-600 dark:text-gray-300">real</span>{" "}
+          <span className="font-medium text-(--mut)">real</span>{" "}
           Braket per-task / per-shot and SageMaker hourly rates. The teaching point: a
           Hybrid Job trades a small managed-instance charge for a large wall-clock
           reduction via priority access.

@@ -88,7 +88,7 @@ export function DjDemo({ source }: { source: string }) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor={selectId}
-            className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+            className="text-[11px] font-medium uppercase tracking-wide text-caption"
           >
             Oracle
           </label>
@@ -97,7 +97,7 @@ export function DjDemo({ source }: { source: string }) {
             aria-label="Oracle"
             value={oracleKey}
             onChange={(e) => setOracleKey(e.target.value)}
-            className="rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2 py-1.5 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/40"
+            className="rounded-md border border-(--bd) bg-(--field) px-2 py-1.5 text-sm text-(--ink) focus:outline-none focus:ring-2 focus:ring-accent/40"
           >
             {ORACLE_KEYS.map((key) => (
               <option key={key} value={key}>

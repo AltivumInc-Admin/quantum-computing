@@ -25,7 +25,7 @@ import { GateChips, ProbBars, StateReadout } from "./widget-ui";
  */
 
 const CARD =
-  "not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)";
+  "not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)";
 
 function CheckIcon() {
   return (
@@ -38,7 +38,7 @@ function CheckIcon() {
 function ErrorCard({ message }: { message: string }) {
   return (
     <div className={`${CARD} px-4 py-3`}>
-      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">predict error: {message}</p>
+      <p className="font-mono text-sm text-caption">predict error: {message}</p>
     </div>
   );
 }
@@ -47,7 +47,7 @@ const OPTION_BASE =
   "rounded-control border px-2.5 py-1.5 font-mono text-sm interactive focus-ring disabled:cursor-default";
 const TONE = {
   neutral:
-    "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
+    "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
   selected:
     "border-accent/50 bg-accent/15 text-accent-dark dark:text-accent-light",
   correct:
@@ -146,8 +146,8 @@ export function PredictWidget({
 
   return (
     <div className={CARD}>
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-3 sm:px-5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
           Predict
         </span>
         {committed && (
@@ -165,7 +165,7 @@ export function PredictWidget({
       </div>
 
       <div className="px-4 py-4 sm:px-5">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">{spec.prompt}</p>
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">{spec.prompt}</p>
 
         <div className="mt-3 flex flex-wrap gap-1">
           <GateChips gates={program.gates} />
@@ -214,7 +214,7 @@ export function PredictWidget({
               aria-label="Simulated outcome"
               className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
                 Simulated outcome
               </span>
               <ProbBars probs={truth.probs} n={n} />

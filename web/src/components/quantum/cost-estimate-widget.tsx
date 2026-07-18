@@ -46,7 +46,7 @@ const OPTION_BASE =
   "rounded-control border px-3 py-1.5 font-mono text-sm tabular-nums interactive focus-ring disabled:cursor-default";
 const TONE = {
   neutral:
-    "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
+    "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
   selected: "border-accent/50 bg-accent/15 text-accent-dark dark:text-accent-light",
   correct: "border-accent/60 bg-accent/15 text-accent-dark dark:text-accent-light",
   wrong: "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
@@ -158,7 +158,7 @@ export function CostEstimateWidget({
       }
     >
       <div className="px-4 py-4 sm:px-5">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">{spec.prompt}</p>
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">{spec.prompt}</p>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <Chip>{spec.provider}</Chip>
@@ -207,18 +207,18 @@ export function CostEstimateWidget({
               aria-label="Itemized cost"
               className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+              <span className="mb-2 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
                 Itemized
               </span>
-              <dl className="space-y-1 font-mono text-sm tabular-nums text-gray-700 dark:text-gray-200">
+              <dl className="space-y-1 font-mono text-sm tabular-nums text-(--mut)">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500 dark:text-gray-400">
+                  <dt className="text-caption">
                     Task fees — {spec.tasks} × {fmtUsd(perTask)}
                   </dt>
                   <dd>{fmtUsd(truth.taskFee)}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-gray-500 dark:text-gray-400">
+                  <dt className="text-caption">
                     Shots — {spec.tasks} × {spec.shots.toLocaleString("en-US")} × ${perShot}
                   </dt>
                   <dd>{fmtUsd(truth.shotFee)}</dd>

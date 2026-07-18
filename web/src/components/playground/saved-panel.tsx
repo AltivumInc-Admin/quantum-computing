@@ -137,7 +137,7 @@ export function SavedPanel({
           {circuits.map((c) => (
             <li key={c.id} className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                <p className="truncate text-sm font-medium text-(--ink)">
                   {c.name}
                 </p>
                 <p className="text-xs text-caption">

@@ -191,7 +191,9 @@ describe("WidgetCard", () => {
     const outer = container.firstElementChild!;
     expect(outer.className).toContain("not-prose");
     expect(outer.className).toContain("rounded-card");
-    expect(outer.className).toContain("shadow-(--shadow-resting)");
+    // The smoke-and-glass shell: `.glass` carries the hairline border, the
+    // translucent fill, the backdrop blur, and the glass elevation.
+    expect(outer.className).toContain("glass");
   });
 
   it("adds overflow-hidden and header row when eyebrow is set", () => {

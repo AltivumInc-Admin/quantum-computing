@@ -117,13 +117,13 @@ export function RunbookDashboard() {
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
       <header className="mb-10">
-        <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-3">
+        <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent dark:text-accent-light mb-3">
           Mastery
         </p>
-        <h1 className="font-display text-display-xl tracking-tight text-gray-900 dark:text-white">
+        <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
           Runbook
         </h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-400">
+        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-(--mut)">
           The record of what you have actually made durable — skills carried into
           proven, spaced-repetition-verified retention, and the weeks you kept them there.
         </p>
@@ -137,11 +137,11 @@ export function RunbookDashboard() {
 /** Server/first-paint and no-data state — a single inert, today-independent card. */
 function EmptyShell() {
   return (
-    <div className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) px-6 py-10 text-center shadow-(--shadow-resting)">
-      <p className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
+    <div className="rounded-card glass px-6 py-10 text-center shadow-(--shadow-resting)">
+      <p className="font-display text-display-md tracking-tight text-(--ink)">
         Your Runbook is empty — for now.
       </p>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+      <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-(--mut)">
         Grade your first Rep on a lesson and it lands here. Every day you practice
         marks the graph; every skill you keep sharp raises the count above it.
       </p>
@@ -154,7 +154,7 @@ function EmptyShell() {
         </Link>
         <Link
           href="/review"
-          className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 interactive focus-ring"
+          className="inline-flex items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-(--mut) interactive focus-ring"
         >
           Go to review
         </Link>
@@ -170,7 +170,7 @@ function Ledger({ data }: { data: Ledger }) {
       {/* North-Star headline: the number this whole platform steers on. */}
       <section
         aria-label="Skills in proven retention"
-        className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) px-6 py-7 shadow-(--shadow-resting) sm:px-8"
+        className="rounded-card glass px-6 py-7 shadow-(--shadow-resting) sm:px-8"
       >
         <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
           <div>
@@ -178,7 +178,7 @@ function Ledger({ data }: { data: Ledger }) {
               Skills in proven retention
             </p>
             <p className="mt-1 flex items-baseline gap-3">
-              <span className="font-display text-display-2xl leading-none tracking-tight text-gray-900 tabular-nums dark:text-white">
+              <span className="font-display text-display-2xl leading-none tracking-tight text-(--ink) tabular-nums">
                 {data.mastery}
               </span>
               {data.reinforcedThisWeek > 0 && (
@@ -187,7 +187,7 @@ function Ledger({ data }: { data: Ledger }) {
                 </span>
               )}
             </p>
-            <p className="mt-2 max-w-md text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-caption">
               Cards whose spacing interval has grown past {RETENTION_STABILITY} days —
               knowledge that has survived being nearly forgotten and come back.
             </p>
@@ -202,7 +202,7 @@ function Ledger({ data }: { data: Ledger }) {
       </section>
 
       {/* A hairline-separated instrument strip — Linear/GitHub register. */}
-      <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-gray-200/60 bg-gray-200/60 shadow-(--shadow-resting) sm:grid-cols-4 dark:border-white/[0.06] dark:bg-white/[0.06]">
+      <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-(--bd) bg-(--bd) shadow-(--shadow-resting) sm:grid-cols-4">
         <Stat label="Longest streak" value={data.longestWeeks} unit={data.longestWeeks === 1 ? "week" : "weeks"} />
         <Stat
           label="Active this week"
@@ -225,7 +225,7 @@ function Ledger({ data }: { data: Ledger }) {
       {/* The contribution graph — the visual record of showing up. */}
       <section
         aria-label={`Activity over the last ${WEEKS} weeks`}
-        className="mt-4 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) px-5 py-6 shadow-(--shadow-resting) sm:px-6"
+        className="mt-4 rounded-card glass px-5 py-6 shadow-(--shadow-resting) sm:px-6"
       >
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-xs font-medium uppercase tracking-widest text-caption">
@@ -287,10 +287,10 @@ function Stat({
     <div className="h-full bg-(--surface-1) px-4 py-4 transition-colors group-hover:bg-(--surface-2)">
       <dt className="text-[0.68rem] font-medium uppercase tracking-widest text-caption">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-1.5">
-        <span className="font-display text-display-md leading-none tracking-tight text-gray-900 tabular-nums dark:text-white">
+        <span className="font-display text-display-md leading-none tracking-tight text-(--ink) tabular-nums">
           {value}
         </span>
-        <span className="text-xs text-gray-500 dark:text-gray-400">{unit}</span>
+        <span className="text-xs text-caption">{unit}</span>
       </dd>
     </div>
   );

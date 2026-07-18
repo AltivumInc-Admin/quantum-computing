@@ -31,12 +31,12 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
   return (
     <div className="flex-1 min-w-0">
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 mr-1">{label}</span>
+        <span className="text-xs font-semibold text-(--mut) mr-1">{label}</span>
         <GateChips gates={program.gates} />
       </div>
 
       {/* Last sampled outcome */}
-      <div className="mb-3 font-mono text-sm text-gray-500 dark:text-gray-400">
+      <div className="mb-3 font-mono text-sm text-caption">
         {lastOutcome !== null ? (
           <span>
             Last: <span className="text-accent dark:text-accent-light font-semibold">|{basisLabel(lastOutcome, 2)}&rang;</span>
@@ -61,7 +61,7 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
               valueText={
                 measurements > 0 ? (
                   <>
-                    <span className="text-gray-700 dark:text-gray-200">{count}</span>
+                    <span className="text-(--mut)">{count}</span>
                     <span className="text-caption"> / {formatPercent(pct)}</span>
                   </>
                 ) : (
@@ -97,8 +97,8 @@ export function CorrelationDemo({ source }: { source: string }) {
 
   if (!parsed.spec) {
     return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
+      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
+        <p className="font-mono text-sm text-caption">
           correlation error: {parsed.error}
         </p>
       </div>
@@ -145,7 +145,7 @@ export function CorrelationDemo({ source }: { source: string }) {
 
       {/* Prompt */}
       <div className="px-4 pt-4 pb-2">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">
           {parsed.spec.prompt}
         </p>
       </div>
@@ -159,7 +159,7 @@ export function CorrelationDemo({ source }: { source: string }) {
           lastOutcome={entangledLast}
           measurements={measurements}
         />
-        <div className="hidden sm:block w-px bg-gray-100 dark:bg-gray-800 self-stretch" />
+        <div className="hidden sm:block w-px bg-(--bd) self-stretch" />
         <Panel
           label="Product"
           program={parsed.spec.product}
@@ -170,7 +170,7 @@ export function CorrelationDemo({ source }: { source: string }) {
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
+      <div className="flex items-center gap-3 border-t border-(--bd) px-4 py-3">
         <button
           type="button"
           aria-label="Measure"
@@ -183,7 +183,7 @@ export function CorrelationDemo({ source }: { source: string }) {
           type="button"
           aria-label="Reset"
           onClick={handleReset}
-          className="rounded-control border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 interactive focus-ring"
+          className="rounded-control border border-(--bd) px-3 py-1.5 text-sm font-medium text-(--mut) hover:bg-gray-50 dark:hover:bg-gray-800 interactive focus-ring"
         >
           Reset
         </button>
