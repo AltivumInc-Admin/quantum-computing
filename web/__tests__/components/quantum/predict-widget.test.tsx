@@ -49,6 +49,24 @@ describe("PredictWidget", () => {
     expect(screen.getByText("Not quite")).toBeInTheDocument(); // the header chip
   });
 
+  // The uniform solved-once-ever flag: qc:predict:<id> uses the same set-once
+  // "1" shape as qc:challenge:/qc:debug:, so solved-counting surfaces and the
+  // sync snapshot see one shape across every Rep kind.
+  it("a correct commit persists the qc:predict solved flag", () => {
+    render(<PredictWidget source={bellNonzero} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "|00⟩" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "|11⟩" }));
+    fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
+    expect(localStorage.getItem("qc:predict:t-bell")).toBe("1");
+  });
+
+  it("a wrong commit never writes the solved flag", () => {
+    render(<PredictWidget source={bellNonzero} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "|00⟩" })); // incomplete set
+    fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
+    expect(localStorage.getItem("qc:predict:t-bell")).toBeNull();
+  });
+
   it("locks the selection after commit", () => {
     render(<PredictWidget source={bellNonzero} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "|00⟩" }));

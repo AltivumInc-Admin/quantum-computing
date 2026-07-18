@@ -8,6 +8,7 @@ import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { basisLabel } from "./math";
 import { parseProgram } from "./qsim-dsl";
+import { usePersistentSolved } from "./use-persistent-solved";
 import { GateChips, ProbBars, StateReadout } from "./widget-ui";
 
 /**
@@ -74,6 +75,10 @@ export function PredictWidget({
   const program = useMemo(() => (spec ? parseProgram(spec.program) : null), [spec]);
 
   const cardId = predictCardId(spec?.id ?? "invalid");
+  // The uniform solved-once-ever flag (qc:predict:<id>). Only a correct commit
+  // marks it; the header chip stays a verdict of THIS commit (a pre-commit
+  // "Correct" would misdescribe the fresh attempt), so the read is unused.
+  const [, markSolved] = usePersistentSolved("predict", spec?.id ?? "invalid");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [committed, setCommitted] = useState(false);
   const [correct, setCorrect] = useState(false);
@@ -129,6 +134,7 @@ export function PredictWidget({
     setCommitted(true);
     const graded = gradeCardIfDue(cardId, ratingForPrediction(isCorrect));
     if (graded) setScheduled(nextIntervalDays(graded));
+    if (isCorrect) markSolved();
   };
 
   const optionTone = (i: number): string => {

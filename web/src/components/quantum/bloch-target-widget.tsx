@@ -25,6 +25,7 @@ import {
   primaryActionClass,
 } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
+import { usePersistentSolved } from "./use-persistent-solved";
 import { formatFixed, formatRadians } from "./format";
 
 const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
@@ -92,6 +93,11 @@ export function BlochTargetWidget({
   const [phi, setPhi] = useState(0);
   const [wrongAttempts, setWrongAttempts] = useState(0);
   const [solved, setSolved] = useState(false);
+  // The solved-once-ever flag (qc:bloch:<id>), kept separate from the session
+  // `solved` above: only the header chip reflects it on remount — the sliders,
+  // Check button, and the blind-mode ghost reveal stay session-scoped, so a
+  // revisit is a genuine fresh placement.
+  const [wasSolved, markSolved] = usePersistentSolved("bloch", spec?.id ?? "invalid");
   const [solvedDeg, setSolvedDeg] = useState(0);
   const [missDeg, setMissDeg] = useState<number | null>(null);
   const [scheduled, setScheduled] = useState<number | null>(null);
@@ -150,17 +156,23 @@ export function BlochTargetWidget({
       setMissDeg(null);
       const graded = gradeCardIfDue(cardId, ratingForSolve(wrongAttempts));
       if (graded) setScheduled(nextIntervalDays(graded));
+      markSolved();
     } else {
       setWrongAttempts((w) => w + 1);
       setMissDeg(grade.angleDeg);
     }
   };
 
+  // The persistent solved-once-ever chip mirrors challenge/debug: shown on a
+  // fresh lesson mount, suppressed on /review (that surface asks for a fresh
+  // re-attempt, so "On target" would claim the review is already done).
+  const showSolvedChip = solved || (surface !== "review" && wasSolved);
+
   return (
     <WidgetCard
       eyebrow="Bloch target"
       headerRight={
-        solved ? (
+        showSolvedChip ? (
           <span className="inline-flex items-center gap-1.5 rounded-chip bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent-dark dark:text-accent-light">
             <CheckIcon />
             On target

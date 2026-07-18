@@ -83,6 +83,34 @@ describe("BlochTargetWidget", () => {
     expect(card.difficulty).toBeCloseTo(5.3, 10); // "hard" nudges difficulty up
   });
 
+  // The uniform solved-once-ever flag: qc:bloch:<id> uses the same set-once
+  // "1" shape as qc:challenge:/qc:debug:, so solved-counting surfaces and the
+  // sync snapshot see one shape across every Rep kind.
+  it("a solve persists the qc:bloch solved flag; a miss never writes it", () => {
+    render(<BlochTargetWidget source={plusTarget} />);
+    check(); // miss at |0>
+    expect(localStorage.getItem("qc:bloch:t-bloch-plus")).toBeNull();
+    setTheta(Math.PI / 2);
+    check();
+    expect(localStorage.getItem("qc:bloch:t-bloch-plus")).toBe("1");
+  });
+
+  it("a fresh lesson mount shows the persistent On target chip; /review suppresses it", () => {
+    const first = render(<BlochTargetWidget source={plusTarget} />);
+    setTheta(Math.PI / 2);
+    check();
+    first.unmount(); // qc:bloch:<id> = "1" is now persisted
+    // A fresh LESSON mount reflects the solved-once-ever chip, while the Rep
+    // itself resets to a genuine fresh placement (Check is still offered).
+    const lesson = render(<BlochTargetWidget source={plusTarget} />);
+    expect(screen.getByText("On target")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /check position/i })).toBeInTheDocument();
+    lesson.unmount();
+    // ...but a fresh REVIEW mount must not claim the re-attempt is already done.
+    render(<BlochTargetWidget source={plusTarget} surface="review" />);
+    expect(screen.queryByText("On target")).not.toBeInTheDocument();
+  });
+
   it("solves a near miss within tolerance (one slider step off target)", () => {
     render(<BlochTargetWidget source={plusTarget} />);
     setTheta(Math.PI / 2 + Math.PI / 60); // 3 degrees of arc, inside the 5-degree tolerance

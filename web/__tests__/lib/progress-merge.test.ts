@@ -58,6 +58,22 @@ describe("mergeSnapshots", () => {
     expect(mergeSnapshots({ "qc:measure:x": ok }, { "qc:measure:x": "{}" })["qc:measure:x"]).toBe(ok);
   });
 
+  it("unions the per-Rep solved flags of every kind (the default set-once branch)", () => {
+    // All six graded-Rep kinds persist the same qc:<kind>:<id> = "1" shape, so
+    // the four newer prefixes must ride the exact additive-union path
+    // qc:challenge:/qc:debug: always did — device A's solves and device B's
+    // solves both survive, and a shared flag (identical "1") does not conflict.
+    const a = { "qc:predict:x": "1", "qc:bloch:y": "1", "qc:challenge:shared": "1" };
+    const b = { "qc:cost:z": "1", "qc:expect:w": "1", "qc:challenge:shared": "1" };
+    expect(mergeSnapshots(a, b)).toEqual({
+      "qc:predict:x": "1",
+      "qc:bloch:y": "1",
+      "qc:cost:z": "1",
+      "qc:expect:w": "1",
+      "qc:challenge:shared": "1",
+    });
+  });
+
   it("unions Runbook qc:log:day activity flags across devices (no merge rule needed)", () => {
     // The Runbook models each active day as a set-once "1" flag, so it rides the
     // exact additive-union path as section flags — device A's days and device B's
