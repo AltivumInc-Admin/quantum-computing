@@ -5,7 +5,7 @@
 > functionality. Every item makes an existing feature cleaner, faster, safer,
 > more accessible, or otherwise better.
 >
-> Maintained by the `/optimize-features` command. Last full inventory: 2026-07-03
+> Maintained by the `/optimize-features` command. Last full inventory: 2026-07-17
 
 ## Feature Inventory
 
@@ -13,7 +13,7 @@
 
 | # | Feature | What it does | Where it lives | Last reviewed |
 |---|---------|--------------|----------------|---------------|
-| 1 | Landing / section catalog | Home page listing the seven curriculum sections as cards with progress, ordering, and notebook counts derived from the content manifest | `web/src/app/page.tsx`, `web/src/components/section-card.tsx`, `web/src/lib/sections.ts` | 2026-07-03 |
+| 1 | Welcome page & section catalog | Image-led welcome home (hero, feature bands, dual auth CTAs, live playground stat — PRs #148/#150) with the curriculum grid behind a sign-up gate modal; section catalog + progress derive from the content manifest | `web/src/app/page.tsx`, `web/src/components/{curriculum-grid,section-gate-modal}.tsx`, `web/src/lib/{sections,section-pitch}.ts` | 2026-07-17 |
 | 2 | Lesson reader | Static-export page per section: renders GUIDE.md via react-markdown and routes ~30 fenced code blocks to interactive widgets at build time | `web/src/app/learn/[section]/page.tsx`, `web/src/components/markdown-renderer.tsx`, `web/src/lib/content.ts` | 2026-07-03 |
 | 3 | In-lesson navigation | Sidebar, prev/next links, animated page transitions, and a table of contents kept in lockstep with rendered heading ids | `web/src/components/sidebar.tsx`, `prev-next.tsx`, `transition-link.tsx`, `table-of-contents.tsx`, `web/src/lib/extract-headings.ts` | 2026-07-03 |
 | 4 | Dark / light theme | Theme toggle backed by next-themes, with compile-time tokens via Tailwind v4 `@theme inline` | `web/src/components/theme-toggle.tsx`, `web/src/app/globals.css`, `web/src/app/layout.tsx` | 2026-07-03 |
@@ -35,11 +35,11 @@
 
 | # | Feature | What it does | Where it lives | Last reviewed |
 |---|---------|--------------|----------------|---------------|
-| 13 | In-browser runnable notebooks | "Run in browser" badge opens a JupyterLite lab running the curriculum notebooks under a qcsim wheel compiled into Pyodide | `web/jupyterlite-build/`, `web/src/components/notebook-link.tsx`, `scripts/validate_runnable.py` | 2026-07-03 |
+| 13 | In-browser runnable notebooks | "Run in browser" badge opens the same-origin self-hosted JupyterLite lab (`/lab/`, new tab) running the 32 marked notebooks under a qcsim wheel in Pyodide; no message bridge back to the host app exists | `web/jupyterlite-build/`, `web/src/components/notebook-link.tsx`, `scripts/validate_runnable.py` | 2026-07-17 |
 | 14 | Inline runnable code editor | Monaco editor with a lazily-booted Pyodide+qcsim runtime running snippets in a serialized queue with per-run namespaces | `web/src/components/quantum/runnable-editor.tsx`, `code-editor.tsx`, `web/src/lib/{pyodide-run,pyodide-runtime}.ts` | 2026-07-03 |
-| 15 | Code challenge auto-grader | Two-tier grader: TS state-vector comparison (up to global phase) for `qchallenge`, with a wired-but-unused Pyodide tier | `web/src/components/quantum/challenge.tsx`, `web/src/lib/{challenge-grade,challenge-schema,pyodide-grader}.ts` | 2026-07-03 |
-| 16 | Spaced-repetition review | `qcard` recall cards graded with an SM-2/FSRS-style scheduler; `/review` dashboard surfaces due cards; nav badge shows the due count | `web/src/app/review/page.tsx`, `web/src/components/{review-dashboard,review-nav-badge}.tsx`, `quantum/review-card.tsx`, `web/src/lib/{review-schedule,review-store}.ts` | 2026-07-03 |
-| 17 | Inline quizzes | `quiz` fenced blocks render interactive multiple-choice checks inside lessons | `web/src/components/quantum/quiz.tsx` | 2026-07-03 |
+| 15 | Code challenge auto-grader | Two-tier grader: TS state-vector comparison (up to global phase) for `qchallenge`; the Pyodide tier (`gradePy`) is fully wired into the same verdict path but no shipped content uses `tier:"py"` (`rep-schema` rejects it pending a CI story); solves feed `gradeCardIfDue` + personal-best capture | `web/src/components/quantum/challenge.tsx`, `web/src/lib/{challenge-grade,challenge-schema,pyodide-grader}.ts` | 2026-07-17 |
+| 16 | Spaced-repetition review | FSRS-family scheduler over `qc:card:*`; `/review` re-mounts due graded Reps as their live widgets (kind map) with a text-card fallback; nav badge shows the due count | `web/src/app/review/page.tsx`, `web/src/components/{review-dashboard,review-nav-badge}.tsx`, `quantum/review-card.tsx`, `web/src/lib/{review-schedule,review-store}.ts` | 2026-07-17 |
+| 17 | Inline quizzes | `quiz` fenced blocks render reveal-answer self-checks (question / optional hint / answer disclosures) — CORRECTED 2026-07-17: not graded multiple-choice; no learner input is captured, no verdict computed, nothing persisted | `web/src/components/quantum/quiz.tsx` | 2026-07-17 |
 | 18 | Math & code rendering | Build-time KaTeX math (`remark-math`/`rehype-katex`) and syntax highlighting (`rehype-highlight`) with copy-to-clipboard | `web/src/components/{markdown-renderer,code-block,copy-button}.tsx` | 2026-07-03 |
 
 ### D. AI tutor
@@ -88,7 +88,7 @@
 
 | # | Feature | What it does | Where it lives | Last reviewed |
 |---|---------|--------------|----------------|---------------|
-| 34 | Quantum Workspace authentication | AWS Cognito login for the Workspace: email/password sign-up, email-code confirm, sign-in, password reset, and Google federated OAuth, with eyeball show/hide + live password-criteria checklist + confirm-field gating; env-gated on four `NEXT_PUBLIC_COGNITO_*`/region vars (UI shows "coming soon" when unset). `/workspace` shows signed-in email + local progress; cross-device backend sync not yet built | `web/src/app/{login,auth/callback,workspace}/page.tsx`, `web/src/components/auth/*`, `web/src/lib/{auth-config,auth-errors,password-policy}.ts`, `infra/workspace/cognito.yaml` | 2026-07-03 |
+| 34 | Quantum Workspace authentication | AWS Cognito login for the Workspace: email/password sign-up, email-code confirm, sign-in, password reset, and Google federated OAuth, with eyeball show/hide + live password-criteria checklist + confirm-field gating; env-gated on four `NEXT_PUBLIC_COGNITO_*`/region vars (UI shows "coming soon" when unset). `/workspace` grew into the bench (Feature 39); cross-device backend sync shipped (Feature 38) | `web/src/app/{login,auth/callback,workspace}/page.tsx`, `web/src/components/auth/*`, `web/src/lib/{auth-config,auth-errors,password-policy}.ts`, `infra/workspace/cognito.yaml` | 2026-07-17 |
 
 ### J. Reference & discoverability
 
@@ -97,7 +97,56 @@
 | 35 | Glossary | Searchable A–Z reference of 89 quantum terms (live client-side filter + letter jump-nav, KaTeX/inline-code definitions, section-hued category chips) with per-term permalink pages (`/glossary/[term]`) carrying SEO/OG metadata, copy-link, see-also + "More in section" related-term links, and an env-gated Workspace CTA; home/footer companion card | `web/src/app/glossary/{page.tsx,[term]/page.tsx}`, `web/src/components/glossary/*`, `web/src/lib/glossary.ts`, `web/src/components/glossary-card.tsx` | 2026-07-03 |
 | 36 | Sitemap & robots (SEO) | Next route handlers emitting a build-time `sitemap.xml` (home, `/glossary`, `/review`, every `/learn/{section}`, all 89 `/glossary/{term}`) and a `robots.txt` that points at it | `web/src/app/sitemap.ts`, `web/src/app/robots.ts` | 2026-07-03 |
 
+### K. Mastery & progress platform
+
+> Added 2026-07-17 — the mastery-loop / sync / workspace-bench era (PRs #90–#161). Numbering stays append-only, continuing from 36.
+
+| # | Feature | What it does | Where it lives | Last reviewed |
+|---|---------|--------------|----------------|---------------|
+| 37 | Graded Rep widgets & mastery loop | Five graded exercise kinds beyond `qchallenge` (predict, debug-circuit, expectation, cost-estimate, bloch-target), each computing a verdict and feeding `gradeCardIfDue` + card-content so `/review` re-mounts them live; kind-namespaced card ids; shortest-solution personal bests; contribution corpus gated by `rep-schema` | `web/src/components/quantum/{predict,debug-circuit,expectation,cost-estimate,bloch-target}-widget.tsx`, `web/src/lib/{challenge-review,skill-measure,rep-schema}.ts` + per-kind `*-grade.ts`/`*-schema.ts` | 2026-07-17 |
+| 38 | Cross-device progress sync | Cognito-authed sync of the entire `qc:*` localStorage set as one versioned snapshot (optimistic CAS, deterministic client-side merge, debounced auto-push + exit flush, account-mismatch fencing); the server is deliberately merge-free | `lambda/sync/`, `web/src/lib/{sync-client,progress-merge}.ts`, `web/src/components/progress-sync.tsx` | 2026-07-17 |
+| 39 | Workspace bench | `/workspace` as an instrument: mastery count + retention spectrum, due-valve with next-action CTA, curriculum map, records, within-reach rungs, sync masthead — computed purely from local `qc:*` + the build-time manifest | `web/src/app/workspace/page.tsx`, `web/src/components/workspace/*`, `web/src/lib/{workspace,runbook}.ts` | 2026-07-17 |
+| 40 | Runbook & Credentials | `/runbook` (streak + contribution graph + mastery narrative) and `/credentials` (medal wall: completion / mastery / consistency / hardware tiers) | `web/src/app/{runbook,credentials}/page.tsx`, `web/src/lib/{runbook,credentials}.ts` | 2026-07-17 |
+| 41 | Review email reminders | Opt-in email digests with a prefs API, explicit consent, account deletion, and the `/privacy` page | `lambda/review-email/`, `web/src/lib/review-prefs-client.ts`, `web/src/app/privacy/page.tsx` | 2026-07-17 |
+
+### L. Playground & real hardware
+
+| # | Feature | What it does | Where it lives | Last reviewed |
+|---|---------|--------------|----------------|---------------|
+| 42 | Playground circuit sandbox | `/playground` live bench: qsim editor with a live SVG circuit diagram, URL-as-save-file sharing, synced saves (`qc:circuit:*`), QASM compile + one-shot handoff to the hardware panel | `web/src/app/playground/page.tsx`, `web/src/components/playground/*`, `web/src/lib/{circuit-store,circuit-url,compile-qasm}.ts` | 2026-07-17 |
+| 43 | Sponsored QPU track | Real-hardware runs behind an earned entitlement ladder: cost-transparent submit panel, CloudFront+WAF edge, Budgets kill-switch with a human path, per-user run/shot/spend ledger + hardware badges | `lambda/qpu/`, `web/src/lib/{qpu-client,qpu-budget,qpu-handoff}.ts` | 2026-07-17 |
+
+### M. Monetization
+
+| # | Feature | What it does | Where it lives | Last reviewed |
+|---|---------|--------------|----------------|---------------|
+| 44 | Pricing page | Public `/pricing`: free-learning thesis, three tiers (Free/Plus/Pro), full per-backend credit rate tables, live cost estimator, phase-aware copy gated on billing config | `web/src/app/pricing/page.tsx`, `web/src/lib/pricing.ts`, `web/src/components/pricing/cost-estimator.tsx` | 2026-07-17 |
+| 45 | Billing & credit wallet | Stripe checkout (subscription tiers, fixed packs, custom $5–$500 top-ups), signature-verified webhook with exactly-once credit grants (DDB transact), wallet read API + badge, billing portal | `lambda/stripe/`, `web/src/lib/billing-client.ts`, `web/src/components/pricing/{checkout-button,top-up,wallet-badge}.tsx` | 2026-07-17 |
+
+### N. Ops additions
+
+| # | Feature | What it does | Where it lives | Last reviewed |
+|---|---------|--------------|----------------|---------------|
+| 46 | CI warm-standby mirror | CodeBuild mirror of the CI matrix + merge-gate failover script for GitHub-Actions outages | `infra/ci-standby/` | 2026-07-17 |
+| 47 | Vanity-domain redirect | `quantumlearner.dev` (+www) 301 → `quantum.altivum.ai` via a CloudFront Function stack with fail-loud origin, alarms, and a canary | `infra/redirect/quantumlearner-dev.yaml` | 2026-07-17 |
+
 ## Optimization Opportunities
+
+> **2026-07-17 inventory refresh + notebook-loop analysis.** Since 2026-07-03, PRs #90–#164
+> shipped **eleven new features** — the inventory grows 36 → **47** (categories K–N added):
+> the graded-Rep widget family + mastery loop (through #98), cross-device progress sync,
+> the workspace bench (#141/#144), Runbook & Credentials (#151), review-email reminders +
+> `/privacy` (#134), the playground sandbox (#145/#147), the sponsored QPU track (#119–#146),
+> the pricing page (#162), Stripe billing & wallet (#163/#164), the CI warm-standby mirror
+> (#149), and the quantumlearner.dev redirect (#103). Rows 1/13/15/16/17/34 were updated to
+> current reality — notably **row 17 is corrected**: `quiz` blocks are reveal-answer
+> self-checks, not graded multiple-choice (`quiz.tsx` computes no verdict and persists
+> nothing). The refinement-roadmap premise "a grader computes a verdict but never calls
+> gradeCard()" **closed in PR #98** — all six graded Rep kinds now feed `gradeCardIfDue`
+> (`challenge.tsx:138` and siblings). This run's Phase-3 pass (3-agent ground-truth read)
+> analyzed the **notebook exercise loop** — TODO hints that steer without revealing, a real
+> grader for exercise responses, per-user score tracking — with new findings under `### 27`,
+> `### 15`, `### 37`, and a boundary note under `### 13-14`.
 
 > **2026-07-03 reconciliation pass.** All 36 features re-verified present against `main` —
 > every inventory path resolves (67 spot-checked paths, the 63 `web/src/components/quantum/*`
@@ -422,6 +471,7 @@ _New cross-feature findings (2026-06-25 deep audit — the four sweeps that a pe
 - [ ] **[Correctness]** ~reviewer — stderr is mislabeled as successful stdout in the runnable editor; the stdout/stderr sink is never detached after a run, leaking async output into the next run. Impact: Medium. Effort: Medium. (`runnable-editor.tsx`, `pyodide-runtime.ts:84-95`) — added 2026-06-17
 - [ ] **[Performance/Consistency]** ~reviewer — every runnable fence eagerly mounts its own Monaco editor on hydration (no viewport gating); qcsim bootstrap is triplicated across 3 authored copies; Pyodide version pinned independently in TS runtime + JupyterLite kernel (driftable). Impact: Medium. Effort: Medium. (`runnable-editor.tsx`, `pyodide-runtime.ts:12`, `jupyterlite-build/`) — added 2026-06-17
 - [ ] **[Accessibility]** ~reviewer — run success/error conveyed only by an aria-hidden color dot; disabled "Run in browser" button unreachable by keyboard/SR. Impact: Medium. Effort: Low. (`runnable-editor.tsx`, `notebook-link.tsx`) — added 2026-06-17
+- **[Boundary note — not a refinement]** 2026-07-17: the JupyterLite lab remains the one execution surface with no path into the mastery loop — `notebook-link.tsx:70-78` opens `/lab/lab/index.html` in a new tab, and `web/public/lab/` contains zero host-facing `postMessage`/`BroadcastChannel` wiring (the Pyodide kernel runs in a worker, which has no `localStorage`). Wiring lab outcomes to `gradeCard()` would require a custom JupyterLite extension — new plumbing, out of scope for `/optimize-features`. The in-scope route to graded notebook skills is the `tier:"py"` item under `### 15`.
 
 ### 15. Code challenge auto-grader
 - [x] **[Correctness]** ✓verified — DONE (PR pending) — **Slider-bound `theta` in a target program grades against the wrong state**: both graders build the reference via `opsFor(target, 0)`, so a `theta` rotation in the author's `target.program` collapses to RY(0)=identity. Reject reference programs with `hasTheta === true`. Impact: High. Effort: Low. (`challenge-grade.ts:38`, `pyodide-grader.ts:53`, `qsim-dsl.ts:71-73,102`) — added 2026-06-17
@@ -429,6 +479,7 @@ _New cross-feature findings (2026-06-25 deep audit — the four sweeps that a pe
 - [ ] **[Accessibility]** ~reviewer — the verdict `role="status"` region is conditionally mounted, so SR misses the announcement; add `aria-live` always-present. Impact: High. Effort: Low. (`challenge.tsx:168-175`) — added 2026-06-17
 - [ ] **[Security/Tests]** ~reviewer (RECLASSIFIED + DEFERRED) — Tier-B `gradePy` raw-Python concat. Security audit verdict: **not a security vuln** — Pyodide is the learner's own same-user WASM sandbox, so "injection" self-harms only. Residual is grading-INTEGRITY (a learner can false-pass by stubbing `circuit`) — Low, and only matters once `tier:"py"` content ships (none today; cross-run leakage already prevented by the fresh per-run namespace). DEFERRED: namespace the grading epilogue away from learner symbols. The "no SRI on the Pyodide/Monaco CDN" half is promoted to its own audit finding below. Impact: Low. Effort: Medium. (`pyodide-grader.ts`) — added 2026-06-17
 - [ ] **[Security]** PARTIAL 2026-06-25 — ✓verified (audit 2026-06-18, re-verified 2026-06-25). **DONE (PR #56/#58):** the Pyodide half is closed — the lesson runtime and lab kernel are now self-hosted SAME-ORIGIN (`/pyodide/`, `/lab/`) as the primary path, with the jsdelivr fallback carrying SRI + `crossorigin` on the bootstrap script (`web/src/lib/pyodide-runtime.ts:18-32,53-66`). **STILL OPEN:** (1) **Monaco** still loads its editor core from a CDN with no SRI — `@monaco-editor/react` fetches it on first mount (`web/src/components/code-editor.tsx:13-25`), so a tampered Monaco CDN still executes with full page privileges; (2) there is **no site-wide CSP** to backstop either loader (`customHttp.yml` carries only cache headers — see the Feature 31 item in the 27-33 tail). Fix: self-host or pin+SRI Monaco, and ship a CSP via a staged report-only rollout. Impact: Medium. Effort: Medium. (`web/src/components/code-editor.tsx:13-25`, `customHttp.yml`) — added 2026-06-18, narrowed 2026-06-25
+- [ ] **[Architecture & UX]** **The Tier-B Python grader is fully built and wired — and zero shipped content uses it** — `gradePy` runs learner Braket-style Python in the same-origin Pyodide worker and compares state vectors up to global phase, and its solve verdict flows through the same `apply()` → `gradeCardIfDue` path as Tier A (`challenge.tsx:155-156,138`), but no `qchallenge` fence anywhere sets `tier:"py"` (the only mount is the unlinked `/e2e-fixtures/py-challenge`) and `rep-schema.ts:19-22` rejects the tier outright because CI cannot exercise the Pyodide path. This is the highest-leverage rail for grading notebook-exercise responses: author `tier:"py"` Reps in the lesson pages that mirror the notebook exercises' target skills, so real Python answers get graded and land in the existing per-user mastery loop (FSRS card → `qc:*` sync → bench/records) with no new machinery. Prerequisites: extend the Playwright e2e suite (which already boots real Pyodide) with a grading assertion per shipped py Rep so the rep-schema gate can be relaxed honestly, and close the deferred grading-integrity item first (namespace the grading epilogue away from learner symbols in `pyodide-grader.ts`). Impact: High. Effort: Medium. (`web/src/components/quantum/challenge.tsx:136-148,155-168`, `web/src/lib/pyodide-grader.ts:29-88`, `web/src/lib/rep-schema.ts:19-22`) — added 2026-07-17
 
 ### 16. Spaced-repetition review
 - [x] **[Resilience]** DONE (PR pending) — **Corrupt-but-valid-JSON card state poisoned the schedule with NaN**. FIXED: `isValidCardState` (all numeric fields `Number.isFinite`) in review-schedule.ts; `getCardState` discards a failing record so the caller falls back to `newCard`. Impact: High. Effort: Low. (`review-store.ts:57-64,86`) — added 2026-06-17
@@ -533,6 +584,22 @@ _New cross-feature findings (2026-06-25 deep audit — the four sweeps that a pe
 ### 26. qcsim browser simulator
 - [x] **[Resilience & tests]** CLOSED 2026-06-25 (PR #55) — the eval-catalogued parity-coverage gap is closed: `tests/test_qcsim_parity.py` now numerically compares qcsim against real Braket across rx/ry/rz, y/z/s/t, swap, cphaseshift, ccnot, cz via a randomized-circuit fuzz (`:203-219`) plus an explicit multi-gate fixture (`:352-359`). PR #55 also corrected three plan-stage errors (Braket-faithful qubit compaction, Gate-like operator, `measured_qubits`). Impact: High. Effort: Medium. — completed 2026-06-25
 
+### 27. Notebook curriculum — exercise loop (analyzed 2026-07-17)
+
+> Ground truth (3-agent pass, 2026-07-17): all 44 notebooks have an exercise section — 88
+> `# Exercise N:` scaffolds + 70 `TODO` code cells across 32 notebooks; prereqs use `Q1/Q2/Q3`
+> self-checks with visible appended solutions; sections 01–06 explicitly withhold solutions.
+> Exactly 9 static `# Hint:` lines exist curriculum-wide; there is no progressive-hint
+> mechanism, no `<details>` blocks, no separate solution files. 133 `assert` statements exist
+> — every one in a teaching cell, zero in exercise cells. No `check_`/`verify_`/`grade_`
+> helper exists in `lib/` or `qcsim/`. Any added cell in the 32 runnable notebooks must pass
+> the AST denylist + headless qcsim execution (`scripts/validate_runnable.py`,
+> `tests/test_notebook_contract.py`).
+
+- [ ] **[UX]** **Exercise scaffolds swing between giving the answer away and giving nothing — normalize to a steer-don't-solve progressive-hint convention** — Style-A TODO scaffolds sometimes contain the full answer as commented pseudo-code (`02-hardware/notebooks/01-device-discovery.ipynb` cell 13 spells out the complete decision table the exercise asks the learner to write), while Style-B scaffolds withhold everything (`03-algorithms/notebooks/03-qft.ipynb` cell 16: "No solutions are given"; `04-quantum-ml/notebooks/02-quantum-kernels.ipynb` cell 14: "No solutions are provided."). Rework all 88 scaffolds to one convention: a goal statement + expected-output shape in the code cell, with tiered collapsible hints (`<details><summary>Hint 1 — nudge</summary>` then `Hint 2 — approach`) in the adjacent markdown cell — Jupyter renders `<details>` natively, and markdown-only edits cannot break the runnable contract. Answer-revealing pseudo-code moves into the deepest hint tier; barren scaffolds gain the first two tiers. Impact: High. Effort: High. (`02-hardware/notebooks/01-device-discovery.ipynb` cell 13, `03-algorithms/notebooks/03-qft.ipynb` cell 16, 9 `# Hint:` lines total across 9 notebooks) — added 2026-07-17
+- [ ] **[Resilience & tests]** **"The asserts you write are your answer key" is a promise the notebooks never keep — make the answer key executable** — `03-algorithms/notebooks/02-grovers-search.ipynb` cell 16 tells learners their asserts are the answer key, but every assert in an exercise scaffold is commented out (cell 17), and all 133 live asserts sit in teaching cells: a learner finishing an exercise has no way to know they got it right. Add a "Check your work" code cell per exercise that asserts properties of the learner's result (e.g. GHZ-5: counts contain only `00000`/`11111`) without revealing construction — property checks run identically under real Braket and qcsim via the existing `statevector()` helper, and the runnable-contract CI (headless execution of every cell) will exercise them forever. Flagged: the minimal new surface is a small browser-safe check-helper module (house precedent: `lib/utils/statevector.py`, added for exactly this dual-runtime reason); checks referencing learner-defined variables must no-op with a "not attempted yet" message when the TODO variables are absent, so unsolved exercises don't fail CI. Impact: High. Effort: High. (`03-algorithms/notebooks/02-grovers-search.ipynb` cells 16-17, `lib/utils/statevector.py:29`, `scripts/validate_runnable.py:69-102`) — added 2026-07-17
+- [ ] **[Consistency]** **Three exercise idioms coexist** — `## Exercises` (32 notebooks) vs numbered `## N. Exercises` (6) vs `## N. Self-check` (6 prereqs); `# Exercise N:` scaffolds vs prereq `Q1/Q2/Q3` cells; literal `TODO` in 32 notebooks but absent from the 9 Style-B notebooks. One idiom (fold into the hint-convention pass above) makes the format learnable and machine-checkable — a contract test can then assert every exercise cell carries the convention, the same way the manifest drift-gate works. Impact: Medium. Effort: Low (if folded into the scaffold pass). (`00-prereqs/notebooks/01-python-numpy-warmup.ipynb` cell 13 vs `01-foundations/notebooks/01-first-circuit.ipynb` cell 12 vs `03-algorithms/notebooks/02-grovers-search.ipynb` cell 17) — added 2026-07-17
+
 ### 27-28, 29-33. Curriculum + Build/infra/ops
 - [x] **[Content]** CLOSED 2026-06-20 — the stub-notebook gap is gone: all 45 curriculum notebooks are now fully authored (content-gap campaign, PRs #27–31), 32 browser-runnable, so item 29's "34/45 stubs + 3 stubs shipping a green Run badge" no longer applies. Impact: High. Effort: High. — completed 2026-06-20
 - [x] **[Observability & cost]** CLOSED 2026-06-25 (PR #54) — undeployable nested CFN (Feature 32): `infra/scripts/deploy-infra.sh:73-75` now runs `aws cloudformation package --s3-bucket` to stage child templates to S3 before deploy (with a deterministic per-account/region staging bucket), so the nested stack is deployable. PR #48 also made the budget-alarm thresholds explicitly `PERCENTAGE`. Impact: High. Effort: Medium. — completed 2026-06-25
@@ -608,3 +675,6 @@ _New cross-feature findings (2026-06-25 deep audit — the four sweeps that a pe
 - [ ] **[Consistency with existing patterns]** Hardcoded static-route triple lacks the single-source documentation used everywhere else — The static public routes are a bare literal `["", "/glossary", "/review"]` with no comment explaining why /login, /workspace, and /auth/callback are intentionally excluded, or that the list must be updated by hand when a public top-level page is added. Every other route/URL source in the codebase (site.ts, sections.ts, manifest.ts) carries an explicit single-source comment; this is the one relisted route list and the only place with no such note, making it the easiest spot to drift. Impact: Low. Effort: Low. (`web/src/app/sitemap.ts:9` · `web/src/lib/site.ts:1-2` · `web/src/lib/sections.ts:11-13`) — added 2026-06-28
 - [ ] **[SEO]** Canonical tags are set on term pages but missing on the other sitemap-listed pages — metadataBase is correctly set in layout.tsx, and the per-term pages emit an absolute canonical via `alternates: { canonical: url }`. But the other URLs the sitemap advertises — home (/), /glossary, /review, and every /learn/{section} — never set `alternates.canonical`, and Next does not auto-emit a canonical link from metadataBase alone. The result is an inconsistency: the sitemap lists these pages but they ship no self-referencing canonical, unlike their term-page siblings, leaving query-param or trailing-slash variants without an explicit canonical signal. Impact: Low. Effort: Low. (`web/src/app/glossary/[term]/page.tsx:32` · `web/src/app/layout.tsx:23` · `web/src/app/glossary/page.tsx:5` · `web/src/app/review/page.tsx:5`) — added 2026-06-28
 - [ ] **[SEO & correctness]** robots.txt does not Disallow the thin/auth routes the sitemap deliberately excludes — The sitemap deliberately omits the auth routes (/login, /workspace, /auth/callback) and the JupyterLite /lab app, but robots.ts emits only `allow: "/"` with no `disallow`, and none of the statically-exported auth shells carry a `noindex` meta. So the two halves of this one feature disagree: the sitemap says "don't surface these," while robots.txt actively invites crawlers into them. In production (where `isAuthConfigured()` is true, per the 4 Cognito vars in Amplify) the nav "Sign in" link and the glossary "Sign up free" CTA make /login reachable from crawled pages, and /lab exposes ~680 crawlable JupyterLite internal files — so the index can fill with thin auth shells and app-internal JSON. Impact: Low. Effort: Low. (`web/src/app/robots.ts:8` · `web/src/app/sitemap.ts:9` · `web/src/components/auth/account-menu.tsx:34-35` · `web/src/components/glossary/workspace-cta.tsx:21`) — added 2026-06-28
+
+### 37. Graded Rep widgets & mastery loop
+- [ ] **[Consistency]** **Solved-state persistence is asymmetric across the six Rep kinds** — `challenge` and `debug` write a set-once solved flag (`qc:challenge:<id>` at `challenge.tsx:39,93-95`; `qc:debug:<id>` at `debug-circuit-widget.tsx:41,90`), but `predict`/`bloch`/`cost`/`expect` persist only FSRS card state (`predict-widget.tsx:130`, `bloch-target-widget.tsx:151`, `cost-estimate-widget.tsx:125`, `expectation-widget.tsx:118`), so any surface counting "solved" outcomes undercounts four of six kinds, and the synced snapshot carries an inconsistent record shape per kind. Either write the flag in all six widgets or derive "solved" uniformly from card state everywhere and retire the two flags. Impact: Medium. Effort: Low. — added 2026-07-17

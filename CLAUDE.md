@@ -19,9 +19,13 @@ Quantum Machine Learning and Quantum Chemistry.
 ## Structure
 
 - `00-prereqs/` through `06-hybrid-jobs/` — Progressive learning sections
-- `lib/` — Shared Python library (circuits, utils, hardware abstraction)
+- `lib/` — Shared Python library (circuits, utils, hardware abstraction). `lib/grading.py` is the browser-safe exercise self-check runtime (`with check("Exercise N"):`).
 - `infra/` — CloudFormation templates and setup scripts
-- `tests/` — Pytest suite for lib/ (runs on local simulator only)
+- `tests/` — Pytest suite for lib/ (runs on local simulator only). `tests/solutions/` holds one canonical-answer file per notebook; `tests/test_exercise_checks.py` executes every notebook with those answers injected (checks must pass) and unsolved (checks must not pass).
+
+## Notebook exercises
+
+Every curriculum notebook carries exercises in one convention (`docs/exercise-convention.md`): a prompt markdown cell (`### Exercise N` + two `<details>` hint tiers that steer without solving), a scaffold code cell (`# Exercise N:`), and a check code cell (`# Check Exercise N`) whose property-based asserts run through `lib.grading.check`. Each exercise has a canonical solution in `tests/solutions/<section>/<notebook>.py`; `make test` verifies the checks pass with the correct answer and fail unsolved. Edit notebooks with `nbformat`, never raw JSON.
 
 ## Key Commands
 
