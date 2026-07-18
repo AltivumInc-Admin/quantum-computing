@@ -425,6 +425,22 @@ nothing. Diagnose this one from its symptom:
 }
 ```
 
+You diagnosed the ordering bug — now build the correct chain yourself, in real Braket Python. This
+one is graded by *running your code in the browser*, on the same qcsim the lab ships: write the
+circuit the way you would in a notebook and assign it to `circuit`.
+
+```qchallenge
+{
+  "id": "found-ghz-py-1",
+  "prompt": "Prepare the GHZ state |GHZ⟩ = (|000⟩ + |111⟩)/√2 on three qubits, in real Braket Python. Assign your circuit to `circuit`.",
+  "qubits": 3,
+  "target": { "program": "H 0\nCNOT 0 1\nCNOT 1 2" },
+  "starter": "from braket.circuits import Circuit\ncircuit = Circuit()",
+  "hint": "Open with a Hadamard on qubit 0 for the superposition, then chain the entanglement down the line: a CNOT from qubit 0 to 1, then one from qubit 1 to 2. Order matters — each control must be live before it fires.",
+  "tier": "py"
+}
+```
+
 ## Check yourself
 
 Five questions that tie the module together. Try each before revealing the hint or answer.

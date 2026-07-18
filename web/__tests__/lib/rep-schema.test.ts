@@ -1,4 +1,5 @@
 import { validateRep, REP_KINDS, FENCE_TOKENS } from "@/lib/rep-schema";
+import { PY_REP_E2E_IDS } from "@/lib/py-reps";
 
 const reps: Record<string, object> = {
   challenge: {
@@ -77,13 +78,33 @@ describe("validateRep", () => {
     }
   });
 
-  it("rejects tier outright — contributions are TS-graded only", () => {
-    expect(validateRep(JSON.stringify({ ...reps.challenge, tier: "py" })).error).toMatch(
-      /TS-graded only/
+  it("accepts tier:'ts' (the default grading path is always allowed)", () => {
+    const { error } = validateRep(JSON.stringify({ ...reps.challenge, tier: "ts" }));
+    expect(error).toBeUndefined();
+  });
+
+  it("gates tier:'py' on e2e coverage — an uncovered id is rejected with an actionable message", () => {
+    // reps.challenge.id ("community-t-1") is not in the coverage manifest.
+    const { error } = validateRep(JSON.stringify({ ...reps.challenge, tier: "py" }));
+    expect(error).toMatch(/no in-browser e2e coverage/);
+    expect(error).toMatch(/PY_REP_E2E_IDS/);
+  });
+
+  it("accepts tier:'py' when the id is in the e2e-coverage manifest", () => {
+    const covered = PY_REP_E2E_IDS[0];
+    const { rep, error } = validateRep(
+      JSON.stringify({
+        kind: "challenge",
+        id: covered,
+        prompt: "Prepare the GHZ state on three qubits in Braket Python.",
+        qubits: 3,
+        target: { program: "H 0\nCNOT 0 1\nCNOT 1 2" },
+        starter: "from braket.circuits import Circuit\ncircuit = Circuit()",
+        tier: "py",
+      })
     );
-    expect(validateRep(JSON.stringify({ ...reps.challenge, tier: "ts" })).error).toMatch(
-      /TS-graded only/
-    );
+    expect(error).toBeUndefined();
+    expect(rep!.id).toBe(covered);
   });
 
   it("rejects unknown/misspelled keys the fence parsers would silently drop", () => {

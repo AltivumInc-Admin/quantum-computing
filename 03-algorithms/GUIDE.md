@@ -84,6 +84,22 @@ algorithms below trade in.
 }
 ```
 
+Now assemble the whole opener the way you would on hardware — in real Braket Python, graded by
+running your code in the browser: the query qubit in superposition, and a phase-kickback ancilla
+sitting in |−⟩ so the oracle's sign has somewhere to land.
+
+```qchallenge
+{
+  "id": "algo-oracle-input-py-1",
+  "prompt": "Assemble the oracle's input register in real Braket Python: put the query qubit 0 into equal superposition, and prepare the phase-kickback ancilla, qubit 1, in |−⟩ = (|0⟩ − |1⟩)/√2. Assign your circuit to `circuit`.",
+  "qubits": 2,
+  "target": { "program": "H 0\nX 1\nH 1" },
+  "starter": "from braket.circuits import Circuit\ncircuit = Circuit()",
+  "hint": "Qubit 0 needs a single Hadamard. For the ancilla, drive |0⟩ down to |1⟩ with an X first, then a Hadamard turns |1⟩ into |−⟩ — the minus sign the oracle kicks its answer onto. Skipping the X leaves the ancilla in |+⟩, which carries no mark.",
+  "tier": "py"
+}
+```
+
 ## Deutsch–Jozsa: one query is enough
 
 The cleanest proof that interference buys speedup. You're handed $f:\{0,1\}^n\to\{0,1\}$ promised

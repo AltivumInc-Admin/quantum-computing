@@ -43,6 +43,21 @@ and IQP and see how differently each lays the data out:
 {"x": [0.6, 0.9], "encoding": "angle"}
 ```
 
+The widget just laid that point out for you — now build the same angle encoding yourself, in real
+Braket Python (graded by running your code in the browser):
+
+```qchallenge
+{
+  "id": "qml-angle-encode-py-1",
+  "prompt": "Angle-encode the 2-feature point x = (0.6, 0.9) in real Braket Python: apply RY(0.6) to qubit 0 and RY(0.9) to qubit 1. Assign your circuit to `circuit`.",
+  "qubits": 2,
+  "target": { "program": "RY 0 0.6\nRY 1 0.9" },
+  "starter": "from braket.circuits import Circuit\ncircuit = Circuit()",
+  "hint": "Angle encoding maps each feature to a Y-rotation: one RY per qubit, carrying the feature value in radians. Enter the full features 0.6 and 0.9 — Braket's ry takes the angle directly, so do not halve them into 0.3 and 0.45 yourself.",
+  "tier": "py"
+}
+```
+
 The distribution view of that same encoding is worth committing to memory — angle-encode the
 point exactly as the widget just did, and predict what a measurement most often returns:
 

@@ -37,7 +37,7 @@ One JSON object per file: the widget's fence spec plus a `kind` envelope.
 
 | `kind` | Renders as | Spec fields (see the lesson widgets for details) |
 |---|---|---|
-| `challenge` | ```` ```qchallenge ```` | `id`, `prompt`, `target.program`, `qubits?`, `starter?`, `allowedGates?`, `hint?` — contributions are TS-graded only (no `tier` field) |
+| `challenge` | ```` ```qchallenge ```` | `id`, `prompt`, `target.program`, `qubits?`, `starter?`, `allowedGates?`, `hint?`, `tier?` — `tier` defaults to `"ts"` (instant in-browser grading). `tier:"py"` grades free-form Braket Python via Pyodide and is accepted ONLY for ids listed in the e2e-coverage manifest `web/src/lib/py-reps.ts` (each is proven in a real browser by `web/e2e/py-reps.e2e.ts`); a py Rep without that coverage is rejected. In practice contributions stay TS-graded unless a maintainer wires the browser proof. |
 | `predict` | ```` ```qpredict ```` | `id`, `prompt`, `program`, `mode?` (`top-outcome` \| `nonzero-states`, defaults `top-outcome`), `hint?` |
 | `blochtarget` | ```` ```qblochtarget ```` | `id`, `prompt`, `target.program` (single qubit), `toleranceDeg?`, `blind?`, `hint?` |
 | `costestimate` | ```` ```qcostestimate ```` | `id`, `prompt`, `provider` (per-shot QPU), `shots`, `tasks?`, `hint?` — hints may use `{perTask}`/`{perShot}`/`{shots}` placeholders, which resolve from the live pricing table |
