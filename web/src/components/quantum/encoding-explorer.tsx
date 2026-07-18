@@ -152,14 +152,14 @@ export function EncodingExplorer({ source }: { source: string }) {
         <div className="min-w-0 flex-1">
           {/* encoding select */}
           <div className="flex items-center gap-3">
-            <label htmlFor={encId} className="shrink-0 text-sm text-gray-600 dark:text-gray-300">
+            <label htmlFor={encId} className="shrink-0 text-sm text-(--mut)">
               Map
             </label>
             <select
               id={encId}
               value={encoding}
               onChange={(e) => setEncoding(e.target.value as Encoding)}
-              className="focus-ring rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-800 dark:text-gray-200"
+              className="focus-ring rounded-control border border-(--bd) bg-(--field) px-2 py-1 text-sm text-(--ink)"
               aria-label="Feature-map encoding"
             >
               {ENCODINGS.map((enc) => (
@@ -182,7 +182,7 @@ export function EncodingExplorer({ source }: { source: string }) {
             ariaValueText={`x0 = ${x0.toFixed(2)}, norm ${norm.toFixed(3)}`}
             display={x0.toFixed(2)}
             rowClassName="mt-3 flex items-center gap-3"
-            labelClassName="w-10 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-10 shrink-0 font-mono text-sm text-(--mut)"
             valueWidth="w-14"
           />
 
@@ -198,7 +198,7 @@ export function EncodingExplorer({ source }: { source: string }) {
             ariaValueText={`x1 = ${x1.toFixed(2)}, norm ${norm.toFixed(3)}`}
             display={x1.toFixed(2)}
             rowClassName="mt-2 flex items-center gap-3"
-            labelClassName="w-10 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-10 shrink-0 font-mono text-sm text-(--mut)"
             valueWidth="w-14"
           />
 
@@ -208,10 +208,10 @@ export function EncodingExplorer({ source }: { source: string }) {
           </div>
 
           {/* Dirac string + norm readout */}
-          <p className="mt-4 break-words font-mono text-xs text-gray-600 dark:text-gray-300">
+          <p className="mt-4 break-words font-mono text-xs text-(--mut)">
             |&#968;&#10217; = {dirac}
           </p>
-          <p className="mt-1 font-mono text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-1 font-mono text-xs text-caption">
             &#8214;&#968;&#8214; = <span className="tabular-nums">{norm.toFixed(3)}</span>
           </p>
         </div>

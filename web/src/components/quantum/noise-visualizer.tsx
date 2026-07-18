@@ -101,7 +101,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
           role="status"
           aria-live="polite"
           aria-atomic="true"
-          className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400"
+          className="font-mono text-xs tabular-nums text-caption"
         >
           fidelity {fidelityPct}%
         </span>
@@ -123,33 +123,33 @@ export function NoiseVisualizer({ source }: { source: string }) {
           const noisyP = noisy[idx] ?? 0;
           return (
             <div key={idx} className="flex items-center gap-2">
-              <span className="w-12 shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">
+              <span className="w-12 shrink-0 font-mono text-xs text-caption">
                 |{basisLabel(idx, program.n)}&#10217;
               </span>
               <div className="flex-1 min-w-0 space-y-1">
                 {/* Ideal bar */}
                 <div className="flex items-center gap-1.5">
-                  <span className="w-8 shrink-0 text-[10px] text-gray-500 dark:text-gray-400">ideal</span>
-                  <span className="relative h-2.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                  <span className="w-8 shrink-0 text-[10px] text-caption">ideal</span>
+                  <span className="relative h-2.5 flex-1 rounded-full bg-(--track) overflow-hidden">
                     <span
-                      className="absolute inset-y-0 left-0 rounded-full bg-accent"
+                      className="absolute inset-y-0 left-0 rounded-full bar-fill"
                       style={{ width: `${(idealP * 100).toFixed(2)}%` }}
                     />
                   </span>
-                  <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                  <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-caption">
                     {formatPercent(idealP * 100)}
                   </span>
                 </div>
                 {/* Noisy bar */}
                 <div className="flex items-center gap-1.5">
-                  <span className="w-8 shrink-0 text-[10px] text-gray-500 dark:text-gray-400">noisy</span>
-                  <span className="relative h-2.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                  <span className="w-8 shrink-0 text-[10px] text-caption">noisy</span>
+                  <span className="relative h-2.5 flex-1 rounded-full bg-(--track) overflow-hidden">
                     <span
                       className="absolute inset-y-0 left-0 rounded-full bg-amber-500"
                       style={{ width: `${(noisyP * 100).toFixed(2)}%` }}
                     />
                   </span>
-                  <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                  <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-caption">
                     {formatPercent(noisyP * 100)}
                   </span>
                 </div>
@@ -160,12 +160,12 @@ export function NoiseVisualizer({ source }: { source: string }) {
       </div>
 
       {/* Controls */}
-      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3 space-y-3">
+      <div className="border-t border-(--bd) px-4 py-3 space-y-3">
         {/* Channel select */}
         <div className="flex items-center gap-3">
           <label
             htmlFor={channelId}
-            className="shrink-0 text-xs text-gray-600 dark:text-gray-300"
+            className="shrink-0 text-xs text-(--mut)"
           >
             Channel
           </label>
@@ -194,7 +194,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
           ariaLabel={parameterLabel(channel)}
           ariaValueText={formatPercent(pClamped * 100, 0)}
           display={formatPercent(pClamped * 100, 0)}
-          labelClassName="shrink-0 text-xs text-gray-600 dark:text-gray-300"
+          labelClassName="shrink-0 text-xs text-(--mut)"
           valueWidth="w-10"
         />
       </div>

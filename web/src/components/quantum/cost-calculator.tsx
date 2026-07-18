@@ -73,7 +73,7 @@ export function CostCalculator({ source }: { source: string }) {
   return (
     <WidgetCard
       header={
-        <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+        <div className="flex items-center gap-2 border-b border-(--bd) px-4 py-2">
           <EyebrowLabel>Cost calculator</EyebrowLabel>
         </div>
       }
@@ -85,7 +85,7 @@ export function CostCalculator({ source }: { source: string }) {
           <div className="flex flex-col gap-1">
             <label
               htmlFor={deviceId}
-              className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+              className="text-[11px] font-medium uppercase tracking-wide text-caption"
             >
               Device
             </label>
@@ -108,7 +108,7 @@ export function CostCalculator({ source }: { source: string }) {
           <div className="flex flex-col gap-1">
             <label
               htmlFor={tasksId}
-              className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+              className="text-[11px] font-medium uppercase tracking-wide text-caption"
             >
               Tasks
             </label>
@@ -129,7 +129,7 @@ export function CostCalculator({ source }: { source: string }) {
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label
                 htmlFor={shotsId}
-                className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+                className="text-[11px] font-medium uppercase tracking-wide text-caption"
               >
                 Shots per task
               </label>
@@ -149,7 +149,7 @@ export function CostCalculator({ source }: { source: string }) {
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label
                 htmlFor={minutesId}
-                className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+                className="text-[11px] font-medium uppercase tracking-wide text-caption"
               >
                 Minutes per task
               </label>
@@ -168,10 +168,10 @@ export function CostCalculator({ source }: { source: string }) {
         </div>
 
         {/* Itemized breakdown */}
-        <div className="rounded-md bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/50 overflow-hidden">
+        <div className="rounded-md bg-(--field) border border-(--bd) overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-700/40">
+              <tr className="border-b border-(--bd)">
                 <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-caption">Item</th>
                 <th scope="col" className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-caption">USD</th>
               </tr>
@@ -180,24 +180,24 @@ export function CostCalculator({ source }: { source: string }) {
               {lines.map((line, i) => (
                 <tr
                   key={i}
-                  className="border-b border-gray-100 dark:border-gray-700/40 last:border-0"
+                  className="border-b border-(--bd) last:border-0"
                 >
-                  <td className="px-3 py-2 text-gray-600 dark:text-gray-400 font-mono text-xs">
+                  <td className="px-3 py-2 text-caption font-mono text-xs">
                     {line.label}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-xs text-gray-700 dark:text-gray-300 tabular-nums">
+                  <td className="px-3 py-2 text-right font-mono text-xs text-(--mut) tabular-nums">
                     {line.value}
                   </td>
                 </tr>
               ))}
               <tr className="bg-gray-100/60 dark:bg-gray-700/30">
-                <td className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <td className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-caption">
                   Total
                 </td>
                 <td
                   aria-live="polite"
                   aria-atomic="true"
-                  className="px-3 py-2 text-right font-bold font-mono text-sm text-gray-900 dark:text-gray-100 tabular-nums"
+                  className="px-3 py-2 text-right font-bold font-mono text-sm text-(--ink) tabular-nums"
                 >
                   {totalStr}
                 </td>
@@ -207,7 +207,7 @@ export function CostCalculator({ source }: { source: string }) {
         </div>
 
         {/* Nudge */}
-        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+        <p className="text-xs text-caption leading-relaxed">
           Develop on LocalSimulator (free) first; move to a QPU only when validated.
         </p>
       </div>

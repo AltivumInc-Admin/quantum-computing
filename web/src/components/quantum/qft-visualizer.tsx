@@ -105,7 +105,7 @@ function MagnitudeBars({
         const fillClass = hot
           ? "bg-warm"
           : accent
-            ? "bg-accent"
+            ? "bar-fill"
             : "bg-gray-400 dark:bg-gray-500";
         return (
           <Bar
@@ -160,21 +160,21 @@ export function QftVisualizer({ source }: { source: string }) {
 
       <div className="grid grid-cols-1 gap-6 px-4 py-4 sm:grid-cols-2">
         <div className="min-w-0">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-caption">
             Input |x&#10217;
           </p>
           <MagnitudeBars values={inMag} n={n} />
         </div>
         <div className="min-w-0">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-caption">
             QFT output (magnitude)
           </p>
           <MagnitudeBars values={outMag} n={n} highlight={isSpike} accent />
         </div>
       </div>
 
-      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-        <p className="font-mono text-xs text-gray-500 dark:text-gray-400">{note}</p>
+      <div className="border-t border-(--bd) px-4 py-3">
+        <p className="font-mono text-xs text-caption">{note}</p>
       </div>
     </WidgetCard>
   );

@@ -89,7 +89,7 @@ function useCardState(id: string): CardState | null {
 
 const RATINGS: { rating: Rating; label: string; tone: string }[] = [
   { rating: "again", label: "Again", tone: "border-warm/40 bg-warm/5 text-warm-dark dark:text-warm-light hover:bg-warm/10" },
-  { rating: "hard", label: "Hard", tone: "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" },
+  { rating: "hard", label: "Hard", tone: "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800" },
   { rating: "good", label: "Good", tone: "border-accent/30 bg-accent/5 text-accent-dark dark:text-accent-light hover:bg-accent/10" },
   { rating: "easy", label: "Easy", tone: "border-accent/40 bg-accent/10 text-accent-dark dark:text-accent-light hover:bg-accent/20" },
 ];
@@ -111,8 +111,8 @@ export function ReviewCard({ source }: { source: string }) {
 
   if (!spec) {
     return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
+      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
+        <p className="font-mono text-sm text-caption">
           card error: {parsed.error}
         </p>
       </div>
@@ -137,9 +137,9 @@ export function ReviewCard({ source }: { source: string }) {
   const feedback = justGraded;
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
           Recall
         </span>
         {reviewedBefore && !feedback && (
@@ -150,7 +150,7 @@ export function ReviewCard({ source }: { source: string }) {
       </div>
 
       <div className="px-4 py-4 sm:px-5">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">
           {renderInline(spec.prompt)}
         </p>
 
@@ -170,10 +170,10 @@ export function ReviewCard({ source }: { source: string }) {
               aria-label="Answer"
               className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light mb-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent mb-1 font-mono">
                 Answer
               </span>
-              <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+              <p className="text-sm leading-relaxed text-(--mut)">
                 {renderInline(spec.answer)}
               </p>
             </div>
@@ -201,7 +201,7 @@ export function ReviewCard({ source }: { source: string }) {
         {(feedback || regradeNoop) && (
           <p
             role="status"
-            className="mt-3 text-sm text-gray-500 dark:text-gray-400 animate-fade-up"
+            className="mt-3 text-sm text-caption animate-fade-up"
           >
             {regradeNoop
               ? "Schedule unchanged — this card was already reviewed and isn't due again yet."

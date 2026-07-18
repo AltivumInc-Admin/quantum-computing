@@ -63,8 +63,8 @@ export function ShotsSampler({ source }: { source: string }) {
       </LiveStatus>
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-        <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Shots:</span>
+      <div className="flex flex-wrap items-center gap-2 border-b border-(--bd) px-4 py-3">
+        <span className="text-xs text-caption mr-1">Shots:</span>
         {PRESET_SHOTS.map((n) => (
           <button
             key={n}
@@ -75,7 +75,7 @@ export function ShotsSampler({ source }: { source: string }) {
               "rounded px-2.5 py-1 text-xs font-mono font-medium transition-colors interactive focus-ring",
               shots === n
                 ? "chip-selected"
-                : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
+                : "border border-(--bd) bg-(--field) text-(--mut) hover:text-(--ink)",
             ].join(" ")}
           >
             {n}
@@ -91,7 +91,7 @@ export function ShotsSampler({ source }: { source: string }) {
 
       {/* Empty-state hint before the first Run */}
       {total === 0 && (
-        <p className="border-b border-gray-100 dark:border-gray-800 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+        <p className="border-b border-(--bd) px-4 py-2 text-xs text-caption">
           Press Run to sample {shots.toLocaleString()} shots and compare to the exact probability.
         </p>
       )}
@@ -119,7 +119,7 @@ export function ShotsSampler({ source }: { source: string }) {
               valueText={
                 total > 0 ? (
                   <>
-                    <span className="text-gray-700 dark:text-gray-200">{empiricalPct}</span>
+                    <span className="text-(--mut)">{empiricalPct}</span>
                     <span className="text-caption"> / {exactPct}</span>
                   </>
                 ) : (
@@ -132,14 +132,14 @@ export function ShotsSampler({ source }: { source: string }) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 border-t border-gray-100 dark:border-gray-800 px-4 py-2">
+      <div className="flex items-center gap-4 border-t border-(--bd) px-4 py-2">
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-full bg-accent/70" />
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">Empirical frequency</span>
+          <span className="text-[11px] text-caption">Empirical frequency</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-0.5 bg-accent dark:bg-accent-light" />
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">Exact probability</span>
+          <span className="text-[11px] text-caption">Exact probability</span>
         </div>
       </div>
     </WidgetCard>

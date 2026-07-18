@@ -76,8 +76,8 @@ export function WavefunctionScrubber({ source }: { source: string }) {
 
   if (program.error) {
     return (
-      <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
+      <div className="not-prose my-6 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
+        <p className="font-mono text-sm text-caption">
           qsim parse error: {program.error}
         </p>
       </div>
@@ -131,7 +131,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
         ariaLabel="Step through the circuit"
         ariaValueText={`step ${safeStep} of ${lastStep}`}
         display={`step ${safeStep}/${lastStep}`}
-        rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
+        rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
         leading={
           !reduced && lastStep > 0 ? (
             <button
@@ -158,8 +158,8 @@ export function WavefunctionScrubber({ source }: { source: string }) {
           ariaLabel="Rotation angle theta in radians"
           ariaValueText={`${theta.toFixed(2)} radians`}
           display={formatRadians(theta)}
-          rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
-          labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+          rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
+          labelClassName="font-mono text-sm text-(--mut)"
         />
       )}
     </WidgetCard>

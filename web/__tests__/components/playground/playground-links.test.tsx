@@ -20,11 +20,15 @@ jest.mock("@/components/review-nav-badge", () => ({ ReviewNavBadge: () => null }
 jest.mock("@/components/auth/account-menu", () => ({ AccountMenu: () => null }));
 
 describe("Playground discovery links", () => {
-  it("nav carries a desktop Playground link beside Runbook (hidden below sm)", () => {
+  it("nav carries a desktop Playground link beside Runbook (in the pill, hidden below md)", () => {
     render(<Nav />);
     const link = screen.getByRole("link", { name: "Playground" });
     expect(link).toHaveAttribute("href", "/playground");
-    expect(link.className).toContain("hidden sm:inline-flex");
+    // It lives inside the centered glass pill, which is hidden below md; the
+    // footer carries the all-viewport (mobile) Playground path.
+    const pill = link.closest("div");
+    expect(pill?.className).toContain("hidden");
+    expect(pill?.className).toContain("md:flex");
     // Same recipe as its Runbook sibling
     expect(screen.getByRole("link", { name: "Runbook" })).toBeInTheDocument();
   });

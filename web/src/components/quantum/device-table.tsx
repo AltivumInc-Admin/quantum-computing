@@ -32,7 +32,7 @@ export function DeviceTable() {
   };
 
   return (
-    <div className="not-prose my-6 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
+    <div className="not-prose my-6 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
       <LiveStatus>
         {`${sorted.length} device${sorted.length === 1 ? "" : "s"} shown${
           tech === "All" ? "" : `, ${tech}`
@@ -40,14 +40,14 @@ export function DeviceTable() {
       </LiveStatus>
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
+      <div className="flex items-center justify-between gap-4 border-b border-(--bd) px-4 py-2">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent dark:text-accent-light">
           Devices
         </span>
         <div className="flex items-center gap-2">
           <label
             htmlFor={techId}
-            className="text-xs text-gray-500 dark:text-gray-400"
+            className="text-xs text-caption"
           >
             Technology
           </label>
@@ -75,16 +75,16 @@ export function DeviceTable() {
             (non-gate-model) hardware.
           </caption>
           <thead>
-            <tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+            <tr className="border-b border-(--bd) bg-(--field)">
               <th
                 scope="col"
                 aria-sort={ariaSort("model")}
-                className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap"
+                className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap"
               >
                 <button
                   onClick={() => handleSort("model")}
                   aria-label="Sort by model"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors interactive focus-ring"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
                 >
                   Model
                   <SortIndicator active={sortKey === "model"} dir={sortDir} />
@@ -93,41 +93,41 @@ export function DeviceTable() {
               <th
                 scope="col"
                 aria-sort={ariaSort("technology")}
-                className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap"
+                className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap"
               >
                 <button
                   onClick={() => handleSort("technology")}
                   aria-label="Sort by technology"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors interactive focus-ring"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
                 >
                   Technology
                   <SortIndicator active={sortKey === "technology"} dir={sortDir} />
                 </button>
               </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
                 Vendor
               </th>
               <th
                 scope="col"
                 aria-sort={ariaSort("qubits")}
-                className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap"
+                className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap"
               >
                 <button
                   onClick={() => handleSort("qubits")}
                   aria-label="Sort by qubits"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-gray-900 dark:hover:text-gray-100 transition-colors interactive focus-ring"
+                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
                 >
                   Qubits
                   <SortIndicator active={sortKey === "qubits"} dir={sortDir} />
                 </button>
               </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
                 Connectivity
               </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
                 Gate model
               </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
                 Cost
               </th>
             </tr>
@@ -139,31 +139,31 @@ export function DeviceTable() {
                 <tr
                   key={device.model}
                   className={[
-                    "border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors",
+                    "border-b border-(--bd) last:border-0 transition-colors",
                     isAnalog
                       ? "bg-amber-50/60 dark:bg-amber-900/10"
                       : "hover:bg-gray-50 dark:hover:bg-gray-900/30",
                   ].join(" ")}
                 >
-                  <td className="px-4 py-2.5 font-mono font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  <td className="px-4 py-2.5 font-mono font-medium text-(--ink) whitespace-nowrap">
                     {device.model}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-(--mut) whitespace-nowrap">
                     {device.technology}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-(--mut) whitespace-nowrap">
                     {device.vendor}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 tabular-nums">
+                  <td className="px-4 py-2.5 text-(--mut) tabular-nums">
                     {device.qubits}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-(--mut) whitespace-nowrap">
                     {device.connectivity}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">
+                  <td className="px-4 py-2.5 text-(--mut)">
                     {device.gateModel ? "Yes" : "No"}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                  <td className="px-4 py-2.5 font-mono text-xs text-(--mut) whitespace-nowrap">
                     {costLabel(device.provider)}
                     {device.note ? ` (${device.note})` : ""}
                   </td>
@@ -174,12 +174,12 @@ export function DeviceTable() {
         </table>
       </div>
       {hasAnalog && (
-        <div className="flex items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-4 py-2">
+        <div className="flex items-center gap-1.5 border-t border-(--bd) px-4 py-2">
           <span
             className="inline-block h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/30 ring-1 ring-amber-300/60 dark:ring-amber-700/40"
             aria-hidden="true"
           />
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+          <span className="text-[11px] text-caption">
             Analog (non-gate-model) device
           </span>
         </div>

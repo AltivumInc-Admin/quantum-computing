@@ -151,10 +151,10 @@ export function ExpectationWidget({
       }
     >
       <div className="px-4 py-4 sm:px-5">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">{spec.prompt}</p>
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">{spec.prompt}</p>
 
-        <div className="mt-3 rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5">
-          <pre className="m-0 whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200">
+        <div className="mt-3 rounded-control border border-(--bd) bg-(--field) px-3 py-2.5">
+          <pre className="m-0 whitespace-pre-wrap font-mono text-sm text-(--ink)">
             {programSteps.join("\n")}
           </pre>
         </div>
@@ -204,10 +204,10 @@ export function ExpectationWidget({
               aria-label="What a measurement returns"
               className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+              <span className="mb-2 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
                 The single-shot story
               </span>
-              <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-200">
+              <p className="text-sm leading-relaxed text-(--mut)">
                 One measurement of {bareLabel} returns an eigenvalue, +1 or −1 — never{" "}
                 <span className="font-mono tabular-nums">{fmtExpectation(truth.value)}</span> itself.
                 It reads +1 with probability (1 + {label})/2 ={" "}

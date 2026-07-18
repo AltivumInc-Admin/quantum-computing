@@ -43,19 +43,19 @@ function ErrorCard({ message }: { message?: string }) {
 /** Static, accessible fallback: every beat shown at once. */
 function StaticBeats({ beats }: { beats: Beat[] }) {
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
-      <div className="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light">
+    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+      <div className="border-b border-(--bd) px-4 sm:px-5 py-3">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
           Walkthrough
         </span>
       </div>
-      <ol className="list-none m-0 p-0 divide-y divide-gray-100 dark:divide-gray-800">
+      <ol className="list-none m-0 p-0 divide-y divide-(--bd)">
         {beats.map((beat, i) => (
           <li key={i} className="flex items-center gap-4 px-4 sm:px-5 py-4">
             <div className="shrink-0 text-accent">
               <BlochDial state={stateForBeat(beat)} />
             </div>
-            <p className="text-[0.95rem] leading-relaxed text-gray-700 dark:text-gray-300">
+            <p className="text-[0.95rem] leading-relaxed text-(--mut)">
               {beat.caption}
             </p>
           </li>
@@ -112,7 +112,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
           <BlochVectorSR state={state} />
         </div>
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
-          <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light mb-2">
+          <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent mb-2">
             Beat {active + 1} / {beats.length}
           </span>
           <div className="relative min-h-24">
@@ -122,7 +122,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
                 aria-hidden={i === active ? undefined : true}
                 className={`text-lg leading-relaxed transition-opacity duration-300 ${
                   i === active
-                    ? "text-gray-800 dark:text-gray-100 opacity-100"
+                    ? "text-(--ink) opacity-100"
                     : "pointer-events-none absolute inset-0 text-caption opacity-0"
                 }`}
               >
@@ -131,7 +131,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
             ))}
           </div>
           {/* progress rail */}
-          <div className="mt-6 h-0.5 w-full max-w-xs overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+          <div className="mt-6 h-0.5 w-full max-w-xs overflow-hidden rounded-full bg-(--track)">
             <div
               className="h-full rounded-full bg-gradient-to-r from-accent to-warm"
               style={{ width: `${(progress * 100).toFixed(1)}%` }}

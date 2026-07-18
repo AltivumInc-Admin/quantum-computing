@@ -103,7 +103,7 @@ export const CircuitDiagram = memo(function CircuitDiagram({
       tabIndex={0}
       role="region"
       aria-label="Circuit diagram, scrollable"
-      className={`mt-3 overflow-x-auto rounded-control border border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700/50 dark:bg-gray-900/50 focus-ring ${
+      className={`mt-3 overflow-x-auto rounded-control border border-(--bd) bg-(--field) px-2 py-1 focus-ring ${
         stale ? "opacity-50" : ""
       } transition-opacity motion-reduce:transition-none`}
     >

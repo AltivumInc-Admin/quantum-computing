@@ -7,6 +7,7 @@ import { isAuthConfigured } from "@/lib/auth-config";
 import { pitchFor } from "@/lib/section-pitch";
 import { SINGLE, ROT } from "@/components/quantum/qsim-dsl";
 import { CurriculumGrid } from "@/components/curriculum-grid";
+import { WelcomeHero } from "@/components/welcome/hero";
 
 const HOME_TITLE = "Quantum Computing Workspace";
 const HOME_DESCRIPTION =
@@ -20,8 +21,14 @@ export const metadata: Metadata = {
     description: HOME_DESCRIPTION,
     url: "/",
     type: "website",
+    images: ["/og.png"],
   },
-  twitter: { card: "summary", title: HOME_TITLE, description: HOME_DESCRIPTION },
+  twitter: {
+    card: "summary_large_image",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    images: ["/og.png"],
+  },
 };
 
 // Sign up / sign in pair, gated on the Cognito env vars exactly like the
@@ -101,6 +108,26 @@ export default async function HomePage() {
     { value: playgroundGates, label: "gates in the live playground" },
   ];
 
+  // Four curriculum sections become the hero's floating constellation nodes —
+  // real names + real notebook counts, placed at the four corners.
+  const NODE_LABELS: Record<string, string> = {
+    "01-foundations": "Foundations",
+    "02-hardware": "Hardware",
+    "03-algorithms": "Algorithms",
+    "05-quantum-chemistry": "Chemistry",
+  };
+  const nodeCorners = ["tl", "tr", "bl", "br"] as const;
+  const heroNodes = sections
+    .filter((s) => s.slug in NODE_LABELS)
+    .slice(0, 4)
+    .map((s, i) => ({
+      label: NODE_LABELS[s.slug],
+      value: `${s.notebookCount} notebooks`,
+      pos: nodeCorners[i],
+    }));
+
+  const partners = ["Amazon Braket", "PennyLane", "IonQ", "IQM", "QuEra", "Rigetti"];
+
   const bands: FeatureBand[] = [
     {
       kicker: "Playground",
@@ -161,59 +188,32 @@ export default async function HomePage() {
   return (
     <div className="relative">
       {/* ------------------------------------------------------------------ */}
-      {/* Hero — a self-dark cinematic band in both themes; the imagery is    */}
-      {/* the atmosphere, so text colors are literal (no dark: variants).     */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="relative overflow-hidden bg-[#080c14]">
-        {/* eslint-disable-next-line @next/next/no-img-element -- static export has no image optimizer; assets are pre-sized WebP with an explicit srcSet */}
-        <img
-          src="/welcome/hero.webp"
-          srcSet="/welcome/hero-960.webp 960w, /welcome/hero.webp 1920w"
-          sizes="100vw"
-          alt=""
-          aria-hidden="true"
-          fetchPriority="high"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        {/* Legibility + blend: darken the text side, dissolve into the page. */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#080c14]/95 via-[#080c14]/60 to-[#080c14]/20" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#080c14]/40 via-transparent to-[#080c14]" />
+      {/* Hero — cinematic framed foggy-glass band (WelcomeHero). ---------- */}
+      <WelcomeHero
+        eyebrow="Learn quantum computing, hands-on"
+        headlineLead="Master quantum computing"
+        headlineDim="from first principles"
+        subtitle="From circuit fundamentals to production hybrid workloads — a live playground, real quantum hardware, and an AI tutor in the margin. Free, right in your browser."
+        ctas={<AuthCtas align="center" />}
+        stats={stats}
+        nodes={heroNodes}
+      />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-28 sm:pt-32 sm:pb-36">
-          <div className="max-w-3xl animate-hero-enter">
-            <p className="text-sm font-medium tracking-widest uppercase text-accent-light mb-5">
-              Amazon Braket Learning Platform
-            </p>
-            <h1 className="font-display text-display-2xl tracking-tight text-white">
-              Master <span className="text-gradient">quantum computing</span> from first
-              principles
-            </h1>
-            <p className="mt-6 text-lg sm:text-xl text-gray-300 max-w-2xl leading-relaxed">
-              A progressive curriculum from circuit fundamentals to production hybrid
-              workloads — with a live playground, real quantum hardware, and an AI tutor
-              in the margin. Free to learn, right in your browser.
-            </p>
-            <div className="mt-9 animate-slide-in" style={{ animationDelay: "300ms" }}>
-              <AuthCtas />
-            </div>
-          </div>
-
-          <dl
-            className="mt-16 flex flex-wrap gap-x-12 gap-y-6 animate-slide-in"
-            style={{ animationDelay: "500ms" }}
-          >
-            {stats.map((stat) => (
-              <div key={stat.label}>
-                <dt className="sr-only">{stat.label}</dt>
-                <dd className="font-display text-display-lg text-white tabular-nums">
-                  {stat.value}
-                </dd>
-                <dd className="mt-1 text-sm text-gray-300">{stat.label}</dd>
-              </div>
+      {/* Powered-by cloud — a quiet strip under the hero frame. */}
+      <div className="dark bg-[#0b0b0c] px-3 sm:px-4">
+        <div className="mx-auto max-w-6xl border-t border-white/[0.06] px-4 py-7">
+          <div className="flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/30">
+              Powered by
+            </span>
+            {partners.map((p) => (
+              <span key={p} className="text-sm font-medium text-white/45">
+                {p}
+              </span>
             ))}
-          </dl>
+          </div>
         </div>
-      </section>
+      </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* What you can do here — three image-led bands.                       */}
@@ -224,10 +224,10 @@ export default async function HomePage() {
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <div className="flex items-center gap-4 mb-16 reveal">
-            <h2 className="font-display text-display-xl text-gray-900 dark:text-white">
+            <h2 className="font-display text-display-xl text-(--ink)">
               One place to learn, build, and run
             </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
+            <div className="flex-1 h-px bg-gradient-to-r from-(--bd) to-transparent" />
           </div>
 
           <div className="space-y-24">
@@ -237,13 +237,13 @@ export default async function HomePage() {
                 className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center reveal"
               >
                 <div className={band.flip ? "lg:order-2" : undefined}>
-                  <p className="text-xs font-semibold tracking-widest uppercase text-accent dark:text-accent-light mb-3">
+                  <p className="text-xs font-semibold tracking-[0.2em] uppercase text-accent dark:text-accent-light font-mono mb-3">
                     {band.kicker}
                   </p>
-                  <h3 className="font-display text-display-lg text-gray-900 dark:text-white text-balance">
+                  <h3 className="font-display text-display-lg text-(--ink) text-balance">
                     {band.title}
                   </h3>
-                  <p className="mt-4 text-base sm:text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                  <p className="mt-4 text-base sm:text-lg text-(--mut) leading-relaxed">
                     {band.body}
                   </p>
                   <Link
@@ -286,13 +286,13 @@ export default async function HomePage() {
                 The mock is decorative (aria-hidden); the copy carries the facts. */}
             <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center reveal">
               <div className="lg:order-2">
-                <p className="text-xs font-semibold tracking-widest uppercase text-accent dark:text-accent-light mb-3">
+                <p className="text-xs font-semibold tracking-[0.2em] uppercase text-accent dark:text-accent-light font-mono mb-3">
                   AI tutor
                 </p>
-                <h3 className="font-display text-display-lg text-gray-900 dark:text-white text-balance">
+                <h3 className="font-display text-display-lg text-(--ink) text-balance">
                   An AI tutor that knows exactly where you are
                 </h3>
-                <p className="mt-4 text-base sm:text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                <p className="mt-4 text-base sm:text-lg text-(--mut) leading-relaxed">
                   Every lesson carries Ask the margin: press Cmd-K or Ctrl-K, ask what
                   confuses you, and a Claude-powered tutor streams an answer grounded
                   in the exact page you are reading — no tab-switching, no pasting
@@ -360,16 +360,16 @@ export default async function HomePage() {
             {toolkit.map((tool) => {
               const inner = (
                 <>
-                  <h3 className="font-display text-display-md text-gray-900 dark:text-white">
+                  <h3 className="font-display text-display-md text-(--ink)">
                     {tool.title}
                   </h3>
-                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                  <p className="mt-2 text-sm text-(--mut) leading-relaxed">
                     {tool.body}
                   </p>
                 </>
               );
               const chrome =
-                "block h-full rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 shadow-(--shadow-resting)";
+                "block h-full rounded-card glass p-6 shadow-(--shadow-resting)";
               return tool.href ? (
                 <Link
                   key={tool.title}
@@ -393,7 +393,7 @@ export default async function HomePage() {
       {/* ------------------------------------------------------------------ */}
       <section
         aria-labelledby="account-heading"
-        className="relative overflow-hidden bg-[#0a0f1a] border-y border-white/[0.06]"
+        className="dark relative overflow-hidden bg-[#0a0f1a] border-y border-white/[0.06]"
       >
         <div className="absolute inset-0 bg-atmosphere" />
         <div className="absolute inset-0 bg-grid-dots [mask-image:radial-gradient(ellipse_60%_70%_at_50%_50%,black,transparent)]" />
@@ -432,11 +432,11 @@ export default async function HomePage() {
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <div className="flex items-center gap-4 mb-10 reveal">
-            <h2 className="font-display text-display-xl text-gray-900 dark:text-white">
+            <h2 className="font-display text-display-xl text-(--ink)">
               Learning Path
             </h2>
-            <div className="flex-1 h-px bg-gradient-to-r from-gray-200 dark:from-gray-700 to-transparent" />
-            <span className="text-sm text-gray-500 dark:text-gray-500 tabular-nums">
+            <div className="flex-1 h-px bg-gradient-to-r from-(--bd) to-transparent" />
+            <span className="text-sm text-caption tabular-nums">
               {sections.length} sections
             </span>
           </div>

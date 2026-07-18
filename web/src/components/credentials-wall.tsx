@@ -215,20 +215,20 @@ export function CredentialsWall() {
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
       <header className="mb-10">
-        <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-3">
+        <p className="font-mono text-sm font-medium tracking-[0.2em] uppercase text-accent dark:text-accent-light mb-3">
           Credentials
         </p>
-        <h1 className="font-display text-display-xl tracking-tight text-gray-900 dark:text-white">
+        <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
           Your credentials
         </h1>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-400">
+        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-(--mut)">
           Each medal is earned, not awarded — struck from work you can point to. Mastery
           medals reflect what you hold in retention right now, so they mean exactly what
           they say.
         </p>
         {data && (
           <p className="mt-4 text-sm tabular-nums text-caption">
-            <span className="font-semibold text-gray-700 dark:text-gray-200">{data.earned}</span> of{" "}
+            <span className="font-semibold text-(--mut)">{data.earned}</span> of{" "}
             {data.creds.length} earned
           </p>
         )}
@@ -237,7 +237,7 @@ export function CredentialsWall() {
       {data === null ? (
         <div
           aria-hidden="true"
-          className="h-40 rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) shadow-(--shadow-resting)"
+          className="h-40 rounded-card border border-(--bd) bg-(--surface-1) shadow-(--shadow-resting)"
         />
       ) : (
         <div className="animate-fade-up space-y-10">
@@ -246,13 +246,13 @@ export function CredentialsWall() {
             return (
               <section key={g} aria-label={GROUP_TITLE[g]}>
                 <div className="mb-4">
-                  <h2 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
+                  <h2 className="font-display text-display-md tracking-tight text-(--ink)">
                     {GROUP_TITLE[g]}
                   </h2>
                   <p className="mt-0.5 text-sm text-caption">{GROUP_BLURB[g]}</p>
                   {/* The lab record: the artifact a peer would actually be shown. */}
                   {g === "hardware" && hardware.runs > 0 && (
-                    <p className="mt-1 text-sm tabular-nums text-gray-700 dark:text-gray-300">
+                    <p className="mt-1 text-sm tabular-nums text-(--mut)">
                       Your record:{" "}
                       <span className="font-medium">
                         {hardware.runs.toLocaleString("en-US")} completed run
@@ -270,7 +270,7 @@ export function CredentialsWall() {
                   {g === "hardware" && (
                     <p className="mt-1 text-sm leading-relaxed text-caption">
                       All three fit inside the sponsored allowance:{" "}
-                      <span className="tabular-nums text-gray-700 dark:text-gray-300">
+                      <span className="tabular-nums text-(--mut)">
                         {LADDER_RUNS} runs totalling {DEEP_SAMPLE_SHOTS.toLocaleString("en-US")}{" "}
                         shots — {usd(LADDER_MICROS)}
                       </span>
@@ -323,7 +323,7 @@ function Medal({ cred, hue, state }: { cred: Credential; hue: number; state: Med
   }[state];
   const chipTone = {
     earned: "bg-accent/12 text-accent-dark dark:text-accent-light",
-    locked: "bg-gray-200/70 text-gray-600 dark:bg-white/[0.06] dark:text-gray-400",
+    locked: "bg-(--field) text-(--mut)",
     "out-of-reach": "bg-warm/12 text-warm-dark dark:text-warm-light",
     unverified: "bg-warm/12 text-warm-dark dark:text-warm-light",
   }[state];
@@ -337,13 +337,13 @@ function Medal({ cred, hue, state }: { cred: Credential; hue: number; state: Med
     <li
       className={`flex items-start gap-4 rounded-card border px-4 py-4 shadow-(--shadow-resting) ${
         state === "earned"
-          ? "border-gray-200/70 bg-(--surface-1) dark:border-white/[0.08]"
-          : "border-dashed border-gray-300/70 bg-(--surface-2)/60 dark:border-white/[0.06]"
+          ? "border-(--bd) bg-(--surface-1)"
+          : "border-dashed border-(--bd) bg-(--surface-2)/60"
       }`}
     >
       <Seal state={state} enamel={enamel} />
       <div className="min-w-0">
-        <p className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+        <p className="flex items-center gap-2 text-sm font-semibold text-(--ink)">
           <span className="truncate">{cred.title}</span>
           <span
             className={`shrink-0 rounded-chip px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide ${chipTone}`}

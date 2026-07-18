@@ -56,8 +56,11 @@ describe("HomePage (welcome page)", () => {
     expect(og.type).toBe("website");
     expect(og.description).toBe(metadata.description);
     const twitter = metadata.twitter as Record<string, unknown>;
-    expect(twitter.card).toBe("summary");
+    expect(twitter.card).toBe("summary_large_image");
     expect(twitter.description).toBe(metadata.description);
+    // The branded social-share card must be present on the home route.
+    expect((og.images as string[])).toContain("/og.png");
+    expect((twitter.images as string[])).toContain("/og.png");
   });
 
   it("renders the hero headline and eyebrow", async () => {
@@ -65,7 +68,7 @@ describe("HomePage (welcome page)", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: /master quantum computing from first principles/i })
     ).toBeInTheDocument();
-    expect(screen.getByText(/amazon braket learning platform/i)).toBeInTheDocument();
+    expect(screen.getByText(/learn quantum computing, hands-on/i)).toBeInTheDocument();
   });
 
   it("shows sign up and sign in CTAs in the hero AND the central account band when auth is configured", async () => {
@@ -179,7 +182,7 @@ describe("HomePage (welcome page)", () => {
   it("keeps the hero image decorative and gives feature imagery descriptive alt text", async () => {
     await renderHome();
     const images = Array.from(document.querySelectorAll("img"));
-    const hero = images.find((img) => img.getAttribute("src") === "/welcome/hero.webp");
+    const hero = images.find((img) => img.getAttribute("src") === "/welcome/hero-fog.webp");
     expect(hero).toBeDefined();
     expect(hero).toHaveAttribute("aria-hidden", "true");
     expect(hero).toHaveAttribute("alt", "");

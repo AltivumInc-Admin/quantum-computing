@@ -20,7 +20,7 @@ export function PasswordField({
   const [visible, setVisible] = useState(false);
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label htmlFor={id} className="mb-1 block text-sm font-medium text-(--mut)">
         {label}
       </label>
       <div className="relative">
@@ -31,14 +31,14 @@ export function PasswordField({
           autoComplete={autoComplete}
           aria-describedby={describedById}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 pr-11 text-sm text-gray-800 dark:text-gray-200 focus-ring"
+          className="w-full rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 pr-11 text-sm text-(--ink) focus-ring"
         />
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}
           aria-pressed={visible}
-          className="absolute inset-y-0 right-0 flex items-center rounded-r-control px-3 text-caption hover:text-gray-600 dark:hover:text-gray-200 interactive focus-ring"
+          className="absolute inset-y-0 right-0 flex items-center rounded-r-control px-3 text-caption hover:text-(--mut) interactive focus-ring"
         >
           {visible ? (
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">

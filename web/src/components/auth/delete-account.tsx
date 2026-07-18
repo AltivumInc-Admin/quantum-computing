@@ -146,24 +146,24 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
       <h2
         ref={headingRef}
         tabIndex={-1}
-        className="text-sm font-medium text-gray-900 dark:text-white outline-none"
+        className="text-sm font-medium text-(--ink) outline-none"
       >
         Delete account
       </h2>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+      <p className="mt-2 text-sm text-(--mut)">
         This permanently deletes:
       </p>
-      <ul className="mt-2 list-disc pl-5 text-sm text-gray-600 dark:text-gray-400 space-y-1">
+      <ul className="mt-2 list-disc pl-5 text-sm text-(--mut) space-y-1">
         {syncConfigured && <li>your synced progress on the server (including your email address)</li>}
         {prefsConfigured && <li>your email reminder preference</li>}
         <li>your account and sign-in</li>
         <li>this device&apos;s local copy of your progress</li>
       </ul>
-      <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+      <p className="mt-3 text-sm text-(--mut)">
         There is no undo and no recovery period.
       </p>
 
-      <label htmlFor="delete-confirm" className="mt-4 block text-sm text-gray-700 dark:text-gray-200">
+      <label htmlFor="delete-confirm" className="mt-4 block text-sm text-(--mut)">
         Type <span className="font-mono font-medium">{CONFIRM_WORD}</span> to confirm
       </label>
       <input
@@ -174,7 +174,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
         disabled={busy}
         autoComplete="off"
         spellCheck={false}
-        className="mt-2 w-full max-w-xs rounded-control border border-gray-200 dark:border-gray-700/50 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus-ring disabled:opacity-60"
+        className="mt-2 w-full max-w-xs rounded-control border border-(--bd) bg-transparent px-3 py-2 text-sm text-(--ink) focus-ring disabled:opacity-60"
       />
 
       {error && (
@@ -200,7 +200,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
             setError(null);
           }}
           disabled={busy}
-          className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 interactive focus-ring disabled:opacity-60"
+          className="inline-flex items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-(--mut) interactive focus-ring disabled:opacity-60"
         >
           Cancel
         </button>

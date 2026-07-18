@@ -44,7 +44,7 @@ export function WithinReach({
       </div>
       <Link
         href="/credentials"
-        className="mt-3 block border-t border-gray-200/60 pt-3 text-xs font-medium text-accent-dark dark:text-accent-light interactive focus-ring rounded-control dark:border-white/[0.06]"
+        className="mt-3 block border-t border-(--bd) pt-3 text-xs font-medium text-accent-dark dark:text-accent-light interactive focus-ring rounded-control"
       >
         All {totalCredentials} credentials →
       </Link>
@@ -54,8 +54,8 @@ export function WithinReach({
 
 function RungShell({ group, children }: { group: string; children: React.ReactNode }) {
   return (
-    <div className="border-t border-gray-200/60 py-3 first:border-t-0 dark:border-white/[0.06]">
-      <p className="text-sm font-semibold text-gray-900 dark:text-white">{group}</p>
+    <div className="border-t border-(--bd) py-3 first:border-t-0">
+      <p className="text-sm font-semibold text-(--ink)">{group}</p>
       {children}
     </div>
   );
@@ -81,7 +81,7 @@ function Rung({ group, rung }: { group: string; rung: ReachRung | null }) {
   return (
     <RungShell group={group}>
       <div className="mt-0.5 flex items-baseline justify-between gap-2">
-        <span className="text-sm text-gray-700 dark:text-gray-200">{rung.title}</span>
+        <span className="text-sm text-(--mut)">{rung.title}</span>
         <span className="shrink-0 text-xs tabular-nums text-caption">
           {rung.current} of {rung.target} {rung.unit}
         </span>
@@ -158,7 +158,7 @@ function HardwareRung({ status, budget }: { status: string; budget: Budget | nul
   return (
     <RungShell group="Hardware">
       <div className="mt-0.5 flex items-baseline justify-between gap-2">
-        <span className="text-sm text-gray-700 dark:text-gray-200">{next.title}</span>
+        <span className="text-sm text-(--mut)">{next.title}</span>
         <span className="shrink-0 text-xs tabular-nums text-caption">
           {plan.current} of {next.n.toLocaleString("en-US")} {plan.unit}
         </span>

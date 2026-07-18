@@ -19,7 +19,7 @@ export function Masthead({ email }: { email: string | null }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div>
-        <h1 className="font-display text-display-lg tracking-tight text-gray-900 dark:text-white">
+        <h1 className="font-display text-display-lg tracking-tight text-(--ink)">
           Workspace
         </h1>
         {email && <p className="mt-1 text-sm text-caption">{email}</p>}
@@ -82,7 +82,7 @@ function SyncReadout() {
   if (state === "mismatch") {
     return (
       <div role="alert" className="max-w-sm text-right">
-        <p className="text-sm text-gray-700 dark:text-gray-200">
+        <p className="text-sm text-(--mut)">
           This device holds progress synced by a different account.
         </p>
         <div className="mt-2 flex flex-wrap justify-end gap-2">
@@ -96,7 +96,7 @@ function SyncReadout() {
           <button
             type="button"
             onClick={() => handleSync("reset")}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 interactive focus-ring"
+            className="rounded-control border border-(--bd) px-3 py-1.5 text-xs font-medium text-(--mut) interactive focus-ring"
           >
             Use account data only
           </button>
@@ -115,11 +115,11 @@ function SyncReadout() {
     <div className="flex items-center gap-2.5 text-sm">
       <span
         aria-hidden="true"
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+        className={`h-1.5 w-1.5 shrink-0 rounded-full animate-signal ${
           attention ? "bg-warm-dark dark:bg-warm-light" : "bg-accent-dark dark:bg-accent"
         }`}
       />
-      <span role="status" className="text-gray-600 dark:text-gray-300 tabular-nums">
+      <span role="status" className="text-(--mut) tabular-nums">
         {state === "syncing" ? (
           "Syncing…"
         ) : health === "auth" ? (

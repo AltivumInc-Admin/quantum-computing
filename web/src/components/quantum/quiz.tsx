@@ -125,8 +125,8 @@ export function Quiz({ source }: { source: string }) {
 
   if (quiz.error) {
     return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="text-sm text-gray-500 dark:text-gray-400 font-mono">
+      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
+        <p className="text-sm text-caption font-mono">
           quiz parse error: {quiz.error}
         </p>
       </div>
@@ -142,23 +142,23 @@ export function Quiz({ source }: { source: string }) {
     );
 
   return (
-    <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+    <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
           Placement quiz
         </span>
         <button
           type="button"
           onClick={toggleAll}
           aria-pressed={allOpen}
-          className="inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-accent-dark dark:hover:text-accent-light hover:bg-accent/5 interactive focus-ring"
+          className="inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-xs font-medium text-caption hover:text-accent-dark dark:hover:text-accent-light hover:bg-accent/5 interactive focus-ring"
         >
           {allOpen ? "Hide all answers" : "Show all answers"}
           <ChevronIcon open={allOpen} />
         </button>
       </div>
 
-      <ol className="list-none m-0 p-0 divide-y divide-gray-100 dark:divide-gray-800">
+      <ol className="list-none m-0 p-0 divide-y divide-(--bd)">
         {quiz.questions.map((item, i) => {
           const hintOpen = openHints.has(i);
           const answerOpen = openAnswers.has(i);
@@ -171,7 +171,7 @@ export function Quiz({ source }: { source: string }) {
               </span>
 
               <div className="flex-1 min-w-0">
-                <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">
+                <p className="text-[0.95rem] leading-relaxed text-(--ink)">
                   {renderInline(item.q)}
                 </p>
 
@@ -207,10 +207,10 @@ export function Quiz({ source }: { source: string }) {
                     aria-label={`Hint for question ${i + 1}`}
                     className="mt-3 rounded-control border-l-2 border-warm/60 bg-warm/5 dark:bg-warm/10 px-3.5 py-3 animate-fade-up"
                   >
-                    <span className="block text-[10px] font-semibold uppercase tracking-widest text-warm-dark dark:text-warm-light mb-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-warm-dark dark:text-warm-light mb-1 font-mono">
                       Hint
                     </span>
-                    <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                    <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.hint)}
                     </p>
                   </div>
@@ -223,10 +223,10 @@ export function Quiz({ source }: { source: string }) {
                     aria-label={`Answer to question ${i + 1}`}
                     className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
                   >
-                    <span className="block text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light mb-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent mb-1 font-mono">
                       Answer
                     </span>
-                    <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                    <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.a)}
                     </p>
                   </div>

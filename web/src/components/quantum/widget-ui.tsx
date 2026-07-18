@@ -35,7 +35,7 @@ export function GateChip({ label, active = false }: { label: string; active?: bo
       className={`rounded-chip px-2 py-0.5 text-[11px] font-mono transition-colors duration-150 ${
         active
           ? "chip-selected"
-          : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"
+          : "border border-(--bd) bg-(--field) text-(--mut)"
       }`}
     >
       {label}
@@ -64,9 +64,9 @@ export function Bar({
   label,
   fraction,
   valueText,
-  fillClass = "bg-accent",
-  labelClassName = "text-gray-500 dark:text-gray-400",
-  valueClassName = "text-gray-500 dark:text-gray-400",
+  fillClass = "bar-fill",
+  labelClassName = "text-(--mut)",
+  valueClassName = "text-(--mut)",
   valueWidth = "w-12",
   marker,
   ariaLabel,
@@ -103,12 +103,12 @@ export function Bar({
         |{label}&#10217;
       </span>
       <span
-        className={`relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 ${
+        className={`relative h-3 flex-1 rounded-full bg-(--track) ${
           marker ? "overflow-visible" : "overflow-hidden"
         }`}
       >
         <span
-          className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-200 motion-reduce:transition-none ${fillClass}`}
+          className={`absolute inset-y-0 left-0 overflow-hidden rounded-full transition-[width] duration-200 motion-reduce:transition-none bar-shimmer ${fillClass}`}
           style={{ width: `${pct.toFixed(2)}%` }}
         />
         {marker && (
@@ -172,10 +172,9 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
   );
 }
 
-export const cardShell =
-  "rounded-card border border-gray-200/80 dark:border-gray-700/40 " +
-  "bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] " +
-  "shadow-(--shadow-resting)";
+// The smoke-and-glass widget shell: the `.glass` recipe (translucent fill +
+// backdrop blur + hairline border + glass elevation) on a rounded card.
+export const cardShell = "rounded-card glass";
 
 export function EyebrowLabel({
   children,
@@ -189,7 +188,7 @@ export function EyebrowLabel({
   return (
     <Tag
       id={id}
-      className="text-[10px] font-semibold uppercase tracking-widest text-accent dark:text-accent-light"
+      className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-accent"
     >
       {children}
     </Tag>
@@ -198,7 +197,7 @@ export function EyebrowLabel({
 
 export function Chip({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300">
+    <span className="rounded-chip border border-(--bd) bg-(--field) px-2.5 py-0.5 text-[11px] font-mono text-(--mut)">
       {children}
     </span>
   );
@@ -227,12 +226,12 @@ export function WidgetCard({
   let headerNode: ReactNode = header;
   if (headerNode === undefined && eyebrow !== undefined) {
     headerNode = headerRight !== undefined ? (
-      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-(--bd) px-4 py-2">
         <EyebrowLabel as={eyebrowAs} id={eyebrowId}>{eyebrow}</EyebrowLabel>
         {headerRight}
       </div>
     ) : (
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-(--bd) px-4 py-2">
         <EyebrowLabel as={eyebrowAs} id={eyebrowId}>{eyebrow}</EyebrowLabel>
         {chips}
       </div>

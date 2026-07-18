@@ -112,12 +112,12 @@ export function GroverVisualizer({ source }: { source: string }) {
                 key={idx}
                 label={basisLabel(idx, n)}
                 fraction={p}
-                fillClass={isMarked ? "bg-accent" : "bg-gray-300 dark:bg-gray-600"}
+                fillClass={isMarked ? "bar-fill" : "bg-gray-300 dark:bg-gray-600"}
                 valueText={`${(p * 100).toFixed(1)}%`}
                 labelClassName={
                   isMarked
                     ? "text-accent-dark dark:text-accent-light font-semibold"
-                    : "text-gray-500 dark:text-gray-400"
+                    : "text-caption"
                 }
               />
             );
@@ -125,13 +125,13 @@ export function GroverVisualizer({ source }: { source: string }) {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-          <p className="font-mono text-sm text-gray-700 dark:text-gray-200">
+          <p className="font-mono text-sm text-(--mut)">
             <span className="text-caption">success P(marked) = </span>
             <span className="text-accent dark:text-accent-light tabular-nums">
               {(success * 100).toFixed(1)}%
             </span>
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-caption">
             optimal = {optimal} iteration{optimal === 1 ? "" : "s"}
           </p>
         </div>
@@ -150,21 +150,21 @@ export function GroverVisualizer({ source }: { source: string }) {
           success * 100
         ).toFixed(1)}%`}
         display={frame}
-        rowClassName="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3"
-        labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+        rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
+        labelClassName="font-mono text-sm text-(--mut)"
         valueWidth="w-8"
       />
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-(--bd) px-4 py-3">
         <div className="flex items-center gap-2">
-          <label htmlFor={qubitsId} className="font-mono text-sm text-gray-600 dark:text-gray-300">
+          <label htmlFor={qubitsId} className="font-mono text-sm text-(--mut)">
             qubits
           </label>
           <select
             id={qubitsId}
             value={n}
             onChange={(e) => onChangeN(parseInt(e.target.value, 10))}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1 font-mono text-xs text-gray-700 dark:text-gray-200 focus-ring"
+            className="rounded-control border border-(--bd) bg-(--field) px-2 py-1 font-mono text-xs text-(--mut) focus-ring"
           >
             {[2, 3, 4].map((v) => (
               <option key={v} value={v}>
@@ -174,14 +174,14 @@ export function GroverVisualizer({ source }: { source: string }) {
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor={markedId} className="font-mono text-sm text-gray-600 dark:text-gray-300">
+          <label htmlFor={markedId} className="font-mono text-sm text-(--mut)">
             marked
           </label>
           <select
             id={markedId}
             value={marked}
             onChange={(e) => setMarked(parseInt(e.target.value, 10))}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1 font-mono text-xs text-gray-700 dark:text-gray-200 focus-ring"
+            className="rounded-control border border-(--bd) bg-(--field) px-2 py-1 font-mono text-xs text-(--mut) focus-ring"
           >
             {Array.from({ length: N }, (_, idx) => (
               <option key={idx} value={idx}>

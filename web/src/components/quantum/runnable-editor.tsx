@@ -45,19 +45,19 @@ export function RunnableEditor({ source }: { source: string }) {
       : "busy";
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
+    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
       {/* Live-cell accent ribbon — marks this as runnable, not a static block. */}
       <div
         aria-hidden="true"
         className="h-0.5 bg-gradient-to-r from-accent via-accent/40 to-warm/30"
       />
 
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-2.5 sm:px-5">
+      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-2.5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
             Run it yourself
           </span>
-          <span className="rounded-chip bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+          <span className="rounded-chip border border-(--bd) bg-(--field) px-1.5 py-0.5 font-mono text-[10px] text-caption">
             python
           </span>
         </div>
@@ -65,7 +65,7 @@ export function RunnableEditor({ source }: { source: string }) {
           <button
             type="button"
             onClick={reset}
-            className="rounded-control px-2.5 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 interactive focus-ring"
+            className="rounded-control px-2.5 py-1 text-xs font-medium text-caption hover:text-(--ink) interactive focus-ring"
           >
             Reset
           </button>
@@ -95,9 +95,9 @@ export function RunnableEditor({ source }: { source: string }) {
       {/* The output panel's live region stays mounted (sr-only when idle) so a
           screen reader announces results as they appear, not just when the box
           is first inserted. */}
-      <div className={showOutput ? "border-t border-gray-100 dark:border-gray-800" : ""}>
+      <div className={showOutput ? "border-t border-(--bd)" : ""}>
         {showOutput && (
-          <div className="flex items-center gap-2 bg-gray-50 px-4 pt-3 dark:bg-gray-950/40 sm:px-5">
+          <div className="flex items-center gap-2 bg-(--field) px-4 pt-3 sm:px-5">
             <StatusDot state={status} />
             <span className="text-[10px] font-semibold uppercase tracking-widest text-caption">
               Output
@@ -109,7 +109,7 @@ export function RunnableEditor({ source }: { source: string }) {
           aria-live="polite"
           className={
             showOutput
-              ? "overflow-x-auto bg-gray-50 px-4 pb-4 pt-2 font-mono text-[13px] leading-relaxed dark:bg-gray-950/40 sm:px-5 animate-fade-up"
+              ? "overflow-x-auto bg-(--field) px-4 pb-4 pt-2 font-mono text-[13px] leading-relaxed sm:px-5 animate-fade-up"
               : "sr-only"
           }
         >
@@ -131,7 +131,7 @@ function Output({ result }: { result: RunResult }) {
     return (
       <>
         {result.output && (
-          <span className="text-gray-700 dark:text-gray-300">{result.output}</span>
+          <span className="text-(--mut)">{result.output}</span>
         )}
         <span className="text-warm-dark dark:text-warm-light">{result.error}</span>
       </>
@@ -140,7 +140,7 @@ function Output({ result }: { result: RunResult }) {
   if (!result.output) {
     return <span className="text-caption">(no output)</span>;
   }
-  return <span className="text-gray-800 dark:text-gray-200">{result.output}</span>;
+  return <span className="text-(--ink)">{result.output}</span>;
 }
 
 function StatusDot({ state }: { state: "busy" | "ok" | "error" }) {

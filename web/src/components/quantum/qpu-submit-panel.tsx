@@ -131,7 +131,7 @@ const PRESETS: { name: string; qasm: string }[] = [
 ];
 
 const card =
-  "rounded-card border border-gray-200/70 dark:border-white/[0.08] bg-(--surface-1) shadow-(--shadow-resting)";
+  "rounded-card glass shadow-(--shadow-resting)";
 
 export function QpuSubmitPanel({ className }: { className?: string }) {
   if (!isQpuConfigured()) return null;
@@ -167,10 +167,10 @@ function Panel({ className }: { className?: string }) {
   return (
     <section aria-label="Run on real quantum hardware" className={className}>
       <header className="mb-4">
-        <p className="text-xs font-medium uppercase tracking-widest text-accent dark:text-accent-light">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent font-mono">
           Real hardware
         </p>
-        <h2 className="mt-1 font-display text-display-md tracking-tight text-gray-900 dark:text-white">
+        <h2 className="mt-1 font-display text-display-md tracking-tight text-(--ink)">
           Run on IQM Garnet
         </h2>
       </header>
@@ -182,12 +182,12 @@ function Panel({ className }: { className?: string }) {
         <div aria-hidden className={`mt-4 h-28 ${card} animate-pulse`} />
       )}
       {load === "signed-out" && (
-        <p className={`mt-4 ${card} px-5 py-4 text-sm text-gray-600 dark:text-gray-300`}>
+        <p className={`mt-4 ${card} px-5 py-4 text-sm text-(--mut)`}>
           Sign in to your workspace to run circuits on real hardware.
         </p>
       )}
       {load === "error" && (
-        <p role="alert" className={`mt-4 ${card} px-5 py-4 text-sm text-gray-600 dark:text-gray-300`}>
+        <p role="alert" className={`mt-4 ${card} px-5 py-4 text-sm text-(--mut)`}>
           Couldn&apos;t reach the hardware service. Please try again.
         </p>
       )}
@@ -235,8 +235,8 @@ function SponsorNote() {
     <div className="rounded-card border border-accent/30 bg-accent/[0.06] px-5 py-4">
       {/* Cap the reading measure: the banner spans the full-width band, but the prose
           stays near 70ch so it never becomes an unreadable wide line. */}
-      <p className="max-w-[70ch] text-sm leading-relaxed text-gray-700 dark:text-gray-200">
-        <span className="font-semibold text-gray-900 dark:text-white">
+      <p className="max-w-[70ch] text-sm leading-relaxed text-(--mut)">
+        <span className="font-semibold text-(--ink)">
           The platform pays for these runs. You are never charged.
         </span>{" "}
         IQM Garnet is a 20-qubit superconducting quantum processor in Amazon&apos;s{" "}
@@ -269,10 +269,10 @@ function BudgetBar({ budget }: { budget: Budget }) {
   return (
     <div className={`${card} px-5 py-4`}>
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium text-gray-900 dark:text-white">
+        <p className="text-sm font-medium text-(--ink)">
           Lifetime sponsored QPU budget
         </p>
-        <p className="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-200">
+        <p className="shrink-0 text-sm tabular-nums text-(--mut)">
           <span className="font-semibold">{usd(budget.remainingMicros)}</span>
           <span className="text-caption"> of {usd(budget.capMicros)} left</span>
         </p>
@@ -282,7 +282,7 @@ function BudgetBar({ budget }: { budget: Budget }) {
           so a screen-reader user and a sighted user were read different numbers off the
           same bar. */}
       <div
-        className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200/80 dark:bg-white/[0.06]"
+        className="mt-2 h-2 w-full overflow-hidden rounded-full bg-(--track)"
         role="progressbar"
         aria-label="Lifetime sponsored QPU budget"
         aria-valuemin={0}
@@ -290,13 +290,13 @@ function BudgetBar({ budget }: { budget: Budget }) {
         aria-valuenow={budget.remainingMicros}
         aria-valuetext={left}
       >
-        <div className="h-full rounded-full bg-accent-dark dark:bg-accent" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bar-fill" style={{ width: `${pct}%` }} />
       </div>
       <p className="mt-2 text-xs text-caption">
         {affordable > 0 ? (
           <>
             Enough for{" "}
-            <span className="tabular-nums font-medium text-gray-700 dark:text-gray-300">
+            <span className="tabular-nums font-medium text-(--mut)">
               {affordable.toLocaleString("en-US")}
             </span>{" "}
             more shots. Every run costs{" "}
@@ -346,7 +346,7 @@ function LadderProgress({ budget }: { budget: Budget }) {
         return (
           <span key={`${t.metric}:${t.n}`}>
             {i > 0 && <span aria-hidden="true" className="mr-1.5 text-gray-300 dark:text-gray-600">·</span>}
-            <span className={earned ? "text-gray-700 dark:text-gray-300" : undefined}>
+            <span className={earned ? "text-(--mut)" : undefined}>
               {t.title}:{" "}
               <span className="font-medium">
                 {Math.min(value, t.n).toLocaleString("en-US")} of {t.n.toLocaleString("en-US")}
@@ -400,12 +400,12 @@ function BudgetGuide({ budget }: { budget: Budget }) {
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
       className={`${card} group px-5 py-4`}
     >
-      <summary className="cursor-pointer list-item text-sm font-medium text-gray-900 dark:text-white interactive focus-ring rounded-control">
+      <summary className="cursor-pointer list-item text-sm font-medium text-(--ink) interactive focus-ring rounded-control">
         How the sponsored budget works
       </summary>
-      <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+      <div className="mt-3 space-y-3 text-sm leading-relaxed text-(--mut)">
         <p>
-          <span className="font-medium text-gray-800 dark:text-gray-200">
+          <span className="font-medium text-(--ink)">
             Ten <span className="tabular-nums">100</span>-shot runs cost{" "}
             <span className="tabular-nums">{usd(SPLIT_MICROS)}</span>
             {splitOverCap ? (
@@ -451,27 +451,27 @@ function BudgetGuide({ budget }: { budget: Budget }) {
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b border-gray-200/70 dark:border-white/[0.08]">
+              <tr className="border-b border-(--bd)">
                 <td className="py-1.5 pr-4">
                   <span className="tabular-nums">{MAX_SHOTS.toLocaleString("en-US")}</span> shots in
                   one run
                 </td>
-                <td className="py-1.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">
+                <td className="py-1.5 text-right font-semibold tabular-nums text-(--ink)">
                   {usd(CONCENTRATED_MICROS)}
                 </td>
               </tr>
-              <tr className="border-b border-gray-200/70 dark:border-white/[0.08]">
+              <tr className="border-b border-(--bd)">
                 <td className="py-1.5 pr-4">
                   <span className="tabular-nums">{MAX_SHOTS.toLocaleString("en-US")}</span> shots as
                   ten 100-shot runs
                 </td>
-                <td className="py-1.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">
+                <td className="py-1.5 text-right font-semibold tabular-nums text-(--ink)">
                   {usd(SPLIT_MICROS)}
                 </td>
               </tr>
               <tr>
                 <td className="py-1.5 pr-4">your whole lifetime sponsored budget</td>
-                <td className="py-1.5 text-right font-semibold tabular-nums text-gray-900 dark:text-white">
+                <td className="py-1.5 text-right font-semibold tabular-nums text-(--ink)">
                   {usd(capMicros)}
                 </td>
               </tr>
@@ -484,7 +484,7 @@ function BudgetGuide({ budget }: { budget: Budget }) {
           ). The second way pays the {PER_TASK_USD} task fee ten times instead of once.
         </p>
         <p>
-          <span className="font-medium text-gray-800 dark:text-gray-200">
+          <span className="font-medium text-(--ink)">
             Fewer, bigger runs are both better science and better value.
           </span>{" "}
           Shots buy statistical precision — at p = 0.5 the standard error of an estimated
@@ -497,14 +497,14 @@ function BudgetGuide({ budget }: { budget: Budget }) {
         {plan &&
           (plan.complete ? (
           <p>
-            <span className="font-medium text-gray-800 dark:text-gray-200">
+            <span className="font-medium text-(--ink)">
               You hold all three Hardware medals.
             </span>{" "}
             Anything you run now is your own experiment, on the same allowance.
           </p>
         ) : plan.fits ? (
           <p>
-            <span className="font-medium text-gray-800 dark:text-gray-200">
+            <span className="font-medium text-(--ink)">
               A plan that fits: {plan.runs} run{plan.runs === 1 ? "" : "s"}
               {plan.shots > 0 && (
                 <>
@@ -523,7 +523,7 @@ function BudgetGuide({ budget }: { budget: Budget }) {
           </p>
         ) : (
           <p>
-            <span className="font-medium text-gray-800 dark:text-gray-200">
+            <span className="font-medium text-(--ink)">
               All three medals no longer fit your remaining budget.
             </span>{" "}
             From here they would take {plan.runs} more run{plan.runs === 1 ? "" : "s"} totalling{" "}
@@ -555,18 +555,18 @@ function BudgetSpent({ budget }: { budget: Budget }) {
       : null;
   return (
     <div className={`${card} px-5 py-4`}>
-      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Sponsored budget spent</h3>
-      <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+      <h3 className="text-sm font-semibold text-(--ink)">Sponsored budget spent</h3>
+      <p className="mt-2 text-sm leading-relaxed text-(--mut)">
         Your <span className="tabular-nums font-medium">{usd(budget.capMicros)}</span> sponsored
         budget is spent
         {record ? (
           <>
             :{" "}
-            <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200">
+            <span className="tabular-nums font-medium text-(--ink)">
               {record.runs}
             </span>{" "}
             completed run{record.runs === 1 ? "" : "s"} on IQM Garnet,{" "}
-            <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200">
+            <span className="tabular-nums font-medium text-(--ink)">
               {record.shots.toLocaleString("en-US")}
             </span>{" "}
             shots. Those runs stay on your record.
@@ -575,7 +575,7 @@ function BudgetSpent({ budget }: { budget: Budget }) {
           <>. Your completed runs stay on your record.</>
         )}
       </p>
-      <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+      <p className="mt-2 text-sm leading-relaxed text-(--mut)">
         The hardware track continues on your own AWS account, against the same device. The
         repository submits through the Braket Python SDK, not the OpenQASM above — you rebuild the
         circuit as a <span className="font-mono text-xs">braket.circuits.Circuit</span> and run{" "}
@@ -636,17 +636,17 @@ function CredentialGate({
 
   return (
     <div className={`${card} px-5 py-4`}>
-      <p className="text-sm font-medium text-gray-900 dark:text-white">
+      <p className="text-sm font-medium text-(--ink)">
         One step before your first run: price it.
       </p>
       {/* Naming whose money it is makes the gate MORE compelling, not less. */}
-      <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+      <p className="mt-1 text-sm leading-relaxed text-(--mut)">
         Real hardware costs real money — ours. Price your first run before we spend it: what does a{" "}
         <span className="tabular-nums font-medium">{shots.toLocaleString("en-US")}</span>-shot run on
         IQM Garnet cost, to the nearest cent?
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 focus-within:ring-2 focus-within:ring-accent/40">
+        <div className="inline-flex items-center rounded-control border border-(--bd) bg-(--field) px-2 focus-within:ring-2 focus-within:ring-accent/40">
           <span className="text-caption">$</span>
           <label htmlFor="qpu-cred" className="sr-only">
             Estimated cost in dollars
@@ -660,7 +660,7 @@ function CredentialGate({
               if (state !== "idle" && state !== "checking") setState("idle");
             }}
             placeholder="0.00"
-            className="w-24 bg-transparent px-1 py-1.5 font-mono text-sm text-gray-900 dark:text-gray-100 outline-none tabular-nums"
+            className="w-24 bg-transparent px-1 py-1.5 font-mono text-sm text-(--ink) outline-none tabular-nums"
           />
         </div>
         <button
@@ -890,7 +890,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
   if (phase === "done") {
     return (
       <div className={`${card} px-5 py-4`}>
-        <p role="status" className="text-sm leading-relaxed text-gray-800 dark:text-gray-100 animate-fade-up">
+        <p role="status" className="text-sm leading-relaxed text-(--ink) animate-fade-up">
           {outcome?.msg}
         </p>
         <button
@@ -899,7 +899,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
             setOutcome(null);
             editForm();
           }}
-          className="mt-3 inline-flex rounded-control border border-gray-200 dark:border-gray-700/50 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 interactive focus-ring"
+          className="mt-3 inline-flex rounded-control border border-(--bd) px-3 py-1.5 text-sm font-medium text-(--mut) interactive focus-ring"
         >
           Run another
         </button>
@@ -909,7 +909,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
 
   return (
     <div className={`${card} px-5 py-4`}>
-      <label htmlFor="qpu-qasm" className="text-sm font-medium text-gray-900 dark:text-white">
+      <label htmlFor="qpu-qasm" className="text-sm font-medium text-(--ink)">
         Circuit (OpenQASM 3.0)
       </label>
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -918,7 +918,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
             key={p.name}
             type="button"
             onClick={() => setQasm(p.qasm)}
-            className="rounded-chip border border-gray-200 dark:border-gray-700/50 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300 interactive focus-ring"
+            className="rounded-chip border border-(--bd) px-2 py-0.5 text-xs text-(--mut) interactive focus-ring"
           >
             {p.name}
           </button>
@@ -932,7 +932,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           role="status"
           className="mt-2 flex items-start justify-between gap-3 rounded-control border border-accent/40 bg-accent/[0.06] px-3 py-2"
         >
-          <p className="text-xs leading-relaxed text-gray-700 dark:text-gray-200">
+          <p className="text-xs leading-relaxed text-(--mut)">
             Loaded from the playground
             {handoff.name ? (
               <>
@@ -945,7 +945,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
             type="button"
             onClick={() => setHandoffNoteShown(false)}
             aria-label="Dismiss the playground note"
-            className="shrink-0 rounded-control px-1 text-sm leading-none text-gray-500 dark:text-gray-400 interactive focus-ring"
+            className="shrink-0 rounded-control px-1 text-sm leading-none text-caption interactive focus-ring"
           >
             <span aria-hidden="true">&times;</span>
           </button>
@@ -961,11 +961,11 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           editForm();
         }}
         rows={Math.max(4, qasm.split("\n").length)}
-        className="mt-2 w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:text-gray-200 focus-ring resize-y disabled:opacity-60"
+        className="mt-2 w-full rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 font-mono text-sm text-(--ink) focus-ring resize-y disabled:opacity-60"
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <label htmlFor="qpu-shots" className="text-sm text-gray-700 dark:text-gray-300">
+        <label htmlFor="qpu-shots" className="text-sm text-(--mut)">
           Shots
         </label>
         <input
@@ -979,7 +979,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
             setShots(Math.floor(Number(e.target.value)));
             editForm();
           }}
-          className="w-24 rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-2 py-1.5 font-mono text-sm text-gray-900 dark:text-gray-100 focus-ring tabular-nums disabled:opacity-60"
+          className="w-24 rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 font-mono text-sm text-(--ink) focus-ring tabular-nums disabled:opacity-60"
         />
         {/* The bare "max 1,000" was a trap under a sponsored cap. The maxed run is
             now the OPTIMAL play (it banks Deep sample outright), so price it. */}
@@ -1013,7 +1013,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           type="button"
           disabled={!canSubmit}
           onClick={openConfirm}
-          className="mt-4 inline-flex items-center rounded-control border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-800 dark:text-gray-100 interactive focus-ring disabled:opacity-50"
+          className="mt-4 inline-flex items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-(--ink) interactive focus-ring disabled:opacity-50"
         >
           Review this run
         </button>
@@ -1022,7 +1022,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           role="status"
           className="mt-4 rounded-control border border-accent/40 bg-accent/[0.06] px-4 py-3 animate-fade-up"
         >
-          <p className="text-sm text-gray-800 dark:text-gray-100">
+          <p className="text-sm text-(--ink)">
             This spends <span className="font-semibold tabular-nums">{usd(micros)}</span> of your{" "}
             <span className="tabular-nums">{usd(budget.remainingMicros)}</span> sponsored budget on a
             real, irreversible run on the physical device. It cannot be undone once submitted.
@@ -1030,7 +1030,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           {/* The foresight line — the frontier, quoted BEFORE the click. This is what
               stops a learner walking off the cliff: three thoughtless 100-shot default
               runs foreclose the top medal, and this is where they can see it coming. */}
-          <p className="mt-1.5 text-sm tabular-nums text-gray-700 dark:text-gray-200">
+          <p className="mt-1.5 text-sm tabular-nums text-(--mut)">
             {afterShots > 0 ? (
               <>
                 After this run: {usd(afterMicros)} left — enough for{" "}
@@ -1073,7 +1073,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
               type="button"
               disabled={phase === "submitting"}
               onClick={editForm}
-              className="inline-flex items-center rounded-control border border-gray-200 dark:border-gray-700/50 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 interactive focus-ring disabled:opacity-50"
+              className="inline-flex items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-(--mut) interactive focus-ring disabled:opacity-50"
             >
               Cancel
             </button>
@@ -1086,20 +1086,20 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
 
 function CostBreakdown({ shots, micros }: { shots: number; micros: number }) {
   return (
-    <dl className="mt-3 rounded-control bg-gray-50 dark:bg-white/[0.03] px-3 py-2.5 text-sm">
+    <dl className="mt-3 rounded-control bg-(--field) border border-(--bd) px-3 py-2.5 text-sm">
       <div className="flex justify-between">
-        <dt className="text-gray-600 dark:text-gray-400">Task fee</dt>
-        <dd className="tabular-nums text-gray-800 dark:text-gray-200">{usd(IQM_TASK_MICROS)}</dd>
+        <dt className="text-(--mut)">Task fee</dt>
+        <dd className="tabular-nums text-(--ink)">{usd(IQM_TASK_MICROS)}</dd>
       </div>
       <div className="mt-1 flex justify-between">
-        <dt className="text-gray-600 dark:text-gray-400">
+        <dt className="text-(--mut)">
           Shots — {PER_SHOT_USD} × {shots.toLocaleString("en-US")}
         </dt>
-        <dd className="tabular-nums text-gray-800 dark:text-gray-200">{usd(IQM_SHOT_MICROS * shots)}</dd>
+        <dd className="tabular-nums text-(--ink)">{usd(IQM_SHOT_MICROS * shots)}</dd>
       </div>
-      <div className="mt-2 flex justify-between border-t border-gray-200/70 dark:border-white/[0.08] pt-2">
-        <dt className="font-medium text-gray-900 dark:text-white">Total to the device</dt>
-        <dd className="font-semibold tabular-nums text-gray-900 dark:text-white">{usd(micros)}</dd>
+      <div className="mt-2 flex justify-between border-t border-(--bd) pt-2">
+        <dt className="font-medium text-(--ink)">Total to the device</dt>
+        <dd className="font-semibold tabular-nums text-(--ink)">{usd(micros)}</dd>
       </div>
       <p className="mt-2 text-[0.7rem] text-caption">
         The exact Amazon Braket charge, to the nearest cent. The platform pays it — this is what
@@ -1112,16 +1112,16 @@ function CostBreakdown({ shots, micros }: { shots: number; micros: number }) {
 function RunHistory({ tasks }: { tasks: Budget["tasks"] }) {
   return (
     <div className={`${card} px-5 py-4`}>
-      <h3 className="text-sm font-medium text-gray-900 dark:text-white">Run history</h3>
-      <ul className="mt-2 divide-y divide-gray-100 dark:divide-white/[0.06]">
+      <h3 className="text-sm font-medium text-(--ink)">Run history</h3>
+      <ul className="mt-2 divide-y divide-(--bd)">
         {tasks.map((t) => (
           <li key={t.idempotencyKey} className="flex items-center justify-between gap-3 py-2 text-sm">
-            <span className="min-w-0 truncate text-gray-700 dark:text-gray-300">
+            <span className="min-w-0 truncate text-(--mut)">
               <span className="tabular-nums">{t.shots.toLocaleString("en-US")}</span> shots
               {t.taskArn ? ` · ${t.taskArn.split("/").pop()}` : ""}
             </span>
             <span className="flex shrink-0 items-center gap-2">
-              <span className="tabular-nums text-gray-500 dark:text-gray-400">{usd(t.estMicros)}</span>
+              <span className="tabular-nums text-caption">{usd(t.estMicros)}</span>
               <StatusChip status={t.status} />
             </span>
           </li>

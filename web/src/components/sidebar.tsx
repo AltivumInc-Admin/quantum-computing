@@ -40,7 +40,7 @@ function SidebarItem({
       className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-150 focus-ring ${
         isActive
           ? "hue-soft-bg hue-text font-medium shadow-sm"
-          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-gray-900 dark:hover:text-gray-200"
+          : "text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800/50 hover:text-(--ink)"
       }`}
     >
       <span
@@ -49,7 +49,7 @@ function SidebarItem({
             ? "bg-accent-dark text-white shadow-sm shadow-accent/40"
             : isActive
               ? "hue-soft-bg hue-text"
-              : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+              : "bg-gray-100 dark:bg-gray-800 text-caption"
         }`}
       >
         {complete ? <CheckBadge /> : String(section.index).padStart(2, "0")}
@@ -157,18 +157,18 @@ export function Sidebar() {
         role={open ? "dialog" : undefined}
         aria-modal={open || undefined}
         aria-label={open ? "Learning path navigation" : undefined}
-        className={`fixed top-16 left-0 z-40 w-72 h-[calc(100vh-4rem)] overflow-y-auto border-r border-gray-200/60 dark:border-gray-800/40 bg-white/95 dark:bg-[color-mix(in_oklab,var(--surface-2)_95%,transparent)] backdrop-blur-xl p-6 outline-none transition-transform lg:translate-x-0 ${
+        className={`fixed top-16 left-0 z-40 w-72 h-[calc(100vh-4rem)] overflow-y-auto border-r border-(--bd) bg-white/95 dark:bg-[color-mix(in_oklab,var(--surface-2)_95%,transparent)] backdrop-blur-xl p-6 outline-none transition-transform lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-caption mb-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent font-mono mb-3">
           Learning Path
         </p>
 
         {/* Overall progress */}
-        <div className="mb-5 rounded-control border border-gray-100 dark:border-white/[0.05] bg-gray-50/70 dark:bg-white/[0.02] p-3">
+        <div className="mb-5 rounded-control border border-(--bd) bg-(--field) p-3">
           <div className="flex items-baseline justify-between mb-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            <span className="text-xs font-medium text-caption">
               {completed} of {total} complete
             </span>
             <span className="text-sm font-semibold text-accent-dark dark:text-accent-light tabular-nums">

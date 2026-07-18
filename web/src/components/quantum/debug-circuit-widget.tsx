@@ -34,7 +34,7 @@ const VERDICT_STYLES: Record<GradeResult["status"], string> = {
   wrong:
     "border-l-2 border-warm/60 bg-warm/5 dark:bg-warm/10 text-warm-dark dark:text-warm-light",
   error:
-    "border-l-2 border-gray-300 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300",
+    "border-l-2 border-(--bd-2) bg-(--field) text-(--mut)",
 };
 
 export function DebugCircuitWidget({
@@ -99,8 +99,8 @@ export function DebugCircuitWidget({
 
   if (!spec || !truth) {
     return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
+      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
+        <p className="font-mono text-sm text-caption">
           debug error: {parsed.error}
         </p>
       </div>
@@ -108,8 +108,8 @@ export function DebugCircuitWidget({
   }
   if (truth.error) {
     return (
-      <div className="not-prose my-8 rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
+      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
+        <p className="font-mono text-sm text-caption">
           debug error: {truth.error}
         </p>
       </div>
@@ -165,9 +165,9 @@ export function DebugCircuitWidget({
     (surface !== "review" && solved) || sessionSolved || result?.status === "solved";
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card border border-gray-200/80 dark:border-gray-700/40 bg-white dark:bg-[color-mix(in_oklab,var(--surface-1)_60%,transparent)] shadow-(--shadow-resting)">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-4 py-3 sm:px-5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-dark dark:text-accent-light">
+    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
           Fix the circuit
         </span>
         {showSolved && (
@@ -179,14 +179,14 @@ export function DebugCircuitWidget({
       </div>
 
       <div className="px-4 py-4 sm:px-5">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">
           {spec.prompt}
         </p>
 
         {spec.allowedGates && spec.allowedGates.length > 0 && (
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          <p className="mt-2 text-xs text-caption">
             Allowed gates:{" "}
-            <span className="font-mono text-gray-600 dark:text-gray-300">
+            <span className="font-mono text-(--mut)">
               {spec.allowedGates.join(", ")}
             </span>
           </p>
@@ -209,7 +209,7 @@ export function DebugCircuitWidget({
             if (solvedGates !== null) setSolvedGates(null); // clear the stale "Fixed in N" caption
           }}
           rows={Math.max(3, code.split("\n").length + 1)}
-          className="mt-3 w-full rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:text-gray-200 focus-ring resize-y"
+          className="mt-3 w-full rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 font-mono text-sm text-(--ink) focus-ring resize-y"
         />
 
         <div className="mt-3 flex items-center gap-3">
@@ -224,7 +224,7 @@ export function DebugCircuitWidget({
           <button
             type="button"
             onClick={onReset}
-            className="rounded-control border border-gray-200 dark:border-gray-700/50 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 interactive focus-ring"
+            className="rounded-control border border-(--bd) px-3 py-1.5 text-sm font-medium text-(--mut) interactive focus-ring"
           >
             Reset to the broken circuit
           </button>

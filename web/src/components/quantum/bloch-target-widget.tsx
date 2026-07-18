@@ -67,8 +67,8 @@ const fmtDeg = (deg: number) => `${formatFixed(deg, 1)}°`;
 const fmtDegCeil = (deg: number) => `${formatFixed(Math.ceil(deg * 10 - 1e-7) / 10, 1)}°`;
 const fmtDegFloor = (deg: number) => `${formatFixed(Math.floor(deg * 10 + 1e-7) / 10, 1)}°`;
 
-const SLIDER_ROW = "flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3";
-const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300";
+const SLIDER_ROW = "flex items-center gap-3 border-t border-(--bd) px-4 py-3";
+const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-(--mut)";
 
 export function BlochTargetWidget({
   source,
@@ -181,7 +181,7 @@ export function BlochTargetWidget({
       }
     >
       <div className="px-4 pt-4 sm:px-5">
-        <p className="text-[0.95rem] leading-relaxed text-gray-800 dark:text-gray-200">{spec.prompt}</p>
+        <p className="text-[0.95rem] leading-relaxed text-(--ink)">{spec.prompt}</p>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {/* In blind mode the amplitudes ARE the answer (they encode θ), so the
               target ket stays hidden until solved — the prompt names the task. */}
@@ -241,7 +241,7 @@ export function BlochTargetWidget({
         labelClassName={SLIDER_LABEL}
       />
 
-      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3 sm:px-5">
+      <div className="border-t border-(--bd) px-4 py-3 sm:px-5">
         {!solved && (
           <button
             type="button"

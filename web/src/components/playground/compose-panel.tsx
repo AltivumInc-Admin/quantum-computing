@@ -167,7 +167,7 @@ export function ComposePanel({
         spellCheck={false}
         rows={Math.max(10, source.split("\n").length + 1)}
         maxLength={MAX_SHARE_SRC}
-        className="w-full resize-y rounded-control border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-sm text-gray-800 dark:border-gray-700/50 dark:bg-gray-900/50 dark:text-gray-200 focus-ring"
+        className="w-full resize-y rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 font-mono text-sm text-(--ink) focus-ring"
       />
 
       <p role="status" className="mt-2 min-h-4 text-xs">
@@ -190,7 +190,7 @@ export function ComposePanel({
                 type="button"
                 onClick={() => insertInstruction(chip.template)}
                 aria-label={`Insert ${chip.template}`}
-                className="rounded-chip bg-gray-100 px-2 py-1 font-mono text-[11px] text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 interactive focus-ring"
+                className="rounded-chip border border-(--bd) bg-(--field) px-2 py-1 font-mono text-[11px] text-(--mut) hover:text-(--ink) interactive focus-ring"
               >
                 {chip.label}
               </button>
@@ -231,7 +231,7 @@ export function ComposePanel({
           ariaValueText={`${theta.toFixed(2)} radians`}
           display={formatRadians(theta)}
           rowClassName="mt-4 flex items-center gap-3"
-          labelClassName="font-mono text-sm text-gray-600 dark:text-gray-300"
+          labelClassName="font-mono text-sm text-(--mut)"
         />
       )}
     </Panel>

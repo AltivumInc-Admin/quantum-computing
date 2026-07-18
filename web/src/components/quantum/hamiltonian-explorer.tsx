@@ -131,7 +131,7 @@ function TermBars({
         const positive = t.coeff >= 0;
         return (
           <li key={t.label} className="flex items-center gap-2">
-            <span className="w-12 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300">
+            <span className="w-12 shrink-0 font-mono text-xs text-(--mut)">
               {t.label}
             </span>
             <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
@@ -139,7 +139,7 @@ function TermBars({
                 className={
                   "absolute inset-y-0 left-0 rounded-full " +
                   (positive
-                    ? "bg-accent"
+                    ? "bar-fill"
                     : "bg-[color-mix(in_oklab,var(--accent)_45%,transparent)]") +
                   (animate
                     ? " transition-[width] duration-300 motion-reduce:transition-none"
@@ -148,7 +148,7 @@ function TermBars({
                 style={{ width: `${pct.toFixed(2)}%` }}
               />
             </span>
-            <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+            <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-caption">
               {signed(t.coeff, BAR_PRECISION)}
             </span>
           </li>
@@ -264,7 +264,7 @@ export function HamiltonianExplorer({ source }: { source: string }) {
               : angstromSR(R)
           }
           display={formatAngstrom(R)}
-          labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+          labelClassName="w-8 shrink-0 font-mono text-sm text-(--mut)"
           valueWidth="w-20"
         />
 
@@ -279,14 +279,14 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           >
             {tapered ? "Show full 4-qubit Hamiltonian" : "Apply Z2 symmetry tapering"}
           </button>
-          <span className="font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+          <span className="font-mono text-xs tabular-nums text-caption">
             sampled at R = {formatAngstrom(point.R)}
           </span>
         </div>
 
         {/* Qubit-budget readout (tapered) */}
         {tapered && (
-          <p className="mt-3 font-mono text-xs tabular-nums text-gray-700 dark:text-gray-200">
+          <p className="mt-3 font-mono text-xs tabular-nums text-(--mut)">
             4 qubits / 15 terms &nbsp;-&gt;&nbsp; 1 qubit / 3 terms
           </p>
         )}
@@ -306,7 +306,7 @@ export function HamiltonianExplorer({ source }: { source: string }) {
         </div>
 
         {/* Active-space projection (always visible to motivate the technique) */}
-        <p className="mt-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p className="mt-4 text-xs leading-relaxed text-caption">
           Tapering exploits H2&#39;s Z2 parity symmetries to drop the 4-qubit /
           15-term operator to 1 qubit / 3 terms. The savings grow fast: H2O in
           STO-3G needs 14 qubits before tapering or active-space reduction, which

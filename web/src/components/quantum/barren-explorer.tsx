@@ -138,11 +138,11 @@ export function BarrenExplorer({ source }: { source: string }) {
       <div className="px-4 py-4">
         {/* Legend */}
         <div className="mb-3 flex flex-wrap items-center gap-4 text-xs">
-          <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+          <span className="flex items-center gap-1.5 text-(--mut)">
             <span className="inline-block h-0.5 w-5 rounded-full bg-accent" aria-hidden="true" />
             global cost
           </span>
-          <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+          <span className="flex items-center gap-1.5 text-(--mut)">
             <span className="inline-block h-0.5 w-5 rounded-full bg-amber-500" aria-hidden="true" />
             local cost
           </span>
@@ -259,7 +259,7 @@ export function BarrenExplorer({ source }: { source: string }) {
         <p
           role="status"
           aria-live="polite"
-          className="mt-3 text-center text-xs font-mono tabular-nums text-gray-600 dark:text-gray-300"
+          className="mt-3 text-center text-xs font-mono tabular-nums text-(--mut)"
         >
           Gradient variance at {N_MAX} qubits — global ≈ 10
           <sup>{logG[logG.length - 1].toFixed(1)}</sup>, local ≈ 10
@@ -283,7 +283,7 @@ export function BarrenExplorer({ source }: { source: string }) {
         />
 
         {/* Callout */}
-        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-3 text-xs text-caption">
           The accent curve&rsquo;s gradient variance vanishes roughly like 2
           <sup>&minus;n</sup>: the optimizer faces an exponentially flat plateau. Raise
           the depth slider and even the amber curve flattens (Cerezo 2021).
