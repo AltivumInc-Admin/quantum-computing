@@ -24,13 +24,19 @@ export function Nav() {
           style={{ viewTransitionName: "brand" } as React.CSSProperties}
           className="group -mx-2 flex items-center gap-2.5 justify-self-start rounded-lg px-2 py-1.5 interactive focus-ring"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-md border border-(--bd) bg-(--field)">
-            <svg className="h-4 w-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          {/* The favicon's atom mark, in the site's olive with a warm-gold electron. */}
+          <span className="flex h-7 w-7 items-center justify-center rounded-md border border-(--bd) bg-(--field) text-accent">
+            <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <g stroke="currentColor" strokeWidth="1.4">
+                <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(45 12 12)" />
+                <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-45 12 12)" />
+              </g>
+              <circle cx="12" cy="12" r="1.9" fill="currentColor" />
+              <circle cx="18.4" cy="5.6" r="1.5" fill="var(--color-warm)" />
             </svg>
           </span>
           <span className="font-display text-lg text-(--ink) transition-colors group-hover:text-accent">
-            Quantum Workspace
+            Quantum Learner
           </span>
         </Link>
 

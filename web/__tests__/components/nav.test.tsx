@@ -39,9 +39,9 @@ describe("Nav", () => {
     expect(screen.getByRole("navigation")).toBeInTheDocument();
   });
 
-  it("should render a link to the home page with text 'Quantum Workspace'", () => {
+  it("should render a link to the home page with the Quantum Learner brand", () => {
     render(<Nav />);
-    const link = screen.getByRole("link", { name: "Quantum Workspace" });
+    const link = screen.getByRole("link", { name: "Quantum Learner" });
     expect(link).toHaveAttribute("href", "/");
   });
 

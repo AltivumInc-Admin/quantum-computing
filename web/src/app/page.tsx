@@ -393,11 +393,13 @@ export default async function HomePage() {
       {/* ------------------------------------------------------------------ */}
       <section
         aria-labelledby="account-heading"
-        className="dark relative overflow-hidden bg-[#0a0f1a] border-y border-white/[0.06]"
+        className="dark relative overflow-hidden bg-[#0b0b0c] border-y border-white/[0.06]"
       >
+        {/* Match the hero's smoke: a warm fog bloom + faint grid over near-black,
+            not the old cool navy. */}
         <div className="absolute inset-0 bg-atmosphere" />
         <div className="absolute inset-0 bg-grid-dots [mask-image:radial-gradient(ellipse_60%_70%_at_50%_50%,black,transparent)]" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-accent/[0.08] rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[820px] h-[420px] bg-[radial-gradient(ellipse_at_center,rgba(230,228,214,0.10),transparent_65%)] rounded-full blur-[90px] pointer-events-none" />
 
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center reveal">
           <p className="text-xs font-semibold tracking-widest uppercase text-accent-light mb-4">
