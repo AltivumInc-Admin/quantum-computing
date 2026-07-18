@@ -66,14 +66,20 @@ def test_notebook_is_valid_nbformat(name):
 
 
 @pytest.mark.parametrize("name", EXPECTED_NOTEBOOKS)
-def test_notebook_has_self_check(name):
-    """Each prereq notebook is expected to end with a self-check + solutions."""
+def test_notebook_has_exercises_and_solutions(name):
+    """Each prereq notebook ends with graded exercises + visible solutions.
+
+    Prereqs follow the shared exercise convention (docs/exercise-convention.md):
+    a "# Check Exercise N" cell per exercise, plus a visible solutions section
+    (prereqs deliberately keep worked answers as their on-ramp). The full
+    structural + solutions-execution gate lives in tests/test_exercise_checks.py.
+    """
     nb = json.loads((NOTEBOOK_DIR / name).read_text())
     text = " ".join(
         ("".join(c["source"]) if isinstance(c["source"], list) else c["source"])
         for c in nb["cells"]
     ).lower()
-    assert "self-check" in text, f"{name} is missing a self-check section"
+    assert "# check exercise" in text, f"{name} is missing graded exercises"
     assert "solution" in text, f"{name} is missing a solutions section"
 
 
