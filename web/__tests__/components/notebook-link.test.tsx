@@ -75,4 +75,24 @@ describe("NotebookLink", () => {
       "https://github.com/AltivumInc-Admin/quantum-computing/blob/main/04-quantum-ml/notebooks/01-data-encoding.ipynb"
     );
   });
+
+  it("renders a real Run link for a browser-runnable notebook", () => {
+    render(<NotebookLink {...defaultProps} browserRunnable />);
+    const run = screen.getByRole("link", { name: /run first circuit in browser/i });
+    expect(run).toHaveAttribute(
+      "href",
+      `/lab/lab/index.html?path=${encodeURIComponent("01-foundations/notebooks/01-first-circuit.ipynb")}`
+    );
+  });
+
+  it("explains the unavailable Run chip in text, without invalid ARIA", () => {
+    // aria-disabled is unsupported on a generic span (axe: aria-allowed-attr)
+    // and a title-only reason is invisible to touch and screen-reader users;
+    // the chip must carry the reason as (sr-only) text instead.
+    render(<NotebookLink {...defaultProps} />);
+    const chip = screen.getByText("Run in browser");
+    expect(chip).not.toHaveAttribute("aria-disabled");
+    expect(chip.tagName).toBe("SPAN");
+    expect(chip).toHaveTextContent(/unavailable, requires AWS Braket hardware access/);
+  });
 });

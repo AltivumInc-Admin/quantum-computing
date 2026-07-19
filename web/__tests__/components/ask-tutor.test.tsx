@@ -55,6 +55,18 @@ describe("AskTutor", () => {
     expect(screen.queryByLabelText("Ask about this lesson")).toBeNull();
   });
 
+  it("offsets the pill above the mobile drawer toggle below lg, original slot on desktop", () => {
+    // The sidebar's drawer toggle owns bottom-4 right-4 on <lg viewports; the
+    // pill must sit clear of it (bottom-20) or it swallows taps meant for the
+    // only mobile navigation affordance on lesson pages.
+    render(<AskTutor />);
+    const trigger = screen.getByLabelText("Ask about this lesson");
+    expect(trigger.className).toContain("bottom-20");
+    expect(trigger.className).toContain("right-4");
+    expect(trigger.className).toContain("lg:bottom-5");
+    expect(trigger.className).toContain("lg:right-5");
+  });
+
   it("opens on the trigger and shows what it is grounded in", () => {
     render(<AskTutor />);
     fireEvent.click(screen.getByLabelText("Ask about this lesson"));

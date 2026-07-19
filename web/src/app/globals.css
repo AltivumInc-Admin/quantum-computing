@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "highlight.js/styles/github-dark.css";
-@import "katex/dist/katex.min.css";
+/* KaTeX's 23.8KB stylesheet (60 @font-face declarations) is NOT imported here:
+   it ships route-scoped from the two components that render math —
+   markdown-renderer.tsx (/learn/*) and glossary/inline-markdown.tsx
+   (/glossary/*) — so the public funnel pages don't pay for it. */
 @plugin "@tailwindcss/typography";
 @variant dark (&:where(.dark, .dark *));
 @custom-variant can-hover (@media (hover: hover));
@@ -421,6 +424,17 @@
 
   .prose thead th {
     border-bottom-color: var(--color-accent);
+  }
+
+  /* KaTeX-documented fix for wide display equations (e.g. the four-equation
+     CNOT truth-table line): KaTeX output is white-space: nowrap, so without
+     its own scroll box a long display line drags the whole page sideways at
+     phone widths (WCAG 1.4.10 reflow). Tables get the same treatment via the
+     MarkdownTable wrapper. katex.min.css itself is imported by the two math
+     consumers (markdown-renderer, glossary inline-markdown), not globally. */
+  .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 }
 

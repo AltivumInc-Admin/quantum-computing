@@ -69,7 +69,10 @@ export function PrevNext({ currentSlug }: PrevNextProps) {
     // Stacked below sm — side by side, each card gets ~90px of title width at
     // 375px and four of the seven titles share the "Quantum" prefix, so the
     // truncated destinations become indistinguishable stubs.
-    <div className="flex flex-col sm:flex-row items-stretch justify-between gap-4 mt-16 pt-10 border-t border-(--bd)">
+    // No border-t here: the lesson footer's completion row (its only
+    // composition) already opens the block with the one --bd hairline, so a
+    // second rule ~100px below it would double the divider rhythm.
+    <div className="flex flex-col sm:flex-row items-stretch justify-between gap-4 mt-16">
       {prev ? (
         <PrevNextCard section={prev} direction="prev" />
       ) : (

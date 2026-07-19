@@ -47,6 +47,8 @@ describe("HomePage (welcome page)", () => {
   it("exports SEO metadata describing the platform", () => {
     expect(String(metadata.description)).toMatch(/quantum computing/i);
     expect(String(metadata.description)).toMatch(/braket/i);
+    // Public funnel route: must never inherit the walled pages' noindex.
+    expect(metadata.robots).toBeUndefined();
   });
 
   it("exports canonical + Open Graph + Twitter metadata", () => {

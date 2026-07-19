@@ -77,12 +77,16 @@ export function NotebookLink({
             Run in browser
           </a>
         ) : (
+          // aria-disabled is not a supported state on a generic span (axe:
+          // aria-allowed-attr), so the chip reads as descriptive text instead:
+          // an sr-only qualifier carries the reason the hover title shows,
+          // matching the sidebar's sr-only "completed" idiom.
           <span
             className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-caption cursor-not-allowed"
             title="Requires AWS Braket hardware access"
-            aria-disabled="true"
           >
             Run in browser
+            <span className="sr-only"> — unavailable, requires AWS Braket hardware access</span>
           </span>
         )}
         <a

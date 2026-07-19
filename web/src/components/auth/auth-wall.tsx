@@ -42,8 +42,15 @@ function GateScreen() {
  *
  * In the configured production build the provider starts in "configuring", so
  * protected routes pre-render as the gate rather than their content: the
- * content never ships in the static HTML and never reaches a search index —
- * the deliberate trade for a hard wall. A signed-out visitor who deep-links to
+ * rendered DOM shows only the gate, and the per-page robots noindex keeps the
+ * walled URLs out of search indexes. This is an access gate, NOT a
+ * confidentiality boundary: under output:"export" React Flight must serialize
+ * the whole protected subtree (the full lesson content) into each page's
+ * static payload — the inline RSC data in the .html and the adjacent .txt
+ * flight segment — where view-source or curl can recover it. Hiding the
+ * content itself would require authenticated delivery of /learn/* at the
+ * CDN/Amplify layer, which is infra work outside this app. A signed-out
+ * visitor who deep-links to
  * a protected route is redirected to `/login?mode=signup&next=…` — sign-up
  * framing because a walled-off visitor is most likely a brand-new prospect
  * (the form still offers "Already have an account? Sign in" one tap away),

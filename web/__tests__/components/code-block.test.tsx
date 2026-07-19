@@ -62,6 +62,20 @@ describe("CodeBlock", () => {
     expect(pre.className).toContain("whitespace-pre-wrap");
   });
 
+  it("reserves headroom for the always-visible chrome on touch devices", () => {
+    // Touch devices (no hover) show the chip/wrap/copy chrome permanently, so
+    // the pre must reserve top padding under it; hover-capable devices get the
+    // compact padding back via the can-hover variant.
+    const { container } = render(
+      <CodeBlock rawText="x" language="python">
+        <code>x</code>
+      </CodeBlock>
+    );
+    const pre = container.querySelector("pre")!;
+    expect(pre.className).toContain("pt-12");
+    expect(pre.className).toContain("can-hover:pt-3.5");
+  });
+
   it("is not a keyboard scroll region when the code fits (no overflow)", () => {
     const { container } = render(
       <CodeBlock rawText="x" language="python">

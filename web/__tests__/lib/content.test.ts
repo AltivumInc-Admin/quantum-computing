@@ -5,7 +5,6 @@ describe("content", () => {
     const content = await getContent("01-foundations");
     expect(content).toBeDefined();
     expect(content!.markdown).toContain("# Quantum Computing Foundations");
-    expect(content!.title).toBe("Quantum Computing Foundations");
     expect(content!.notebooks.length).toBeGreaterThan(0);
   });
 

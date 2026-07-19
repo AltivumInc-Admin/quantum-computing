@@ -43,6 +43,9 @@ describe("TermDetail", () => {
   it("renders the copy-link button and the coming-soon CTA", () => {
     render(<TermDetail term={qubit} />);
     expect(screen.getByRole("button", { name: /copy link/i })).toBeInTheDocument();
-    expect(screen.getByText(/the quantum workspace/i)).toBeInTheDocument();
+    // The CTA carries the one brand name from lib/site.ts (WS-A1 rebrand) and,
+    // with Cognito env absent here, the unconfigured "coming soon" variant.
+    expect(screen.getByText("Quantum Learner")).toBeInTheDocument();
+    expect(screen.getByText(/sign-up coming soon/i)).toBeInTheDocument();
   });
 });

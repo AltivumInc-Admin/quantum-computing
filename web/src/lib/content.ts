@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { getSectionBySlug } from "./sections";
 import { isNotebookRunnable } from "./manifest";
+import { stripLinksAndEmphasis } from "./strip-inline";
 
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 
@@ -12,7 +13,6 @@ export interface NotebookEntry {
 
 export interface ContentData {
   markdown: string;
-  title: string;
   notebooks: NotebookEntry[];
 }
 
@@ -37,9 +37,10 @@ export async function getContent(slug: string): Promise<ContentData | null> {
   const markdown = await readGuide(slug);
   if (markdown === null) return null;
 
-  const title = extractTitle(markdown);
+  // No title field: the rendered lesson title comes from the GUIDE's own h1
+  // via MarkdownRenderer, and metadata titles come from sections.ts.
   const notebooks = await listNotebooks(section.dirName);
-  return { markdown, title, notebooks };
+  return { markdown, notebooks };
 }
 
 export async function getContentSummary(slug: string): Promise<string | null> {
@@ -85,20 +86,12 @@ export async function getContentSummary(slug: string): Promise<string | null> {
 
 // Section cards show plain-text teasers, so strip inline Markdown that would
 // otherwise render literally (e.g. `**describe**` or `[text](url)`) on the
-// landing page. Order matters: links and code first, then bold before italic.
+// landing page. The link/code/asterisk core is shared with extract-headings'
+// TOC-label stripper; only the underscore emphasis is teaser-specific.
 function stripInlineMarkdown(text: string): string {
-  return text
-    .replace(/!?\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) / ![alt](url) -> text
-    .replace(/`([^`]+)`/g, "$1") // `code` -> code
-    .replace(/\*\*([^*]+)\*\*/g, "$1") // **bold** -> bold
-    .replace(/\*([^*]+)\*/g, "$1") // *italic* -> italic
+  return stripLinksAndEmphasis(text)
     .replace(/__([^_]+)__/g, "$1") // __bold__ -> bold
     .replace(/(^|\s)_([^_]+)_(?=\s|$)/g, "$1$2"); // _italic_ -> italic
-}
-
-function extractTitle(markdown: string): string {
-  const match = markdown.match(/^# (.+)$/m);
-  return match ? match[1] : "Untitled";
 }
 
 async function listNotebooks(dirName: string): Promise<NotebookEntry[]> {

@@ -71,12 +71,17 @@ export function CodeBlock({
           <CopyButton getText={() => rawText} className="bg-gray-800/80 text-gray-300 hover:text-white" />
         </div>
       </div>
+      {/* On touch devices the chrome above is permanently visible, so the pre
+          reserves headroom for it (pt-12); hover-capable devices keep the
+          compact padding since their chrome only appears on hover/focus.
+          Without the reserve, the tail of the first code lines scrolls under
+          ~120px of opaque chip/buttons on a phone. */}
       <pre
         ref={preRef}
         tabIndex={canScroll ? 0 : undefined}
         role={canScroll ? "region" : undefined}
         aria-label={canScroll ? `${language ?? "code"} snippet` : undefined}
-        className={`overflow-x-auto px-4 py-3.5 text-sm leading-relaxed text-gray-200 ${
+        className={`overflow-x-auto px-4 pb-3.5 pt-12 can-hover:pt-3.5 text-sm leading-relaxed text-gray-200 ${
           canScroll ? "focus-ring " : ""
         }${wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
       >

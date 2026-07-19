@@ -178,7 +178,11 @@ export function AskTutor() {
         type="button"
         aria-label="Ask about this lesson"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring hover:text-accent dark:hover:text-accent-light"
+        // Below lg the sidebar's mobile drawer toggle owns the bottom-right
+        // corner (fixed bottom-4 right-4, ~48px); the pill sits one slot above
+        // it (bottom-20 clears the toggle plus a 16px gap) so the two fixed
+        // affordances never stack. Desktop keeps the original placement.
+        className="fixed bottom-20 right-4 lg:bottom-5 lg:right-5 z-50 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring hover:text-accent dark:hover:text-accent-light"
       >
         Ask
         <kbd className="rounded bg-(--field) border border-(--bd) px-1.5 py-0.5 font-mono text-[10px] text-caption">
