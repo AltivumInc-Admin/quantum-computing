@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { TUTOR_ERROR_SENTINEL } from "@/lib/tutor";
 import { sha256Hex } from "@/lib/sha256";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
+import { TUTOR_TRIGGER_ID } from "@/lib/layout-regions";
 
 /**
  * "Ask the margin" — a Socratic lesson tutor. A fixed affordance (and Cmd/Ctrl-K)
@@ -171,6 +172,9 @@ export function AskTutor() {
     <>
       <button
         ref={triggerRef}
+        // Shared-constant id: the mobile drawer marks this pill inert while it
+        // is open (see lib/layout-regions.ts and sidebar.tsx).
+        id={TUTOR_TRIGGER_ID}
         type="button"
         aria-label="Ask about this lesson"
         onClick={() => setOpen(true)}

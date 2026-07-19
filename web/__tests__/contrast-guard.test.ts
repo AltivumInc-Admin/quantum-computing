@@ -15,9 +15,12 @@ import { join } from "path";
 
 const SRC = join(__dirname, "..", "src");
 
-// Solid accent fill: `bg-accent` / `dark:bg-accent`, but NOT `bg-accent-dark`,
+// Solid accent fill: `bg-accent` / `dark:bg-accent`, plus the gradient stops
+// `from-accent` / `via-accent` / `to-accent` — a gradient built from the raw
+// accent is the same sub-AA fill this guard exists to block (the mobile-nav
+// FAB shipped through exactly that loophole). Still NOT `bg-accent-dark`,
 // `bg-accent-light` (hyphen) or `bg-accent/40` (slash opacity = translucent).
-const SOLID_ACCENT_FILL = /\bbg-accent\b(?![-/])/;
+const SOLID_ACCENT_FILL = /\b(?:bg|from|via|to)-accent\b(?![-/])/;
 const WHITE_TEXT = /\btext-white\b/;
 
 function collectSourceFiles(dir: string): string[] {

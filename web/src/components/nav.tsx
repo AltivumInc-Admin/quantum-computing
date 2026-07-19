@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
 import { ReviewNavBadge } from "./review-nav-badge";
 import { AccountMenu } from "./auth/account-menu";
+import { SITE_HEADER_ID } from "@/lib/layout-regions";
 
 const NAV = [
   { href: "/playground", label: "Playground" },
@@ -31,7 +32,7 @@ function PillLinks() {
 export function Nav() {
   return (
     <header
-      id="site-header"
+      id={SITE_HEADER_ID}
       className="sticky top-0 z-50 border-b border-(--bd) bg-(--glass) backdrop-blur-xl backdrop-saturate-150"
     >
       <nav className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">

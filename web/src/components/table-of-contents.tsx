@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Heading } from "@/lib/extract-headings";
 
-// Track which heading is currently in view. The rootMargin pushes the trigger
-// line up to ~30% from the top so a heading becomes "active" as it nears the top
-// of the viewport, and the active pick is the topmost heading still on screen.
+// Track which heading the reader is at. The rootMargin confines intersection
+// to the top ~30% of the viewport (the trigger band): the topmost heading in
+// the band wins, and once a heading scrolls past the band — while its section
+// BODY is being read — it stays active until the next heading takes over.
+// Without that retention the highlight would blank for most of any section
+// taller than the band (nearly every GUIDE section).
 function useActiveHeading(slugs: string[]): string | null {
   const key = slugs.join("|");
   const [active, setActive] = useState<string | null>(null);
@@ -14,17 +17,40 @@ function useActiveHeading(slugs: string[]): string | null {
     if (typeof IntersectionObserver === "undefined") return;
     const list = key ? key.split("|") : [];
     const visible = new Set<string>();
+    // Headings that crossed above the trigger band — their body is (or was)
+    // being read. The deepest one is the fallback when no heading is visible.
+    const passed = new Set<string>();
 
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const id = (entry.target as HTMLElement).id;
-          if (entry.isIntersecting) visible.add(id);
-          else visible.delete(id);
+          if (entry.isIntersecting) {
+            visible.add(id);
+            passed.delete(id);
+          } else {
+            visible.delete(id);
+            // Leaving upward (above the viewport top) = scrolled past the
+            // band; leaving downward = not reached yet / scrolled back above.
+            if (entry.boundingClientRect.top < 0) passed.add(id);
+            else passed.delete(id);
+          }
         }
-        // Topmost heading still on screen, or null when scrolled into the
-        // intro area above the first tracked heading (so no entry stays stale).
-        setActive(list.find((slug) => visible.has(slug)) ?? null);
+        // Topmost heading inside the band wins; otherwise the last heading
+        // that scrolled past it. Null only when nothing has been passed —
+        // the intro area above the first tracked heading.
+        const topmostVisible = list.find((slug) => visible.has(slug));
+        if (topmostVisible) {
+          setActive(topmostVisible);
+          return;
+        }
+        for (let i = list.length - 1; i >= 0; i--) {
+          if (passed.has(list[i])) {
+            setActive(list[i]);
+            return;
+          }
+        }
+        setActive(null);
       },
       { rootMargin: "0px 0px -70% 0px", threshold: 0 }
     );
@@ -61,7 +87,7 @@ export function TableOfContents({ headings }: { headings: Heading[] }) {
         />
         On this page
       </p>
-      <ul className="space-y-px border-l border-gray-200/70 dark:border-gray-800">
+      <ul className="space-y-px border-l border-(--bd)">
         {headings.map((h) => {
           const isActive = active === h.slug;
           return (
@@ -74,7 +100,7 @@ export function TableOfContents({ headings }: { headings: Heading[] }) {
                 } ${
                   isActive
                     ? "hue-border hue-text font-medium"
-                    : "border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-200"
+                    : "border-transparent text-(--mut) hover:border-(--bd-2) hover:text-(--ink)"
                 }`}
               >
                 {h.text}

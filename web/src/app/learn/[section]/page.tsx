@@ -11,6 +11,7 @@ import { PrevNext } from "@/components/prev-next";
 import { SectionProgress } from "@/components/section-progress";
 import { TableOfContents } from "@/components/table-of-contents";
 import { SITE_NAME } from "@/lib/site";
+import { LESSON_CONTENT_ID } from "@/lib/layout-regions";
 
 interface PageProps {
   params: Promise<{ section: string }>;
@@ -69,8 +70,7 @@ export default async function SectionPage({ params }: PageProps) {
         aria-hidden="true"
         className="read-progress fixed inset-x-0 top-16 z-40 h-0.5 bg-gradient-to-r from-accent to-warm"
       />
-      <Sidebar />
-      <div id="lesson-content" className="flex-1 lg:ml-72">
+      <div id={LESSON_CONTENT_ID} className="flex-1 lg:ml-72">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-16 xl:grid xl:grid-cols-[minmax(0,1fr)_14rem] xl:gap-12">
           <div className="mx-auto w-full max-w-3xl xl:mx-0">
             <div className="animate-fade-up">
@@ -120,6 +120,13 @@ export default async function SectionPage({ params }: PageProps) {
           )}
         </div>
       </div>
+      {/* The sidebar renders AFTER the lesson so "Skip to content" lands
+          keyboard users in the lesson body, not in front of the same 7-link
+          learning-path block on every page turn. Its aside is position:fixed
+          (out of flow), so DOM order changes tab order with zero visual
+          change — and the mobile FAB ends up last, matching its
+          bottom-corner position. */}
+      <Sidebar />
     </div>
   );
 }

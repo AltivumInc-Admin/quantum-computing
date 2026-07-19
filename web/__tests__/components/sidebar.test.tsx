@@ -2,26 +2,51 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { Sidebar } from "@/components/sidebar";
+import {
+  DRAWER_INERT_REGION_IDS,
+  SITE_HEADER_ID,
+  LESSON_CONTENT_ID,
+  SITE_FOOTER_ID,
+  TUTOR_TRIGGER_ID,
+} from "@/lib/layout-regions";
 
-jest.mock("next/link", () => {
-  const React = require("react");
-  return {
-    __esModule: true,
-    default: ({ href, children, onClick, ...props }: { href: string; children: React.ReactNode; onClick?: () => void }) =>
-      React.createElement("a", { href, onClick, ...props }, children),
-  };
-});
-
-// SidebarItem now navigates via TransitionLink (View Transitions). Mock it to a
-// plain anchor so the test doesn't need a mounted app router.
+// SidebarItem navigates via TransitionLink (View Transitions). Mock it to a
+// plain anchor so the test doesn't need a mounted app router — but keep the
+// REAL isModifiedClick, so the drawer's "should this click close me?" guard is
+// actually exercised. (No next/link mock: Sidebar renders no raw Link — if one
+// ever creeps back in, the resulting failure IS the signal.)
 jest.mock("@/components/transition-link", () => {
   const React = require("react");
+  const actual = jest.requireActual("@/components/transition-link");
   return {
     __esModule: true,
-    TransitionLink: ({ href, children, onClick, ...props }: { href: string; children: React.ReactNode; onClick?: () => void }) =>
-      React.createElement("a", { href, onClick, ...props }, children),
+    isModifiedClick: actual.isModifiedClick,
+    TransitionLink: ({
+      href,
+      children,
+      onClick,
+      ...props
+    }: {
+      href: string;
+      children: React.ReactNode;
+      onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+    }) =>
+      React.createElement(
+        "a",
+        {
+          href,
+          onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+            onClick?.(e);
+            // jsdom cannot navigate; swallow the default after the consumer's
+            // handler ran (its defaultPrevented check must see the raw click).
+            e.preventDefault();
+          },
+          ...props,
+        },
+        children
+      ),
   };
 });
 
@@ -30,10 +55,46 @@ jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));
 
+/** The drawer alongside stand-ins for every layout region it must inert. */
+function renderWithChrome() {
+  return render(
+    <>
+      <header id={SITE_HEADER_ID}>
+        <a href="#brand">brand</a>
+      </header>
+      <div id={LESSON_CONTENT_ID}>
+        <a href="#lesson">lesson link</a>
+      </div>
+      <footer id={SITE_FOOTER_ID}>
+        <a href="#footer-link">footer link</a>
+      </footer>
+      <button id={TUTOR_TRIGGER_ID}>Ask</button>
+      <Sidebar />
+    </>
+  );
+}
+
+function getToggle() {
+  return screen.getByRole("button", { name: "Toggle navigation" });
+}
+
+async function openDrawer() {
+  await act(async () => {
+    getToggle().click();
+  });
+}
+
+async function pressEscape() {
+  await act(async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  });
+}
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname = "/learn/01-foundations";
     localStorage.clear();
+    document.body.style.overflow = "";
   });
 
   it("should render the 'Learning Path' heading", () => {
@@ -67,60 +128,63 @@ describe("Sidebar", () => {
 
   it("should render the mobile toggle button", () => {
     render(<Sidebar />);
-    expect(screen.getByRole("button", { name: "Toggle navigation" })).toBeInTheDocument();
+    expect(getToggle()).toBeInTheDocument();
   });
 
   it("should expose the drawer open state via aria-expanded on the toggle", async () => {
     render(<Sidebar />);
-    const toggle = screen.getByRole("button", { name: "Toggle navigation" });
+    const toggle = getToggle();
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await act(async () => {
-      toggle.click();
-    });
+    await openDrawer();
     expect(toggle).toHaveAttribute("aria-expanded", "true");
   });
 
   it("should close the mobile drawer when Escape is pressed", async () => {
     const { container } = render(<Sidebar />);
-    const toggle = screen.getByRole("button", { name: "Toggle navigation" });
-    await act(async () => {
-      toggle.click();
-    });
+    await openDrawer();
     const aside = container.querySelector("aside");
     expect(aside!.className).toContain("translate-x-0");
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
+    await pressEscape();
     expect(aside!.className).toContain("-translate-x-full");
   });
 
   it("should show the sidebar with translated class when mobile toggle is clicked", async () => {
     const { container } = render(<Sidebar />);
-    const toggleButton = screen.getByRole("button", { name: "Toggle navigation" });
     const aside = container.querySelector("aside");
 
     // Initially sidebar is off-screen on mobile
     expect(aside!.className).toContain("-translate-x-full");
 
-    await act(async () => {
-      toggleButton.click();
-    });
+    await openDrawer();
 
     // After toggle, sidebar slides in
     expect(aside!.className).toContain("translate-x-0");
     expect(aside!.className).not.toContain("-translate-x-full");
   });
 
+  it("should remove the closed drawer from the tab order and a11y tree below lg", async () => {
+    // A transform alone leaves the 7 off-screen links tabbable; the closed
+    // state must also carry visibility:hidden (max-lg scoped, so the
+    // always-visible desktop sidebar is untouched).
+    const { container } = render(<Sidebar />);
+    const aside = container.querySelector("aside");
+    expect(aside!.className).toContain("max-lg:invisible");
+
+    await openDrawer();
+    expect(aside!.className).toContain("max-lg:visible");
+    expect(aside!.className).not.toContain("max-lg:invisible");
+
+    await pressEscape();
+    expect(aside!.className).toContain("max-lg:invisible");
+  });
+
   it("should show the overlay when sidebar is open", async () => {
     const { container } = render(<Sidebar />);
-    const toggleButton = screen.getByRole("button", { name: "Toggle navigation" });
 
     // No overlay initially
-    expect(container.querySelector(".bg-black\\/50")).not.toBeInTheDocument();
+    expect(container.querySelector("[class*='bg-black']")).not.toBeInTheDocument();
 
-    await act(async () => {
-      toggleButton.click();
-    });
+    await openDrawer();
 
     // Overlay appears
     expect(container.querySelector("[class*='bg-black']")).toBeInTheDocument();
@@ -128,11 +192,7 @@ describe("Sidebar", () => {
 
   it("should close the sidebar when the overlay is clicked", async () => {
     const { container } = render(<Sidebar />);
-    const toggleButton = screen.getByRole("button", { name: "Toggle navigation" });
-
-    await act(async () => {
-      toggleButton.click();
-    });
+    await openDrawer();
 
     const overlay = container.querySelector("[class*='bg-black']");
     expect(overlay).toBeInTheDocument();
@@ -143,6 +203,26 @@ describe("Sidebar", () => {
 
     const aside = container.querySelector("aside");
     expect(aside!.className).toContain("-translate-x-full");
+  });
+
+  it("should keep the drawer open when a link is opened in a new tab via a modified click", async () => {
+    const { container } = render(<Sidebar />);
+    await openDrawer();
+    const aside = container.querySelector("aside")!;
+    const link = aside.querySelector("a")!;
+
+    // Cmd-click = background-tab navigation; nothing navigated HERE, so the
+    // drawer must not slide shut under the reader.
+    await act(async () => {
+      fireEvent.click(link, { metaKey: true });
+    });
+    expect(aside.className).toContain("translate-x-0");
+
+    // A plain click does navigate — the drawer closes.
+    await act(async () => {
+      fireEvent.click(link);
+    });
+    expect(aside.className).toContain("-translate-x-full");
   });
 
   it("should display the zero-padded index for each section", () => {
@@ -195,5 +275,97 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     const otherLink = screen.getByText("Quantum Machine Learning").closest("a");
     expect(otherLink).not.toHaveTextContent(/completed/i);
+  });
+
+  // The open drawer claims role="dialog" + aria-modal. These tests pin the
+  // behaviors that make that claim truthful — inert background (via the
+  // shared layout-region id contract), body scroll lock, focus management,
+  // and the Tab cycle — so a landmark rename or layout addition fails a test
+  // instead of silently shipping a hollow modal.
+  describe("modal contract while the drawer is open", () => {
+    it("marks every background region inert on open and releases all of them on close", async () => {
+      renderWithChrome();
+      for (const id of DRAWER_INERT_REGION_IDS) {
+        expect(document.getElementById(id)).not.toHaveAttribute("inert");
+      }
+
+      await openDrawer();
+      for (const id of DRAWER_INERT_REGION_IDS) {
+        expect(document.getElementById(id)).toHaveAttribute("inert");
+      }
+
+      await pressEscape();
+      for (const id of DRAWER_INERT_REGION_IDS) {
+        expect(document.getElementById(id)).not.toHaveAttribute("inert");
+      }
+    });
+
+    it("covers the footer and the tutor pill, not just header and lesson body", () => {
+      // Guard against the contract re-drifting to a subset: the region list
+      // itself must include all four layout chrome pieces.
+      expect(DRAWER_INERT_REGION_IDS).toEqual(
+        expect.arrayContaining([
+          SITE_HEADER_ID,
+          LESSON_CONTENT_ID,
+          SITE_FOOTER_ID,
+          TUTOR_TRIGGER_ID,
+        ])
+      );
+    });
+
+    it("locks body scroll while open and restores it on close", async () => {
+      renderWithChrome();
+      expect(document.body.style.overflow).toBe("");
+
+      await openDrawer();
+      expect(document.body.style.overflow).toBe("hidden");
+
+      await pressEscape();
+      expect(document.body.style.overflow).toBe("");
+    });
+
+    it("moves focus into the drawer on open and returns it to the toggle on close", async () => {
+      const { container } = renderWithChrome();
+      await openDrawer();
+      expect(document.activeElement).toBe(container.querySelector("aside"));
+
+      await pressEscape();
+      expect(document.activeElement).toBe(getToggle());
+    });
+
+    it("wraps Tab from the last drawer link back to the X close button", async () => {
+      const { container } = renderWithChrome();
+      await openDrawer();
+      const links = container.querySelectorAll<HTMLElement>("aside a");
+      const lastLink = links[links.length - 1];
+
+      await act(async () => {
+        lastLink.focus();
+      });
+      await act(async () => {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
+      });
+
+      // The visible X close affordance is INSIDE the Tab cycle.
+      expect(document.activeElement).toBe(getToggle());
+    });
+
+    it("wraps Shift+Tab from the X close button to the last drawer link", async () => {
+      const { container } = renderWithChrome();
+      await openDrawer();
+      const links = container.querySelectorAll<HTMLElement>("aside a");
+      const lastLink = links[links.length - 1];
+
+      await act(async () => {
+        getToggle().focus();
+      });
+      await act(async () => {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Tab", shiftKey: true })
+        );
+      });
+
+      expect(document.activeElement).toBe(lastLink);
+    });
   });
 });
