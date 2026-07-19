@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { subscribe, getAllCardStates } from "@/lib/review-store";
 import { activeDays } from "@/lib/activity-log";
-import { isSectionComplete } from "@/lib/progress-store";
+import { completedCount, isSectionComplete } from "@/lib/progress-store";
 import { getSections } from "@/lib/sections";
 import { epochDay } from "@/lib/review-schedule";
 import { masteryCount, streak, freezesEarned } from "@/lib/runbook";
@@ -52,7 +52,7 @@ const HARDWARE_UNVERIFIED_NOTE_ID = "hardware-record-unverified";
 // One enamel hue per group — the wall reads as a collection of distinct medal
 // types (an oklch hue angle; earned seals only, locked stay neutral).
 const GROUP_HUE: Record<CredentialGroup, number> = {
-  completion: 192, // teal — the platform accent
+  completion: 118, // olive — the platform accent (globals.css --accent)
   mastery: 158, // green
   consistency: 288, // violet
   hardware: 42, // gold — the run-on-real-hardware prestige
@@ -77,7 +77,7 @@ function snapshot(): string {
     const states = getAllCardStates();
     let stabilitySum = 0;
     for (const s of states) stabilitySum += s.stability;
-    const done = getSections().reduce((n, s) => (isSectionComplete(s.slug) ? n + 1 : n), 0);
+    const done = completedCount(getSections().map((s) => s.slug));
     // activeDays().length is load-bearing: the Consistency medals derive from
     // the streak, and the not-due re-practice path logs an active day WITHOUT
     // changing any card state — so without this term the wall would miss a

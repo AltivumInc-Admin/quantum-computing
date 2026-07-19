@@ -102,8 +102,11 @@ export default async function SectionPage({ params }: PageProps) {
                 footer block; PrevNext below deliberately draws no second rule. */}
             <div className="mt-16 flex flex-wrap items-center gap-4 border-t border-(--bd) pt-10 reveal">
               <SectionProgress slug={slug} />
+              {/* State-neutral by design: this caption is server-rendered and
+                  cannot follow the client toggle beside it, so it must be true
+                  both before and after the lesson is marked complete. */}
               <p className="text-sm text-caption">
-                Mark this lesson done to track your progress through the path.
+                Completion is saved on this device and counts toward your path progress.
               </p>
             </div>
 

@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { CardKind } from "@/lib/review-store";
-import { PROGRESS_EVENT_NAME } from "@/lib/progress-store";
+import { PROGRESS_EVENT_NAME, subscribe } from "@/lib/progress-store";
 
 /**
  * The ONE persistent solved-flag pattern shared by all six graded Rep widgets,
@@ -14,7 +14,10 @@ import { PROGRESS_EVENT_NAME } from "@/lib/progress-store";
  *
  * Semantics, preserved exactly:
  *  - useSyncExternalStore keeps the read hydration-safe (server snapshot false,
- *    the client re-reads localStorage after mount);
+ *    the client re-reads localStorage after mount), subscribed through the
+ *    store's own subscribe() — BOTH channel legs, the in-tab qc-progress event
+ *    and the qc:*-filtered cross-tab "storage" event, so a Rep solved in one
+ *    tab renders solved in a second open tab exactly like the sidebar counts;
  *  - writes are set-once and dispatch the same "qc-progress" event every other
  *    progress write uses (recordActivity is NOT called here — the solve's
  *    gradeCard write already logs the active day and rides its own dispatch);
@@ -35,10 +38,7 @@ export function usePersistentSolved(
 ): [boolean, () => void] {
   const key = solvedFlagKey(kind, id);
   const solved = useSyncExternalStore(
-    (cb) => {
-      window.addEventListener(PROGRESS_EVENT_NAME, cb);
-      return () => window.removeEventListener(PROGRESS_EVENT_NAME, cb);
-    },
+    subscribe,
     () => {
       try {
         return localStorage.getItem(key) === "1";

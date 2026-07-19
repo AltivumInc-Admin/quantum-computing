@@ -1,24 +1,35 @@
-// Client-side learner progress, persisted in localStorage and broadcast over the
-// same "qc-progress" event the Challenge component already dispatches. Keeping a
-// single channel means a solved challenge and a completed section both notify any
-// subscriber (sidebar, progress bar) through one listener.
+// Client-side learner progress, persisted in localStorage. This module OWNS
+// the shared "qc-progress" channel: it re-exports PROGRESS_EVENT_NAME (single-
+// sourced in progress-event.ts), and every other writer — the Rep widgets via
+// usePersistentSolved, the review and circuit stores, the sync merge — imports
+// the constant to dispatch the same event. Keeping a single channel means a
+// solved challenge and a completed section both notify any subscriber
+// (sidebar, progress bar, sync debounce) through one listener.
 //
-// Every function is guarded for SSR / private-mode storage failures: reads fall
-// back to "incomplete", writes silently no-op. Sections are the unit of progress;
-// completion is an explicit learner action ("Mark as complete").
+// Every function is guarded for SSR / private-mode storage failures: reads
+// fall back to "incomplete", writes fall back to an in-memory session map (the
+// control keeps working; the progress just isn't remembered next visit).
+// Sections are the unit of progress; completion is an explicit learner action
+// ("Mark as complete").
 
+import { PROGRESS_EVENT_NAME } from "./progress-event";
 import { registerLocalDeletion, clearLocalDeletion } from "./progress-merge";
 import { recordActivity } from "./activity-log";
 
-const PROGRESS_EVENT = "qc-progress";
-
 const sectionKey = (slug: string) => `qc:section:${slug}`;
+
+// When localStorage itself is blocked (Chrome/Safari with site data off),
+// flags land here instead, so "Mark as complete" is never a dead control:
+// the toggle, sidebar checkmarks and counts all keep working through the
+// normal read path — the progress just isn't remembered past this session,
+// which is exactly the degradation the header promises.
+const memoryFlags = new Map<string, boolean>();
 
 function readFlag(key: string): boolean {
   try {
     return localStorage.getItem(key) === "1";
   } catch {
-    return false;
+    return memoryFlags.get(key) === true;
   }
 }
 
@@ -34,10 +45,11 @@ function writeFlag(key: string, value: boolean): void {
       // not silently re-adopt the server's copy under the learner's click.
       registerLocalDeletion(key);
     }
-    window.dispatchEvent(new Event(PROGRESS_EVENT));
   } catch {
-    /* storage unavailable — progress just isn't remembered this session */
+    memoryFlags.set(key, value); // storage blocked — remember for this session
   }
+  // Both outcomes notify subscribers; only SSR (no window) stays silent.
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(PROGRESS_EVENT_NAME));
 }
 
 export function isSectionComplete(slug: string): boolean {
@@ -69,12 +81,12 @@ export function subscribe(callback: () => void): () => void {
   const onStorage = (e: StorageEvent) => {
     if (e.key === null || e.key?.startsWith("qc:")) callback();
   };
-  window.addEventListener(PROGRESS_EVENT, callback);
+  window.addEventListener(PROGRESS_EVENT_NAME, callback);
   window.addEventListener("storage", onStorage);
   return () => {
-    window.removeEventListener(PROGRESS_EVENT, callback);
+    window.removeEventListener(PROGRESS_EVENT_NAME, callback);
     window.removeEventListener("storage", onStorage);
   };
 }
 
-export const PROGRESS_EVENT_NAME = PROGRESS_EVENT;
+export { PROGRESS_EVENT_NAME };

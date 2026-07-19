@@ -29,6 +29,8 @@ const deleteUser = jest.fn();
 jest.mock("aws-amplify/auth", () => ({ deleteUser: (...a: unknown[]) => deleteUser(...a) }));
 
 import { DeleteAccount } from "@/components/auth/delete-account";
+// Real module (only sync-client is mocked): the tombstone reset under test.
+import { applySnapshot, registerLocalDeletion, resetLocalDeletions } from "@/lib/progress-merge";
 
 const openAndConfirm = async () => {
   fireEvent.click(screen.getByRole("button", { name: /^delete account$/i }));
@@ -95,6 +97,25 @@ describe("DeleteAccount", () => {
     expect(localStorage.getItem("qc-sync:meta")).toBeNull();
     expect(localStorage.getItem("unrelated")).toBe("keep");
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it("resets session tombstones with the local wipe (a stale one would suppress the next account's first sync)", async () => {
+    // Account A un-completed a section this session, then deleted the account.
+    // clearLocal wipes qc-sync:meta, so sync's boundSub-mismatch branch — the
+    // only other resetLocalDeletions call — can never fire for account B in
+    // this same tab. Without the reset, B's first-sync applySnapshot would
+    // silently skip B's own completed section under A's stale tombstone.
+    registerLocalDeletion("qc:section:x");
+    try {
+      render(<DeleteAccount />);
+      await openAndConfirm();
+      await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+      expect(applySnapshot({ "qc:section:x": "1" })).toBe(1);
+      expect(localStorage.getItem("qc:section:x")).toBe("1");
+    } finally {
+      resetLocalDeletions();
+      localStorage.clear();
+    }
   });
 
   it("STOPS when the progress delete fails: no further deletes, account untouched", async () => {

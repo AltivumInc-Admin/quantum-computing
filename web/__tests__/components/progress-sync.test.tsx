@@ -12,6 +12,8 @@ const isSyncConfigured = jest.fn((): boolean => true);
 jest.mock("@/lib/sync-client", () => ({ syncNow, exitFlush, isSyncConfigured }));
 
 import { ProgressSync } from "@/components/progress-sync";
+// Real module (only sync-client is mocked): the tracker wiring under test.
+import { applySnapshot, resetLocalDeletions } from "@/lib/progress-merge";
 
 const DEBOUNCE_MS = 20_000;
 const MAX_WAIT_MS = 60_000;
@@ -172,6 +174,27 @@ describe("ProgressSync", () => {
     progressEvent();
     window.dispatchEvent(new Event("pagehide"));
     expect(exitFlush).not.toHaveBeenCalled();
+  });
+
+  it("arms cross-tab deletion tracking while mounted, so another tab's un-complete is not re-adopted here", async () => {
+    localStorage.clear();
+    resetLocalDeletions();
+    try {
+      const { unmount } = await mount();
+      // Tab A un-completed a section: the shared key vanished; the storage
+      // event is this tab's only signal. This tab's own merge-apply must now
+      // refuse to write the server's copy back.
+      window.dispatchEvent(new StorageEvent("storage", { key: "qc:section:x", newValue: null }));
+      expect(applySnapshot({ "qc:section:x": "1" })).toBe(0);
+      expect(localStorage.getItem("qc:section:x")).toBeNull();
+      unmount();
+      // Unmount uninstalls the tracker with the rest of the listeners.
+      window.dispatchEvent(new StorageEvent("storage", { key: "qc:section:y", newValue: null }));
+      expect(applySnapshot({ "qc:section:y": "1" })).toBe(1);
+    } finally {
+      resetLocalDeletions();
+      localStorage.clear();
+    }
   });
 
   it("swallows SyncAccountMismatch silently but warns on other failures", async () => {
