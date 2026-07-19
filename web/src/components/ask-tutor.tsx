@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TUTOR_ERROR_SENTINEL } from "@/lib/tutor";
 import { sha256Hex } from "@/lib/sha256";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 /**
  * "Ask the margin" — a Socratic lesson tutor. A fixed affordance (and Cmd/Ctrl-K)
@@ -48,6 +49,7 @@ export function AskTutor() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const trapFocus = useFocusTrap(dialogRef);
 
   // Close the panel: abort any in-flight stream and restore focus to the trigger
   // (the dialog claims aria-modal, so it must hand focus back on close).
@@ -162,21 +164,7 @@ export function AskTutor() {
       close();
       return;
     }
-    if (e.key !== "Tab" || !dialogRef.current) return;
-    const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    trapFocus(e);
   };
 
   return (

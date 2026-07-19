@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { getSections, type Section } from "@/lib/sections";
 import { useSectionComplete, useCompletedCount } from "@/hooks/use-progress";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 function CheckBadge() {
   return (
@@ -67,6 +68,7 @@ export function Sidebar() {
   const asideId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   const asideRef = useRef<HTMLElement>(null);
+  const trapFocus = useFocusTrap(asideRef);
 
   const total = sections.length;
   const completed = useCompletedCount(sections.map((s) => s.slug));
@@ -99,21 +101,7 @@ export function Sidebar() {
         close();
         return;
       }
-      if (e.key !== "Tab" || !aside) return;
-      const focusables = aside.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const activeEl = document.activeElement;
-      if (e.shiftKey && (activeEl === first || activeEl === aside)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && activeEl === last) {
-        e.preventDefault();
-        first.focus();
-      }
+      trapFocus(e);
     };
     document.addEventListener("keydown", onKey);
 
@@ -123,7 +111,9 @@ export function Sidebar() {
       content?.removeAttribute("inert");
       document.body.style.overflow = prevOverflow;
     };
-  }, [open]);
+    // trapFocus is a stable useCallback (keyed on the ref), so it never
+    // re-triggers this open/close effect.
+  }, [open, trapFocus]);
 
   return (
     <>

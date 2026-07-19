@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { TransitionLink } from "@/components/transition-link";
 import { hueFor } from "@/lib/sections";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 export interface GateSection {
   slug: string;
@@ -25,9 +26,6 @@ interface SectionGateModalProps {
   onClose: () => void;
 }
 
-const FOCUSABLE =
-  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 /**
  * The welcome page's sign-up gate: a per-section preview dialog shown in place
  * of navigation for signed-out visitors. It borrows the section's own hue
@@ -37,6 +35,7 @@ const FOCUSABLE =
  */
 export function SectionGateModal({ section, authenticated, onClose }: SectionGateModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const trapFocus = useFocusTrap(dialogRef);
   const titleId = useId();
   const descId = useId();
   const hue = hueFor(section.index);
@@ -72,22 +71,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
       onClose();
       return;
     }
-    if (e.key !== "Tab" || !dialogRef.current) return;
-    // Cycle focus inside the dialog.
-    const focusable = Array.from(
-      dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && (active === first || active === dialogRef.current)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    trapFocus(e);
   };
 
   return createPortal(
