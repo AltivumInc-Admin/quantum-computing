@@ -1,24 +1,27 @@
 import sitemap from "@/app/sitemap";
 import robots from "@/app/robots";
 import { SITE_URL } from "@/lib/site";
-import { getSections } from "@/lib/sections";
-import { GLOSSARY, termSlug } from "@/lib/glossary";
 
 describe("sitemap", () => {
-  it("includes top routes, every lesson, and every term, all absolute", () => {
+  it("lists only the public routes, all absolute", () => {
     const urls = sitemap().map((e) => e.url);
-    expect(urls).toContain(`${SITE_URL}`);
-    expect(urls).toContain(`${SITE_URL}/playground`);
-    expect(urls).toContain(`${SITE_URL}/glossary`);
-    expect(urls).toContain(`${SITE_URL}/review`);
-    expect(urls).toContain(`${SITE_URL}/runbook`);
-    expect(urls).toContain(`${SITE_URL}/credentials`);
-    expect(urls).toContain(`${SITE_URL}/pricing`);
-    expect(urls).toContain(`${SITE_URL}/privacy`);
-    for (const s of getSections()) expect(urls).toContain(`${SITE_URL}/learn/${s.slug}`);
-    expect(urls).toContain(`${SITE_URL}/glossary/${termSlug(GLOSSARY[0].term)}`);
-    expect(urls).toHaveLength(8 + getSections().length + GLOSSARY.length);
+    expect(urls).toEqual([`${SITE_URL}`, `${SITE_URL}/pricing`, `${SITE_URL}/privacy`]);
     expect(urls.every((u) => u.startsWith("https://"))).toBe(true);
+  });
+
+  it("excludes every route behind the sign-up wall", () => {
+    const urls = sitemap().map((e) => e.url);
+    for (const walled of [
+      "/playground",
+      "/glossary",
+      "/review",
+      "/runbook",
+      "/credentials",
+      "/workspace",
+      "/learn/",
+    ]) {
+      expect(urls.some((u) => u.includes(walled))).toBe(false);
+    }
   });
 });
 

@@ -41,9 +41,7 @@ describe("PricingPage", () => {
     expect(h1.textContent).toContain("free");
     expect(h1.textContent).toContain("The metal is metered.");
     expect(screen.getByText("1 credit = $0.01")).toBeInTheDocument();
-    expect(
-      screen.getByText(/500-credit welcome grant with every account/)
-    ).toBeInTheDocument();
+    expect(screen.getByText("Top up from $5")).toBeInTheDocument();
   });
 
   it("renders all three tiers with launch prices", () => {

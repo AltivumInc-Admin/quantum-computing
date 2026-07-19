@@ -29,12 +29,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const description = summary
     ? truncateAtWord(summary, 155)
     : `${section.title}: hands-on lessons and runnable notebooks in the Quantum Workspace curriculum.`;
-  return articleMetadata({
-    title: `${section.title} — Quantum Workspace`,
-    ogTitle: section.title,
-    description,
-    path: `/learn/${section.slug}`,
-  });
+  return {
+    ...articleMetadata({
+      title: `${section.title} — Quantum Workspace`,
+      ogTitle: section.title,
+      description,
+      path: `/learn/${section.slug}`,
+    }),
+    // Behind the sign-up wall — keep it out of the index (see auth-wall.tsx).
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function SectionPage({ params }: PageProps) {

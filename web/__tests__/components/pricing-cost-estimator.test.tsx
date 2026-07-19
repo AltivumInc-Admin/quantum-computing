@@ -43,16 +43,6 @@ describe("CostEstimator", () => {
     expect(screen.getByText(/\$7\.00/)).toBeInTheDocument();
   });
 
-  it("shows the welcome-grant badge only while a run fits inside the grant", () => {
-    render(<CostEstimator />);
-    // Garnet 1,000 shots (197) and Haiku month (100) both fit inside 500.
-    expect(screen.getAllByText("Covered by your welcome grant")).toHaveLength(2);
-    // Garnet at 10,000 shots = 1,664 credits — beyond the grant.
-    fireEvent.change(screen.getByLabelText("Shots"), { target: { value: "10000" } });
-    expect(screen.getAllByText("Covered by your welcome grant")).toHaveLength(1);
-    expect(screen.getByText("1,664 credits")).toBeInTheDocument();
-  });
-
   it("selects shot presets via chips", () => {
     render(<CostEstimator />);
     // "10,000" appears only among the shot presets (question presets top out at 300).

@@ -6,7 +6,6 @@
 // the provider's own published price.
 import {
   CREDIT_USD,
-  STARTER_GRANT_CREDITS,
   TASK_FEE_CREDITS,
   HARDWARE_RATES,
   SIMULATOR_RATES,
@@ -89,11 +88,13 @@ describe("tiers", () => {
     }
   });
 
-  it("Free costs nothing and carries the welcome grant in its feature copy", () => {
+  it("Free costs nothing, includes no monthly credits, and carries no grant", () => {
     const free = TIERS[0];
     expect(free.priceUsdPerMonth).toBe(0);
     expect(free.monthlyCredits).toBe(0);
-    expect(free.features.join(" ")).toContain(`${STARTER_GRANT_CREDITS}-credit`);
+    const copy = free.features.join(" ").toLowerCase();
+    expect(copy).not.toContain("grant");
+    expect(copy).toContain("add credits only when you use");
   });
 
   it("every tutor model maps to a real tier", () => {

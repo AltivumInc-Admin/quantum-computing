@@ -3,6 +3,7 @@ import { RunbookDashboard } from "@/components/runbook-dashboard";
 
 export const metadata: Metadata = {
   title: "Runbook — Quantum Workspace",
+  robots: { index: false, follow: false },
   description:
     "Your mastery ledger: skills carried into proven spaced-repetition retention, your weekly streak, and a contribution graph of every day you practiced.",
 };

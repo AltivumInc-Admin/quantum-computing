@@ -5,7 +5,6 @@ import {
   HARDWARE_RATES,
   TASK_FEE_CREDITS,
   TUTOR_RATES,
-  STARTER_GRANT_CREDITS,
   jobCredits,
   creditsToUsd,
   formatCredits,
@@ -15,26 +14,15 @@ import {
 const SHOT_PRESETS = [100, 1000, 10000];
 const QUESTION_PRESETS = [25, 100, 300];
 
-function GrantBadge({ credits }: { credits: number }) {
-  if (credits > STARTER_GRANT_CREDITS) return null;
-  return (
-    <span className="inline-flex items-center rounded-chip bg-success/10 px-2 py-0.5 text-xs font-medium text-success-dark dark:text-success-light">
-      Covered by your welcome grant
-    </span>
-  );
-}
-
 /** Big credits-first readout shared by both estimator panes. */
 function Readout({
   label,
   credits,
   suffix,
-  grantBadge,
 }: {
   label: string;
   credits: number;
   suffix?: string;
-  grantBadge?: boolean;
 }) {
   return (
     <div aria-live="polite" className="mt-6 border-t border-gray-200/60 dark:border-white/[0.08] pt-5">
@@ -46,11 +34,6 @@ function Readout({
           {suffix}
         </span>
       </p>
-      {grantBadge && (
-        <p className="mt-2">
-          <GrantBadge credits={credits} />
-        </p>
-      )}
     </div>
   );
 }
@@ -176,7 +159,7 @@ export function CostEstimator() {
           </div>
         </div>
 
-        <Readout label="This run" credits={runCredits} grantBadge />
+        <Readout label="This run" credits={runCredits} />
         <p className="mt-3 text-xs text-caption">
           {device.creditsPerShot} credits per shot + {TASK_FEE_CREDITS} credits
           per task.
@@ -249,7 +232,7 @@ export function CostEstimator() {
           </div>
         </div>
 
-        <Readout label="Per month" credits={tutorCredits} suffix=" / mo" grantBadge />
+        <Readout label="Per month" credits={tutorCredits} suffix=" / mo" />
         <p className="mt-3 text-xs text-caption">
           {tutor.model}: about {tutor.typicalCreditsPerQuestion}{" "}
           {tutor.typicalCreditsPerQuestion === 1 ? "credit" : "credits"} per
