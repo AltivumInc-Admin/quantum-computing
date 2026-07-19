@@ -18,12 +18,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { term: slug } = await params;
   const term = getTermBySlug(slug);
   if (!term) return { title: "Not Found" };
-  return articleMetadata({
-    title: `${term.term} — Quantum Glossary`,
-    ogTitle: term.term,
-    description: truncateAtWord(plainText(term.definition), 155),
-    path: `/glossary/${termSlug(term.term)}`,
-  });
+  return {
+    ...articleMetadata({
+      title: `${term.term} — Quantum Glossary`,
+      ogTitle: term.term,
+      description: truncateAtWord(plainText(term.definition), 155),
+      path: `/glossary/${termSlug(term.term)}`,
+    }),
+    // Behind the sign-up wall — keep it out of the index (see auth-wall.tsx).
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function GlossaryTermPage({ params }: PageProps) {

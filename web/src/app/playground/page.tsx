@@ -3,6 +3,7 @@ import { PlaygroundBench } from "@/components/playground/playground-bench";
 
 export const metadata: Metadata = {
   title: "Playground — Quantum Workspace",
+  robots: { index: false, follow: false },
   description:
     "A live four-qubit circuit sandbox: sketch a circuit in the qsim gate language and watch the exact quantum state respond as you type, sample measurement shots, export OpenQASM 3.0, and hand a finished circuit to real quantum hardware.",
 };

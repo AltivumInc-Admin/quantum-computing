@@ -3,6 +3,7 @@ import { ReviewDashboard } from "@/components/review-dashboard";
 
 export const metadata: Metadata = {
   title: "Review — Quantum Workspace",
+  robots: { index: false, follow: false },
   description: "Spaced-repetition review of the quantum computing curriculum.",
 };
 

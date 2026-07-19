@@ -7,7 +7,6 @@ import {
   HARDWARE_RATES,
   SIMULATOR_RATES,
   TASK_FEE_CREDITS,
-  STARTER_GRANT_CREDITS,
   MIN_TOPUP_USD,
   PRICES_AS_OF,
   jobCredits,
@@ -103,7 +102,7 @@ const faqBuyWhenLive = {
 
 const faqBuyPrelaunch = {
   q: "When can I buy credits?",
-  a: "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create a free account and your 500-credit welcome grant will be waiting at launch.",
+  a: "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create your free account now so you are ready the moment wallets go live.",
 };
 
 export default function PricingPage() {
@@ -143,7 +142,7 @@ export default function PricingPage() {
               1 credit = $0.01
             </span>
             <span className="inline-flex items-center rounded-chip border border-(--bd) bg-(--field) px-3 py-1.5 text-sm font-medium text-(--mut) tabular-nums">
-              {STARTER_GRANT_CREDITS}-credit welcome grant with every account
+              Top up from {formatUsd(MIN_TOPUP_USD).replace(".00", "")}
             </span>
             <WalletBadge />
           </div>
@@ -302,7 +301,8 @@ export default function PricingPage() {
               <span className="font-semibold">Early access:</span> billing has
               not launched yet — these are launch prices. Today the tutor is
               free to try, and hardware runs inside the curriculum are
-              sponsored. Your welcome grant is credited when wallets go live.
+              sponsored. When wallets go live, you fund your own from a top-up
+              or a plan.
             </div>
           )}
         </section>

@@ -12,9 +12,6 @@
 /** USD value of one credit. The peg never moves; prices move in credit terms. */
 export const CREDIT_USD = 0.01;
 
-/** One-time welcome grant credited to every new verified account. */
-export const STARTER_GRANT_CREDITS = 500;
-
 /** Smallest pay-as-you-go top-up, in USD. */
 export const MIN_TOPUP_USD = 5;
 
@@ -205,7 +202,7 @@ export interface Tier {
   name: string;
   tagline: string;
   priceUsdPerMonth: number;
-  /** Credits included every month (0 for Free — it gets the one-time grant). */
+  /** Credits included every month (0 for Free — pay-as-you-go from the wallet). */
   monthlyCredits: number;
   /**
    * The Stripe price lookup key checkout uses for this tier (undefined for Free,
@@ -230,8 +227,7 @@ export const TIERS: Tier[] = [
       "Unlimited browser simulation — circuits run on your machine",
       "Playground, glossary, spaced-repetition review",
       "Progress and saved circuits synced across devices",
-      `${STARTER_GRANT_CREDITS}-credit welcome grant — sample the tutor and real hardware`,
-      "Pay-as-you-go top-ups whenever you want more",
+      "Add credits only when you use the AI tutor or real quantum hardware",
     ],
     footnote: "Free forever. Learning never moves behind the wallet.",
   },

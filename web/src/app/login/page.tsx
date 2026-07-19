@@ -11,7 +11,11 @@ export default function LoginPage() {
   const { status } = useAuth();
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/workspace");
+    if (status !== "authenticated") return;
+    // Honor ?next= from the sign-up wall so a deep-linked visitor lands back
+    // where they were headed; only same-origin paths, never an open redirect.
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/workspace");
   }, [status, router]);
 
   return (

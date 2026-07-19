@@ -7,6 +7,7 @@ import { ProgressSync } from "@/components/progress-sync";
 import { Footer } from "@/components/footer";
 import { FogField } from "@/components/fog-field";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { AuthWall } from "@/components/auth/auth-wall";
 import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -73,7 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
             <Nav />
             <main id="main" tabIndex={-1} className="outline-none">
-              {children}
+              <AuthWall>{children}</AuthWall>
             </main>
             <Footer />
             <AskTutor />

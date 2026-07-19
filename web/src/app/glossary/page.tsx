@@ -6,6 +6,7 @@ import { GLOSSARY } from "@/lib/glossary";
 
 export const metadata: Metadata = {
   title: "Glossary — Quantum Computing Workspace",
+  robots: { index: false, follow: false },
   description:
     "An A-Z reference of quantum computing terms, from qubits and gates to VQE and QAOA, each linked to the lesson that teaches it.",
 };

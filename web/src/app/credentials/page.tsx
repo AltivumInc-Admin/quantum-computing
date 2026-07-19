@@ -3,6 +3,7 @@ import { CredentialsWall } from "@/components/credentials-wall";
 
 export const metadata: Metadata = {
   title: "Credentials — Quantum Workspace",
+  robots: { index: false, follow: false },
   description:
     "Software-verified credentials: medals for modules completed, skills held in proven retention, weeks of unbroken practice, and circuits run on a real quantum computer — sponsored, so you never pay.",
 };
