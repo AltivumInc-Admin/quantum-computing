@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_NAME, OG_IMAGE } from "./site";
 
 // Shared per-page SEO helpers. Relative URLs here resolve against
 // metadataBase (SITE_URL) set in the root layout.
@@ -28,7 +29,17 @@ export function articleMetadata(opts: {
     title,
     description,
     alternates: { canonical: path },
-    openGraph: { title: ogTitle, description, url: path, type: "article" },
+    // Next.js REPLACES a page-level openGraph object (no deep merge with the
+    // root layout's), so the site name and branded card image must be spread
+    // back in here or every article page silently drops them (see lib/site.ts).
+    openGraph: {
+      title: ogTitle,
+      description,
+      url: path,
+      type: "article",
+      siteName: SITE_NAME,
+      images: [OG_IMAGE],
+    },
     twitter: { card: "summary", title: ogTitle, description },
   };
 }

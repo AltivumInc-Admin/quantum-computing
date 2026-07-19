@@ -28,3 +28,12 @@ const PITCHES: Record<string, string> = {
 export function pitchFor(slug: string, fallback: string): string {
   return PITCHES[slug] ?? fallback;
 }
+
+/**
+ * The free-tier promise shown wherever an account is asked for (the welcome
+ * page's account band AND the section gate dialog). One exported string so a
+ * monetization-copy edit (see a72b705, "drop the credit grant") can never
+ * leave the two surfaces making different promises to the same visitor.
+ */
+export const ACCOUNT_REASSURANCE =
+  "Email or Google. No credit card — the entire curriculum and simulator are free.";

@@ -55,10 +55,6 @@ function lazyWidget(
   return { Widget: dynamic(factory, { ssr: false, loading: loadingFor(minH) }), minH };
 }
 
-// Two no-source widgets wrapped to share the FC<{source}> signature.
-const BlochBuilder = lazyWidget(() => import("./bloch-builder-widget").then((m) => ({ default: m.BlochBuilder as unknown as ComponentType<{ source: string }> })), tall);
-const DeviceTable = lazyWidget(() => import("./device-table").then((m) => ({ default: m.DeviceTable as unknown as ComponentType<{ source: string }> })), tall);
-
 const WIDGETS: Record<string, WidgetEntry> = {
   qsim: lazyWidget(() => import("./circuit-lab").then((m) => ({ default: m.CircuitLab })), tall),
   qscrub: lazyWidget(() => import("./wavefunction-scrubber").then((m) => ({ default: m.WavefunctionScrubber })), tall),
@@ -70,11 +66,14 @@ const WIDGETS: Record<string, WidgetEntry> = {
   qexpect: lazyWidget(() => import("./expectation-widget").then((m) => ({ default: m.ExpectationWidget })), medium),
   quiz: lazyWidget(() => import("./quiz").then((m) => ({ default: m.Quiz })), tall),
   runnable: lazyWidget(() => import("./runnable-editor").then((m) => ({ default: m.RunnableEditor })), tall),
-  qbloch: { Widget: () => <BlochBuilder.Widget source="" />, minH: tall },
+  // No-source widgets: a props-less function component is assignable to
+  // ComponentType<{ source: string }>, so the adapter lives inside the dynamic
+  // factory and the entry keeps the uniform lazyWidget shape.
+  qbloch: lazyWidget(() => import("./bloch-builder-widget").then((m) => ({ default: function QBloch() { return <m.BlochBuilder />; } })), tall),
   qshots: lazyWidget(() => import("./shots-sampler").then((m) => ({ default: m.ShotsSampler })), tall),
   qcorr: lazyWidget(() => import("./correlation-demo").then((m) => ({ default: m.CorrelationDemo })), tall),
   qcost: lazyWidget(() => import("./cost-calculator").then((m) => ({ default: m.CostCalculator })), compact),
-  qdevices: { Widget: () => <DeviceTable.Widget source="" />, minH: tall },
+  qdevices: lazyWidget(() => import("./device-table").then((m) => ({ default: function QDevices() { return <m.DeviceTable />; } })), tall),
   qtopo: lazyWidget(() => import("./topology-explorer").then((m) => ({ default: m.TopologyExplorer })), medium),
   qnoise: lazyWidget(() => import("./noise-visualizer").then((m) => ({ default: m.NoiseVisualizer })), medium),
   qgrover: lazyWidget(() => import("./grover-visualizer").then((m) => ({ default: m.GroverVisualizer })), medium),

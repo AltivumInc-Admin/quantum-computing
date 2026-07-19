@@ -81,7 +81,7 @@ export default function WorkspacePage() {
 /** The bare h1 (+ nothing else) — the guaranteed heading for the redirect/loading shells. */
 function PageHeading() {
   return (
-    <h1 className="font-display text-display-lg tracking-tight text-gray-900 dark:text-white">
+    <h1 className="font-display text-display-lg tracking-tight text-(--ink)">
       Workspace
     </h1>
   );

@@ -11,7 +11,7 @@ export function SeeAlsoLinks({ refs }: { refs?: string[] }) {
         <span key={ref}>
           <TransitionLink
             href={`/glossary/${termSlug(ref)}`}
-            className="text-accent dark:text-accent-light hover:underline focus-ring rounded"
+            className="text-accent-dark dark:text-accent-light hover:underline focus-ring rounded"
           >
             {ref}
           </TransitionLink>

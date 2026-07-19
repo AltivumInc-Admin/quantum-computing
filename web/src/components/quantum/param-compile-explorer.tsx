@@ -240,7 +240,7 @@ export function ParamCompileExplorer({ source }: { source: string }) {
         {/* Saved readout */}
         <p className="mt-4 text-sm text-gray-800 dark:text-gray-100">
           saved{" "}
-          <span className="font-semibold tabular-nums text-accent dark:text-accent-light">
+          <span className="font-semibold tabular-nums text-accent-dark dark:text-accent-light">
             {formatSec(saved)}
           </span>{" "}
           <span className="text-gray-500 dark:text-gray-400">

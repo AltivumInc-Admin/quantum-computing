@@ -3,11 +3,17 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
+import type { Element, ElementContent } from "hast";
 import { WidgetFence } from "./quantum/widget-fence";
 import { WIDGET_LANGS } from "./quantum/widget-langs";
 import { CodeBlock } from "./code-block";
+import { MarkdownTable } from "./markdown-table";
 import { buildLineSlugMap } from "@/lib/extract-headings";
 import { KATEX_MACROS } from "@/lib/katex-macros";
+// KaTeX styles ship only with the routes that render math (here and the
+// glossary's InlineMarkdown), not in the global stylesheet every funnel page
+// pays for. The `.katex-display` overflow rule stays in globals.css.
+import "katex/dist/katex.min.css";
 
 interface MarkdownRendererProps {
   content: string;
@@ -19,21 +25,20 @@ interface MarkdownRendererProps {
   lineSlugs?: Map<number, string>;
 }
 
-// Minimal structural view of a hast node, enough to pull raw text out of a
-// fenced code block without depending on @types/hast being present.
-type HastTextNode = { type?: string; value?: string; children?: HastTextNode[] };
-
-function hastText(node: HastTextNode): string {
-  if (node.type === "text") return node.value ?? "";
-  return (node.children ?? []).map(hastText).join("");
+// react-markdown hands its overrides real hast nodes (`node?: Element`), and
+// @types/hast is one of its own hard dependencies — so these walk the typed
+// tree directly. A future node-shape change fails at compile time instead of
+// silently returning undefined ids or empty raw text.
+function hastText(node: ElementContent): string {
+  if (node.type === "text") return node.value;
+  if (node.type === "element") return node.children.map(hastText).join("");
+  return ""; // comments and anything else contribute no rendered text
 }
 
-// Position type for a hast node (only the start line is needed, to anchor
-// heading ids back to their source line via the precomputed slug map).
-type Positioned = { position?: { start?: { line?: number } } };
-
-function headingId(node: unknown, lineSlugs: Map<number, string>): string | undefined {
-  const line = (node as Positioned)?.position?.start?.line;
+// Only the start line is needed, to anchor heading ids back to their source
+// line via the precomputed slug map.
+function headingId(node: Element | undefined, lineSlugs: Map<number, string>): string | undefined {
+  const line = node?.position?.start.line;
   return line != null ? lineSlugs.get(line) : undefined;
 }
 
@@ -42,7 +47,8 @@ function headingId(node: unknown, lineSlugs: Map<number, string>): string | unde
  * `id` on each h2/h3 (looked up by source line, so it stays deterministic and
  * matches the table of contents); custom ```q* fences route to an interactive
  * widget (resolved + code-split per-widget by WidgetFence); all other fences
- * become a CodeBlock with copy + wrap controls.
+ * become a CodeBlock with copy + wrap controls; GFM tables gain an overflow
+ * container so a wide gate table scrolls in place instead of the whole page.
  */
 export function makeComponents(lineSlugs: Map<number, string>): Components {
   return {
@@ -60,6 +66,13 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
         </h3>
       );
     },
+    // GFM tables (e.g. the gate table whose Matrix cells are KaTeX bmatrix
+    // blocks) have an unshrinkable min-content width far past a phone
+    // viewport; MarkdownTable scrolls them inside their own box (WCAG 1.4.10).
+    table({ node, ...rest }) {
+      void node; // destructured off so it can't leak onto the DOM <table>
+      return <MarkdownTable {...rest} />;
+    },
     // Overriding <pre> (not <code>) keeps the markup valid. The bare language
     // token (e.g. "qsim", "python") is read once from the `language-*` class.
     pre(props) {
@@ -73,7 +86,7 @@ export function makeComponents(lineSlugs: Map<number, string>): Components {
             .find((c) => c.startsWith("language-"))
             ?.replace("language-", "")
         : undefined;
-      const raw = code ? hastText(code as unknown as HastTextNode) : "";
+      const raw = code ? hastText(code) : "";
       // Custom ```q* fences route to a lazily-loaded interactive widget (chunked
       // per-widget so a page ships only the widgets it renders); every other fence
       // becomes a CodeBlock with the rehype-highlight token spans preserved.

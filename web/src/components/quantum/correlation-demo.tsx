@@ -39,7 +39,7 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
       <div className="mb-3 font-mono text-sm text-caption">
         {lastOutcome !== null ? (
           <span>
-            Last: <span className="text-accent dark:text-accent-light font-semibold">|{basisLabel(lastOutcome, 2)}&rang;</span>
+            Last: <span className="text-accent-dark dark:text-accent-light font-semibold">|{basisLabel(lastOutcome, 2)}&rang;</span>
           </span>
         ) : (
           <span className="opacity-40">Last: &mdash;</span>

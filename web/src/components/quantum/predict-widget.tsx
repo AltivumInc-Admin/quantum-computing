@@ -147,7 +147,7 @@ export function PredictWidget({
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
           Predict
         </span>
         {committed && (
@@ -214,7 +214,7 @@ export function PredictWidget({
               aria-label="Simulated outcome"
               className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
+              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
                 Simulated outcome
               </span>
               <ProbBars probs={truth.probs} n={n} />

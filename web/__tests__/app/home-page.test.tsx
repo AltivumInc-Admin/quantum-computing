@@ -7,7 +7,8 @@ import { render, screen } from "@testing-library/react";
 import HomePage, { metadata } from "@/app/page";
 import { getSections } from "@/lib/sections";
 import { GLOSSARY } from "@/lib/glossary";
-import { PALETTE } from "@/components/playground/compose-panel";
+import { SITE_NAME, OG_IMAGE } from "@/lib/site";
+import { PALETTE } from "@/components/playground/palette";
 
 jest.mock("@/components/transition-link", () => {
   const React = require("react");
@@ -46,21 +47,31 @@ describe("HomePage (welcome page)", () => {
   it("exports SEO metadata describing the platform", () => {
     expect(String(metadata.description)).toMatch(/quantum computing/i);
     expect(String(metadata.description)).toMatch(/braket/i);
+    // Public funnel route: must never inherit the walled pages' noindex.
+    expect(metadata.robots).toBeUndefined();
   });
 
   it("exports canonical + Open Graph + Twitter metadata", () => {
     expect(metadata.alternates?.canonical).toBe("/");
     const og = metadata.openGraph as Record<string, unknown>;
-    expect(og.title).toBe("Quantum Computing Workspace");
+    expect(og.title).toBe(SITE_NAME);
     expect(og.url).toBe("/");
     expect(og.type).toBe("website");
     expect(og.description).toBe(metadata.description);
+    // Next.js REPLACES (never merges) a page-level openGraph object, so the
+    // home route must re-declare the layout's siteName and the STRUCTURED
+    // image — losing width/height/alt here once shipped green (see A1-9).
+    expect(og.siteName).toBe(SITE_NAME);
+    const [image] = og.images as (typeof OG_IMAGE)[];
+    expect(image).toEqual(OG_IMAGE);
+    expect(image.url).toBe("/og.jpg");
+    expect(image.width).toBe(1200);
+    expect(image.height).toBe(630);
+    expect(image.alt).toBeTruthy();
     const twitter = metadata.twitter as Record<string, unknown>;
     expect(twitter.card).toBe("summary_large_image");
     expect(twitter.description).toBe(metadata.description);
-    // The branded social-share card must be present on the home route.
-    expect((og.images as string[])).toContain("/og.png");
-    expect((twitter.images as string[])).toContain("/og.png");
+    expect(twitter.images as string[]).toContain("/og.jpg");
   });
 
   it("renders the hero headline and eyebrow", async () => {
@@ -143,11 +154,56 @@ describe("HomePage (welcome page)", () => {
     const paletteGates = PALETTE.reduce((n, group) => n + group.chips.length, 0);
     expect(paletteGates).toBe(10);
     expect(screen.getByText(String(paletteGates))).toBeInTheDocument();
-    // The label appears twice by design: an sr-only <dt> plus the visible <dd>.
+    // The label appears twice in the DOM by design: an sr-only <dt> plus the
+    // visible (aria-hidden) <dd> — screen readers announce it once.
     expect(screen.getAllByText(/gates in the live playground/i)).toHaveLength(2);
     // The glossary count moved out of the hero but still appears on its
     // toolkit card, sourced from the real glossary.
     expect(screen.getByText(new RegExp(`${GLOSSARY.length} terms`))).toBeInTheDocument();
+  });
+
+  it("pins all four constellation nodes to the live manifest (labels + notebook counts)", async () => {
+    await renderHome();
+    const sections = getSections();
+    const expected: [string, string][] = [
+      ["Foundations", "01-foundations"],
+      ["Hardware", "02-hardware"],
+      ["Algorithms", "03-algorithms"],
+      ["Chemistry", "05-quantum-chemistry"],
+    ];
+    for (const [label, slug] of expected) {
+      const section = sections.find((s) => s.slug === slug);
+      // A renamed/renumbered manifest slug must fail HERE, loudly — the page
+      // silently drops non-matching nodes and would unbalance the hero.
+      expect(section).toBeDefined();
+      const labelEl = screen.getByText(label);
+      expect(labelEl).toBeInTheDocument();
+      // The node's manifest-derived count sits right beside its label (the
+      // same "N notebooks" string also appears on section cards, so scope
+      // the assertion to the node's own container).
+      expect(labelEl.parentElement!.textContent).toContain(
+        `${section!.notebookCount} notebooks`
+      );
+    }
+  });
+
+  it("derives the horizons meter and scroll-cue counter from the real section count", async () => {
+    await renderHome();
+    const sections = getSections();
+    // Horizons: one accent bar + (n-1) dim bars = one per section.
+    const label = screen.getByText(/quantum horizons/i);
+    // The bar row sits right after the label; one bar per section.
+    const bars = label.nextElementSibling!.querySelectorAll("span");
+    expect(bars).toHaveLength(sections.length);
+    // The decorative chrome is hidden from assistive tech.
+    expect(label.closest("[aria-hidden='true']")).not.toBeNull();
+    // Scroll cue: a truthful accessible name, with the section-indexed
+    // counter (01 / NN) demoted to aria-hidden decoration.
+    const cue = screen.getByRole("link", { name: "Scroll to the curriculum" });
+    expect(cue).toHaveAttribute("href", "#curriculum");
+    expect(cue.textContent).toContain(
+      `01 / ${String(sections.length).padStart(2, "0")}`
+    );
   });
 
   it("presents the AI tutor band with honest included-free copy", async () => {
@@ -186,6 +242,12 @@ describe("HomePage (welcome page)", () => {
     expect(hero).toBeDefined();
     expect(hero).toHaveAttribute("aria-hidden", "true");
     expect(hero).toHaveAttribute("alt", "");
+    // Responsive serving for the LCP-priority image: phones get the 960w cut.
+    expect(hero).toHaveAttribute(
+      "srcset",
+      "/welcome/hero-fog-960.webp 960w, /welcome/hero-fog.webp 2688w"
+    );
+    expect(hero).toHaveAttribute("sizes", "100vw");
     for (const src of ["/welcome/circuit.webp", "/welcome/hardware.webp", "/welcome/bloch.webp"]) {
       const img = images.find((el) => el.getAttribute("src") === src);
       expect(img).toBeDefined();

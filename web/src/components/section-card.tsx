@@ -8,8 +8,12 @@ interface SectionCardProps {
   summary: string;
   notebookCount: number;
   /** Intercept the click (the welcome page's sign-up gate). Call
-      e.preventDefault() to stop navigation; the href stays real so new-tab,
-      copy-link, and no-JS all still reach the section. */
+      e.preventDefault() to stop navigation; the href stays real so new-tab
+      and copy-link keep native link semantics. Note: since the platform
+      AuthWall (a72b705), a signed-out arrival at that href passes through
+      the wall (redirect to /login?mode=signup&next=…) before reaching the
+      section — and a configured no-JS visit holds on the prerendered gate
+      screen, which needs client JS to resolve. */
   onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   /** Set when a click opens a dialog instead of navigating. */
   hasPopup?: boolean;
@@ -62,7 +66,7 @@ export function SectionCard({
           </span>
         </div>
 
-        <h3 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
+        <h3 className="font-display text-display-md tracking-tight text-(--ink) group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
           {title}
         </h3>
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
+import { resetLocalDeletions, wipeLocalProgress } from "@/lib/progress-merge";
 import { isReviewPrefsConfigured, deleteReminderPrefs } from "@/lib/review-prefs-client";
 
 const CONFIRM_WORD = "delete";
@@ -47,18 +48,17 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
   const prefsConfigured = isReviewPrefsConfigured();
   const confirmed = typed.trim() === CONFIRM_WORD;
 
+  // The shared qc:* wipe, plus the account binding that lives outside the
+  // prefix (sync-client's SYNC_META_KEY — named literally here because this
+  // component must not statically import sync-client's aws-amplify graph).
+  // Session tombstones go with the wipe: they record what THIS device's copy
+  // deleted, and that copy no longer exists — and wiping the meta also erases
+  // boundSub, so sync's own mismatch branch (the only other reset) could
+  // never fire for the next account signing in without a reload. Stale
+  // tombstones would silently suppress that account's first-sync apply.
   const clearLocal = () => {
-    try {
-      const keys: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith("qc:") || k === "qc-sync:meta") keys.push(k);
-      }
-      keys.forEach((k) => localStorage.removeItem(k));
-      window.dispatchEvent(new Event("qc-progress"));
-    } catch {
-      /* storage unavailable — nothing local to clear */
-    }
+    wipeLocalProgress(["qc-sync:meta"]);
+    resetLocalDeletions();
   };
 
   const handleDelete = async () => {

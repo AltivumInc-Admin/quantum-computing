@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SITE_NAME } from "@/lib/site";
+import { SITE_FOOTER_ID } from "@/lib/layout-regions";
 
 const REPO_URL = "https://github.com/AltivumInc-Admin/quantum-computing";
 
@@ -7,10 +9,13 @@ const linkClass =
 
 export function Footer() {
   return (
-    <footer className="mt-24 border-t border-gray-200/60 dark:border-gray-800/40">
+    <footer
+      id={SITE_FOOTER_ID}
+      className="mt-24 border-t border-gray-200/60 dark:border-gray-800/40"
+    >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-caption">
-          Quantum Workspace — learn quantum computing with Amazon Braket.
+          {SITE_NAME} — learn quantum computing with Amazon Braket.
         </p>
         <nav
           aria-label="Footer"

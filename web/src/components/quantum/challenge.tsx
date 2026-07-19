@@ -149,7 +149,7 @@ export function Challenge({
   return (
     <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
           Your turn
         </span>
         {showSolved && (

@@ -34,7 +34,7 @@ export function Glossary({ entries }: GlossaryProps) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search terms..."
           autoComplete="off"
-          className="w-full rounded-control border border-gray-200 dark:border-white/10 bg-(--surface-1) px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus-ring shadow-(--shadow-resting)"
+          className="w-full rounded-control border border-(--bd) bg-(--surface-1) px-4 py-2.5 text-sm text-(--ink) placeholder:text-gray-400 focus-ring shadow-(--shadow-resting)"
         />
         <nav aria-label="Jump to letter" className="mt-3 flex flex-wrap gap-1">
           {ALPHABET.map((letter) =>
@@ -73,7 +73,7 @@ export function Glossary({ entries }: GlossaryProps) {
           <section key={group.letter} aria-labelledby={`letter-${group.letter}`} className="mt-8">
             <h2
               id={`letter-${group.letter}`}
-              className="scroll-mt-36 font-display text-display-lg text-accent dark:text-accent-light"
+              className="scroll-mt-36 font-display text-display-lg text-accent-dark dark:text-accent-light"
             >
               {group.letter}
             </h2>

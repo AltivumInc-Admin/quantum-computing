@@ -24,7 +24,7 @@ function GateScreen() {
     <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 py-16">
       <p className="flex items-center gap-3 text-sm text-caption" role="status">
         <span
-          className="h-4 w-4 animate-spin rounded-full border-2 border-(--bd) border-t-accent"
+          className="h-4 w-4 animate-spin motion-reduce:animate-none rounded-full border-2 border-(--bd) border-t-accent"
           aria-hidden="true"
         />
         Checking your access…
@@ -42,10 +42,19 @@ function GateScreen() {
  *
  * In the configured production build the provider starts in "configuring", so
  * protected routes pre-render as the gate rather than their content: the
- * content never ships in the static HTML and never reaches a search index —
- * the deliberate trade for a hard wall. A signed-out visitor who deep-links to
- * a protected route is redirected to `/login?next=…`; a signed-in one passes
- * straight through.
+ * rendered DOM shows only the gate, and the per-page robots noindex keeps the
+ * walled URLs out of search indexes. This is an access gate, NOT a
+ * confidentiality boundary: under output:"export" React Flight must serialize
+ * the whole protected subtree (the full lesson content) into each page's
+ * static payload — the inline RSC data in the .html and the adjacent .txt
+ * flight segment — where view-source or curl can recover it. Hiding the
+ * content itself would require authenticated delivery of /learn/* at the
+ * CDN/Amplify layer, which is infra work outside this app. A signed-out
+ * visitor who deep-links to
+ * a protected route is redirected to `/login?mode=signup&next=…` — sign-up
+ * framing because a walled-off visitor is most likely a brand-new prospect
+ * (the form still offers "Already have an account? Sign in" one tap away),
+ * with the destination preserved. A signed-in visitor passes straight through.
  */
 export function AuthWall({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
@@ -58,7 +67,11 @@ export function AuthWall({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!blocked) return;
     const target = pathname && pathname !== "/" ? pathname : null;
-    router.replace(target ? `/login?next=${encodeURIComponent(target)}` : "/login");
+    router.replace(
+      target
+        ? `/login?mode=signup&next=${encodeURIComponent(target)}`
+        : "/login?mode=signup"
+    );
   }, [blocked, pathname, router]);
 
   // Render freely when auth isn't configured, on a public route, or when the

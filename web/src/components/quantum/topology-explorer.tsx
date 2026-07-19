@@ -217,7 +217,7 @@ function TopologyGraph({ topo, n, gateA, gateB, path, swaps }: GraphProps) {
             y2={e.y2}
             stroke="currentColor"
             strokeWidth={2.5}
-            className="text-accent dark:text-accent-light"
+            className="text-accent-dark dark:text-accent-light"
           />
         ))}
       {/* Nodes */}

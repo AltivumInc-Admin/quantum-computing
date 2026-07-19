@@ -30,7 +30,7 @@ export function Valve({
         <ul className="mt-4 flex flex-col gap-2 text-sm">
           {dueKinds.map((k) => (
             <li key={k.kind} className="flex items-center gap-3">
-              <span className="min-w-[1rem] font-semibold tabular-nums text-gray-900 dark:text-white">
+              <span className="min-w-[1rem] font-semibold tabular-nums text-(--ink)">
                 {k.count}
               </span>
               <span className="text-gray-600 dark:text-gray-300">{k.label}</span>

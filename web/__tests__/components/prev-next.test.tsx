@@ -5,17 +5,10 @@ import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import { PrevNext } from "@/components/prev-next";
 
-jest.mock("next/link", () => {
-  const React = require("react");
-  return {
-    __esModule: true,
-    default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) =>
-      React.createElement("a", { href, ...props }, children),
-  };
-});
-
-// PrevNext now navigates via TransitionLink (View Transitions). Mock it to a
-// plain anchor so the test doesn't need a mounted app router.
+// PrevNext navigates exclusively via TransitionLink (View Transitions). Mock it
+// to a plain anchor so the test doesn't need a mounted app router. (No
+// next/link mock: PrevNext renders no raw Link — if one ever creeps back in,
+// the resulting failure IS the signal.)
 jest.mock("@/components/transition-link", () => {
   const React = require("react");
   return {
@@ -68,13 +61,12 @@ describe("PrevNext", () => {
     expect(screen.getByText("Quantum Chemistry & Biochemistry")).toBeInTheDocument();
   });
 
-  it("should render a next link to the first section when the slug does not match any section", () => {
-    // When findIndex returns -1, currentIndex is -1.
-    // prev = sections[-2] = undefined, next = sections[0] = first section
-    render(<PrevNext currentSlug="non-existent" />);
-    const links = screen.queryAllByRole("link");
-    expect(links).toHaveLength(1);
-    expect(screen.getByText("Prerequisites: From Zero to Ready-for-Quantum")).toBeInTheDocument();
+  it("should render nothing for an unrecognized slug", () => {
+    // findIndex's -1 must not fabricate a "Next: Prerequisites" card — the
+    // reader is not before section 00, they are nowhere in the path.
+    const { container } = render(<PrevNext currentSlug="non-existent" />);
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("should render the correct prev/next for the second section", () => {

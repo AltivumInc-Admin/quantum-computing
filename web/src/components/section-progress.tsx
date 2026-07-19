@@ -23,6 +23,14 @@ function CheckIcon() {
  * is stored locally and broadcast through the shared progress channel so the
  * sidebar's checkmarks and overall progress bar update instantly. Clicking again
  * undoes completion.
+ *
+ * The house toggle idiom (code-block's wrap button): ONE state channel — a
+ * stable accessible name with aria-pressed carrying the state. The APG button
+ * pattern warns against flipping a toggle's label while aria-pressed is in
+ * use (AT would double-encode: "Completed, pressed"), and a divergent constant
+ * aria-label over a flipping visible label would fail WCAG 2.5.3 Label in
+ * Name — so the visible label stays constant too, and the pressed state shows
+ * as the filled check plus the section-hue styling.
  */
 export function SectionProgress({ slug }: { slug: string }) {
   const complete = useSectionComplete(slug);
@@ -47,7 +55,7 @@ export function SectionProgress({ slug }: { slug: string }) {
       >
         <CheckIcon />
       </span>
-      {complete ? "Completed" : "Mark as complete"}
+      Mark as complete
     </button>
   );
 }

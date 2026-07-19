@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TUTOR_ERROR_SENTINEL } from "@/lib/tutor";
 import { sha256Hex } from "@/lib/sha256";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
+import { TUTOR_TRIGGER_ID } from "@/lib/layout-regions";
 
 /**
  * "Ask the margin" — a Socratic lesson tutor. A fixed affordance (and Cmd/Ctrl-K)
@@ -48,6 +50,7 @@ export function AskTutor() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const trapFocus = useFocusTrap(dialogRef);
 
   // Close the panel: abort any in-flight stream and restore focus to the trigger
   // (the dialog claims aria-modal, so it must hand focus back on close).
@@ -162,31 +165,24 @@ export function AskTutor() {
       close();
       return;
     }
-    if (e.key !== "Tab" || !dialogRef.current) return;
-    const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && active === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    trapFocus(e);
   };
 
   return (
     <>
       <button
         ref={triggerRef}
+        // Shared-constant id: the mobile drawer marks this pill inert while it
+        // is open (see lib/layout-regions.ts and sidebar.tsx).
+        id={TUTOR_TRIGGER_ID}
         type="button"
         aria-label="Ask about this lesson"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring hover:text-accent dark:hover:text-accent-light"
+        // Below lg the sidebar's mobile drawer toggle owns the bottom-right
+        // corner (fixed bottom-4 right-4, ~48px); the pill sits one slot above
+        // it (bottom-20 clears the toggle plus a 16px gap) so the two fixed
+        // affordances never stack. Desktop keeps the original placement.
+        className="fixed bottom-20 right-4 lg:bottom-5 lg:right-5 z-50 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring hover:text-accent dark:hover:text-accent-light"
       >
         Ask
         <kbd className="rounded bg-(--field) border border-(--bd) px-1.5 py-0.5 font-mono text-[10px] text-caption">
@@ -207,7 +203,7 @@ export function AskTutor() {
             <div>
               <p className="font-display text-lg text-(--ink)">Ask the margin</p>
               <p className="mt-0.5 text-xs text-caption">
-                Grounded in: <span className="text-accent dark:text-accent-light">{lessonLabel(slug)}</span>
+                Grounded in: <span className="text-accent-dark dark:text-accent-light">{lessonLabel(slug)}</span>
               </p>
             </div>
             <button

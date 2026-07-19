@@ -74,7 +74,7 @@ function Panel({ className }: { className?: string }) {
         <div>
           <label
             htmlFor={checkboxId}
-            className="block text-sm font-medium text-gray-900 dark:text-white"
+            className="block text-sm font-medium text-(--ink)"
           >
             Email me when review cards are due
           </label>

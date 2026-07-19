@@ -32,6 +32,8 @@ describe("PricingPage", () => {
     expect(og.description).toBe(metadata.description);
     const twitter = metadata.twitter as Record<string, unknown>;
     expect(twitter.card).toBe("summary");
+    // Public funnel route: must never inherit the walled pages' noindex.
+    expect(metadata.robots).toBeUndefined();
   });
 
   it("leads with the free-learning thesis", () => {

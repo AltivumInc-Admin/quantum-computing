@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Sora, Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Nav } from "@/components/nav";
@@ -8,7 +8,7 @@ import { Footer } from "@/components/footer";
 import { FogField } from "@/components/fog-field";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { AuthWall } from "@/components/auth/auth-wall";
-import { SITE_URL } from "@/lib/site";
+import { SITE_URL, SITE_NAME, OG_IMAGE } from "@/lib/site";
 import "./globals.css";
 
 // Instrument type system: Sora (light-weight display), Geist (UI/body),
@@ -34,29 +34,34 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
 });
 
-// Branded social-share card, resolved to an absolute URL via metadataBase so it
-// works when quantumlearner.dev 301-redirects here. Default for every route;
+// Site name + branded social-share card come from lib/site.ts (one source of
+// truth shared with pages that override openGraph). Default for every route;
 // individual pages may override title/description but inherit this image.
-const OG_IMAGE = {
-  url: "/og.png",
-  width: 1200,
-  height: 630,
-  alt: "Quantum Computing Workspace — master quantum computing from first principles",
-};
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Quantum Computing Workspace",
+  title: SITE_NAME,
   description: "A progressive learning path through quantum computing with Amazon Braket",
   openGraph: {
     type: "website",
-    siteName: "Quantum Computing Workspace",
+    siteName: SITE_NAME,
     images: [OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
     images: [OG_IMAGE.url],
   },
+};
+
+// Browser-chrome color (mobile toolbar/status bar) tracks --surface-base per
+// theme: hex renderings of oklch(0.97 0.004 88) light / oklch(0.145 0.004 80)
+// dark. Statically emitted, so it follows the OS scheme (the enableSystem
+// default) rather than a manual in-app override — an acceptable edge for a
+// static export.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f5f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0a08" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

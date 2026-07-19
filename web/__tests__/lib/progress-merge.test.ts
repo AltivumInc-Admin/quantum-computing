@@ -7,6 +7,8 @@ import {
   applySnapshot,
   registerLocalDeletion,
   resetLocalDeletions,
+  trackCrossTabDeletions,
+  wipeLocalProgress,
   CLOCK_SKEW_GRACE_DAYS,
 } from "@/lib/progress-merge";
 
@@ -32,6 +34,45 @@ describe("exportSnapshot", () => {
     localStorage.setItem("qc-sync:meta", "{}");
     localStorage.setItem("theme", "dark");
     expect(Object.keys(exportSnapshot()).sort()).toEqual(["qc:card:x", "qc:section:a"]);
+  });
+});
+
+describe("wipeLocalProgress", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("removes qc:* keys plus explicitly passed extras, leaves foreign keys, dispatches once", () => {
+    localStorage.setItem("qc:section:a", "1");
+    localStorage.setItem("qc:card:x", card());
+    localStorage.setItem("qc-sync:meta", '{"sub":"u1"}'); // outside the prefix
+    localStorage.setItem("theme", "dark");
+    const events: number[] = [];
+    const listener = () => events.push(1);
+    window.addEventListener("qc-progress", listener);
+    const removed = wipeLocalProgress(["qc-sync:meta"]);
+    window.removeEventListener("qc-progress", listener);
+    expect(removed).toBe(3);
+    expect(localStorage.getItem("qc:section:a")).toBeNull();
+    expect(localStorage.getItem("qc:card:x")).toBeNull();
+    expect(localStorage.getItem("qc-sync:meta")).toBeNull();
+    expect(localStorage.getItem("theme")).toBe("dark");
+    expect(events).toHaveLength(1);
+  });
+
+  it("spares qc-sync:meta unless asked (the sync-client reset keeps its account binding)", () => {
+    localStorage.setItem("qc:section:a", "1");
+    localStorage.setItem("qc-sync:meta", '{"sub":"u1"}');
+    expect(wipeLocalProgress()).toBe(1);
+    expect(localStorage.getItem("qc-sync:meta")).toBe('{"sub":"u1"}');
+  });
+
+  it("does not dispatch when there was nothing to remove", () => {
+    localStorage.setItem("theme", "dark");
+    const events: number[] = [];
+    const listener = () => events.push(1);
+    window.addEventListener("qc-progress", listener);
+    expect(wipeLocalProgress(["qc-sync:meta"])).toBe(0);
+    window.removeEventListener("qc-progress", listener);
+    expect(events).toHaveLength(0);
   });
 });
 
@@ -249,6 +290,41 @@ describe("un-complete does not self-revert (progress-store tombstone wiring)", (
     // Re-completing clears the tombstone so the flag applies + syncs again.
     setSectionComplete("qubits", true);
     expect(localStorage.getItem("qc:section:qubits")).toBe("1");
+  });
+});
+
+describe("un-complete in another tab does not re-adopt here (cross-tab tombstone tracking)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetLocalDeletions();
+  });
+
+  it("mirrors a second tab's deletion into this tab's tombstones while tracking", () => {
+    // The two-tab repro: tab A un-completes (removeItem on the SHARED storage,
+    // tombstone only in tab A's module state). This tab — tab B — hears about
+    // it solely through the "storage" event, then runs its own sync. Without
+    // the tracker its applySnapshot would write the server's "1" straight back
+    // into the storage tab A just deleted from.
+    const untrack = trackCrossTabDeletions();
+    window.dispatchEvent(new StorageEvent("storage", { key: "qc:section:x", newValue: null }));
+    expect(applySnapshot({ "qc:section:x": "1" })).toBe(0);
+    expect(localStorage.getItem("qc:section:x")).toBeNull();
+    // Re-completing anywhere clears the tombstone everywhere: a non-null
+    // newValue is the other tab's setItem, so this tab may adopt again.
+    window.dispatchEvent(new StorageEvent("storage", { key: "qc:section:x", newValue: "1" }));
+    expect(applySnapshot({ "qc:section:x": "1" })).toBe(1);
+    expect(localStorage.getItem("qc:section:x")).toBe("1");
+    untrack();
+  });
+
+  it("ignores non-qc keys and a full clear, and stops tracking after uninstall", () => {
+    const untrack = trackCrossTabDeletions();
+    window.dispatchEvent(new StorageEvent("storage", { key: "theme", newValue: null }));
+    window.dispatchEvent(new StorageEvent("storage", { key: null })); // localStorage.clear()
+    untrack();
+    // After uninstall a deletion no longer registers — the next apply adopts.
+    window.dispatchEvent(new StorageEvent("storage", { key: "qc:section:y", newValue: null }));
+    expect(applySnapshot({ "qc:section:y": "1" })).toBe(1);
   });
 });
 

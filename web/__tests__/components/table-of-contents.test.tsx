@@ -40,13 +40,23 @@ function enter(slug: string) {
   });
 }
 
-function leave(slug: string) {
+function leave(slug: string, top: number) {
   act(() => {
     ioCallback([
-      { target: document.getElementById(slug) as Element, isIntersecting: false },
+      {
+        target: document.getElementById(slug) as Element,
+        isIntersecting: false,
+        boundingClientRect: { top } as DOMRectReadOnly,
+      },
     ]);
   });
 }
+
+// Scrolled past the trigger band: the heading exits above the viewport top —
+// the reader is now inside its section body.
+const leaveUp = (slug: string) => leave(slug, -24);
+// Scrolled back up: the heading drops below the band without being read.
+const leaveDown = (slug: string) => leave(slug, 480);
 
 describe("TableOfContents", () => {
   it("renders an anchor for each heading pointing at its slug", () => {
@@ -100,7 +110,10 @@ describe("TableOfContents", () => {
     );
   });
 
-  it("clears the active marker when scrolled away from every heading", () => {
+  it("keeps a heading active after it scrolls past the trigger band (reading its body)", () => {
+    // The lockstep promise: while the reader is inside a section taller than
+    // the band, the heading that introduced it stays highlighted instead of
+    // the rail going blank.
     render(
       <>
         <h2 id="alpha">Alpha</h2>
@@ -108,16 +121,78 @@ describe("TableOfContents", () => {
         <TableOfContents headings={headings} />
       </>
     );
+    enter("alpha");
+    leaveUp("alpha");
+    expect(screen.getByRole("link", { name: "Alpha" })).toHaveAttribute(
+      "aria-current",
+      "location"
+    );
+  });
+
+  it("hands the highlight to the next heading when it reaches the band", () => {
+    render(
+      <>
+        <h2 id="alpha">Alpha</h2>
+        <h3 id="beta">Beta</h3>
+        <TableOfContents headings={headings} />
+      </>
+    );
+    enter("alpha");
+    leaveUp("alpha");
     enter("beta");
     expect(screen.getByRole("link", { name: "Beta" })).toHaveAttribute(
       "aria-current",
       "location"
     );
-    leave("beta");
+    expect(screen.getByRole("link", { name: "Alpha" })).not.toHaveAttribute(
+      "aria-current"
+    );
+  });
+
+  it("falls back to the previous passed heading when the reader scrolls back up", () => {
+    render(
+      <>
+        <h2 id="alpha">Alpha</h2>
+        <h3 id="beta">Beta</h3>
+        <TableOfContents headings={headings} />
+      </>
+    );
+    enter("alpha");
+    leaveUp("alpha");
+    enter("beta");
+    leaveUp("beta");
+    expect(screen.getByRole("link", { name: "Beta" })).toHaveAttribute(
+      "aria-current",
+      "location"
+    );
+    // Beta re-enters the band from above, then drops below it — the reader is
+    // back inside Alpha's body.
+    enter("beta");
+    leaveDown("beta");
+    expect(screen.getByRole("link", { name: "Alpha" })).toHaveAttribute(
+      "aria-current",
+      "location"
+    );
     expect(screen.getByRole("link", { name: "Beta" })).not.toHaveAttribute(
       "aria-current"
     );
+  });
+
+  it("clears the active marker only above the first heading (the intro case)", () => {
+    render(
+      <>
+        <h2 id="alpha">Alpha</h2>
+        <h3 id="beta">Beta</h3>
+        <TableOfContents headings={headings} />
+      </>
+    );
+    enter("alpha");
+    // Scrolled back into the intro: alpha drops below the band unread.
+    leaveDown("alpha");
     expect(screen.getByRole("link", { name: "Alpha" })).not.toHaveAttribute(
+      "aria-current"
+    );
+    expect(screen.getByRole("link", { name: "Beta" })).not.toHaveAttribute(
       "aria-current"
     );
   });

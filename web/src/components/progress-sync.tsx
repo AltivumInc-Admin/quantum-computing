@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { trackCrossTabDeletions } from "@/lib/progress-merge";
+import { PROGRESS_EVENT_NAME } from "@/lib/progress-store";
 
 /**
  * Invisible background sync driver, mounted once in the root layout inside
@@ -96,13 +98,18 @@ export function ProgressSync() {
     };
 
     run(); // initial pull-merge on sign-in / arrival (also warms `client`)
-    window.addEventListener("qc-progress", debounced);
+    // While sync can run in this tab, mirror other tabs' explicit deletions
+    // into this tab's session tombstones — otherwise this tab's own merge
+    // would write the server's copy back under the other tab's un-complete.
+    const untrackDeletions = trackCrossTabDeletions();
+    window.addEventListener(PROGRESS_EVENT_NAME, debounced);
     window.addEventListener("pagehide", flushOnExit);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       disposed = true;
       clearTimers();
-      window.removeEventListener("qc-progress", debounced);
+      untrackDeletions();
+      window.removeEventListener(PROGRESS_EVENT_NAME, debounced);
       window.removeEventListener("pagehide", flushOnExit);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };

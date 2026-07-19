@@ -1,4 +1,4 @@
-import { extractHeadings, buildLineSlugMap } from "@/lib/extract-headings";
+import { extractHeadings, buildLineSlugMap, lineSlugMapFrom } from "@/lib/extract-headings";
 
 describe("extractHeadings", () => {
   it("collects h2 and h3 headings with level, text, slug and 1-based line", () => {
@@ -28,6 +28,36 @@ describe("extractHeadings", () => {
       "Real Heading",
       "Second Heading",
     ]);
+  });
+
+  it("does not let a ~~~ line inside a ``` block end the fence (CommonMark)", () => {
+    // A fence closes only with the SAME marker character (remark behavior):
+    // a shared toggle would flip out of the fence here, turning the '## ' line
+    // into a phantom TOC entry and swallowing later real headings.
+    const md = [
+      "## Real Heading",
+      "```markdown",
+      "~~~",
+      "## still fence content, not a heading",
+      "~~~",
+      "```",
+      "## Second Heading",
+    ].join("\n");
+    expect(extractHeadings(md).map((h) => h.text)).toEqual([
+      "Real Heading",
+      "Second Heading",
+    ]);
+  });
+
+  it("treats ~~~ fences as fences in their own right", () => {
+    const md = [
+      "## Real",
+      "~~~python",
+      "## a comment inside a tilde fence",
+      "~~~",
+      "## Also Real",
+    ].join("\n");
+    expect(extractHeadings(md).map((h) => h.text)).toEqual(["Real", "Also Real"]);
   });
 
   it("disambiguates repeated headings in document order", () => {
@@ -83,5 +113,12 @@ describe("buildLineSlugMap", () => {
     expect(map.get(2)).toBe("alpha");
     expect(map.get(3)).toBe("alpha-1");
     expect(map.has(1)).toBe(false);
+  });
+
+  it("pairs identically when built from already-extracted headings", () => {
+    // lineSlugMapFrom is the single home of the line -> slug keying; the
+    // lesson page uses it to avoid re-scanning the GUIDE it already parsed.
+    const md = ["# Title", "## Alpha", "## Alpha"].join("\n");
+    expect(lineSlugMapFrom(extractHeadings(md))).toEqual(buildLineSlugMap(md));
   });
 });

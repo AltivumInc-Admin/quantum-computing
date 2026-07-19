@@ -40,6 +40,7 @@
 // Within a session, keys the learner explicitly deleted on THIS device are
 // tombstoned so the next sync doesn't silently re-add them under the click.
 
+import { PROGRESS_EVENT_NAME } from "./progress-event";
 import { epochDay, isValidCardState, MAX_INTERVAL, type CardState } from "./review-schedule";
 
 export type ProgressSnapshot = Record<string, string>;
@@ -67,6 +68,31 @@ export function resetLocalDeletions(): void {
   sessionTombstones.clear();
 }
 
+/**
+ * Mirror OTHER tabs' explicit qc:* deletions into THIS tab's tombstones. The
+ * registry above is per-JS-realm but localStorage is shared, so without this a
+ * second open tab of the same device — which runs its own sync — would merge
+ * the server's copy back and write it into the storage the first tab just
+ * deleted from, silently reverting the learner's undo. The "storage" event
+ * fires only in the tabs that did NOT make the write, so registering on
+ * newValue === null and clearing on a non-null value mirrors the exact
+ * registerLocalDeletion / clearLocalDeletion calls the writing tab's writeFlag
+ * already made: every tab of the device refuses to re-adopt precisely the keys
+ * the learner deleted, and re-completing anywhere clears the tombstone
+ * everywhere. Still session-scoped, still never propagating deletion
+ * cross-device. Returns an uninstaller (the subscribe() convention).
+ */
+export function trackCrossTabDeletions(): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (e: StorageEvent) => {
+    if (!e.key?.startsWith("qc:")) return;
+    if (e.newValue === null) registerLocalDeletion(e.key);
+    else clearLocalDeletion(e.key);
+  };
+  window.addEventListener("storage", onStorage);
+  return () => window.removeEventListener("storage", onStorage);
+}
+
 /** Every qc:* key in localStorage (qc-sync:* metadata is outside the prefix). */
 export function exportSnapshot(): ProgressSnapshot {
   const snapshot: ProgressSnapshot = {};
@@ -81,6 +107,32 @@ export function exportSnapshot(): ProgressSnapshot {
     /* storage unavailable — sync simply sees an empty device */
   }
   return snapshot;
+}
+
+/**
+ * The ONE "remove every qc:* key, then notify progress subscribers" loop.
+ * Both wipers of the progress contract — sync-client's "use account data
+ * only" reset and delete-account's final local clear — call this, so what a
+ * wipe covers can never drift between them. `alsoKeys` names storage OUTSIDE
+ * the qc:* prefix a caller explicitly includes (delete-account passes the
+ * qc-sync:meta binding); the progress event fires once, and only when
+ * something was actually removed. Returns the number of keys removed. Lives
+ * here (below sync-client) because delete-account cannot statically import
+ * sync-client without dragging aws-amplify into the shared bundle.
+ */
+export function wipeLocalProgress(alsoKeys: string[] = []): number {
+  const keys: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith("qc:") || alsoKeys.includes(k))) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    if (keys.length > 0) window.dispatchEvent(new Event(PROGRESS_EVENT_NAME));
+  } catch {
+    /* storage unavailable — nothing local to wipe */
+  }
+  return keys.length;
 }
 
 function parseCard(raw: string): CardState | null {
@@ -253,7 +305,7 @@ export function applySnapshot(
         changed++;
       }
     }
-    if (changed > 0) window.dispatchEvent(new Event("qc-progress"));
+    if (changed > 0) window.dispatchEvent(new Event(PROGRESS_EVENT_NAME));
   } catch {
     /* storage unavailable — nothing applied */
   }

@@ -167,7 +167,7 @@ function Panel({ className }: { className?: string }) {
   return (
     <section aria-label="Run on real quantum hardware" className={className}>
       <header className="mb-4">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent font-mono">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
           Real hardware
         </p>
         <h2 className="mt-1 font-display text-display-md tracking-tight text-(--ink)">
@@ -179,7 +179,7 @@ function Panel({ className }: { className?: string }) {
       <SponsorNote />
 
       {load === "loading" && (
-        <div aria-hidden className={`mt-4 h-28 ${card} animate-pulse`} />
+        <div aria-hidden className={`mt-4 h-28 ${card} animate-pulse motion-reduce:animate-none`} />
       )}
       {load === "signed-out" && (
         <p className={`mt-4 ${card} px-5 py-4 text-sm text-(--mut)`}>

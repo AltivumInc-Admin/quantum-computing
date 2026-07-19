@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Privacy — Quantum Computing Workspace",
+  title: `Privacy — ${SITE_NAME}`,
   description:
-    "What the Quantum Workspace stores (your email and learning progress), where it lives, what it never collects, and how to delete all of it.",
+    `What ${SITE_NAME} stores (your email and learning progress), where it lives, what it never collects, and how to delete all of it.`,
 };
 
 const LAST_UPDATED = "2026-07-12";
@@ -18,10 +19,10 @@ export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-24 sm:px-6 lg:px-8">
       <header>
-        <p className="mb-4 text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light">
+        <p className="mb-4 text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light">
           Policy
         </p>
-        <h1 className="font-display text-display-2xl tracking-tight text-gray-900 dark:text-white">
+        <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">
           Privacy
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-gray-600 dark:text-gray-400">
@@ -133,7 +134,7 @@ export default function PrivacyPage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
+      <h2 className="text-base font-semibold text-(--ink)">{title}</h2>
       <div className="mt-3 space-y-3 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
         {children}
       </div>

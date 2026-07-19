@@ -13,6 +13,7 @@ import {
   mergeSnapshots,
   applySnapshot,
   resetLocalDeletions,
+  wipeLocalProgress,
   type ProgressSnapshot,
 } from "./progress-merge";
 
@@ -219,21 +220,6 @@ export function lastSyncedAt(): number | null {
   return typeof t === "number" ? t : null;
 }
 
-/** Wipe this device's qc:* progress (the "use account data only" choice). */
-function resetLocalProgress(): void {
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k?.startsWith("qc:")) keys.push(k);
-    }
-    keys.forEach((k) => localStorage.removeItem(k));
-    if (keys.length > 0) window.dispatchEvent(new Event("qc-progress"));
-  } catch {
-    /* storage unavailable */
-  }
-}
-
 /**
  * Delete the caller's entire server-side snapshot (account deletion). The
  * server keys the delete on the verified token's sub; nothing else identifies
@@ -275,7 +261,8 @@ async function runSync(
   // explicit choice before anything merges.
   const boundSub = readMeta().sub;
   if (boundSub && boundSub !== sub) {
-    if (options?.accountChange === "reset") resetLocalProgress();
+    // Wipe this device's qc:* progress (the "use account data only" choice).
+    if (options?.accountChange === "reset") wipeLocalProgress();
     else if (options?.accountChange !== "adopt") throw new SyncAccountMismatchError();
     // The old account's session tombstones must not push deletions into the
     // NEW account's server snapshot.
