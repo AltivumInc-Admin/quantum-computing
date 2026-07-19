@@ -18,6 +18,13 @@
   --color-accent-light: var(--accent-light);
   --color-accent-dark: var(--accent-dark);
 
+  /* The Instrument ground: the ONE pinned near-black under every self-dark
+     band (hero shell, powered-by strip, account band, media frames, modal
+     backdrop). Deliberately identical in both app themes — these surfaces are
+     literal imagery islands, not theme-responsive chrome — so a compile-time
+     @theme token is exactly right (see CLAUDE.md's @theme guidance). */
+  --color-smoke: #0b0b0c;
+
   --color-warm: oklch(0.78 0.12 75);
   --color-warm-light: oklch(0.88 0.08 75);
   --color-warm-dark: oklch(0.52 0.12 75);

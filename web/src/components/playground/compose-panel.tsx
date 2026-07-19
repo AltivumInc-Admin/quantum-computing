@@ -8,6 +8,7 @@ import { MAX_QUBITS, type Program } from "@/components/quantum/qsim-dsl";
 import { CircuitDiagram } from "@/components/quantum/circuit-diagram";
 import { MAX_SHARE_SRC } from "@/lib/circuit-url";
 import { benchButtonClass, benchGroupLabelClass } from "./controls";
+import { PALETTE } from "./palette";
 
 /**
  * The editor half of the bench: a plain styled textarea over the qsim DSL (the
@@ -18,22 +19,9 @@ import { benchButtonClass, benchGroupLabelClass } from "./controls";
  * last-good program (the Quirk principle — never blank the readouts).
  */
 
-// Exported so the welcome page's hero-stat test can assert the advertised
-// gate count equals what this palette actually surfaces.
-export const PALETTE: {
-  group: string;
-  chips: { label: string; template: string }[];
-  hint?: string;
-}[] = [
-  { group: "Basis", chips: ["H", "X", "Y", "Z"].map((g) => ({ label: g, template: `${g} 0` })) },
-  { group: "Phase", chips: ["S", "T"].map((g) => ({ label: g, template: `${g} 0` })) },
-  {
-    group: "Rotate",
-    chips: ["RX", "RY", "RZ"].map((g) => ({ label: g, template: `${g} 0 theta` })),
-    hint: "theta binds to the slider",
-  },
-  { group: "Entangle", chips: [{ label: "CNOT", template: "CNOT 0 1" }] },
-];
+// The palette lives in ./palette (pure data, importable from the server-side
+// welcome page); re-exported here for existing consumers of this module.
+export { PALETTE } from "./palette";
 
 const PRESETS: { name: string; src: string }[] = [
   { name: "Superposition", src: "H 0" },

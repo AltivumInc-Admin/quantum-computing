@@ -105,6 +105,24 @@ describe("CurriculumGrid", () => {
     ).toHaveAttribute("href", "/glossary");
   });
 
+  it("lets signed-in learners reach the glossary directly", () => {
+    mockStatus = "authenticated";
+    render(<CurriculumGrid sections={SECTIONS} />);
+    expect(
+      screen.getByRole("link", { name: /glossary, an a to z reference/i })
+    ).toHaveAttribute("href", "/glossary");
+  });
+
+  it("gates the glossary card for signed-out visitors with sign-up framing and destination", () => {
+    // /glossary sits behind the AuthWall like the sections — the identical-
+    // looking sibling card must not hard-bounce onto a bare sign-in form.
+    mockStatus = "unauthenticated";
+    render(<CurriculumGrid sections={SECTIONS} />);
+    expect(
+      screen.getByRole("link", { name: /glossary, an a to z reference/i })
+    ).toHaveAttribute("href", "/login?mode=signup&next=%2Fglossary");
+  });
+
   it("leaves cards as plain links when auth is not configured (static build)", () => {
     mockStatus = "unconfigured";
     render(<CurriculumGrid sections={SECTIONS} />);

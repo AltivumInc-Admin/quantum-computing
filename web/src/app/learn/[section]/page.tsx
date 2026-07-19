@@ -10,6 +10,7 @@ import { NotebookLink } from "@/components/notebook-link";
 import { PrevNext } from "@/components/prev-next";
 import { SectionProgress } from "@/components/section-progress";
 import { TableOfContents } from "@/components/table-of-contents";
+import { SITE_NAME } from "@/lib/site";
 
 interface PageProps {
   params: Promise<{ section: string }>;
@@ -28,10 +29,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const summary = await getContentSummary(slug);
   const description = summary
     ? truncateAtWord(summary, 155)
-    : `${section.title}: hands-on lessons and runnable notebooks in the Quantum Workspace curriculum.`;
+    : `${section.title}: hands-on lessons and runnable notebooks in the ${SITE_NAME} curriculum.`;
   return {
     ...articleMetadata({
-      title: `${section.title} — Quantum Workspace`,
+      title: `${section.title} — ${SITE_NAME}`,
       ogTitle: section.title,
       description,
       path: `/learn/${section.slug}`,

@@ -24,7 +24,7 @@ describe("learn/[section] route metadata", () => {
 
   it("builds full canonical + OG + Twitter metadata for a lesson", async () => {
     const md = await generateMetadata({ params: Promise.resolve({ section: "02-hardware" }) });
-    expect(String(md.title)).toBe("Quantum Hardware on Amazon Braket — Quantum Workspace");
+    expect(String(md.title)).toBe("Quantum Hardware on Amazon Braket — Quantum Learner");
     expect(md.alternates?.canonical).toBe("/learn/02-hardware");
 
     const og = md.openGraph as Record<string, unknown>;

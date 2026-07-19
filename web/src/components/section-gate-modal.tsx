@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { TransitionLink } from "@/components/transition-link";
 import { hueFor } from "@/lib/sections";
+import { ACCOUNT_REASSURANCE } from "@/lib/section-pitch";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 export interface GateSection {
@@ -84,7 +85,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
       role="presentation"
     >
       <div
-        className="animate-backdrop-fade absolute inset-0 bg-[#080c14]/70 backdrop-blur-sm"
+        className="animate-backdrop-fade absolute inset-0 bg-smoke/70 backdrop-blur-sm"
         aria-hidden="true"
         onMouseDown={onClose}
       />
@@ -176,10 +177,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
           </div>
 
           {!authenticated && (
-            <p className="mt-4 text-xs text-caption">
-              Email or Google. No credit card — the entire curriculum and simulator are
-              free.
-            </p>
+            <p className="mt-4 text-xs text-caption">{ACCOUNT_REASSURANCE}</p>
           )}
         </div>
       </div>

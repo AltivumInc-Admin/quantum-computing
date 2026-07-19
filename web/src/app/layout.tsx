@@ -8,7 +8,7 @@ import { Footer } from "@/components/footer";
 import { FogField } from "@/components/fog-field";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { AuthWall } from "@/components/auth/auth-wall";
-import { SITE_URL } from "@/lib/site";
+import { SITE_URL, SITE_NAME, OG_IMAGE } from "@/lib/site";
 import "./globals.css";
 
 // Instrument type system: Sora (light-weight display), Geist (UI/body),
@@ -34,23 +34,16 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
 });
 
-// Branded social-share card, resolved to an absolute URL via metadataBase so it
-// works when quantumlearner.dev 301-redirects here. Default for every route;
+// Site name + branded social-share card come from lib/site.ts (one source of
+// truth shared with pages that override openGraph). Default for every route;
 // individual pages may override title/description but inherit this image.
-const OG_IMAGE = {
-  url: "/og.png",
-  width: 1200,
-  height: 630,
-  alt: "Quantum Computing Workspace — master quantum computing from first principles",
-};
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Quantum Computing Workspace",
+  title: SITE_NAME,
   description: "A progressive learning path through quantum computing with Amazon Braket",
   openGraph: {
     type: "website",
-    siteName: "Quantum Computing Workspace",
+    siteName: SITE_NAME,
     images: [OG_IMAGE],
   },
   twitter: {

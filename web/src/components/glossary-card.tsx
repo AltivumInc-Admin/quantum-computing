@@ -4,10 +4,15 @@ import { TransitionLink } from "@/components/transition-link";
 // Companion resource card. Mirrors SectionCard's chrome (rounded card, surface
 // token, hover lift/glow) but carries a "Reference" eyebrow and no number badge,
 // so it reads as a sibling resource rather than a numbered curriculum module.
-export function GlossaryCard() {
+//
+// `href` is overridable so CurriculumGrid can gate signed-out clicks the same
+// way it gates the sibling section cards: /glossary sits behind the AuthWall,
+// and identical-looking cards in one grid must not bounce the same visitor
+// two different ways.
+export function GlossaryCard({ href = "/glossary" }: { href?: string }) {
   return (
     <TransitionLink
-      href="/glossary"
+      href={href}
       aria-label="Glossary, an A to Z reference of quantum terms"
       style={{ "--hue": 192 } as CSSProperties}
       className="group relative block rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) backdrop-blur-md overflow-hidden interactive focus-ring shadow-(--shadow-resting) hover:-translate-y-1.5 hover:shadow-(--shadow-raised) hover:border-gray-300/80 dark:hover:border-white/[0.12] transition-all duration-300"

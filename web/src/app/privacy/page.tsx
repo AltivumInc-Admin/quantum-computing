@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Privacy — Quantum Computing Workspace",
+  title: `Privacy — ${SITE_NAME}`,
   description:
-    "What the Quantum Workspace stores (your email and learning progress), where it lives, what it never collects, and how to delete all of it.",
+    `What ${SITE_NAME} stores (your email and learning progress), where it lives, what it never collects, and how to delete all of it.`,
 };
 
 const LAST_UPDATED = "2026-07-12";

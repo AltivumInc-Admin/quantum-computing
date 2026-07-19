@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AuthForm } from "@/components/auth/auth-form";
 import { useAuth } from "@/components/auth/auth-provider";
 import { isAuthConfigured } from "@/lib/auth-config";
+import { SITE_NAME } from "@/lib/site";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function LoginPage() {
       {!isAuthConfigured() ? (
         <div className="w-full max-w-sm rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 text-center shadow-(--shadow-resting)">
           <p className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
-            The Quantum Workspace
+            {SITE_NAME}
           </p>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Free accounts are coming soon.

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { ReviewDashboard } from "@/components/review-dashboard";
+import { SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Review — Quantum Workspace",
+  title: `Review — ${SITE_NAME}`,
   robots: { index: false, follow: false },
   description: "Spaced-repetition review of the quantum computing curriculum.",
 };

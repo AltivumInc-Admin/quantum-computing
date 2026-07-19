@@ -44,8 +44,10 @@ function GateScreen() {
  * protected routes pre-render as the gate rather than their content: the
  * content never ships in the static HTML and never reaches a search index —
  * the deliberate trade for a hard wall. A signed-out visitor who deep-links to
- * a protected route is redirected to `/login?next=…`; a signed-in one passes
- * straight through.
+ * a protected route is redirected to `/login?mode=signup&next=…` — sign-up
+ * framing because a walled-off visitor is most likely a brand-new prospect
+ * (the form still offers "Already have an account? Sign in" one tap away),
+ * with the destination preserved. A signed-in visitor passes straight through.
  */
 export function AuthWall({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
@@ -58,7 +60,11 @@ export function AuthWall({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!blocked) return;
     const target = pathname && pathname !== "/" ? pathname : null;
-    router.replace(target ? `/login?next=${encodeURIComponent(target)}` : "/login");
+    router.replace(
+      target
+        ? `/login?mode=signup&next=${encodeURIComponent(target)}`
+        : "/login?mode=signup"
+    );
   }, [blocked, pathname, router]);
 
   // Render freely when auth isn't configured, on a public route, or when the

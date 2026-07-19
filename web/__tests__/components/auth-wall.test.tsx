@@ -67,10 +67,12 @@ describe("AuthWall", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("redirects a signed-out visitor off a protected route, preserving the destination", () => {
+  it("redirects a signed-out visitor off a protected route with sign-up framing, preserving the destination", () => {
     mockPathname = "/playground";
     renderWall();
     expect(screen.queryByText(CHILD)).not.toBeInTheDocument();
-    expect(replace).toHaveBeenCalledWith("/login?next=%2Fplayground");
+    // mode=signup opens the create-account view (a walled-off visitor is most
+    // likely a prospect); next= brings them back to where they were headed.
+    expect(replace).toHaveBeenCalledWith("/login?mode=signup&next=%2Fplayground");
   });
 });

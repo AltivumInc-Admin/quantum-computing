@@ -20,8 +20,17 @@ export interface CurriculumSection extends GateSection {
  * prospect); if the session then resolves to signed-in while the dialog is
  * open, it offers "Continue to section" rather than asking them to sign up.
  * When auth isn't configured at all there is nothing to sign up for, so the
- * cards stay plain links — which is also exactly what the static export and
- * unit tests render.
+ * cards stay plain links — the state unit tests and an env-less local export
+ * render. The CONFIGURED production build is different since the platform
+ * AuthWall landed (a72b705): the provider prerenders as "configuring", so the
+ * exported HTML carries the gated cards (aria-haspopup) and protected routes
+ * prerender as the wall's gate screen.
+ *
+ * The glossary card gates here too, but routes instead of opening the
+ * section-shaped preview dialog: signed-out clicks go to
+ * /login?mode=signup&next=/glossary (sign-up framing, destination kept) —
+ * without this, the AuthWall would yank the visitor to a bare sign-in form
+ * while the identical-looking section cards get the polished pitch.
  */
 export function CurriculumGrid({ sections }: { sections: CurriculumSection[] }) {
   const { status } = useAuth();
@@ -63,7 +72,13 @@ export function CurriculumGrid({ sections }: { sections: CurriculumSection[] }) 
           className="animate-card-enter"
           style={{ animationDelay: `${150 + sections.length * 80}ms` }}
         >
-          <GlossaryCard />
+          <GlossaryCard
+            href={
+              gate
+                ? `/login?mode=signup&next=${encodeURIComponent("/glossary")}`
+                : undefined
+            }
+          />
         </li>
       </ul>
 
