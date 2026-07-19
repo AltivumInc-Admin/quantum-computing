@@ -72,7 +72,7 @@ export default async function SectionPage({ params }: PageProps) {
         aria-hidden="true"
         className="read-progress fixed inset-x-0 top-16 z-40 h-0.5 bg-gradient-to-r from-accent to-warm"
       />
-      <div id={LESSON_CONTENT_ID} className="flex-1 lg:ml-72">
+      <div id={LESSON_CONTENT_ID} className="min-w-0 flex-1 lg:ml-72">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-16 xl:grid xl:grid-cols-[minmax(0,1fr)_14rem] xl:gap-12">
           <div className="mx-auto w-full max-w-3xl xl:mx-0">
             <div className="animate-fade-up">
@@ -85,7 +85,7 @@ export default async function SectionPage({ params }: PageProps) {
                   <h2 className="font-display text-display-md text-(--ink)">Notebooks</h2>
                   <div className="flex-1 h-px hue-divider" />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {content.notebooks.map((nb) => (
                     <NotebookLink
                       key={nb.filename}
