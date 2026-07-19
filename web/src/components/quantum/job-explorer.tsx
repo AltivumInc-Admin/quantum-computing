@@ -454,11 +454,11 @@ export function JobExplorer({ source }: { source: string }) {
         {/* Delta line */}
         <p role="status" aria-live="polite" className="font-mono text-sm tabular-nums text-(--ink)">
           priority access saves{" "}
-          <span className="font-semibold text-accent dark:text-accent-light">
+          <span className="font-semibold text-accent-dark dark:text-accent-light">
             {formatDuration(result.savedWall)}
           </span>{" "}
           of wall-clock; the managed instance adds{" "}
-          <span className="font-semibold text-accent dark:text-accent-light">
+          <span className="font-semibold text-accent-dark dark:text-accent-light">
             {formatUsd(result.addedCost)}
           </span>
           .

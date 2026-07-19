@@ -320,7 +320,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
             </p>
           </div>
           <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
-            <p className="font-mono text-lg font-semibold tabular-nums text-accent dark:text-accent-light">
+            <p className="font-mono text-lg font-semibold tabular-nums text-accent-dark dark:text-accent-light">
               {saving.toFixed(0)}
             </p>
             <p className="text-[10px] uppercase tracking-wide text-caption">

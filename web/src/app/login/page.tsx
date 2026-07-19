@@ -23,7 +23,7 @@ export default function LoginPage() {
     <div className="mx-auto flex min-h-[60vh] max-w-5xl items-center justify-center px-4 py-16 sm:px-6 lg:px-8">
       {!isAuthConfigured() ? (
         <div className="w-full max-w-sm rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 text-center shadow-(--shadow-resting)">
-          <p className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
+          <p className="font-display text-display-md tracking-tight text-(--ink)">
             {SITE_NAME}
           </p>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">

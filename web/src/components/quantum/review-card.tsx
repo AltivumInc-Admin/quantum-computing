@@ -139,7 +139,7 @@ export function ReviewCard({ source }: { source: string }) {
   return (
     <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent font-mono">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
           Recall
         </span>
         {reviewedBefore && !feedback && (
@@ -170,7 +170,7 @@ export function ReviewCard({ source }: { source: string }) {
               aria-label="Answer"
               className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent mb-1 font-mono">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent mb-1 font-mono">
                 Answer
               </span>
               <p className="text-sm leading-relaxed text-(--mut)">

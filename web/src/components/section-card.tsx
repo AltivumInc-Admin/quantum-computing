@@ -66,7 +66,7 @@ export function SectionCard({
           </span>
         </div>
 
-        <h3 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
+        <h3 className="font-display text-display-md tracking-tight text-(--ink) group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
           {title}
         </h3>
 

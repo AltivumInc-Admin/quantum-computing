@@ -165,7 +165,7 @@ export function ReviewDashboard() {
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-16">
       <div className="mb-10">
-        <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent dark:text-accent-light mb-3">
+        <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light mb-3">
           Spaced repetition
         </p>
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">

@@ -203,7 +203,7 @@ export function AskTutor() {
             <div>
               <p className="font-display text-lg text-(--ink)">Ask the margin</p>
               <p className="mt-0.5 text-xs text-caption">
-                Grounded in: <span className="text-accent dark:text-accent-light">{lessonLabel(slug)}</span>
+                Grounded in: <span className="text-accent-dark dark:text-accent-light">{lessonLabel(slug)}</span>
               </p>
             </div>
             <button

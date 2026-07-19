@@ -58,7 +58,7 @@ export function NotebookLink({
             className="h-6 w-6 [&_svg]:h-3 [&_svg]:w-3"
           />
           {browserRunnable && (
-            <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-accent/10 text-accent dark:text-accent-light">
+            <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-accent/10 text-accent-dark dark:text-accent-light">
               Pyodide
             </span>
           )}

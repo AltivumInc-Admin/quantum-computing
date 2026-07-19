@@ -24,7 +24,7 @@ export function Band({ kicker, title, body, href, linkLabel, visual, flip }: Fea
   return (
     <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center reveal">
       <div className={flip ? "lg:order-2" : undefined}>
-        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-accent dark:text-accent-light font-mono mb-3">
+        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light font-mono mb-3">
           {kicker}
         </p>
         <h3 className="font-display text-display-lg text-(--ink) text-balance">

@@ -54,7 +54,7 @@ export function RunnableEditor({ source }: { source: string }) {
 
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
             Run it yourself
           </span>
           <span className="rounded-chip border border-(--bd) bg-(--field) px-1.5 py-0.5 font-mono text-[10px] text-caption">

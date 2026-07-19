@@ -50,7 +50,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
 
   return (
     <div className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 sm:p-8 shadow-(--shadow-resting)">
-      <h3 className="font-display text-display-md text-gray-900 dark:text-white">
+      <h3 className="font-display text-display-md text-(--ink)">
         Top up any amount
       </h3>
       <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -93,7 +93,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               step={1}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-24 rounded-control border border-gray-200 dark:border-white/10 bg-(--surface-2) px-3 py-1.5 text-sm text-gray-900 dark:text-white tabular-nums focus-ring"
+              className="w-24 rounded-control border border-(--bd) bg-(--surface-2) px-3 py-1.5 text-sm text-(--ink) tabular-nums focus-ring"
             />
           </div>
         </div>

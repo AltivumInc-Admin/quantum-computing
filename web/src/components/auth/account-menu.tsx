@@ -44,7 +44,7 @@ export function AccountMenu() {
     return (
       <Link
         href="/login"
-        className="inline-flex items-center whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+        className="inline-flex items-center whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-(--ink) interactive focus-ring"
       >
         Sign in
       </Link>
@@ -119,7 +119,7 @@ export function AccountMenu() {
           setOpen((v) => !v);
         }}
         onKeyDown={onTriggerKeyDown}
-        className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+        className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-(--ink) interactive focus-ring"
       >
         <span className="truncate">{email}</span>
         <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -138,7 +138,7 @@ export function AccountMenu() {
             // still-mounted menu and lands on the correct next element.
             if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);
           }}
-          className="absolute right-0 mt-2 w-44 rounded-card border border-gray-200/70 dark:border-white/[0.08] bg-(--surface-1) p-1.5 shadow-(--shadow-resting)"
+          className="absolute right-0 mt-2 w-44 rounded-card border border-(--bd) bg-(--surface-1) p-1.5 shadow-(--shadow-resting)"
         >
           <Link
             href="/workspace"
@@ -148,7 +148,7 @@ export function AccountMenu() {
               itemRefs.current[0] = el;
             }}
             onClick={() => setOpen(false)}
-            className="block rounded-control px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 interactive focus-ring"
+            className="block rounded-control px-3 py-2 text-sm text-(--ink) hover:bg-(--field) interactive focus-ring"
           >
             Workspace
           </Link>
@@ -163,7 +163,7 @@ export function AccountMenu() {
               setOpen(false);
               void signOut();
             }}
-            className="block w-full rounded-control px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/5 interactive focus-ring"
+            className="block w-full rounded-control px-3 py-2 text-left text-sm text-(--ink) hover:bg-(--field) interactive focus-ring"
           >
             Sign out
           </button>

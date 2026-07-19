@@ -183,7 +183,7 @@ function LossCurve({ history }: { history: number[] }) {
           stroke="currentColor"
           strokeWidth={1.6}
           strokeLinejoin="round"
-          className="text-accent dark:text-accent-light"
+          className="text-accent-dark dark:text-accent-light"
         />
       )}
     </svg>
@@ -269,7 +269,7 @@ export function VqcTrainer({ source }: { source: string }) {
             className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100"
           >
             {`step ${step} · loss ${loss.toFixed(3)} · accuracy `}
-            <span className="text-accent dark:text-accent-light">
+            <span className="text-accent-dark dark:text-accent-light">
               {formatPercent(acc * 100, 0)}
             </span>
           </p>

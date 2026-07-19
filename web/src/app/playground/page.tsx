@@ -12,13 +12,13 @@ export const metadata: Metadata = {
 export default function PlaygroundPage() {
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
+      <div className="absolute inset-0 bg-atmosphere" />
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <header className="mb-8">
-          <p className="text-sm font-medium tracking-widest uppercase text-accent dark:text-accent-light mb-4">
+          <p className="text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light mb-4">
             Sandbox
           </p>
-          <h1 className="font-display text-display-xl tracking-tight text-gray-900 dark:text-white">
+          <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
             Playground
           </h1>
           <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl leading-relaxed">

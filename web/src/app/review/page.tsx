@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function ReviewPage() {
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
+      <div className="absolute inset-0 bg-atmosphere" />
       <div className="relative">
         <ReviewDashboard />
       </div>

@@ -18,7 +18,7 @@ export function GlossaryEntry({ term }: { term: GlossaryTerm }) {
         <h3 className="font-display text-display-md tracking-tight">
           <TransitionLink
             href={`/glossary/${termSlug(term.term)}`}
-            className="text-gray-900 dark:text-white hover:text-accent dark:hover:text-accent-light focus-ring rounded"
+            className="text-(--ink) hover:text-accent dark:hover:text-accent-light focus-ring rounded"
           >
             {term.term}
           </TransitionLink>

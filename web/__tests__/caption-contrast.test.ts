@@ -64,9 +64,10 @@ function collectSourceFiles(dir: string): string[] {
 
 test("globals.css defines .text-caption with the AA-passing muted token", () => {
   // Instrument migration: the muted caption tier is now the theme-aware --mut
-  // token (≈6:1 on the dark smoke surface, ≈4.9:1 on the light surface) rather
-  // than the old gray-500/gray-400 pair. Still a single shared utility, still
-  // provably WCAG-AA in both themes.
+  // token (6.4:1 on the dark smoke surface, 6.5:1 on the light surface —
+  // computed and pinned by token-contrast.test.ts) rather than the old
+  // gray-500/gray-400 pair. Still a single shared utility, still provably
+  // WCAG-AA in both themes.
   const css = readFileSync(GLOBALS, "utf8");
   expect(css).toContain(".text-caption");
   expect(css).toMatch(/\.text-caption\s*\{[^}]*var\(--mut\)/);

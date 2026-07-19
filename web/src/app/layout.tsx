@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Sora, Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Nav } from "@/components/nav";
@@ -50,6 +50,18 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     images: [OG_IMAGE.url],
   },
+};
+
+// Browser-chrome color (mobile toolbar/status bar) tracks --surface-base per
+// theme: hex renderings of oklch(0.97 0.004 88) light / oklch(0.145 0.004 80)
+// dark. Statically emitted, so it follows the OS scheme (the enableSystem
+// default) rather than a manual in-app override — an acceptable edge for a
+// static export.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f5f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0a08" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

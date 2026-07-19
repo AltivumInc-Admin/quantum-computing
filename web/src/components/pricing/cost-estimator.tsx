@@ -27,7 +27,7 @@ function Readout({
   return (
     <div aria-live="polite" className="mt-6 border-t border-gray-200/60 dark:border-white/[0.08] pt-5">
       <p className="text-xs font-semibold tracking-widest uppercase text-caption">{label}</p>
-      <p className="mt-1 font-display text-display-lg text-gray-900 dark:text-white tabular-nums">
+      <p className="mt-1 font-display text-display-lg text-(--ink) tabular-nums">
         {formatCredits(credits)}
         <span className="ml-2 text-base font-sans text-gray-500 dark:text-gray-400">
           {formatUsd(creditsToUsd(credits))}
@@ -96,7 +96,7 @@ export function CostEstimator() {
     <div className="grid gap-5 lg:grid-cols-2">
       {/* ---- Quantum hardware ---- */}
       <div className={paneChrome}>
-        <h3 className="font-display text-display-md text-gray-900 dark:text-white">
+        <h3 className="font-display text-display-md text-(--ink)">
           Price a hardware run
         </h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -116,7 +116,7 @@ export function CostEstimator() {
               id={deviceId}
               value={deviceIdx}
               onChange={(e) => setDeviceIdx(Number(e.target.value))}
-              className="w-full rounded-control border border-gray-200 dark:border-white/10 bg-(--surface-2) px-3 py-2 text-sm text-gray-900 dark:text-white focus-ring"
+              className="w-full rounded-control border border-(--bd) bg-(--surface-2) px-3 py-2 text-sm text-(--ink) focus-ring"
             >
               {HARDWARE_RATES.map((r, i) => (
                 <option key={r.name} value={i}>
@@ -168,7 +168,7 @@ export function CostEstimator() {
 
       {/* ---- AI tutor ---- */}
       <div className={paneChrome}>
-        <h3 className="font-display text-display-md text-gray-900 dark:text-white">
+        <h3 className="font-display text-display-md text-(--ink)">
           Price a month of tutoring
         </h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">

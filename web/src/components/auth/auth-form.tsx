@@ -19,7 +19,7 @@ import { PasswordChecklist } from "./password-checklist";
 const primaryBtn =
   "w-full surface-accent inline-flex items-center justify-center rounded-control px-4 py-2.5 text-sm font-medium interactive focus-ring disabled:opacity-60";
 const linkBtn =
-  "text-sm text-accent dark:text-accent-light hover:underline focus-ring rounded";
+  "text-sm text-accent-dark dark:text-accent-light hover:underline focus-ring rounded";
 
 export function AuthForm() {
   const router = useRouter();

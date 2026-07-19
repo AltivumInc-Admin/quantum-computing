@@ -41,7 +41,7 @@ export function DeviceTable() {
 
       {/* Header */}
       <div className="flex items-center justify-between gap-4 border-b border-(--bd) px-4 py-2">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent dark:text-accent-light">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
           Devices
         </span>
         <div className="flex items-center gap-2">
@@ -197,7 +197,7 @@ function SortIndicator({ active, dir }: { active: boolean; dir: "asc" | "desc" }
     );
   }
   return (
-    <span className="text-accent dark:text-accent-light text-[10px] select-none" aria-hidden="true">
+    <span className="text-accent-dark dark:text-accent-light text-[10px] select-none" aria-hidden="true">
       {dir === "asc" ? "↑" : "↓"}
     </span>
   );

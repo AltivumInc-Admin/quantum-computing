@@ -113,15 +113,15 @@ export default function PricingPage() {
 
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
-      <div className="absolute inset-0 bg-grid-dots-light dark:bg-grid-dots [mask-image:radial-gradient(ellipse_70%_40%_at_50%_0%,black,transparent)]" />
+      <div className="absolute inset-0 bg-atmosphere" />
+      <div className="absolute inset-0 bg-grid-dots [mask-image:radial-gradient(ellipse_70%_40%_at_50%_0%,black,transparent)]" />
 
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         {/* ------------------------------------------------------------ */}
         {/* Hero — the thesis.                                            */}
         {/* ------------------------------------------------------------ */}
         <header className="max-w-3xl animate-hero-enter">
-          <p className="text-sm font-medium tracking-[0.2em] uppercase text-accent dark:text-accent-light font-mono mb-5">
+          <p className="text-sm font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light font-mono mb-5">
             Pricing
           </p>
           <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">
@@ -233,7 +233,7 @@ export default function PricingPage() {
                         className="flex gap-2.5 text-sm text-(--mut)"
                       >
                         <svg
-                          className="w-4 h-4 mt-0.5 shrink-0 text-accent dark:text-accent-light"
+                          className="w-4 h-4 mt-0.5 shrink-0 text-accent-dark dark:text-accent-light"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"

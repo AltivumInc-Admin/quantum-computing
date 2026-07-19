@@ -23,7 +23,7 @@ export function GlossaryCard({ href = "/glossary" }: { href?: string }) {
       </div>
       <div className="relative p-6 -mt-6">
         <p className="text-xs font-semibold tracking-widest uppercase hue-text mb-3">Reference</p>
-        <h3 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
+        <h3 className="font-display text-display-md tracking-tight text-(--ink) group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
           Glossary
         </h3>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-3">

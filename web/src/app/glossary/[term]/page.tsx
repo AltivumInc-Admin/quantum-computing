@@ -37,7 +37,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
 
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
+      <div className="absolute inset-0 bg-atmosphere" />
       <div className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <TermDetail term={term} />
       </div>

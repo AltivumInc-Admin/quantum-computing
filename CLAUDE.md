@@ -62,7 +62,7 @@ Managed via pyproject.toml. Key packages:
 ### Stack
 - Next.js 16 + React 19, static export via `output: "export"`
 - Tailwind CSS v4 (PostCSS plugin) — uses `@theme inline` for compile-time tokens
-- Fonts: Plus Jakarta Sans (body) + Instrument Serif (display) via `next/font/google`
+- Fonts: Sora (display) + Geist (body) + Geist Mono (code/data) via `next/font/google` — the Instrument type system, exposed as `--font-sora`/`--font-geist`/`--font-geist-mono`
 - Dark mode: `next-themes` with `@variant dark (&:where(.dark, .dark *));` in globals.css
 - Deployment: AWS Amplify (auto-deploys from git push, `amplify.yml` at repo root)
 - Optional lesson tutor ("Ask the margin"): a streaming Bedrock Lambda in `lambda/tutor/` (deploy separately; see its README). The `<AskTutor />` affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set in Amplify env, so the static site is unaffected when it is absent.
@@ -70,8 +70,8 @@ Managed via pyproject.toml. Key packages:
 ### Key Patterns
 - `@theme inline` values compile statically — they cannot be overridden at runtime via CSS classes. Use standard Tailwind `dark:` utilities for theme-dependent values.
 - Custom animation keyframes live in `globals.css`; utility classes (`.animate-*`) reference them. All animations must have `prefers-reduced-motion` coverage.
-- CSS utilities `.bg-atmosphere`, `.bg-grid-dots` provide layered background depth.
-- `OrbitalDecoration` component is purely decorative SVG — hidden below `lg:` breakpoint, `aria-hidden="true"`.
+- CSS utilities `.bg-atmosphere`, `.bg-grid-dots` provide layered background depth — theme-resolved through the `--atmosphere`/`--grid-dot` runtime vars (one class serves both themes; no `-light` variants).
+- `FogField` component is the purely decorative fixed fog canvas behind every page (`aria-hidden="true"`, sprite-cached, live `prefers-reduced-motion` listener).
 
 ### Commands
 - `npm run dev` — Start dev server (port 3000)

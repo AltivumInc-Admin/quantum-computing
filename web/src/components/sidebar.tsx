@@ -177,7 +177,7 @@ export function Sidebar() {
             : "z-40 -translate-x-full max-lg:invisible"
         }`}
       >
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent font-mono mb-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono mb-3">
           Learning Path
         </p>
 

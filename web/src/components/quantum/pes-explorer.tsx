@@ -221,7 +221,7 @@ export function PesExplorer({ source }: { source: string }) {
               stroke="currentColor"
               strokeWidth={1.8}
               strokeLinejoin="round"
-              className="text-accent dark:text-accent-light"
+              className="text-accent-dark dark:text-accent-light"
             />
 
             {/* sparse VQE dots — land on the FCI curve */}
@@ -234,7 +234,7 @@ export function PesExplorer({ source }: { source: string }) {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={1.2}
-                className="text-gray-900 dark:text-white"
+                className="text-(--ink)"
               />
             ))}
 
@@ -344,7 +344,7 @@ export function PesExplorer({ source }: { source: string }) {
           {/* readout */}
           <dl className="mt-4 space-y-1.5 font-mono text-xs tabular-nums">
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-accent dark:text-accent-light">FCI</dt>
+              <dt className="text-accent-dark dark:text-accent-light">FCI</dt>
               <dd className="text-(--ink)">{formatHartree(readout.fci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">

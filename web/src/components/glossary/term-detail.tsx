@@ -21,7 +21,7 @@ export function TermDetail({ term }: { term: GlossaryTerm }) {
         All terms
       </TransitionLink>
 
-      <h1 className="mt-4 font-display text-display-2xl tracking-tight text-gray-900 dark:text-white">
+      <h1 className="mt-4 font-display text-display-2xl tracking-tight text-(--ink)">
         {term.term}
       </h1>
 
@@ -38,7 +38,7 @@ export function TermDetail({ term }: { term: GlossaryTerm }) {
 
       {related.length > 0 ? (
         <section className="mt-10">
-          <h2 className="font-display text-display-md tracking-tight text-gray-900 dark:text-white">
+          <h2 className="font-display text-display-md tracking-tight text-(--ink)">
             More in {sectionShortLabel(term.section)}
           </h2>
           <ul role="list" className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
@@ -46,7 +46,7 @@ export function TermDetail({ term }: { term: GlossaryTerm }) {
               <li key={t.term}>
                 <TransitionLink
                   href={`/glossary/${termSlug(t.term)}`}
-                  className="text-accent dark:text-accent-light hover:underline focus-ring rounded"
+                  className="text-accent-dark dark:text-accent-light hover:underline focus-ring rounded"
                 >
                   {t.term}
                 </TransitionLink>

@@ -183,7 +183,7 @@ export function JwExplorer({ source }: { source: string }) {
 
         {/* Hartree-Fock occupation ket */}
         <div>
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent">
+          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
             Hartree-Fock reference
           </p>
           <div className="mt-2 flex items-center gap-2">
@@ -223,7 +223,7 @@ export function JwExplorer({ source }: { source: string }) {
           <div>
             <p
               id={groupId}
-              className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent"
+              className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent"
             >
               Operator mode
             </p>
@@ -287,7 +287,7 @@ export function JwExplorer({ source }: { source: string }) {
           <p className="font-mono text-sm tabular-nums text-(--ink)">
             {opName}
             {" = "}
-            <span className="text-accent dark:text-accent-light">
+            <span className="text-accent-dark dark:text-accent-light">
               (X{" "}
               {sign}
               {" iY) / 2"}

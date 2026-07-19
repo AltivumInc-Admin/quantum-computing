@@ -45,7 +45,7 @@ function StaticBeats({ beats }: { beats: Beat[] }) {
   return (
     <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
       <div className="border-b border-(--bd) px-4 sm:px-5 py-3">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
           Walkthrough
         </span>
       </div>
@@ -112,7 +112,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
           <BlochVectorSR state={state} />
         </div>
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
-          <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent mb-2">
+          <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent mb-2">
             Beat {active + 1} / {beats.length}
           </span>
           <div className="relative min-h-24">

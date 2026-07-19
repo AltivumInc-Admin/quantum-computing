@@ -279,7 +279,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 stroke="currentColor"
                 strokeWidth={1.8}
                 strokeLinejoin="round"
-                className="text-accent dark:text-accent-light"
+                className="text-accent-dark dark:text-accent-light"
                 aria-hidden="true"
               />
               {/* drop line from marker to floor */}
@@ -323,7 +323,7 @@ export function VqeExplorer({ source }: { source: string }) {
         <div className="min-w-0 flex-1">
           <p className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
             {"E = "}
-            <span className="font-semibold text-accent dark:text-accent-light">
+            <span className="font-semibold text-accent-dark dark:text-accent-light">
               {formatHartree(energy)}
             </span>
           </p>

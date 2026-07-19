@@ -239,8 +239,8 @@ export default async function HomePage() {
       {/* What you can do here — four feature bands through one component.    */}
       {/* ------------------------------------------------------------------ */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
-        <div className="absolute inset-0 bg-grid-dots-light dark:bg-grid-dots [mask-image:radial-gradient(ellipse_70%_50%_at_50%_50%,black,transparent)]" />
+        <div className="absolute inset-0 bg-atmosphere" />
+        <div className="absolute inset-0 bg-grid-dots [mask-image:radial-gradient(ellipse_70%_50%_at_50%_50%,black,transparent)]" />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <div className="flex items-center gap-4 mb-16 reveal">
@@ -328,7 +328,7 @@ export default async function HomePage() {
       {/* Learning path — the curriculum itself.                              */}
       {/* ------------------------------------------------------------------ */}
       <section id="curriculum" className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-atmosphere-light dark:bg-atmosphere" />
+        <div className="absolute inset-0 bg-atmosphere" />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
           <div className="flex items-center gap-4 mb-10 reveal">

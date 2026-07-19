@@ -109,21 +109,6 @@
   }
 }
 
-@keyframes glow-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
-}
-
-@keyframes orbit-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes dot-pulse {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.5); }
-}
-
 /* A slow "connected/live" pulse for status dots (the olive signal). */
 @keyframes signal-pulse {
   50% { opacity: 0.4; }
@@ -163,9 +148,12 @@
 @layer base {
   :root {
     /* ── Light "daylight" theme ─────────────────────────────────────────── */
-    --accent: oklch(0.66 0.1 118);        /* olive-dim (legible on light bg) */
+    /* olive-dim — dots, fills, icons, chip fills. 2.79:1 on --surface-base,
+       so resting TEXT never uses it here: light-theme accent text pairs down
+       to --accent-dark (4.93:1). Enforced by token-contrast.test.ts. */
+    --accent: oklch(0.66 0.1 118);
     --accent-light: oklch(0.72 0.09 118);
-    --accent-dark: oklch(0.52 0.1 118);
+    --accent-dark: oklch(0.52 0.1 118);   /* resting accent TEXT on light */
 
     --surface-base: oklch(0.97 0.004 88);
     --surface-base-2: oklch(0.93 0.006 88);
@@ -181,7 +169,23 @@
     --field: oklch(1 0 0 / 0.45);
     --ink: oklch(0.23 0.008 82);
     --mut: oklch(0.46 0.008 82);
-    --cap: oklch(0.58 0.008 82);
+
+    /* Focus indicator — solid, per-theme. accent-dark reads 4.93:1 on
+       --surface-base (WCAG 1.4.11 needs 3:1); the raw light accent only
+       manages 2.79:1 even unblended, so the ring pins to the dark step. */
+    --focus: var(--accent-dark);
+
+    /* Text-selection highlight — the light olive at an alpha strong enough
+       to read as a visible band on the white surfaces. */
+    --selection: oklch(0.66 0.1 118 / 0.35);
+
+    /* Atmosphere + dot-grid backdrops, theme-resolved like every other
+       surface token (consumed by .bg-atmosphere / .bg-grid-dots). */
+    --atmosphere:
+      radial-gradient(ellipse 75% 90% at 74% -12%, oklch(0.9 0.03 108 / 0.5), transparent 55%),
+      radial-gradient(ellipse 60% 70% at 100% 20%, oklch(1 0 0 / 0.7), transparent 55%),
+      radial-gradient(ellipse 55% 60% at 0% 100%, oklch(0.86 0.01 90 / 0.5), transparent 60%);
+    --grid-dot: oklch(0.3 0.01 90 / 0.1);
 
     /* Neutral high-contrast primary button (dark fill on the light theme). */
     --btn-fill: oklch(0.2 0.006 82);
@@ -220,7 +224,17 @@
     --field: oklch(1 0 0 / 0.03);
     --ink: oklch(0.96 0.004 88);
     --mut: oklch(0.66 0.006 88);
-    --cap: oklch(0.47 0.006 88);
+
+    /* Focus indicator — the bright olive reads 12.8:1 on the dark smoke. */
+    --focus: var(--accent);
+
+    --selection: oklch(0.85 0.11 118 / 0.25);
+
+    --atmosphere:
+      radial-gradient(ellipse 75% 90% at 72% -12%, oklch(0.95 0.02 105 / 0.12), transparent 52%),
+      radial-gradient(ellipse 60% 70% at 100% 30%, oklch(1 0 0 / 0.06), transparent 55%),
+      radial-gradient(ellipse 55% 60% at 2% 100%, oklch(1 0 0 / 0.05), transparent 58%);
+    --grid-dot: oklch(0.7 0.01 90 / 0.1);
 
     /* Neutral high-contrast primary button (near-white fill on the dark theme). */
     --btn-fill: oklch(0.95 0.004 92);
@@ -238,8 +252,22 @@
 
   body {
     color: var(--ink);
+    /* Base coat only (also what overscroll shows). The viewport-pinned smoke
+       gradient lives on the fixed ::before layer below, NOT on
+       background-attachment: fixed — Safari and some Chromium paths cannot
+       composite fixed-attachment backgrounds and repaint them on every
+       scroll, under the already-costly .glass backdrop-filters. A fixed
+       element is composited for free (same pattern as the FogField canvas
+       one z-level up at -z-10). */
+    background-color: var(--surface-base);
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -20;
     background: linear-gradient(180deg, var(--surface-base), var(--surface-base-2));
-    background-attachment: fixed;
   }
 
   /* Anchor landings (and skip-link focus) clear the 4rem sticky nav. */
@@ -310,21 +338,21 @@
   /* Glass surface recipe — the smoke-and-glass card/panel: a translucent fill,
      a backdrop blur+saturate, a hairline border, and the two-part glass
      elevation (inset top highlight + soft outer shadow). Falls back to the
-     opaque --surface-1 where backdrop-filter is unsupported. */
+     opaque --surface-1 where backdrop-filter is unsupported: the translucent
+     var(--glass) fill lives INSIDE the @supports guard (both values are
+     always-valid var() refs, so a same-block double declaration could never
+     fall back — the later one always wins). */
   .glass {
     background-color: var(--surface-1);
-    background-color: var(--glass);
     border: 1px solid var(--bd);
     box-shadow: var(--shadow-resting);
   }
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
     .glass {
+      background-color: var(--glass);
       -webkit-backdrop-filter: blur(20px) saturate(1.3);
       backdrop-filter: blur(20px) saturate(1.3);
     }
-  }
-  .glass-2 {
-    background-color: var(--glass-2);
   }
 
   /* The primary CTA is a NEUTRAL high-contrast button — near-white on the dark
@@ -348,8 +376,9 @@
   /* The single source for a SELECTED/active chip fill (gate pills, shot presets,
      spin-orbital + creation/annihilation toggles, Pauli factor cells). A small
      ACTIVE fill is the one place olive fills a surface — kept legible with dark
-     text: gray-950 on the bright olive clears AAA. Mirrors how .surface-accent
-     single-sources the primary CTA fill. */
+     text: gray-950 computes 13.0:1 (AAA) on the dark theme's bright olive and
+     6.6:1 (AA) on the light theme's dimmer olive (token-contrast.test.ts).
+     Mirrors how .surface-accent single-sources the primary CTA fill. */
   .chip-selected {
     background-color: var(--color-accent);
     color: var(--color-gray-950);
@@ -472,8 +501,12 @@
     animation: signal-pulse 2.4s ease-in-out infinite;
   }
 
+  /* Site-wide focus treatment. The ring color is the per-theme --focus token
+     (solid — an alpha ring composites below the 3:1 WCAG 1.4.11 floor on the
+     light surfaces); the offset var is already theme-aware, so no dark:
+     variant is needed. */
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-base) dark:focus-visible:ring-offset-(--surface-base);
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-(--focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-base);
   }
 
   .interactive {
@@ -508,9 +541,8 @@
   }
 
   /* De-emphasized footnote/caption text. Single source for the muted tier,
-     mapped to the AA-safe --mut token (≈6:1 on the dark smoke, ≈4.9:1 on the
-     light surface). The fainter --cap tier is reserved for large/decorative
-     labels only — it is deliberately NOT used for body-sized caption text. */
+     mapped to the AA-safe --mut token (6.4:1 on the dark smoke, 6.5:1 on the
+     light surface — verified by token-contrast.test.ts). */
   .text-caption {
     color: var(--mut);
   }
@@ -532,58 +564,23 @@
     animation-delay: 1.1s;
   }
 
-  .text-gradient {
-    @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, var(--color-accent), oklch(0.78 0.12 75));
-  }
-
-  .card-glow {
-    position: relative;
-  }
-  .card-glow::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    background: linear-gradient(135deg, oklch(0.82 0.1 118 / 0.15), oklch(0.78 0.12 75 / 0.1));
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-  .card-glow:hover::before {
-    opacity: 1;
-  }
-
-  /* Atmospheric fog glow — layered soft radial lights over the smoke base. The
+  /* Atmospheric fog glow — layered soft radial lights over the base surface.
+     The gradient stack is the theme-resolved --atmosphere var (set in @layer
+     base like every other surface token), so one class serves both themes —
+     and a self-dark `dark` island gets the smoke stack automatically. The
      drift is gated to no-preference below. */
   .bg-atmosphere {
-    background:
-      radial-gradient(ellipse 75% 90% at 72% -12%, oklch(0.95 0.02 105 / 0.12), transparent 52%),
-      radial-gradient(ellipse 60% 70% at 100% 30%, oklch(1 0 0 / 0.06), transparent 55%),
-      radial-gradient(ellipse 55% 60% at 2% 100%, oklch(1 0 0 / 0.05), transparent 58%);
-  }
-
-  .bg-atmosphere-light {
-    background:
-      radial-gradient(ellipse 75% 90% at 74% -12%, oklch(0.9 0.03 108 / 0.5), transparent 55%),
-      radial-gradient(ellipse 60% 70% at 100% 20%, oklch(1 0 0 / 0.7), transparent 55%),
-      radial-gradient(ellipse 55% 60% at 0% 100%, oklch(0.86 0.01 90 / 0.5), transparent 60%);
+    background: var(--atmosphere);
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .bg-atmosphere,
-    .bg-atmosphere-light {
+    .bg-atmosphere {
       animation: atmos-drift 30s ease-in-out infinite alternate;
     }
   }
 
   .bg-grid-dots {
-    background-image: radial-gradient(circle, oklch(0.7 0.01 90 / 0.1) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-
-  .bg-grid-dots-light {
-    background-image: radial-gradient(circle, oklch(0.3 0.01 90 / 0.1) 1px, transparent 1px);
+    background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
     background-size: 32px 32px;
   }
 }
@@ -626,8 +623,11 @@
   to { transform: scaleX(1); }
 }
 
+/* Theme-resolved via --selection (set per theme in @layer base): the old
+   hard-coded bright olive composited to 1.11:1 over the light surfaces —
+   effectively invisible selection for light-theme copy/paste. */
 ::selection {
-  background: oklch(0.85 0.11 118 / 0.25);
+  background: var(--selection);
 }
 
 /* Brighter selection on the dark github-dark code blocks for legible manual copy. */
@@ -695,6 +695,12 @@
   * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    /* Without this, an infinite animation that misses a per-element
+       motion-reduce:animate-none keeps cycling at 0.01ms — sampling a random
+       frame forever (spinner jitter / skeleton flicker) for exactly the
+       users who opted out of motion. One iteration freezes it on its end
+       state. */
+    animation-iteration-count: 1 !important;
   }
 }
 
