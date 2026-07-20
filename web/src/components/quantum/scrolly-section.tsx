@@ -1,7 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import {
+  cardShell,
+  ErrorCard as SharedErrorCard,
+  EyebrowLabel,
+} from "./widget-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   parseScrolly,
@@ -43,11 +47,11 @@ function ErrorCard({ message }: { message?: string }) {
 /** Static, accessible fallback: every beat shown at once. */
 function StaticBeats({ beats }: { beats: Beat[] }) {
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+    <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       <div className="border-b border-(--bd) px-4 sm:px-5 py-3">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
+        <EyebrowLabel strong>
           Walkthrough
-        </span>
+        </EyebrowLabel>
       </div>
       <ol className="list-none m-0 p-0 divide-y divide-(--bd)">
         {beats.map((beat, i) => (
@@ -112,9 +116,9 @@ function Explorable({ beats }: { beats: Beat[] }) {
           <BlochVectorSR state={state} />
         </div>
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
-          <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent mb-2">
+          <EyebrowLabel strong className="block mb-2">
             Beat {active + 1} / {beats.length}
-          </span>
+          </EyebrowLabel>
           <div className="relative min-h-24">
             {beats.map((beat, i) => (
               <p

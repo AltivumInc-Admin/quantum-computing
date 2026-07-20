@@ -155,7 +155,12 @@ const GraphSvg = memo(function GraphSvg({ edges, n }: { edges: Edge[]; n: number
             cx={cx}
             cy={cy}
             r={SVG.r}
-            className="fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900"
+            // fill-accent-dark, not fill-accent: white numerals on the raw
+            // light accent compute 3.04:1, below the 4.5:1 AA floor at
+            // fontSize 9 — and the caption ("bit order: vertex 0 on the left")
+            // makes these numerals load-bearing, with aria-hidden on the text
+            // there is no alternative channel. accent-dark gives 5.38:1.
+            className="fill-accent-dark dark:fill-accent-light stroke-white dark:stroke-gray-900"
             strokeWidth={2}
           />
           <text
@@ -238,9 +243,22 @@ export function QaoaExplorer({ source }: { source: string }) {
           fill={heatColor((v - gridMax.lo) / span)} />
       ))
     );
+    // The grid-max marker is STRUCTURALLY guaranteed to land on the most
+    // accent-saturated cell: heatColor(t) is raw var(--accent) at t = 1, and
+    // t = 1 is exactly where v === gridMax.value. A single amber hairline on
+    // that cell measures 1.11:1 (dark) / 1.42:1 (light) — invisible at the one
+    // place the learner looks. So it is drawn as two stacked strokes: a
+    // theme-inverted halo under a warm hairline, the same idiom the graph
+    // vertices already use (stroke-white dark:stroke-gray-900).
     const maxMarker = (
-      <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
-        stroke="currentColor" strokeWidth={0.5} className="text-amber-500 dark:text-amber-400" />
+      <>
+        <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
+          stroke="currentColor" strokeWidth={1.2}
+          className="text-white dark:text-gray-900" />
+        <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
+          stroke="currentColor" strokeWidth={0.5}
+          className="text-warm-dark dark:text-warm-light" />
+      </>
     );
     return { cells, maxMarker };
   }, [landscape, gridMax]);
@@ -285,13 +303,16 @@ export function QaoaExplorer({ source }: { source: string }) {
             >
               {heat.cells}
               {heat.maxMarker}
-              {/* current (gamma, beta) marker */}
+              {/* Current (gamma, beta) marker. The separating ring must be an
+                  EXPLICIT theme-inverted stroke: `stroke="currentColor"` here
+                  resolved to the inherited body --ink, which on the dark theme
+                  is 1.12:1 against the dot's own white fill — a no-op ring on
+                  a dot that is itself only 1.55:1 against the accent peak. */}
               <circle
                 cx={curBi + 0.5}
                 cy={RES - 1 - curGi + 0.5}
                 r={0.9}
-                className="fill-gray-900 dark:fill-white"
-                stroke="currentColor"
+                className="fill-gray-900 dark:fill-white stroke-white dark:stroke-gray-900"
                 strokeWidth={0.4}
               />
             </svg>
@@ -303,10 +324,10 @@ export function QaoaExplorer({ source }: { source: string }) {
 
         {/* Controls + readout + distribution */}
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-gray-800 dark:text-gray-200">
+          <p className="text-sm text-(--ink)">
             expected cut ={" "}
             <span className="font-semibold tabular-nums">{expected.toFixed(2)}</span>{" "}
-            <span className="text-gray-500 dark:text-gray-400">(max = {maxCut})</span>
+            <span className="text-caption">(max = {maxCut})</span>
           </p>
 
           {/* gamma slider */}
@@ -321,7 +342,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             ariaValueText={`${gamma.toFixed(2)} radians`}
             display={formatRadians(gamma)}
             rowClassName="mt-3 flex items-center gap-3"
-            labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-8 shrink-0 font-mono text-sm text-caption"
             valueWidth="w-14"
           />
 
@@ -337,7 +358,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             ariaValueText={`${beta.toFixed(2)} radians`}
             display={formatRadians(beta)}
             rowClassName="mt-2 flex items-center gap-3"
-            labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-8 shrink-0 font-mono text-sm text-caption"
             valueWidth="w-14"
           />
 

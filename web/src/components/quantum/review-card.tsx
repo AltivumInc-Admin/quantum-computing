@@ -8,6 +8,11 @@ import {
   PROGRESS_EVENT_NAME,
 } from "@/lib/review-store";
 import { nextIntervalDays, type CardState, type Rating } from "@/lib/review-schedule";
+import {
+  cardShell,
+  ErrorCard,
+  EyebrowLabel,
+} from "./widget-ui";
 
 /**
  * A spaced-repetition review prompt rendered from a ```qcard fenced block in a
@@ -110,13 +115,7 @@ export function ReviewCard({ source }: { source: string }) {
   }, [spec]);
 
   if (!spec) {
-    return (
-      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          card error: {parsed.error}
-        </p>
-      </div>
-    );
+    return <ErrorCard label="card" message={parsed.error} className="my-8" />;
   }
 
   // Due-gated like the graded Reps: re-rating a card that is no longer due
@@ -137,11 +136,11 @@ export function ReviewCard({ source }: { source: string }) {
   const feedback = justGraded;
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+    <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
+        <EyebrowLabel strong>
           Recall
-        </span>
+        </EyebrowLabel>
         {reviewedBefore && !feedback && (
           <span className="text-xs tabular-nums text-caption">
             reviewed {state.reps === 1 ? "once" : `${state.reps}×`}
@@ -170,9 +169,9 @@ export function ReviewCard({ source }: { source: string }) {
               aria-label="Answer"
               className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent mb-1 font-mono">
+              <EyebrowLabel strong className="block mb-1">
                 Answer
-              </span>
+              </EyebrowLabel>
               <p className="text-sm leading-relaxed text-(--mut)">
                 {renderInline(spec.answer)}
               </p>

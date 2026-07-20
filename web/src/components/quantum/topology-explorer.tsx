@@ -231,7 +231,11 @@ function TopologyGraph({ topo, n, gateA, gateB, path, swaps }: GraphProps) {
               r={NODE_R}
               className={
                 isGate
-                  ? "fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900"
+                  ? // fill-accent-dark, not fill-accent: the white numeral on
+                    // the raw light accent computes 3.04:1, below the 4.5:1 AA
+                    // floor for this ~7.5px label. accent-dark takes it to
+                    // 5.38:1. (Dark theme's accent-light/gray-900 is 12.2:1.)
+                    "fill-accent-dark dark:fill-accent-light stroke-white dark:stroke-gray-900"
                   : "fill-gray-100 dark:fill-gray-700 stroke-gray-400 dark:stroke-gray-500"
               }
               strokeWidth={isGate ? 2 : 1}

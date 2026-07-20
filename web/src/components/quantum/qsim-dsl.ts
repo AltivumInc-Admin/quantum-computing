@@ -38,6 +38,23 @@ export interface Program {
 export const SINGLE = new Set(Object.keys(NAMED_GATES));
 export const ROT = new Set(["RX", "RY", "RZ"]);
 
+/**
+ * Reject tokens past an instruction's arity. Without this the extra tokens are
+ * dropped silently: `H 0 1` (a natural spelling of "H on both qubits") builds
+ * a one-gate circuit, and `CNOT 0 1 2` (reaching for a Toffoli) builds a plain
+ * CNOT — a wrong-but-silent circuit that the grader can only report as
+ * "wrong", blaming the learner's physics for what was a syntax slip. This is
+ * the same contract parseIndex/parseAngle already enforce one level down,
+ * where trailing garbage INSIDE a token is refused for exactly this reason.
+ */
+function expectArity(parts: string[], arity: number, what: string): void {
+  if (parts.length > arity) {
+    throw new Error(
+      `${what}: unexpected extra token "${parts[arity]}" — one instruction per line`,
+    );
+  }
+}
+
 export function parseProgram(source: string): Program {
   const lines = source
     .split("\n")
@@ -56,6 +73,7 @@ export function parseProgram(source: string): Program {
       if (head === "qubits") {
         const got = parseIndex(parts[1]);
         if (!got.ok) throw new Error("qubits directive needs a non-negative count");
+        expectArity(parts, 2, "qubits");
         n = Math.max(n, got.value);
         continue;
       }
@@ -69,6 +87,7 @@ export function parseProgram(source: string): Program {
         const control = c.value;
         const target = t.value;
         if (control === target) throw new Error("CNOT control and target must differ");
+        expectArity(parts, 3, "CNOT");
         gates.push({ gate, target, control });
         n = Math.max(n, control + 1, target + 1);
       } else if (ROT.has(gate)) {
@@ -76,6 +95,7 @@ export function parseProgram(source: string): Program {
         const tok = (parts[2] ?? "").toLowerCase();
         if (!t.ok || tok === "")
           throw new Error(`${gate} needs a target qubit and an angle`);
+        expectArity(parts, 3, gate);
         const target = t.value;
         if (tok === "theta") {
           hasTheta = true;
@@ -89,6 +109,7 @@ export function parseProgram(source: string): Program {
       } else if (SINGLE.has(gate)) {
         const t = parseIndex(parts[1]);
         if (!t.ok) throw new Error(`${gate} needs a target qubit`);
+        expectArity(parts, 2, gate);
         const target = t.value;
         gates.push({ gate, target });
         n = Math.max(n, target + 1);

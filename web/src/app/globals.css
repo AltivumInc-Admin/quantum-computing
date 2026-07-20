@@ -513,10 +513,21 @@
     @apply transition-[transform,background-color,box-shadow,border-color,opacity] duration-200 ease-out active:scale-[0.97];
   }
 
-  /* Olive range thumb on a hairline track — the phase/scrub sliders. */
+  /* Olive range thumb on a hairline track — the phase/scrub sliders.
+
+     TARGET SIZE (WCAG 2.2 SC 2.5.8, 24px minimum): the input's own border box
+     is the grabbable target, so it is 24px tall — NOT the 4px of the visible
+     rail. The hairline is painted as a centered 4px background stripe instead
+     of filling the box, which keeps the Instrument look while giving the
+     pointer a full-height target; the thumb stays 16px and browsers center it
+     in the taller box. History: PR #43 (WS-5a) cleared the minimum by growing
+     both thumbs 16px->24px; PR #169 rewrote this block and silently reverted
+     them to 16px on an h-1 box, re-opening the finding. slider-target-size.test.ts
+     now pins the effective target so a future restyle cannot shrink it again. */
   .slider {
-    @apply h-1 rounded-full;
-    background: var(--track);
+    @apply h-6 rounded-full;
+    background: linear-gradient(var(--track), var(--track)) center / 100% 4px
+      no-repeat;
     accent-color: var(--color-accent);
   }
   .slider::-webkit-slider-thumb {
@@ -560,8 +571,13 @@
     inset: 0;
     background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.4), transparent);
     transform: translateX(-100%);
-    animation: bar-shimmer 2.8s ease-in-out infinite;
-    animation-delay: 1.1s;
+    /* ONE sweep, then parked off-bar (`forwards` holds the 240% end state).
+       This block shipped `infinite` in #169, contradicting the "one-shot ...
+       after it settles" intent stated here, on the @keyframes, and on the
+       reduced-motion override: a synchronized glint re-crossing every
+       probability bar every 2.8s reads as activity on static data and keeps
+       the compositor awake for the whole reading session. */
+    animation: bar-shimmer 2.8s ease-in-out 1.1s 1 forwards;
   }
 
   /* Atmospheric fog glow — layered soft radial lights over the base surface.

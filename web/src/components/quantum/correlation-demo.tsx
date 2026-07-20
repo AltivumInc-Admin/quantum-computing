@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { opsFor } from "./qsim-dsl";
 import { parseCorrelation, sampleOutcome } from "./correlation";
-import { Bar, GateChips, WidgetCard } from "./widget-ui";
+import {
+  Bar,
+  ErrorCard,
+  GateChips,
+  WidgetCard,
+} from "./widget-ui";
 import { formatPercent } from "./format";
 import type { Program } from "./qsim-dsl";
 
@@ -96,13 +101,7 @@ export function CorrelationDemo({ source }: { source: string }) {
   }, [parsed.spec]);
 
   if (!parsed.spec) {
-    return (
-      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          correlation error: {parsed.error}
-        </p>
-      </div>
-    );
+    return <ErrorCard label="correlation" message={parsed.error} className="my-8" />;
   }
 
   function handleMeasure() {

@@ -92,12 +92,17 @@ export function DjDemo({ source }: { source: string }) {
           >
             Oracle
           </label>
+          {/* The visible <label htmlFor> above is the accessible name; an
+              aria-label here would redundantly override it. `focus-ring` is
+              the site-wide treatment (solid per-theme --focus token on
+              focus-visible) — the alpha `focus:ring-accent/40` this carried
+              composites below the 3:1 WCAG 1.4.11 floor in BOTH themes and
+              fired on mouse click too. */}
           <select
             id={selectId}
-            aria-label="Oracle"
             value={oracleKey}
             onChange={(e) => setOracleKey(e.target.value)}
-            className="rounded-md border border-(--bd) bg-(--field) px-2 py-1.5 text-sm text-(--ink) focus:outline-none focus:ring-2 focus:ring-accent/40"
+            className="rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 text-sm text-(--ink) focus-ring"
           >
             {ORACLE_KEYS.map((key) => (
               <option key={key} value={key}>
@@ -107,7 +112,11 @@ export function DjDemo({ source }: { source: string }) {
           </select>
         </div>
 
-        <ProbBars probs={result.probs} n={result.n} />
+        {/* The verdict rests entirely on the all-zeros row (100% => constant,
+            0% => balanced), and the footnote below sends the reader looking
+            for it — so it carries the accent emphasis the sibling widgets use
+            for their decisive row. */}
+        <ProbBars probs={result.probs} n={result.n} highlightIndex={0} />
 
         <p className="text-xs text-caption leading-relaxed">
           One query decides it: all-zeros with certainty means the function never

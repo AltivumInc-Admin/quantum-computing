@@ -1,7 +1,17 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Bar, Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard } from "./widget-ui";
+import {
+  Bar,
+  Chip,
+  EMPHASIS_LABEL,
+  ErrorCard as SharedErrorCard,
+  LabeledSlider,
+  LiveStatus,
+  NEUTRAL_BAR_FILL,
+  WidgetCard,
+} from "./widget-ui";
+import { formatPercent } from "./format";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -112,20 +122,16 @@ export function GroverVisualizer({ source }: { source: string }) {
                 key={idx}
                 label={basisLabel(idx, n)}
                 fraction={p}
-                fillClass={isMarked ? "bar-fill" : "bg-gray-300 dark:bg-gray-600"}
-                valueText={`${(p * 100).toFixed(1)}%`}
-                labelClassName={
-                  isMarked
-                    ? "text-accent-dark dark:text-accent-light font-semibold"
-                    : "text-caption"
-                }
+                fillClass={isMarked ? "bar-fill" : NEUTRAL_BAR_FILL}
+                valueText={formatPercent(p * 100)}
+                labelClassName={isMarked ? EMPHASIS_LABEL : "text-caption"}
               />
             );
           })}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-          <p className="font-mono text-sm text-(--mut)">
+          <p className="font-mono text-sm text-caption">
             <span className="text-caption">success P(marked) = </span>
             <span className="text-accent-dark dark:text-accent-light tabular-nums">
               {(success * 100).toFixed(1)}%

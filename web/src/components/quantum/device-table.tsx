@@ -3,7 +3,12 @@
 import { useId, useState } from "react";
 import { DEVICES, sortDevices, type SortKey } from "./devices";
 import { costLabel } from "./cost";
-import { LiveStatus, fieldClass } from "./widget-ui";
+import {
+  cardShell,
+  EyebrowLabel,
+  fieldClass,
+  LiveStatus,
+} from "./widget-ui";
 
 const TECHNOLOGIES = ["All", "Trapped ion", "Superconducting", "Neutral atom", "Simulator"] as const;
 
@@ -32,7 +37,7 @@ export function DeviceTable() {
   };
 
   return (
-    <div className="not-prose my-6 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
+    <div className={`not-prose my-6 overflow-hidden ${cardShell}`}>
       <LiveStatus>
         {`${sorted.length} device${sorted.length === 1 ? "" : "s"} shown${
           tech === "All" ? "" : `, ${tech}`
@@ -41,9 +46,9 @@ export function DeviceTable() {
 
       {/* Header */}
       <div className="flex items-center justify-between gap-4 border-b border-(--bd) px-4 py-2">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
+        <EyebrowLabel strong>
           Devices
-        </span>
+        </EyebrowLabel>
         <div className="flex items-center gap-2">
           <label
             htmlFor={techId}

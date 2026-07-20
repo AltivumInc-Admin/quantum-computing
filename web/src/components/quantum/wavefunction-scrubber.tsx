@@ -5,7 +5,14 @@ import dynamic from "next/dynamic";
 import { simulateSteps, probabilities, zeroState } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial, BlochVectorSR } from "./bloch-dial";
-import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import {
+  ErrorCard,
+  GateChips,
+  LabeledSlider,
+  ProbBars,
+  StateReadout,
+  WidgetCard,
+} from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 import { formatRadians } from "./format";
 
@@ -76,11 +83,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
 
   if (program.error) {
     return (
-      <div className="not-prose my-6 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          qsim parse error: {program.error}
-        </p>
-      </div>
+      <ErrorCard label="qsim parse" message={program.error} />
     );
   }
 

@@ -1,6 +1,11 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
+import {
+  cardShell,
+  ErrorCard,
+  EyebrowLabel,
+} from "./widget-ui";
 
 /**
  * Interactive placement quiz rendered from a ```quiz fenced block in a GUIDE.
@@ -124,13 +129,7 @@ export function Quiz({ source }: { source: string }) {
     });
 
   if (quiz.error) {
-    return (
-      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="text-sm text-caption font-mono">
-          quiz parse error: {quiz.error}
-        </p>
-      </div>
-    );
+    return <ErrorCard label="quiz parse" message={quiz.error} className="my-8" />;
   }
 
   const allOpen =
@@ -142,11 +141,11 @@ export function Quiz({ source }: { source: string }) {
     );
 
   return (
-    <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
+    <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
+        <EyebrowLabel strong>
           Placement quiz
-        </span>
+        </EyebrowLabel>
         <button
           type="button"
           onClick={toggleAll}
@@ -223,9 +222,9 @@ export function Quiz({ source }: { source: string }) {
                     aria-label={`Answer to question ${i + 1}`}
                     className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
                   >
-                    <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent mb-1 font-mono">
+                    <EyebrowLabel strong className="block mb-1">
                       Answer
-                    </span>
+                    </EyebrowLabel>
                     <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.a)}
                     </p>

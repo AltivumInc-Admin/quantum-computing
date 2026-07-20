@@ -9,7 +9,18 @@ import { nextIntervalDays } from "@/lib/review-schedule";
 import { basisLabel } from "./math";
 import { parseProgram } from "./qsim-dsl";
 import { usePersistentSolved } from "./use-persistent-solved";
-import { GateChips, ProbBars, StateReadout } from "./widget-ui";
+import {
+  CheckIcon,
+  cardShell,
+  ErrorCard,
+  EyebrowLabel,
+  GateChips,
+  OPTION_BASE,
+  OPTION_TONE,
+  ProbBars,
+  StateReadout,
+  VerdictBadge,
+} from "./widget-ui";
 
 /**
  * A predict-then-run Rep rendered from a ```qpredict fenced block. The learner
@@ -24,37 +35,12 @@ import { GateChips, ProbBars, StateReadout } from "./widget-ui";
  *     "mode": "top-outcome" | "nonzero-states", "hint"?: "..." }
  */
 
-const CARD =
-  "not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)";
+// Composed from the shared shell (which already carries .glass's resting
+// shadow — the appended shadow utility this used to repeat was a no-op).
+const CARD = `not-prose my-8 overflow-hidden ${cardShell}`;
 
-function CheckIcon() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function ErrorCard({ message }: { message: string }) {
-  return (
-    <div className={`${CARD} px-4 py-3`}>
-      <p className="font-mono text-sm text-caption">predict error: {message}</p>
-    </div>
-  );
-}
-
-const OPTION_BASE =
-  "rounded-control border px-2.5 py-1.5 font-mono text-sm interactive focus-ring disabled:cursor-default";
-const TONE = {
-  neutral:
-    "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
-  selected:
-    "border-accent/50 bg-accent/15 text-accent-dark dark:text-accent-light",
-  correct:
-    "border-accent/60 bg-accent/15 text-accent-dark dark:text-accent-light",
-  wrong:
-    "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
-};
+// Sizing only — the recipe and the tones come from widget-ui.
+const OPTION_SIZE = "px-2.5 py-1.5";
 
 export function PredictWidget({
   source,
@@ -105,9 +91,23 @@ export function PredictWidget({
     }
   }, [spec, truth, cardId, source]);
 
-  if (!spec) return <ErrorCard message={parsed.error ?? "invalid predict block"} />;
+  if (!spec) {
+    return (
+      <ErrorCard
+        label="predict"
+        message={parsed.error ?? "invalid predict block"}
+        className="my-8"
+      />
+    );
+  }
   if (!program || program.error || !truth) {
-    return <ErrorCard message={truthResult.error ?? program?.error ?? "invalid circuit"} />;
+    return (
+      <ErrorCard
+        label="predict"
+        message={truthResult.error ?? program?.error ?? "invalid circuit"}
+        className="my-8"
+      />
+    );
   }
 
   const n = truth.n;
@@ -138,29 +138,22 @@ export function PredictWidget({
   };
 
   const optionTone = (i: number): string => {
-    if (!committed) return selected.has(i) ? TONE.selected : TONE.neutral;
-    if (truthSet.has(i)) return TONE.correct; // reveal the truth
-    if (selected.has(i)) return TONE.wrong; // a wrong pick the learner made
-    return TONE.neutral;
+    if (!committed) return selected.has(i) ? OPTION_TONE.selected : OPTION_TONE.neutral;
+    if (truthSet.has(i)) return OPTION_TONE.correct; // reveal the truth
+    if (selected.has(i)) return OPTION_TONE.wrong; // a wrong pick the learner made
+    return OPTION_TONE.neutral;
   };
 
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
+        <EyebrowLabel strong>
           Predict
-        </span>
+        </EyebrowLabel>
         {committed && (
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 text-xs font-semibold ${
-              correct
-                ? "bg-accent/10 text-accent-dark dark:text-accent-light"
-                : "bg-warm/10 text-warm-dark dark:text-warm-light"
-            }`}
-          >
-            {correct && <CheckIcon />}
+          <VerdictBadge tone={correct ? "accent" : "warm"}>
             {correct ? "Correct" : "Not quite"}
-          </span>
+          </VerdictBadge>
         )}
       </div>
 
@@ -189,7 +182,7 @@ export function PredictWidget({
                 aria-pressed={single ? selected.has(i) : undefined}
                 onClick={() => toggle(i)}
                 disabled={committed}
-                className={`${OPTION_BASE} ${optionTone(i)}`}
+                className={`${OPTION_BASE} ${OPTION_SIZE} ${optionTone(i)}`}
               >
                 |{basisLabel(i, n)}⟩
               </button>
@@ -214,9 +207,9 @@ export function PredictWidget({
               aria-label="Simulated outcome"
               className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
+              <EyebrowLabel strong className="mb-2 block">
                 Simulated outcome
-              </span>
+              </EyebrowLabel>
               <ProbBars probs={truth.probs} n={n} />
               <StateReadout state={truth.state} n={n} />
             </div>

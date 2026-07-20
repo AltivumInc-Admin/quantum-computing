@@ -4,6 +4,8 @@ import { useId, type ReactNode } from "react";
 import { basisLabel, type Complex } from "./math";
 import type { ParsedGate } from "./qsim-dsl";
 import { diracString, toPythonState } from "./state-readout";
+import { formatFixed, formatPercent } from "./format";
+import { cardShell, ErrorCard } from "./error-card";
 import { CopyButton } from "../copy-button";
 
 /**
@@ -12,6 +14,12 @@ import { CopyButton } from "../copy-button";
  * previously copy-pasted verbatim across the widgets; centralizing them keeps
  * the gate-label rules, pill styling, probability-bar geometry, and Dirac/copy
  * readout in one place.
+ *
+ * Token convention: `.text-caption` is the canonical spelling for the muted
+ * tier (globals.css calls it "the single source for the muted tier"). The bare
+ * `text-(--mut)` arbitrary value renders identically, but new code should use
+ * `.text-caption` so a widget author copying a neighbouring file lands on one
+ * spelling.
  */
 
 /** Human-readable label for a parsed gate. */
@@ -21,8 +29,31 @@ export function gateLabel(g: ParsedGate): string {
     : g.bound
       ? `${g.gate}(θ) q${g.target}`
       : g.theta !== undefined
-        ? `${g.gate}(${g.theta.toFixed(2)}) q${g.target}`
+        ? // formatFixed (not raw toFixed) so a tiny negative literal angle
+          // renders "0.00" rather than the signed-zero wart "-0.00".
+          `${g.gate}(${formatFixed(g.theta, 2)}) q${g.target}`
         : `${g.gate} q${g.target}`;
+}
+
+/**
+ * The check glyph shared by every solved/correct affordance in the widget
+ * family (previously redeclared byte-identically in six modules, shipping the
+ * same markup in six separate dynamic chunks). `size` keeps the geometry a
+ * caller concern so larger consumers can adopt it unchanged.
+ */
+export function CheckIcon({ size = "h-3.5 w-3.5" }: { size?: string } = {}) {
+  return (
+    <svg
+      className={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.5}
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
 }
 
 /** One gate pill. `active` highlights it (e.g. the scrubber's current gate). */
@@ -65,8 +96,8 @@ export function Bar({
   fraction,
   valueText,
   fillClass = "bar-fill",
-  labelClassName = "text-(--mut)",
-  valueClassName = "text-(--mut)",
+  labelClassName = "text-caption",
+  valueClassName = "text-caption",
   valueWidth = "w-12",
   marker,
   ariaLabel,
@@ -128,26 +159,49 @@ export function Bar({
   );
 }
 
+/**
+ * The de-emphasized bar fill for rows that are not the one being taught.
+ * Single-sourced because grover (gray-300/600) and qft (gray-400/500) had
+ * drifted onto two different grays for the identical role.
+ */
+export const NEUTRAL_BAR_FILL = "bg-gray-300 dark:bg-gray-600";
+
+/** The "this row carries the verdict" label treatment. */
+export const EMPHASIS_LABEL = "text-accent-dark dark:text-accent-light font-semibold";
+
 /** Probability bars: one row per basis state (|label⟩, accent fill, percentage). */
 export function ProbBars({
   probs,
   n,
   labelFor = basisLabel,
+  highlightIndex,
 }: {
   probs: number[];
   n: number;
   labelFor?: (idx: number, n: number) => string;
+  /**
+   * Marks the decisive row (e.g. Deutsch-Jozsa's all-zeros outcome, on which
+   * the whole verdict rests). Its label/value get the accent emphasis so the
+   * verdict chip has a visible referent; the fills stay uniform, since here
+   * every row is real data rather than grover's marked-vs-unmarked split.
+   */
+  highlightIndex?: number;
 }) {
   return (
     <div className="space-y-1.5">
-      {probs.map((p, idx) => (
-        <Bar
-          key={idx}
-          label={labelFor(idx, n)}
-          fraction={p}
-          valueText={`${(p * 100).toFixed(1)}%`}
-        />
-      ))}
+      {probs.map((p, idx) => {
+        const emphasized = idx === highlightIndex;
+        return (
+          <Bar
+            key={idx}
+            label={labelFor(idx, n)}
+            fraction={p}
+            valueText={formatPercent(p * 100)}
+            labelClassName={emphasized ? EMPHASIS_LABEL : "text-caption"}
+            valueClassName={emphasized ? EMPHASIS_LABEL : "text-caption"}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -172,23 +226,43 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
   );
 }
 
-// The smoke-and-glass widget shell: the `.glass` recipe (translucent fill +
-// backdrop blur + hairline border + glass elevation) on a rounded card.
-export const cardShell = "rounded-card glass";
+// `cardShell` and `ErrorCard` live in ./error-card so the widget fence can
+// render the failure state without pulling this module (and its math/copy
+// dependencies) into the eagerly-loaded lesson chunk. Re-exported here so
+// widgets keep importing everything from "./widget-ui".
+export { cardShell, ErrorCard };
 
+/**
+ * The micro-label above a widget or a section inside one. `strong` is the
+ * heavier activity/Rep idiom (font-semibold) the challenge/quiz/predict family
+ * uses; the default font-medium is the explorable idiom. Both spellings were
+ * copy-pasted across nine files and had already drifted on the dark-mode color
+ * (`dark:text-accent` vs `dark:text-accent-light`) — `dark:text-accent` is
+ * canonical, so two Rep widgets in one lesson can no longer render different
+ * header colors.
+ */
 export function EyebrowLabel({
   children,
   as: Tag = "span",
   id,
+  strong = false,
+  className = "",
 }: {
   children: ReactNode;
   as?: "span" | "h3";
   id?: string;
+  strong?: boolean;
+  /** Layout only (e.g. `mb-2 block`) — never color/weight. */
+  className?: string;
 }) {
   return (
     <Tag
       id={id}
-      className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent"
+      className={`font-mono text-[10px] ${
+        strong ? "font-semibold" : "font-medium"
+      } uppercase tracking-[0.2em] text-accent-dark dark:text-accent${
+        className ? ` ${className}` : ""
+      }`}
     >
       {children}
     </Tag>
@@ -245,23 +319,70 @@ export function WidgetCard({
   );
 }
 
-export function ErrorCard({
-  label,
-  message,
-  className = "my-6",
+/**
+ * The header verdict badge shared by the Rep/activity widgets. `tone` picks the
+ * semantic pair: `accent` for a correct/solved outcome, `warm` for a
+ * not-quite one. Previously copy-pasted byte-identically across six widgets.
+ */
+export function VerdictBadge({
+  tone,
+  children,
+  showCheck = tone === "accent",
 }: {
-  label: string;
-  message?: string;
-  className?: string;
+  tone: "accent" | "warm";
+  children: ReactNode;
+  /** The check glyph; defaults on for the accent (correct/solved) tone. */
+  showCheck?: boolean;
 }) {
   return (
-    <div className={`not-prose ${className} ${cardShell} px-4 py-3`}>
-      <p className="font-mono text-sm text-gray-500 dark:text-gray-400">
-        {`${label} error: ${message ?? ""}`}
-      </p>
-    </div>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 text-xs font-semibold ${
+        tone === "accent"
+          ? "bg-accent/10 text-accent-dark dark:text-accent-light"
+          : "bg-warm/10 text-warm-dark dark:text-warm-light"
+      }`}
+    >
+      {showCheck && <CheckIcon />}
+      {children}
+    </span>
   );
 }
+
+/**
+ * The result panel below a Rep widget's controls. One source for the three
+ * verdict states so sibling widgets a learner meets back to back cannot drift
+ * — challenge and debug-circuit had already diverged on the `error` border
+ * token (--bd at 0.13 alpha vs --bd-2 at 0.22), rendering different border
+ * strengths for the same state. --bd (challenge's value) is canonical.
+ */
+export const VERDICT_STYLES: Record<"solved" | "wrong" | "error", string> = {
+  solved:
+    "border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 text-accent-dark dark:text-accent-light",
+  wrong:
+    "border-l-2 border-warm/60 bg-warm/5 dark:bg-warm/10 text-warm-dark dark:text-warm-light",
+  error: "border-l-2 border-(--bd) bg-(--field) text-caption",
+};
+
+/**
+ * Base recipe for a selectable answer option (predict / expectation /
+ * cost-estimate). Deliberately carries NO padding — the three widgets size
+ * their own options (`px-3` vs `px-2.5`), same reasoning as `fieldClass`.
+ */
+export const OPTION_BASE =
+  "rounded-control border font-mono text-sm interactive focus-ring disabled:cursor-default";
+
+/**
+ * Answer-option tones. `neutral` is the unanswered resting state — tokenized
+ * (--bd / --field / the muted tier) rather than the raw grays expectation-widget
+ * had drifted onto, so a token retune reaches all three widgets.
+ */
+export const OPTION_TONE: Record<"neutral" | "selected" | "correct" | "wrong", string> = {
+  neutral:
+    "border-(--bd) bg-(--field) text-caption hover:bg-gray-100 dark:hover:bg-gray-800",
+  selected: "border-accent/50 bg-accent/15 text-accent-dark dark:text-accent-light",
+  correct: "border-accent/60 bg-accent/15 text-accent-dark dark:text-accent-light",
+  wrong: "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
+};
 
 // LiveStatus is now single-sourced in ../live-status and shared with the auth
 // surface (password-checklist.tsx). Re-exported here so the explorables keep
@@ -278,13 +399,15 @@ export const secondaryActionClass =
 // Tailwind utilities after a token is resolved by stylesheet order, not class
 // order, so each control appends its own `px-* py-* text-*` instead.
 export const fieldClass =
-  "rounded-control border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 focus-ring";
+  "rounded-control border border-(--bd) bg-(--field) text-(--ink) focus-ring";
 
 /**
  * One labeled range-slider row, shared by every explorable that exposes a
  * numeric control (angle θ/φ, depth, iterations, bond length R, error rate, …).
  * Centralizes the invariant contract the per-widget copies kept drifting on:
- * the `slider flex-1 focus-ring` input (focus ring + 24px touch target), the
+ * the `slider flex-1 focus-ring` input (focus ring; the >=24px WCAG 2.5.8
+ * touch target is owned by the `.slider` recipe in globals.css and pinned by
+ * slider-target-size.test.ts), the
  * `aria-label`/`aria-valuetext` pairing, the `tabular-nums` value readout, and a
  * self-owned `useId` wiring `<label htmlFor>` to the input (callers no longer
  * thread their own id). `display` is the rendered value (e.g. `1.57 rad`, `42`,
@@ -307,7 +430,7 @@ export function LabeledSlider({
   display,
   parse = parseFloat,
   rowClassName = "flex items-center gap-3",
-  labelClassName = "shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300",
+  labelClassName = "shrink-0 font-mono text-sm text-caption",
   valueWidth = "w-16",
   labelAbove = false,
   leading,
@@ -352,7 +475,7 @@ export function LabeledSlider({
   );
   const valueEl = (
     <span
-      className={`${valueWidth} shrink-0 text-right font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400`}
+      className={`${valueWidth} shrink-0 text-right font-mono text-xs tabular-nums text-caption`}
     >
       {display}
     </span>

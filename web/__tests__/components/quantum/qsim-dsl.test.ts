@@ -59,6 +59,36 @@ describe("parseProgram (shared qsim gate DSL)", () => {
     expect(parseProgram("CNOT 0 1x").error).toMatch(/control and a target/i);
   });
 
+  // Extra whole tokens were the one malformed-input class the parser accepted
+  // silently, building a wrong circuit from a natural typo — and because the
+  // grader can only report "wrong" when there is no parse error, the learner
+  // was told their physics was wrong when their syntax had been truncated.
+  it("rejects a single-qubit gate carrying an extra qubit", () => {
+    // 'H 0 1' reads as "H on qubits 0 and 1"; it used to build H on qubit 0.
+    const p = parseProgram("H 0 1");
+    expect(p.error).toMatch(/extra token "1"/);
+    expect(p.gates).toHaveLength(0);
+  });
+
+  it("rejects a CNOT carrying a third qubit (a Toffoli attempt)", () => {
+    expect(parseProgram("CNOT 0 1 2").error).toMatch(/extra token "2"/);
+  });
+
+  it("rejects a rotation carrying a token after its angle", () => {
+    expect(parseProgram("RY 0 theta 42").error).toMatch(/extra token "42"/);
+    expect(parseProgram("RZ 0 1.57 x").error).toMatch(/extra token "x"/);
+  });
+
+  it("rejects an over-long qubits directive", () => {
+    expect(parseProgram("qubits 2 3").error).toMatch(/extra token "3"/);
+  });
+
+  it("still accepts every shipped instruction shape at exact arity", () => {
+    const p = parseProgram("qubits 2\nH 0\nCNOT 0 1\nRY 1 theta\nRX 0 1.5708");
+    expect(p.error).toBeUndefined();
+    expect(p.gates).toHaveLength(4);
+  });
+
   it("rejects a garbage angle that parseFloat would truncate", () => {
     expect(parseProgram("RY 0 1.5xyz").error).toMatch(/bad angle/i);
   });

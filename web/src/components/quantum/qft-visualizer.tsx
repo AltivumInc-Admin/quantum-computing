@@ -1,9 +1,17 @@
 "use client";
 
 import { useMemo } from "react";
-import { Bar, Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import {
+  Bar,
+  Chip,
+  ErrorCard as SharedErrorCard,
+  LiveStatus,
+  NEUTRAL_BAR_FILL,
+  WidgetCard,
+} from "./widget-ui";
 import { type Complex, basisLabel } from "./math";
 import { qft, basisState, periodicState } from "./qft";
+import { formatFixed } from "./format";
 
 /**
  * Inline Quantum Fourier Transform visualizer rendered from a ```qft fenced
@@ -97,23 +105,27 @@ function MagnitudeBars({
   highlight?: (idx: number) => boolean;
   accent?: boolean;
 }) {
-  const peak = Math.max(...values, 1e-12);
   return (
     <div className="space-y-1.5">
       {values.map((v, idx) => {
         const hot = highlight ? highlight(idx) : false;
-        const fillClass = hot
-          ? "bg-warm"
-          : accent
-            ? "bar-fill"
-            : "bg-gray-400 dark:bg-gray-500";
+        const fillClass = hot ? "bg-warm" : accent ? "bar-fill" : NEUTRAL_BAR_FILL;
         return (
           <Bar
             key={idx}
             label={basisLabel(idx, n)}
-            fraction={v / peak}
+            // Absolute magnitude, NOT peak-relative. The two panels render side
+            // by side and invite direct comparison, but they were each
+            // normalized to their own peak — so identical bar lengths meant
+            // different magnitudes whenever the peaks differed. For a period-r
+            // comb on N basis states the input teeth are 1/sqrt(N/r) and the
+            // output spikes 1/sqrt(r), equal only at r = sqrt(N); the one
+            // shipped fence (qubits 4, period 4) is exactly that coincidence,
+            // which is what masked it. Magnitudes are <= 1 by normalization, so
+            // the absolute scale matches the sibling widgets' ProbBars.
+            fraction={v}
             fillClass={fillClass}
-            valueText={v.toFixed(2)}
+            valueText={formatFixed(v, 2)}
           />
         );
       })}
@@ -161,7 +173,9 @@ export function QftVisualizer({ source }: { source: string }) {
       <div className="grid grid-cols-1 gap-6 px-4 py-4 sm:grid-cols-2">
         <div className="min-w-0">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-caption">
-            Input |x&#10217;
+            {/* "Input |x>" mislabels the default period-comb superposition as
+                a basis state; only the {"basis": j} config is one. */}
+            Input state
           </p>
           <MagnitudeBars values={inMag} n={n} />
         </div>

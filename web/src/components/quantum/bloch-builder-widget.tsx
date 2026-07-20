@@ -4,9 +4,16 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { BlochDial, BlochVectorSR } from "./bloch-dial";
 import { stateFromAngles, probsFromAngles } from "./bloch-builder";
-import { GateChip, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import {
+  GateChip,
+  LabeledSlider,
+  LiveStatus,
+  ProbBars,
+  StateReadout,
+  WidgetCard,
+} from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
-import { formatRadians } from "./format";
+import { formatRadians, percentSR } from "./format";
 
 const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
   ssr: false,
@@ -43,10 +50,18 @@ export function BlochBuilder() {
         </div>
       }
     >
+      <LiveStatus>
+        {`P(0) ${percentSR(probs[0] * 100)}, P(1) ${percentSR(probs[1] * 100)}.`}
+      </LiveStatus>
+
       {/* Main content */}
       <div className="flex flex-col sm:flex-row gap-6 px-4 py-4">
         {/* Left column: prob bars + Dirac string + copy buttons */}
-        <div className="flex-1 min-w-0" role="status" aria-live="polite">
+        {/* Deliberately NOT a live region — see circuit-lab. The theta and
+            phi sliders give 60 and 120 steps per drag, and StateReadout's
+            CopyButtons carry their own role="status" spans (nested regions).
+            The concise LiveStatus above carries the announcement instead. */}
+        <div className="flex-1 min-w-0">
           <ProbBars probs={probs} n={1} />
           <StateReadout state={state} n={1} />
         </div>
