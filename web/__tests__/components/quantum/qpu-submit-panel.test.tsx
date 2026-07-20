@@ -664,8 +664,18 @@ test("the graduation path describes what the repo ACTUALLY supports — not a QA
   const panel = screen.getByLabelText("Run on real quantum hardware");
   expect(panel).not.toHaveTextContent(/same circuits, unmodified/i);
   expect(panel).toHaveTextContent(/Braket Python SDK, not the OpenQASM above/i);
-  expect(panel).toHaveTextContent(/run_circuit\(circuit, device_name="iqm_garnet"\)/i);
   expect(panel).toHaveTextContent(/prints a cost estimate before it submits/i);
+
+  // The snippet must be a call that RUNS. `run_circuit(circuit, device_name="iqm_garnet")`
+  // — what this panel used to teach, and what this test used to pin — raises
+  // `ValueError: s3_location required for AWS devices` from lib/hardware/devices.py, and
+  // that check sits ABOVE the cost print, so neither half of the sentence around it was
+  // true. s3_location and shots are what make the taught call real.
+  expect(panel).toHaveTextContent(/run_circuit\(circuit, device_name="iqm_garnet"/i);
+  expect(panel).toHaveTextContent(/shots=1000/i);
+  expect(panel).toHaveTextContent(/s3_location=\("amazon-braket-<your-bucket>", "quantum"\)\)/i);
+  // ...and the panel says out loud why it is required.
+  expect(panel).toHaveTextContent(/fails fast without it/i);
 });
 
 // ---- the graduation link actually resolves ----------------------------------

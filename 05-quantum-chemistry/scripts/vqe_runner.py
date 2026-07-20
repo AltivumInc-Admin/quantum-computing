@@ -28,9 +28,18 @@ def run_vqe(
     Returns:
         Dict with optimal_energy, optimal_params, history, n_evaluations.
     """
+    # variational_utils lives in the ALGORITHMS section, not the repo root. The
+    # previous `sys.path.insert(0, "../..")` was broken twice over: the path is
+    # relative to the CURRENT WORKING DIRECTORY rather than this file, and even
+    # when it resolved it pointed at the repo root, which has no such module --
+    # so `run_vqe` raised ModuleNotFoundError from any directory. Resolve the
+    # sibling section from __file__ so it works regardless of where python runs.
     import sys
+    from pathlib import Path
 
-    sys.path.insert(0, "../..")
+    algorithms_scripts = Path(__file__).resolve().parents[2] / "03-algorithms" / "scripts"
+    if str(algorithms_scripts) not in sys.path:
+        sys.path.insert(0, str(algorithms_scripts))
     from variational_utils import optimize_cobyla, optimize_spsa
 
     device = LocalSimulator()

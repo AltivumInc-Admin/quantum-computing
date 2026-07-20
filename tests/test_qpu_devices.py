@@ -9,7 +9,7 @@ either side is repriced without the other, CI fails here.
 import re
 from pathlib import Path
 
-from lib.hardware.devices import (
+from lib.hardware import (
     DEVICES,
     allowlisted_gate_devices,
     cheapest_allowlisted_device,
@@ -39,6 +39,45 @@ def test_every_allowlisted_device_is_gate_capable_and_priced():
         assert spec["gate_capable"] is True
         assert spec["provider"] in PRICING
         assert "per_shot" in PRICING[spec["provider"]]  # a per-shot QPU, not a per-minute sim
+
+
+def _string_const(src: str, name: str) -> str:
+    m = re.search(rf'export const {name} = "([^"]+)";', src)
+    assert m, f"{name} not found in qpu-core.mjs"
+    return m.group(1)
+
+
+def test_lambda_device_identity_matches_the_single_source():
+    """lib/hardware/devices.py declares DEVICES the single source of truth for every
+    billable device's ARN, but the Lambda that actually submits carries its own
+    hand-written copy of the short-name, ARN and region and hard-rejects anything else
+    (`if (device !== DEVICE)`). The sibling guard below covers the PRICES; without this
+    one, re-ARNing or re-allowlisting a device leaves CI green while the Lambda keeps
+    submitting to the old machine.
+    """
+    src = QPU_CORE.read_text()
+
+    device = _string_const(src, "DEVICE")
+    assert device in allowlisted_gate_devices(), (
+        f"qpu-core.mjs submits to {device!r}, which is not an allowlisted gate device"
+    )
+    assert device == cheapest_allowlisted_device(), (
+        f"qpu-core.mjs submits to {device!r} but cheapest_allowlisted_device() picked "
+        f"{cheapest_allowlisted_device()!r} — move the Lambda's DEVICE/DEVICE_ARN/"
+        f"DEVICE_REGION constants together with the allowlist"
+    )
+
+    arn = _string_const(src, "DEVICE_ARN")
+    assert arn == DEVICES[device]["arn"], (
+        f"qpu-core.mjs DEVICE_ARN {arn!r} != DEVICES[{device!r}]['arn'] {DEVICES[device]['arn']!r}"
+    )
+
+    # The region is a third copy of a fact already inside the ARN
+    # (arn:aws:braket:<region>::device/...), so derive it and pin the two together.
+    region = _string_const(src, "DEVICE_REGION")
+    assert region == arn.split(":")[3], (
+        f"qpu-core.mjs DEVICE_REGION {region!r} disagrees with the region in {arn!r}"
+    )
 
 
 def test_lambda_micro_dollar_constants_match_cost_pricing():

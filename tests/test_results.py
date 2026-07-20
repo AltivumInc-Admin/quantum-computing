@@ -58,7 +58,43 @@ def test_expectation_from_counts_rejects_zero_total():
 
 
 def test_parse_counts_empty_measurements_is_empty_counter(mock_result_factory):
-    # The deliberate `if len(measurements) else 0` guard must yield an empty Counter for a
-    # zero-shot / empty result, not an IndexError on measurements[0].
+    # An empty measurements array must yield an empty Counter, not an IndexError on
+    # measurements[0].
     result = mock_result_factory([])
     assert parse_counts(result) == Counter()
+
+
+def test_parse_counts_empty_measurements_with_labels_is_empty_counter(mock_result_factory):
+    # With measured_qubits present the width guard used to interpolate n - 1 = -1 and
+    # report "measured_qubits == 0..-1 in order" — a range that cannot exist. There is
+    # nothing to validate a column order against when there are no rows.
+    result = mock_result_factory([], measured_qubits=[0, 1])
+    assert parse_counts(result) == Counter()
+
+
+def test_parse_counts_rejects_a_real_analytic_result(local_simulator):
+    """The zero-shot path against the REAL SDK, not the hand-rolled mock.
+
+    A shots=0 task returns `measurements is None` (not `[]`, the shape every other test
+    in this file feeds), so the empty-array guard was never reached and the learner got
+    `TypeError: object of type 'NoneType' has no len()`.
+    """
+    from braket.circuits import Circuit
+
+    circuit = Circuit().h(0).cnot(0, 1)
+    circuit.state_vector()
+    result = local_simulator.run(circuit, shots=0).result()
+    assert result.measurements is None, "premise: a real analytic result carries no array"
+
+    with pytest.raises(ValueError, match="shots=0 analytic run"):
+        parse_counts(result)
+
+
+def test_parse_counts_still_works_on_a_real_shots_result(local_simulator):
+    # The counterpart: a real (non-mock) measured result must parse normally.
+    from braket.circuits import Circuit
+
+    result = local_simulator.run(Circuit().h(0).cnot(0, 1), shots=100).result()
+    counts = parse_counts(result)
+    assert sum(counts.values()) == 100
+    assert set(counts) <= {"00", "11"}

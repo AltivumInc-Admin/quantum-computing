@@ -3,4 +3,5 @@
 from lib.ml.classifiers import (  # noqa: F401
     build_vqc_circuit,
     quantum_kernel,
+    vqc_qnode,
 )

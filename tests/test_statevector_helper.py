@@ -57,6 +57,38 @@ def test_real_sdk_does_not_mutate_the_circuit():
     np.testing.assert_allclose(first, second, atol=1e-15)
 
 
+def test_real_sdk_ignores_result_types_the_caller_already_attached():
+    """``Circuit.copy()`` carries the caller's result types and ``state_vector()``
+    APPENDS, so ``values[0]`` used to be whatever the caller registered FIRST — a
+    ``.probability()`` circuit silently returned the probability vector labelled as
+    amplitudes. Every test above builds fresh circuits, so none could reach this."""
+    from braket.circuits import Observable
+
+    with_probability = Circuit().h(0).cnot(0, 1)
+    with_probability.probability()
+    np.testing.assert_allclose(statevector(with_probability), BELL, atol=1e-12)
+
+    with_expectation = Circuit().h(0).cnot(0, 1)
+    with_expectation.expectation(observable=Observable.Z(), target=0)
+    sv = statevector(with_expectation)
+    assert sv.shape == (4,), f"expected amplitudes, got a {sv.ndim}-d value: {sv!r}"
+    np.testing.assert_allclose(sv, BELL, atol=1e-12)
+
+    # ...and the caller's own result types survive untouched.
+    assert len(with_probability.result_types) == 1
+    assert len(with_expectation.result_types) == 1
+
+
+def test_real_sdk_handles_a_result_type_that_is_illegal_at_zero_shots():
+    """``.sample()`` cannot be evaluated at shots=0, so carrying it onto the analytic
+    run made the helper raise outright. Replaying instructions drops it."""
+    from braket.circuits import Observable
+
+    circuit = Circuit().h(0).cnot(0, 1)
+    circuit.sample(observable=Observable.Z(), target=0)
+    np.testing.assert_allclose(statevector(circuit), BELL, atol=1e-12)
+
+
 def test_real_sdk_reuses_one_simulator_instance(monkeypatch):
     """Loop-friendly: notebook energy functions call the helper inside
     optimization/grid loops, so consecutive real-SDK calls must share a single
