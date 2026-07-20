@@ -31,6 +31,25 @@ describe("scrolly parsing", () => {
     expect(r.error).toMatch(/numeric "theta"/);
   });
 
+  it("rejects a non-numeric phi", () => {
+    const r = parseScrolly(
+      JSON.stringify({ beats: [{ caption: "a", theta: 0 }, { caption: "b", theta: 1, phi: "x" }] })
+    );
+    expect(r.error).toMatch(/"phi" must be a number/);
+  });
+
+  it("rejects a non-finite phi (JSON maps 1e999 to Infinity, which is typeof number)", () => {
+    // Without the finiteness half of the guard this parsed cleanly, then
+    // Math.cos(Infinity) made the whole state NaN: the sticky sphere's vector
+    // silently vanished and the sr readout announced "x NaN, y NaN, z NaN".
+    const r = parseScrolly('{"beats":[{"caption":"a","theta":0},{"caption":"b","theta":1,"phi":1e999}]}');
+    expect(r.error).toMatch(/"phi" must be a number/);
+  });
+
+  it("still accepts an omitted phi (it is optional)", () => {
+    expect(parseScrolly(JSON.stringify({ beats: BEATS })).error).toBeUndefined();
+  });
+
   it("rejects malformed JSON", () => {
     expect(parseScrolly("{ not json").error).toBeTruthy();
   });

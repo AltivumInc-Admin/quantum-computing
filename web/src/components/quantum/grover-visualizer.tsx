@@ -11,7 +11,7 @@ import {
   NEUTRAL_BAR_FILL,
   WidgetCard,
 } from "./widget-ui";
-import { formatPercent } from "./format";
+import { formatPercent, percentSR } from "./format";
 import { basisLabel } from "./math";
 import { groverHistory, optimalIterations } from "./grover";
 
@@ -88,6 +88,12 @@ export function GroverVisualizer({ source }: { source: string }) {
   const amps = history.hist[frame];
   const N = 1 << n;
   const success = amps[marked] ** 2;
+  // The widget's headline number reaches the learner through three channels
+  // (live region, visible readout, slider value text). Formatted ONCE here so
+  // they cannot drift on precision; the two sr-only channels take the spoken
+  // `percentSR` spelling, matching the sibling LiveStatus widgets.
+  const successPct = formatPercent(success * 100);
+  const successSR = percentSR(success * 100);
 
   const onChangeN = (next: number) => {
     setN(next);
@@ -107,7 +113,7 @@ export function GroverVisualizer({ source }: { source: string }) {
       }
     >
       <LiveStatus>
-        {`Success probability ${(success * 100).toFixed(1)}% at ${frame} iteration${
+        {`Success probability ${successSR} at ${frame} iteration${
           frame === 1 ? "" : "s"
         }.`}
       </LiveStatus>
@@ -134,7 +140,7 @@ export function GroverVisualizer({ source }: { source: string }) {
           <p className="font-mono text-sm text-caption">
             <span className="text-caption">success P(marked) = </span>
             <span className="text-accent-dark dark:text-accent-light tabular-nums">
-              {(success * 100).toFixed(1)}%
+              {successPct}
             </span>
           </p>
           <p className="text-xs text-caption">
@@ -152,9 +158,7 @@ export function GroverVisualizer({ source }: { source: string }) {
         parse={(s) => parseInt(s, 10)}
         onChange={setIterations}
         ariaLabel="Number of Grover iterations"
-        ariaValueText={`${frame} iteration${frame === 1 ? "" : "s"}, success ${(
-          success * 100
-        ).toFixed(1)}%`}
+        ariaValueText={`${frame} iteration${frame === 1 ? "" : "s"}, success ${successSR}`}
         display={frame}
         rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
         labelClassName="font-mono text-sm text-(--mut)"

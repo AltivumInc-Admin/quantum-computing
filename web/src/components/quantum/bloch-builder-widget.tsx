@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import dynamic from "next/dynamic";
+import BlochSphere3D, { SPHERE_PX } from "./bloch-sphere-3d-lazy";
 import { BlochDial, BlochVectorSR } from "./bloch-dial";
 import { stateFromAngles, probsFromAngles } from "./bloch-builder";
 import {
@@ -14,13 +14,6 @@ import {
 } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 import { formatRadians, percentSR } from "./format";
-
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
-  ssr: false,
-  // Reserve the sphere's exact footprint while the lazy three.js chunk loads,
-  // so the first post-hydration dial->3D flip can't collapse the layout.
-  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
-});
 
 /**
  * Interactive "Build a state" playground rendered from a ```qbloch fenced block.
@@ -74,7 +67,7 @@ export function BlochBuilder() {
             <BlochVectorSR state={state} />
           </div>
         ) : (
-          <BlochDial state={state} size={180} />
+          <BlochDial state={state} size={SPHERE_PX} />
         )}
       </div>
 
@@ -90,7 +83,7 @@ export function BlochBuilder() {
         ariaValueText={`${theta.toFixed(2)} radians`}
         display={formatRadians(theta)}
         rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
-        labelClassName="w-4 shrink-0 font-mono text-sm text-(--mut)"
+        labelClassName="w-4 shrink-0 font-mono text-sm text-caption"
       />
 
       {/* Slider: phi */}
@@ -105,7 +98,7 @@ export function BlochBuilder() {
         ariaValueText={`${phi.toFixed(2)} radians`}
         display={formatRadians(phi)}
         rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
-        labelClassName="w-4 shrink-0 font-mono text-sm text-(--mut)"
+        labelClassName="w-4 shrink-0 font-mono text-sm text-caption"
       />
     </WidgetCard>
   );

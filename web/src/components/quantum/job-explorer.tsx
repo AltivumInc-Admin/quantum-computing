@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, LabeledSlider, WidgetCard } from "./widget-ui";
+import { useId, useMemo, useState, type ReactNode } from "react";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import { parseJsonObject, readNumber } from "./parse-utils";
 import {
   INSTANCES,
@@ -11,7 +11,8 @@ import {
   standaloneWallClockSec,
   type InstanceType,
 } from "./hybrid";
-import { type Provider } from "./cost";
+import { isPerShot, type Provider } from "./cost";
+import { DEVICES } from "./devices";
 import { usePrefersReducedMotion } from "./use-display-caps";
 
 /**
@@ -34,8 +35,20 @@ import { usePrefersReducedMotion } from "./use-display-caps";
 
 const STARTUP_SEC = 60; // one-time Hybrid Job container startup
 
-// --- per-shot QPU providers usable for a Hybrid Job (cost.ts) -------------
-const PROVIDERS: Provider[] = ["IonQ", "IQM", "QuEra", "Rigetti"];
+/**
+ * The per-shot QPU providers a Hybrid Job can actually target — DERIVED, not
+ * hand-listed, from the two catalogs that already own this knowledge: the
+ * device table (devices.ts, the fleet a learner can reach) intersected with the
+ * per-shot rates in cost.ts. The previous literal list had gone stale against
+ * both: it offered Rigetti, which cost.ts/lib.utils.cost price as reference-only
+ * because no Rigetti device is dispatchable (devices.test.ts asserts that
+ * carve-out), so the picker advertised a backend the platform's own catalog
+ * says you cannot submit to. Deriving means the next fleet change moves one
+ * file and this select, its chips, and the parse-error string follow.
+ */
+const PROVIDERS: Provider[] = Array.from(
+  new Set(DEVICES.map((d) => d.provider))
+).filter(isPerShot);
 const INSTANCE_KEYS = Object.keys(INSTANCES) as InstanceType[];
 
 // --- clamp ranges (contract) ----------------------------------------------
@@ -125,10 +138,23 @@ function formatDuration(totalSec: number): string {
   }
   const h = Math.floor(s / 3600);
   const m = Math.round((s % 3600) / 60);
+  // Carry the rounded minute into the hour. Without this, any remainder in
+  // [3570s, 3599s] rounds to 60 and renders the impossible "1h 60m" (reachable
+  // from the widget's own sliders: 10 iterations x (600s queue + 119.9s) = 7199s).
+  if (m === 60) return `${h + 1}h`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+/**
+ * USD with sub-cent resolution where two decimals would round a real charge to
+ * zero. The delta line's `addedCost` is pure instance charge (the QPU term
+ * cancels between the two panels), and ml.m5.large at $0.115/hour needs ~156s
+ * of wall-clock to reach one displayed cent — so plain toFixed(2) printed
+ * "$0.00" across the entire low-iteration range the GUIDE explicitly teaches.
+ * Same reasoning as the sibling qcost widget, which itemizes at 4 decimals.
+ */
 function formatUsd(v: number): string {
+  if (v !== 0 && Math.abs(v) < 0.005) return `$${v.toFixed(4)}`;
   return `$${v.toFixed(2)}`;
 }
 

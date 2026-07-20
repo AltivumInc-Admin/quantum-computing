@@ -20,6 +20,15 @@ describe("parseCorrelation", () => {
     expect(r.spec).toBeNull();
     expect(r.error).toMatch(/two qubits/i);
   });
+  it("rejects a slider-bound theta (this widget samples at opsFor(spec, 0))", () => {
+    // The DSL parses `theta` in any fence; unguarded, the bound gate would be
+    // evaluated at 0 while the chip advertised "RY(θ) q0".
+    const r = parseCorrelation(
+      JSON.stringify({ prompt: "p", entangled: "RY 0 theta\nCNOT 0 1", product: "H 0\nH 1" })
+    );
+    expect(r.spec).toBeNull();
+    expect(r.error).toMatch(/slider-bound theta/i);
+  });
 });
 
 describe("sampleOutcome", () => {

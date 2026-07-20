@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import BlochSphere3D, { SPHERE_PX } from "./bloch-sphere-3d-lazy";
 import { parseBlochTarget } from "@/lib/bloch-target-schema";
 import {
   blochTargetTruth,
@@ -30,13 +30,6 @@ import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 import { usePersistentSolved } from "./use-persistent-solved";
 import { formatFixed, formatRadians } from "./format";
 
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
-  ssr: false,
-  // Reserve the sphere's exact footprint while the lazy three.js chunk loads,
-  // so the first post-hydration dial->3D flip can't collapse the layout.
-  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
-});
-
 /**
  * A Bloch-target Rep rendered from a ```qblochtarget fenced block. The learner
  * drives the θ/φ sliders until the state vector sits on the target state —
@@ -62,7 +55,7 @@ const fmtDegCeil = (deg: number) => `${formatFixed(Math.ceil(deg * 10 - 1e-7) / 
 const fmtDegFloor = (deg: number) => `${formatFixed(Math.floor(deg * 10 + 1e-7) / 10, 1)}°`;
 
 const SLIDER_ROW = "flex items-center gap-3 border-t border-(--bd) px-4 py-3";
-const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-(--mut)";
+const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-caption";
 
 export function BlochTargetWidget({
   source,
@@ -199,7 +192,7 @@ export function BlochTargetWidget({
         ) : (
           <BlochDial
             state={learnerState}
-            size={180}
+            size={SPHERE_PX}
             ghostVector={showGhost ? blochVector(targetState) : undefined}
           />
         )}

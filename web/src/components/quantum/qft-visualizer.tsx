@@ -5,7 +5,6 @@ import {
   Bar,
   Chip,
   ErrorCard as SharedErrorCard,
-  LiveStatus,
   NEUTRAL_BAR_FILL,
   WidgetCard,
 } from "./widget-ui";
@@ -19,7 +18,7 @@ import { formatFixed } from "./format";
  * runs the DFT (qft.ts), and shows input magnitudes (left) feeding output
  * magnitudes (right) — a period-r input produces frequency spikes every N/r.
  *
- * Source JSON: { "qubits": 4, "input": "period:4" } or { "qubits": 4, "basis": 3 }.
+ * Source JSON: { "qubits": 4, "input": "period:2" } or { "qubits": 4, "basis": 3 }.
  */
 
 interface QftConfig {
@@ -64,8 +63,18 @@ function parseConfig(source: string): ParseResult {
     return { config: { n, kind: "basis", value: j } };
   }
 
-  // Period comb: { "input": "period:4" }; default to period 4.
-  let period = 4;
+  // Period comb: { "input": "period:2" }.
+  //
+  // The default is deliberately NOT r = sqrt(N). A period-r comb on N basis
+  // states has teeth of magnitude 1/sqrt(N/r) at j = 0, r, 2r, … and transforms
+  // to spikes of magnitude 1/sqrt(r) at k = 0, N/r, 2N/r, … — so at r = sqrt(N)
+  // both the spacing and the height coincide and the QFT maps the state to
+  // ITSELF. The shipped default was qubits 4 / period 4, exactly that fixed
+  // point: the input and output panels rendered byte-identical bar charts and
+  // the one thing the widget exists to show (a periodic comb becoming a
+  // frequency comb) was invisible in its own default view. At period 2 the same
+  // N = 16 renders eight 0.35 teeth collapsing to two 0.71 spikes at k = 0, 8.
+  let period = 2;
   if (obj.input !== undefined) {
     if (typeof obj.input !== "string") {
       return { error: `input must be a string like "period:4" (got ${String(obj.input)})` };
@@ -119,9 +128,10 @@ function MagnitudeBars({
             // normalized to their own peak — so identical bar lengths meant
             // different magnitudes whenever the peaks differed. For a period-r
             // comb on N basis states the input teeth are 1/sqrt(N/r) and the
-            // output spikes 1/sqrt(r), equal only at r = sqrt(N); the one
-            // shipped fence (qubits 4, period 4) is exactly that coincidence,
-            // which is what masked it. Magnitudes are <= 1 by normalization, so
+            // output spikes 1/sqrt(r), equal only at r = sqrt(N); the fence
+            // shipped at the time (qubits 4, period 4) was exactly that
+            // coincidence, which is what masked it — and is why the default is
+            // no longer that config. Magnitudes are <= 1 by normalization, so
             // the absolute scale matches the sibling widgets' ProbBars.
             fraction={v}
             fillClass={fillClass}
@@ -168,8 +178,12 @@ export function QftVisualizer({ source }: { source: string }) {
       eyebrow="Fourier"
       chips={<Chip>{n} qubits · N = {N}</Chip>}
     >
-      <LiveStatus>{note}</LiveStatus>
-
+      {/* No LiveStatus here, deliberately. This widget has no controls at all —
+          it is configured entirely by the fence source, so `note` is invariant
+          for the component's lifetime and a live region could never fire. Its
+          only effect was to put the identical sentence in the accessibility
+          tree twice: once sr-only near the top and once as the visible footer
+          below, which already reaches AT. */}
       <div className="grid grid-cols-1 gap-6 px-4 py-4 sm:grid-cols-2">
         <div className="min-w-0">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-caption">

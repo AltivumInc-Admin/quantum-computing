@@ -1,10 +1,15 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Line, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { blochVector, type Complex } from "./math";
+// Footprint constant only. The cycle (lazy -> dynamic import of this module ->
+// static import back) never executes at init: this module is reachable ONLY
+// through the wrapper's dynamic import, so the wrapper is always evaluated
+// first, and the constant is a plain string with no initialization order risk.
+import { SPHERE_BOX } from "./bloch-sphere-3d-lazy";
 
 /**
  * A draggable 3D Bloch sphere for a single-qubit state. The state vector lerps
@@ -20,6 +25,9 @@ import { blochVector, type Complex } from "./math";
  */
 
 const RING = "#94a3b8"; // slate-400: legible on both themes at low opacity
+
+/** State-vector chase time constant, in seconds. See the useFrame note below. */
+const TAU = 0.084;
 
 function blochToThree(state: Complex[]): THREE.Vector3 {
   const { x, y, z } = blochVector(state);
@@ -71,8 +79,15 @@ function StateVector({ target, color }: { target: THREE.Vector3; color: string }
     invalidate();
   }, [target, invalidate]);
 
-  useFrame(() => {
-    current.current.lerp(target, 0.18);
+  useFrame((_, delta) => {
+    // Exponential decay on the frame delta, not a fixed per-frame factor. The
+    // sweep IS the teaching here (the vector visibly travels between gates), so
+    // it must take the same wall time at 30, 60 and 144Hz; a flat lerp(0.18)
+    // converged in frames, i.e. ~2.4x faster on a 144Hz display, degrading
+    // toward an instant jump. TAU reproduces the old 60Hz feel exactly:
+    // 1 - exp(-(1/60) / 0.084) = 0.180. Matches fog-field's delta-time idiom.
+    const k = 1 - Math.exp(-delta / TAU);
+    current.current.lerp(target, k);
     const len = current.current.length() || 1e-6;
     dir.copy(current.current).normalize();
     if (shaft.current) {
@@ -181,6 +196,11 @@ function Scene({ state, ghost, accent }: { state: Complex[]; ghost?: Complex[]; 
   );
 }
 
+// Approximates the light theme's --accent, oklch(0.66 0.1 118). Only reached
+// if the probe below throws (no document, no layout); kept in the olive family
+// so a failure degrades to an off-by-a-hair vector rather than a foreign hue.
+const ACCENT_FALLBACK = "#8d9b51";
+
 function resolveAccent(): string {
   // Resolve the design-token accent color to an rgb string three can parse.
   // Safe to read the DOM during render: this component is client-only (the
@@ -192,18 +212,67 @@ function resolveAccent(): string {
     document.body.appendChild(probe);
     const resolved = getComputedStyle(probe).color;
     document.body.removeChild(probe);
-    return resolved || "#2cc9d6";
+    return resolved || ACCENT_FALLBACK;
   } catch {
-    return "#2cc9d6";
+    return ACCENT_FALLBACK;
   }
 }
 
+/**
+ * The accent as an external store, following use-display-caps' idiom (module
+ * scope, useSyncExternalStore, no set-state-in-effect).
+ *
+ * Why a store at all: before #169 `--color-accent` was a compile-time @theme
+ * value identical in both themes, so resolving it once at mount was correct.
+ * It is now a runtime per-theme var (light oklch(0.66 0.1 118), dark
+ * oklch(0.85 0.11 118)), and none of the five consumers remount on a theme
+ * toggle — so a one-shot probe left the vector and target ghost wearing the
+ * other theme's olive (~1.6:1 on the light glass) while every surrounding 2D
+ * element updated instantly. The class attribute on <html> is the theme
+ * signal, so a MutationObserver on it is the actual external system to
+ * subscribe to; the resolved color flows in as a prop and R3F's demand loop
+ * repaints through the normal re-render.
+ *
+ * getSnapshot is called on every render of every consumer, so the probe (which
+ * appends a node and forces style resolution) is cached and invalidated only
+ * when the theme class actually changes.
+ */
+let accentCache: string | null = null;
+
+function getAccentSnapshot(): string {
+  if (accentCache === null) accentCache = resolveAccent();
+  return accentCache;
+}
+
+function subscribeAccent(onChange: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+  const observer = new MutationObserver(() => {
+    accentCache = null;
+    onChange();
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
+
+function getAccentServerSnapshot(): string {
+  return ACCENT_FALLBACK;
+}
+
 export default function BlochSphere3D({ state, ghost }: { state: Complex[]; ghost?: Complex[] }) {
-  const [accent] = useState(resolveAccent);
+  const accent = useSyncExternalStore(
+    subscribeAccent,
+    getAccentSnapshot,
+    getAccentServerSnapshot
+  );
 
   return (
     <div
-      className="h-[180px] w-[180px] shrink-0 cursor-grab active:cursor-grabbing"
+      // Same footprint constant the lazy wrapper's placeholder reserves, so
+      // the loading->mounted swap can never shift the layout.
+      className={`${SPHERE_BOX} cursor-grab active:cursor-grabbing`}
       aria-hidden="true"
     >
       <Canvas frameloop="demand" camera={{ position: [1.6, 1.2, 2.2], fov: 45 }} dpr={[1, 2]}>

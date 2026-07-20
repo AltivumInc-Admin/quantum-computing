@@ -138,6 +138,22 @@ const SVG_W = 300;
 const SVG_H = 200;
 const NODE_R = 10;
 
+/**
+ * The drawn node radius. Only the line layout scales its spacing with n while
+ * the radius stays fixed: nodes sit SVG_W/(n+1) apart, which drops below the
+ * 2*NODE_R diameter at n >= 15 — inside the widget's own advertised ceiling
+ * (MAX_QUBITS = 16, where the spacing is 17.6px against 20px of node), so a
+ * legal `{"topology":"line","qubits":16}` fence rendered as overlapping disks
+ * with an unreadable SWAP path. Capping the radius at 45% of the spacing leaves
+ * a visible gap at every legal n. The circle layout (r = 0.38*min(w,h) gives a
+ * 29.7px chord at n = 16) and the grid layout (76 x 50.7 steps) never collide,
+ * so they keep the full radius.
+ */
+function nodeRadius(topo: Topology, n: number): number {
+  if (topo !== "line") return NODE_R;
+  return Math.min(NODE_R, (SVG_W / (n + 1)) * 0.45);
+}
+
 interface GraphProps {
   topo: Topology;
   n: number;
@@ -154,6 +170,8 @@ function TopologyGraph({ topo, n, gateA, gateB, path, swaps }: GraphProps) {
   );
 
   const adj = useMemo(() => adjacency(topo, n), [topo, n]);
+
+  const r = nodeRadius(topo, n);
 
   // Build a set of path edges for quick lookup
   const pathEdgeSet = useMemo(() => {
@@ -228,7 +246,7 @@ function TopologyGraph({ topo, n, gateA, gateB, path, swaps }: GraphProps) {
             <circle
               cx={cx}
               cy={cy}
-              r={NODE_R}
+              r={r}
               className={
                 isGate
                   ? // fill-accent-dark, not fill-accent: the white numeral on
@@ -325,17 +343,17 @@ export function TopologyExplorer({ source }: { source: string }) {
 
       {/* Readout */}
       <div className="px-4 pt-3 pb-1" role="status" aria-live="polite">
-        <p className="text-sm text-gray-800 dark:text-gray-200">
+        <p className="text-sm text-(--ink)">
           <span className="font-semibold">
             {swaps} SWAP{swaps !== 1 ? "s" : ""}
           </span>{" "}
           to make q{safeA} and q{safeB} adjacent{" "}
-          <span className="text-gray-500 dark:text-gray-400">
+          <span className="text-caption">
             (+{swaps * 3} two-qubit gates)
           </span>
         </p>
         {path.length > 0 && (
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 font-mono">
+          <p className="mt-0.5 text-xs text-caption font-mono">
             path: {path.join(" - ")}
           </p>
         )}
@@ -343,7 +361,7 @@ export function TopologyExplorer({ source }: { source: string }) {
 
       {/* Qubit selectors */}
       <div className="flex items-center gap-3 px-4 pb-4 pt-2">
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <label className="flex items-center gap-1.5 text-xs text-caption">
           Qubit A
           <select
             value={safeA}
@@ -359,7 +377,7 @@ export function TopologyExplorer({ source }: { source: string }) {
               ))}
           </select>
         </label>
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <label className="flex items-center gap-1.5 text-xs text-caption">
           Qubit B
           <select
             value={safeB}

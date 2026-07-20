@@ -66,7 +66,7 @@ export function GateChip({ label, active = false }: { label: string; active?: bo
       className={`rounded-chip px-2 py-0.5 text-[11px] font-mono transition-colors duration-150 ${
         active
           ? "chip-selected"
-          : "border border-(--bd) bg-(--field) text-(--mut)"
+          : "border border-(--bd) bg-(--field) text-caption"
       }`}
     >
       {label}
@@ -144,7 +144,12 @@ export function Bar({
         />
         {marker && (
           <span
-            className="absolute top-0 bottom-0 w-0.5 bg-accent dark:bg-accent-light"
+            // Information-bearing graphic (the shots sampler's whole teaching
+            // point), so it takes WCAG 1.4.11's 3:1 non-text floor: the light
+            // theme pairs DOWN to --accent-dark exactly like the text tier,
+            // because the raw light --accent is 2.79:1 on --surface-base.
+            // Pinned by token-contrast.test.ts's graphics-tier assertions.
+            className="absolute top-0 bottom-0 w-0.5 bg-accent-dark dark:bg-accent-light"
             style={{ left: `${(Math.max(0, Math.min(1, marker.fraction)) * 100).toFixed(2)}%` }}
             title={marker.title}
           />
@@ -210,7 +215,7 @@ export function ProbBars({
 export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
   return (
     <div className="mt-4 flex items-start gap-2">
-      <p className="min-w-0 flex-1 break-words font-mono text-sm text-gray-700 dark:text-gray-200">
+      <p className="min-w-0 flex-1 break-words font-mono text-sm text-(--ink)">
         <span className="text-caption">|&#968;&#10217; = </span>
         <span className="text-accent-dark dark:text-accent-light">{diracString(state, n)}</span>
       </p>
@@ -271,7 +276,7 @@ export function EyebrowLabel({
 
 export function Chip({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-chip border border-(--bd) bg-(--field) px-2.5 py-0.5 text-[11px] font-mono text-(--mut)">
+    <span className="rounded-chip border border-(--bd) bg-(--field) px-2.5 py-0.5 text-[11px] font-mono text-caption">
       {children}
     </span>
   );
@@ -392,8 +397,11 @@ export { LiveStatus } from "../live-status";
 export const primaryActionClass =
   "rounded-control surface-accent px-4 py-1.5 text-sm font-semibold focus-ring interactive disabled:opacity-60";
 
+// Tokenized on the same --bd/--field/--ink tier as fieldClass and Chip: the
+// raw cool grays rendered a #6b7280-family control beside warm --mut captions
+// inside the same card, and a token retune (like #172's) skipped them.
 export const secondaryActionClass =
-  "rounded-control border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring transition-colors motion-reduce:transition-none";
+  "rounded-control border border-(--bd) bg-(--field) px-4 py-1.5 text-sm font-medium text-(--ink) hover:bg-(--glass-2) focus-ring transition-colors motion-reduce:transition-none";
 
 // Deliberately carries NO sizing (padding/text-size): appending conflicting
 // Tailwind utilities after a token is resolved by stylesheet order, not class

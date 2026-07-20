@@ -72,7 +72,11 @@ export function BlochDial({
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      className="text-accent shrink-0"
+      // The state-vector line and tip are drawn in currentColor and carry the
+      // dial's meaning, so they take WCAG 1.4.11's 3:1 non-text floor: the
+      // light theme pairs down to --accent-dark (the raw light --accent is
+      // 2.79:1 on --surface-base). Same routing as Bar's marker.
+      className="text-accent-dark dark:text-accent shrink-0"
       role="img"
       aria-label={`${labelPrefix}${blochVectorSR({ x, y, z })}`}
     >
@@ -115,10 +119,14 @@ export function BlochDial({
       <line x1={c} y1={c} x2={px} y2={py} stroke={axis} strokeWidth={2} strokeLinecap="round" />
       <circle cx={px} cy={py} r={markerR} fill={axis} opacity={markerOpacity} />
       <circle cx={c} cy={c} r={2.5 * k} className="fill-gray-400 dark:fill-gray-500" />
-      <text x={c} y={c - r - 4 * k} textAnchor="middle" fontSize={fs} className="fill-gray-400 font-mono">|0⟩</text>
-      <text x={c} y={c + r + 11 * k} textAnchor="middle" fontSize={fs} className="fill-gray-400 font-mono">|1⟩</text>
-      <text x={c + r + 2 * k} y={c + 3 * k} textAnchor="start" fontSize={fs} className="fill-gray-400 font-mono">|+⟩</text>
-      <text x={c - r - 2 * k} y={c + 3 * k} textAnchor="end" fontSize={fs} className="fill-gray-400 font-mono">|−⟩</text>
+      {/* Ket axis labels on the caption ink token (--mut, 6.5:1 light /
+          6.4:1 dark) — the same tier the 3D sphere's labels already use via
+          .text-caption. They were fill-gray-400 with no dark: variant, which
+          computes ~2.5:1 on the light glass at this 9-12px size. */}
+      <text x={c} y={c - r - 4 * k} textAnchor="middle" fontSize={fs} className="fill-(--mut) font-mono">|0⟩</text>
+      <text x={c} y={c + r + 11 * k} textAnchor="middle" fontSize={fs} className="fill-(--mut) font-mono">|1⟩</text>
+      <text x={c + r + 2 * k} y={c + 3 * k} textAnchor="start" fontSize={fs} className="fill-(--mut) font-mono">|+⟩</text>
+      <text x={c - r - 2 * k} y={c + 3 * k} textAnchor="end" fontSize={fs} className="fill-(--mut) font-mono">|−⟩</text>
     </svg>
   );
 }

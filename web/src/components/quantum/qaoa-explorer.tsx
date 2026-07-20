@@ -4,6 +4,8 @@ import { memo, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 import {
   cutValue,
+  landscapeCell,
+  QAOA_DOMAIN,
   qaoaDistribution,
   qaoaExpectedFromDistribution,
   qaoaLandscape,
@@ -35,6 +37,24 @@ function vertexLabel(idx: number, n: number): string {
 
 const RES = 24;
 const SVG = { w: 220, h: 160, r: 12 };
+
+/**
+ * How the heatmap maps parameters to SVG axes — the ONE place it is stated in
+ * prose, so the visible caption and the accessible name are generated from the
+ * same fact and cannot contradict each other (or the render) again.
+ *
+ * The cells are drawn `x={bi}` / `y={RES - 1 - gi}`, and qaoa.ts builds the grid
+ * as `grid[gi][bi]` with gi driving gamma and bi driving beta. SVG `x` is
+ * horizontal, so BETA is the horizontal axis and GAMMA the vertical one (the
+ * `RES - 1 -` flip makes gamma grow upward). The caption shipped with these two
+ * reversed, which mattered rather than being a harmless relabel: the axes span
+ * DIFFERENT ranges, so reading a point off the plot under the swapped caption
+ * mis-scaled both angles by 2x in opposite directions.
+ */
+const AXES = {
+  horizontal: { glyph: "β", name: "beta", range: "0–π/2", srRange: "0 to pi/2" },
+  vertical: { glyph: "γ", name: "gamma", range: "0–π", srRange: "0 to pi" },
+} as const;
 
 // ---------------------------------------------------------------------------
 // Parsing + validation
@@ -277,8 +297,9 @@ export function QaoaExplorer({ source }: { source: string }) {
 
   const { n, edges, expected, distribution } = live;
 
-  const curGi = Math.round((gamma / Math.PI) * (RES - 1));
-  const curBi = Math.round((beta / (Math.PI / 2)) * (RES - 1));
+  // Inverse of the kernel's own index->angle mapping, so the marker cannot
+  // drift off the cell it names if either range in qaoa.ts ever changes.
+  const { gi: curGi, bi: curBi } = landscapeCell(gamma, beta, RES);
 
   return (
     <WidgetCard eyebrow="QAOA" chips={<Chip>{n}q</Chip>}>
@@ -298,7 +319,7 @@ export function QaoaExplorer({ source }: { source: string }) {
               width={RES * 6}
               height={RES * 6}
               role="img"
-              aria-label={`Expected-cut landscape over gamma in [0, pi] and beta in [0, pi/2]. Grid maximum ${gridMax.value.toFixed(2)}.`}
+              aria-label={`Expected-cut landscape: ${AXES.horizontal.name} ${AXES.horizontal.srRange} on the horizontal axis, ${AXES.vertical.name} ${AXES.vertical.srRange} on the vertical axis. Grid maximum ${gridMax.value.toFixed(2)}.`}
               className="w-full max-w-[160px] mx-auto block rounded-control"
             >
               {heat.cells}
@@ -316,8 +337,9 @@ export function QaoaExplorer({ source }: { source: string }) {
                 strokeWidth={0.4}
               />
             </svg>
-            <p className="mt-1 text-center text-[10px] text-caption font-mono">
-              &#947; horizontal &middot; &#946; vertical
+            <p className="mt-1 text-center text-[10px] text-caption font-mono text-balance">
+              {AXES.horizontal.glyph} {AXES.horizontal.range} horizontal &middot;{" "}
+              {AXES.vertical.glyph} {AXES.vertical.range} vertical
             </p>
           </div>
         </div>
@@ -335,7 +357,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             label={<>&#947;</>}
             value={gamma}
             min={0}
-            max={Math.PI}
+            max={QAOA_DOMAIN.gammaMax}
             step={Math.PI / 60}
             onChange={setGamma}
             ariaLabel="QAOA cost angle gamma in radians"
@@ -351,7 +373,7 @@ export function QaoaExplorer({ source }: { source: string }) {
             label={<>&#946;</>}
             value={beta}
             min={0}
-            max={Math.PI / 2}
+            max={QAOA_DOMAIN.betaMax}
             step={Math.PI / 60}
             onChange={setBeta}
             ariaLabel="QAOA mixer angle beta in radians"

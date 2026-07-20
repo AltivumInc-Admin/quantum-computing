@@ -14,6 +14,13 @@ export function parseCorrelation(source: string): ParsedCorrelation {
     for (const [label, p] of [["entangled", entangled], ["product", product]] as const) {
       if (p.error) throw new Error(`${label}: ${p.error}`);
       if (p.n !== 2) throw new Error(`${label} circuit must use exactly two qubits`);
+      // The DSL accepts the slider-bound `theta` token in any fence, but this
+      // widget renders no slider and samples at opsFor(spec, 0) — so a bound
+      // angle would silently pin theta to 0 while the gate chip advertises
+      // "RY(θ) q0". Reject it here rather than teach the wrong distribution.
+      if (p.hasTheta) {
+        throw new Error(`${label} circuit cannot use a slider-bound theta; use a literal angle`);
+      }
     }
     return { spec: { prompt: data.prompt, entangled, product } };
   } catch (e) {

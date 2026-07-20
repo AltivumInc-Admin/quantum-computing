@@ -1,8 +1,15 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ErrorCard as SharedErrorCard, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
-import { djProbabilities, isConstant, ORACLES } from "./deutsch-jozsa";
+import {
+  ErrorCard as SharedErrorCard,
+  fieldClass,
+  LiveStatus,
+  ProbBars,
+  WidgetCard,
+} from "./widget-ui";
+import { djProbabilities, isConstant, ORACLES, type OracleKey } from "./deutsch-jozsa";
+import { percentSR } from "./format";
 
 /**
  * Deutsch-Jozsa oracle demo rendered from a ```qdj fenced block. A single query
@@ -13,14 +20,9 @@ import { djProbabilities, isConstant, ORACLES } from "./deutsch-jozsa";
  * kernel (math.ts); no backend, static-export safe.
  */
 
-const ORACLE_LABELS: Record<string, string> = {
-  constant0: "f(x) = 0 (always)",
-  constant1: "f(x) = 1 (always)",
-  parity: "f(x) = parity of x",
-  lowbit: "f(x) = lowest bit of x",
-};
-
-const ORACLE_KEYS = Object.keys(ORACLES);
+// The kernel owns both halves (function + label), so there is no second map to
+// keep in sync and no `??` fallback that could render a raw key.
+const ORACLE_KEYS = Object.keys(ORACLES) as OracleKey[];
 
 function parseSource(source: string): { n: number } | { error: string } {
   try {
@@ -38,13 +40,13 @@ function parseSource(source: string): { n: number } | { error: string } {
 
 export function DjDemo({ source }: { source: string }) {
   const config = useMemo(() => parseSource(source), [source]);
-  const [oracleKey, setOracleKey] = useState("constant0");
+  const [oracleKey, setOracleKey] = useState<OracleKey>("constant0");
   const selectId = useId();
 
   const result = useMemo(() => {
     if ("error" in config) return null;
     try {
-      const probs = djProbabilities(config.n, ORACLES[oracleKey] ?? ORACLES.constant0);
+      const probs = djProbabilities(config.n, ORACLES[oracleKey].f);
       return { probs, constant: isConstant(probs), n: config.n };
     } catch (e) {
       return { error: (e as Error).message };
@@ -79,9 +81,7 @@ export function DjDemo({ source }: { source: string }) {
       }
     >
       <LiveStatus>
-        {`Verdict: ${verdict}. All-zeros probability ${(
-          result.probs[0] * 100
-        ).toFixed(1)}%.`}
+        {`Verdict: ${verdict}. All-zeros probability ${percentSR(result.probs[0] * 100)}.`}
       </LiveStatus>
 
       <div className="px-4 py-4 space-y-4">
@@ -93,20 +93,22 @@ export function DjDemo({ source }: { source: string }) {
             Oracle
           </label>
           {/* The visible <label htmlFor> above is the accessible name; an
-              aria-label here would redundantly override it. `focus-ring` is
-              the site-wide treatment (solid per-theme --focus token on
-              focus-visible) — the alpha `focus:ring-accent/40` this carried
-              composites below the 3:1 WCAG 1.4.11 floor in BOTH themes and
-              fired on mouse click too. */}
+              aria-label here would redundantly override it. `fieldClass` is the
+              shared control recipe (rounded-control + --bd/--field/--ink + the
+              site-wide `focus-ring`, whose solid per-theme --focus token on
+              focus-visible replaced the alpha `focus:ring-accent/40` this once
+              hand-rolled — that composited below the 3:1 WCAG 1.4.11 floor in
+              BOTH themes and fired on mouse click too). It carries no sizing, so
+              the px/py/text utilities are appended here. */}
           <select
             id={selectId}
             value={oracleKey}
-            onChange={(e) => setOracleKey(e.target.value)}
-            className="rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 text-sm text-(--ink) focus-ring"
+            onChange={(e) => setOracleKey(e.target.value as OracleKey)}
+            className={`${fieldClass} px-2 py-1.5 text-sm`}
           >
             {ORACLE_KEYS.map((key) => (
               <option key={key} value={key}>
-                {ORACLE_LABELS[key] ?? key}
+                {ORACLES[key].label}
               </option>
             ))}
           </select>

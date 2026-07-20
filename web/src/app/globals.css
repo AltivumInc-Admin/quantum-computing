@@ -523,12 +523,19 @@
      in the taller box. History: PR #43 (WS-5a) cleared the minimum by growing
      both thumbs 16px->24px; PR #169 rewrote this block and silently reverted
      them to 16px on an h-1 box, re-opening the finding. slider-target-size.test.ts
-     now pins the effective target so a future restyle cannot shrink it again. */
+     now pins the effective target so a future restyle cannot shrink it again.
+
+     THUMB CONTRAST (WCAG 1.4.11, 3:1 non-text): the thumb is the primary grab
+     affordance of every theta/phi/scrub slider, so it is an information-bearing
+     graphic. It fills with var(--focus) rather than the raw var(--color-accent):
+     --focus is already the per-theme "solid enough to see" step (accent-dark at
+     4.93:1 on light, the bright accent at 12.8:1 on dark), whereas the raw light
+     accent is 2.79:1 and its 0.22-alpha --bd-2 halo composites to ~1.6:1. */
   .slider {
     @apply h-6 rounded-full;
     background: linear-gradient(var(--track), var(--track)) center / 100% 4px
       no-repeat;
-    accent-color: var(--color-accent);
+    accent-color: var(--focus);
   }
   .slider::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -536,7 +543,7 @@
     width: 16px;
     height: 16px;
     border-radius: 9999px;
-    background: var(--color-accent);
+    background: var(--focus);
     border: 2px solid var(--surface-base);
     box-shadow: 0 0 0 1px var(--bd-2), 0 2px 8px -2px var(--bar-glow);
     cursor: pointer;
@@ -546,7 +553,7 @@
     height: 16px;
     border: 2px solid var(--surface-base);
     border-radius: 9999px;
-    background: var(--color-accent);
+    background: var(--focus);
     box-shadow: 0 0 0 1px var(--bd-2);
     cursor: pointer;
   }

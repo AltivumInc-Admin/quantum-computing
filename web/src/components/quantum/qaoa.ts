@@ -54,15 +54,56 @@ export function qaoaExpectedCut(n: number, edges: Edge[], gamma: number, beta: n
   return qaoaExpectedFromDistribution(qaoaDistribution(n, edges, gamma, beta), edges);
 }
 
-/** Expected cut over a res x res grid, gamma in [0, pi], beta in [0, pi/2]. */
+/**
+ * The landscape's angle domain — the SINGLE source for it. The explorer used to
+ * restate these two numbers three more times (the inverse mapping that places
+ * the current-point marker, the heatmap's accessible name, and the two slider
+ * `max` props); a change to either range here silently landed the marker on the
+ * wrong cell. Everything now reads them from this object.
+ */
+export const QAOA_DOMAIN = { gammaMax: Math.PI, betaMax: Math.PI / 2 } as const;
+
+/** Grid cell (gi, bi) -> the (gamma, beta) pair `qaoaLandscape` evaluates there. */
+export function landscapeAngles(
+  gi: number,
+  bi: number,
+  res: number
+): { gamma: number; beta: number } {
+  return {
+    gamma: (QAOA_DOMAIN.gammaMax * gi) / (res - 1),
+    beta: (QAOA_DOMAIN.betaMax * bi) / (res - 1),
+  };
+}
+
+/**
+ * Inverse of `landscapeAngles`: the grid cell a live (gamma, beta) pair sits in.
+ * Clamped, so a marker can never be drawn outside the res x res grid even if a
+ * caller's slider range drifts past the domain.
+ */
+export function landscapeCell(
+  gamma: number,
+  beta: number,
+  res: number
+): { gi: number; bi: number } {
+  const clamp = (i: number) => Math.max(0, Math.min(res - 1, i));
+  return {
+    gi: clamp(Math.round((gamma / QAOA_DOMAIN.gammaMax) * (res - 1))),
+    bi: clamp(Math.round((beta / QAOA_DOMAIN.betaMax) * (res - 1))),
+  };
+}
+
+/**
+ * Expected cut over a res x res grid spanning `QAOA_DOMAIN`, indexed
+ * `grid[gi][bi]` — the OUTER index is gamma, the inner one beta. The explorer's
+ * heatmap therefore draws beta horizontally and gamma vertically.
+ */
 export function qaoaLandscape(n: number, edges: Edge[], res: number): number[][] {
   const cuts = cutTable(n, edges); // built once per graph, reused across all cells
   const grid: number[][] = [];
   for (let gi = 0; gi < res; gi++) {
-    const gamma = (Math.PI * gi) / (res - 1);
     const row: number[] = [];
     for (let bi = 0; bi < res; bi++) {
-      const beta = (Math.PI / 2) * (bi / (res - 1));
+      const { gamma, beta } = landscapeAngles(gi, bi, res);
       const dist = stateFromCuts(n, cuts, gamma, beta).map(cAbs2);
       let e = 0;
       for (let x = 0; x < dist.length; x++) e += dist[x] * cuts[x];

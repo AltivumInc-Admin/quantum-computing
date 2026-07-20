@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import React, { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { ErrorCard } from "./error-card";
+import { cardShell, ErrorCard } from "./error-card";
 
 /**
  * Client boundary that lazily resolves a GUIDE fenced block (```q*) to its
@@ -25,11 +25,18 @@ import { ErrorCard } from "./error-card";
  * in widget-fence.test.tsx guards against drift.
  */
 
+/**
+ * Shown twice before every explorable resolves (approach gate, then chunk
+ * load), so it wears the exact shell it becomes: `cardShell` — the same
+ * `.glass` recipe every mounted WidgetCard renders with. It used to carry the
+ * pre-Instrument flat-gray recipe, which made the gray-slab -> luminous-glass
+ * swap a visible pop on every lesson scroll.
+ */
 function WidgetSkeleton({ minH }: { minH: string }) {
   return (
     <div
       aria-hidden="true"
-      className={`not-prose my-6 ${minH} animate-pulse rounded-card border border-gray-200/80 bg-gray-50/70 dark:border-gray-700/40 dark:bg-white/[0.02] motion-reduce:animate-none`}
+      className={`not-prose my-6 ${minH} animate-pulse ${cardShell} motion-reduce:animate-none`}
     />
   );
 }

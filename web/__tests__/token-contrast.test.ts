@@ -163,6 +163,31 @@ describe("resting accent TEXT", () => {
   });
 });
 
+describe("meaningful accent GRAPHICS (WCAG 1.4.11 non-text, >= 3:1)", () => {
+  // Information-bearing, non-text accent graphics — the shots sampler's
+  // exact-probability marker and its legend swatch, the BlochDial state-vector
+  // line/tip, the .slider thumb — take the 3:1 non-text floor, one tier below
+  // the 4.5:1 text floor above. They pair down on light exactly like the text
+  // tier does; the raw light --accent is decorative-only (dots, chip fills).
+  it.each(SURFACES)("light --accent-dark on --%s is >= 3:1", (s) => {
+    expect(ratio(light, "accent-dark", s)).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(SURFACES)("dark --accent-light on --%s is >= 3:1", (s) => {
+    expect(ratio(dark, "accent-light", s)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("documents why light --accent cannot carry a meaningful graphic", () => {
+    // Tripwire, like the text-tier one: light --accent misses even the
+    // non-text floor, which is why the marker/dial/thumb route to
+    // --accent-dark / --focus instead. A retune clearing 3:1 here means the
+    // pair-down can be revisited.
+    for (const s of SURFACES) {
+      expect(ratio(light, "accent", s)).toBeLessThan(3);
+    }
+  });
+});
+
 describe("chip AAA claim on the dark theme", () => {
   // globals.css documents 13.0:1 (AAA) for gray-950 on the dark bright olive.
   it("gray-950 on dark --accent is AAA (>= 7:1)", () => {

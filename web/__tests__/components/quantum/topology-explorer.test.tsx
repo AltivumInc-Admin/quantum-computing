@@ -74,3 +74,41 @@ describe("TopologyExplorer", () => {
     });
   }
 });
+
+describe("node layout legibility", () => {
+  /** Circle centre + radius for every rendered node, in viewBox units. */
+  function nodes(container: HTMLElement) {
+    return Array.from(container.querySelectorAll("circle")).map((c) => ({
+      cx: Number(c.getAttribute("cx")),
+      cy: Number(c.getAttribute("cy")),
+      r: Number(c.getAttribute("r")),
+    }));
+  }
+
+  // MAX_QUBITS = 16 is the widget's advertised ceiling (and is pinned above), so
+  // every layout must render legibly at it. The line layout used to space nodes
+  // at 300/(n+1) against a fixed 20px diameter, so disks overlapped from n = 15.
+  for (const topology of ["line", "ring", "grid", "all-to-all"] as const) {
+    it(`draws non-overlapping nodes for ${topology} at the 16-qubit maximum`, () => {
+      const { container } = render(
+        <TopologyExplorer source={JSON.stringify({ topology, qubits: 16, gate: [0, 15] })} />
+      );
+      const drawn = nodes(container);
+      expect(drawn).toHaveLength(16);
+      for (const n of drawn) expect(n.r).toBeGreaterThan(0);
+      for (let i = 0; i < drawn.length; i++) {
+        for (let j = i + 1; j < drawn.length; j++) {
+          const gap = Math.hypot(drawn[i].cx - drawn[j].cx, drawn[i].cy - drawn[j].cy);
+          expect(gap).toBeGreaterThanOrEqual(drawn[i].r + drawn[j].r);
+        }
+      }
+    });
+  }
+
+  it("keeps the full node radius where spacing allows (the lesson's 9-qubit grid)", () => {
+    const { container } = render(
+      <TopologyExplorer source={JSON.stringify({ topology: "grid", qubits: 9, gate: [0, 8] })} />
+    );
+    for (const n of nodes(container)) expect(n.r).toBe(10);
+  });
+});

@@ -5,6 +5,9 @@ export const PRICING = {
   IonQ: { perTask: 0.3, perShot: 0.08 }, // IonQ Forte (Aria retired)
   IQM: { perTask: 0.3, perShot: 0.00145 }, // IQM Garnet
   QuEra: { perTask: 0.3, perShot: 0.01 }, // QuEra Aquila (analog only)
+  // Rigetti is reference pricing only — no Rigetti device is dispatchable via
+  // lib.hardware.DEVICES, so devices.ts deliberately carries no Rigetti row
+  // (the carve-out is asserted in devices.test.ts).
   Rigetti: { perTask: 0.3, perShot: 0.000425 }, // Rigetti Cepheus
   SV1: { perMinute: 0.075 },
   DM1: { perMinute: 0.075 },
