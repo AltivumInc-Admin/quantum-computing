@@ -5,15 +5,17 @@ import { parseDebugCircuit } from "@/lib/debug-circuit-schema";
 import { debugTruth, gradeDebug } from "@/lib/debug-circuit-grade";
 import type { GradeResult } from "@/lib/challenge-grade";
 import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
-import { debugCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
+import { cardIdFor, ratingForSolve, challengeReviewAnswer } from "@/lib/challenge-review";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { recordBest, getBest } from "@/lib/skill-measure";
 import { usePersistentSolved } from "./use-persistent-solved";
 import {
+  BestGatesNote,
   CheckIcon,
   cardShell,
   ErrorCard,
   EyebrowLabel,
+  ScheduleNote,
   VERDICT_STYLES,
   VerdictBadge,
 } from "./widget-ui";
@@ -54,7 +56,7 @@ export function DebugCircuitWidget({
   const [solved, markSolved] = usePersistentSolved("debug", spec?.id ?? "invalid");
   const editorId = useId();
 
-  const cardId = debugCardId(spec?.id ?? "invalid");
+  const cardId = cardIdFor("debug", spec?.id ?? "invalid");
   // Miss counter in SESSIONSTORAGE, not a ref and not localStorage: a ref
   // resets on reload (Check wrong N times, reload, paste the fix -> a
   // laundered "good"), while a localStorage qc:* key would enter the ADDITIVE
@@ -230,24 +232,9 @@ export function DebugCircuitWidget({
         </div>
 
         <div role="status">
-          {scheduled !== null && (
-            <p className="mt-2 text-xs text-caption animate-fade-up">
-              {surface === "review"
-                ? scheduled <= 1
-                  ? "Reviewed — next review tomorrow."
-                  : `Reviewed — next review in ${scheduled} days.`
-                : scheduled <= 1
-                  ? "Added to your review — back tomorrow."
-                  : `Added to your review — back in ${scheduled} days.`}
-            </p>
-          )}
+          {scheduled !== null && <ScheduleNote days={scheduled} surface={surface} />}
           {solvedGates !== null && (
-            <p className="mt-2 text-xs text-caption tabular-nums animate-fade-up">
-              Fixed in {solvedGates} gate{solvedGates === 1 ? "" : "s"}
-              {bestGates !== null && bestGates < solvedGates
-                ? ` — your best is ${bestGates}. Can you match it?`
-                : " — your best."}
-            </p>
+            <BestGatesNote verb="Fixed" gates={solvedGates} best={bestGates} />
           )}
         </div>
       </div>

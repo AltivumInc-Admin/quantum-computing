@@ -1,9 +1,14 @@
 @import "tailwindcss";
-@import "highlight.js/styles/github-dark.css";
-/* KaTeX's 23.8KB stylesheet (60 @font-face declarations) is NOT imported here:
-   it ships route-scoped from the two components that render math —
-   markdown-renderer.tsx (/learn/*) and glossary/inline-markdown.tsx
-   (/glossary/*) — so the public funnel pages don't pay for it. */
+/* ONE policy for third-party stylesheets: a vendor sheet that only a handful of
+   routes render ships from the component that renders it, never from here.
+   - KaTeX's 23.8KB sheet (60 @font-face declarations) is imported by the two
+     components that render math — markdown-renderer.tsx (/learn/*) and
+     glossary/inline-markdown.tsx (/glossary/*).
+   - highlight.js's github-dark theme is imported by code-block.tsx, the only
+     consumer of its .hljs-* token colors (hljs markup exists on 4 of the 122
+     exported pages). It travels with code-block-theme.css, which also
+     neutralizes the theme's BOX rules — see that file.
+   Either way the public funnel pages don't pay for a sheet they never use. */
 @plugin "@tailwindcss/typography";
 @variant dark (&:where(.dark, .dark *));
 @custom-variant can-hover (@media (hover: hover));
@@ -384,12 +389,17 @@
     color: var(--color-gray-950);
   }
 
-  .prose pre {
-    @apply bg-gray-900 dark:bg-gray-900/80 rounded-xl overflow-x-auto border border-gray-800;
-  }
+  /* NOTE: there is deliberately no `.prose pre` recipe here. CodeBlock owns the
+     whole fence chrome (wrapper background/border/radius, pre padding/overflow/
+     text color) and the WidgetFence fallback routes through CodeBlock too. A
+     hand-written `.prose pre` rule carries no `not-prose` exclusion — that guard
+     only ships on @tailwindcss/typography's own `:where(...)` selectors — so it
+     matched CodeBlock's inner <pre> straight through the not-prose wrapper and
+     painted a SECOND background, border and radius: a doubled 1px border and two
+     stacked gray-900/80 layers compositing to ~96% instead of the designed 80%. */
 
-  /* Inline code reads as a tinted brand chip; fenced blocks keep github-dark
-     via .prose pre code below. */
+  /* Inline code reads as a tinted brand chip; fenced blocks are colored by the
+     github-dark .hljs token rules that ship with code-block.tsx. */
   .prose :not(pre) > code {
     @apply font-medium;
     padding: 0.1em 0.4em;
@@ -404,10 +414,6 @@
   .prose :not(pre) > code::before,
   .prose :not(pre) > code::after {
     content: none;
-  }
-
-  .prose pre code {
-    @apply text-gray-200;
   }
 
   .prose h1,
@@ -730,9 +736,19 @@
 /* Inline-code chip color follows the section --hue. These are intentionally
    UNLAYERED: a rule inside @layer components loses to @tailwindcss/typography's
    later-layer `.prose :where(code)` color rule regardless of specificity, so the
-   hue tint only takes effect from here, outside the layer system. */
+   hue tint only takes effect from here, outside the layer system.
+
+   LIGHTNESS IS A CONTRAST FLOOR, NOT A TASTE KNOB (WCAG 1.4.3, 4.5:1 — inline
+   code is 14px/600, i.e. normal-size text). Because both halves of the pair are
+   generated from a hue ANGLE rather than a named token, the ratio varies per
+   section and the three class-string contrast guards cannot see it at all. At
+   the old 0.5 lightness hue 192 landed at 4.35:1 — a FAIL — and hue 192 is
+   sectionHue[0], which index 6 wraps back to, so it hit /learn/00-prereqs AND
+   /learn/06-hybrid-jobs. 0.47 clears the floor at every hue (worst case 192 at
+   4.92:1). token-contrast.test.ts now computes this pair over every entry in
+   sectionHue in both themes, so a new hue or a retune fails loudly. */
 .prose :not(pre) > code {
-  color: oklch(0.5 0.16 var(--hue, 118));
+  color: oklch(0.47 0.16 var(--hue, 118));
   background-color: oklch(0.72 0.15 var(--hue, 118) / 0.1);
 }
 

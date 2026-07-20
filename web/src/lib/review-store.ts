@@ -17,7 +17,7 @@ import {
   schedule,
   isDue,
   epochDay,
-  isValidCardState,
+  parseCardState,
 } from "./review-schedule";
 import { PROGRESS_EVENT_NAME, subscribe } from "./progress-store";
 import { recordActivity } from "./activity-log";
@@ -48,7 +48,14 @@ export interface CardContent {
  * Cache a card's prompt/answer the first time it is seen in a lesson, so the
  * /review page can re-render it from the schedule alone (the schedule is keyed by
  * id only). A card can only become due after being graded — which requires having
- * seen it — so due cards always have their content cached.
+ * seen it — so due cards are EXPECTED to have their content cached.
+ *
+ * That expectation is not enforced, and readers must not assume it: this write
+ * can fail (quota, eviction) while the much smaller CardState write in
+ * gradeCard later succeeds, and getCardContent also returns null on a corrupt
+ * record. review-dashboard therefore resolves content BEFORE deriving its
+ * roster, so a content-less due card falls out cleanly instead of rendering an
+ * empty list item that still occupies a numbered slot.
  */
 export function setCardContent(id: string, content: CardContent): void {
   try {
@@ -67,17 +74,15 @@ export function getCardContent(id: string): CardContent | null {
   }
 }
 
+/**
+ * The stored state, or null. Routed through the shared `parseCardState`, which
+ * discards a corrupt-but-valid-JSON record ({}, truncated, old schema) so the
+ * caller falls back to newCard() instead of building on NaN fields — the same
+ * gate progress-merge and review-card read through, so every surface agrees on
+ * what counts as a usable record.
+ */
 export function getCardState(id: string): CardState | null {
-  const raw = getCardStateRaw(id);
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    // Discard a corrupt-but-valid-JSON record ({}, truncated, old schema) so the
-    // caller falls back to newCard() instead of building on NaN fields.
-    return isValidCardState(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+  return parseCardState(getCardStateRaw(id));
 }
 
 /**
@@ -184,15 +189,28 @@ export const KIND_LABELS: Record<CardKind, string> = {
 };
 
 /**
+ * Normalize a stored `kind` to a bucket the breakdown can render. `getCardContent`
+ * is an unchecked cast at a localStorage/sync trust boundary, so the field can be
+ * any string — including a prototype key. Own-property membership (not `??`, which
+ * only catches null/undefined, and not a raw index, which inherits from
+ * Object.prototype) collapses every unrecognized value into "unknown".
+ */
+function kindBucket(kind: string | undefined): CardKind | "unknown" {
+  return kind && Object.hasOwn(KIND_LABELS, kind) ? (kind as CardKind) : "unknown";
+}
+
+/**
  * The due count, broken down by Rep kind — the Valve's named breakdown ("4 Circuit
  * challenge · 2 Prediction · 1 Bloch target"). A due card whose content was cached
- * before `kind` existed (or is an authored qcard) counts under "unknown", so the
- * parts always sum to dueCount(). Reads content, which due cards always have cached.
+ * before `kind` existed, is an authored qcard, or carries an unrecognized kind
+ * counts under "unknown", so the parts always sum to dueCount() — workspace.ts
+ * renders a FIXED key list, so a foreign bucket would vanish from the rows while
+ * still inflating the headline number.
  */
 export function dueByKind(nowMs: number = Date.now()): Record<CardKind | "unknown", number> {
   const counts = {} as Record<CardKind | "unknown", number>;
   for (const id of dueCardIds(nowMs)) {
-    const kind = getCardContent(id)?.kind ?? "unknown";
+    const kind = kindBucket(getCardContent(id)?.kind);
     counts[kind] = (counts[kind] ?? 0) + 1;
   }
   return counts;

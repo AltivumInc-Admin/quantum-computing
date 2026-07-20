@@ -18,6 +18,8 @@ import {
   singleQubitState,
   simulate,
   basisLabel,
+  statesApproxEqual,
+  type Complex,
 } from "@/components/quantum/math";
 
 // Load the fixtures generated from qcsim (single source of truth for the gate
@@ -194,5 +196,40 @@ describe("quantum/math blochAngle", () => {
     const roundTrip = simulate([{ gate: "H", target: 0 }, { gate: "H", target: 0 }], 1);
     expect(Number.isNaN(blochAngle(zero, roundTrip))).toBe(false);
     expect(blochAngle(zero, roundTrip)).toBeCloseTo(0, 6);
+  });
+});
+
+describe("statesApproxEqual rejects non-finite amplitudes", () => {
+  const bell: Complex[] = [
+    [Math.SQRT1_2, 0],
+    [0, 0],
+    [0, 0],
+    [Math.SQRT1_2, 0],
+  ];
+
+  it("does not report an all-NaN vector as equal to a real target", () => {
+    // Every `Math.abs(NaN - x) > eps` is false, so without an explicit guard
+    // this vector falls straight through the comparison loop and returns true —
+    // a silent false pass in every grader riding this kernel. Reachable from a
+    // learner circuit: Circuit().ry(0, np.arcsin(2.0)).
+    const allNaN: Complex[] = bell.map(() => [NaN, NaN] as Complex);
+    expect(statesApproxEqual(allNaN, bell)).toBe(false);
+    expect(statesApproxEqual(bell, allNaN)).toBe(false);
+  });
+
+  it("rejects Infinity, which JSON can carry in via 1e400", () => {
+    const inf: Complex[] = bell.map(() => [Infinity, 0] as Complex);
+    expect(statesApproxEqual(inf, bell)).toBe(false);
+  });
+
+  it("rejects a single non-finite component among finite ones", () => {
+    const one: Complex[] = bell.map((c) => [c[0], c[1]] as Complex);
+    one[2] = [NaN, 0];
+    expect(statesApproxEqual(one, bell)).toBe(false);
+  });
+
+  it("still accepts a genuine match up to global phase", () => {
+    const phased = bell.map(([re, im]) => [-re, -im] as Complex);
+    expect(statesApproxEqual(phased, bell)).toBe(true);
   });
 });

@@ -56,7 +56,7 @@ def test_runnable_flags_match_the_static_contract():
         for nb in s["notebooks"]
         if nb["runnable"]
     }
-    assert runnable_from_sections == set(vr.build_manifest()["runnable"])
+    assert runnable_from_sections == set(vr.runnable_notebook_paths())
 
 
 def test_manifest_declares_repo_url_and_wheel():

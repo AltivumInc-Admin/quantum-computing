@@ -219,6 +219,40 @@ jobs:
           test -d web/public/lab || { echo "missing web/public/lab (JupyterLite)"; exit 1; }
           echo "Build artifacts present: web/out/ and web/public/lab/"
 
+      # The math + syntax-highlight pipeline is observed NOWHERE else: every Jest
+      # suite that loads the renderer mocks react-markdown, remark-math,
+      # rehype-katex and rehype-highlight into no-ops, so they assert only that
+      # strings are forwarded. Deleting a plugin from the array, dropping a macro
+      # from KATEX_MACROS, or a breaking option-shape change in a major bump all
+      # ship fully green without this step. Same grep-the-built-artifact idiom as
+      # the Pyodide/lab assertions above.
+      #
+      # Patterns are BARE CLASS NAMES, deliberately not `class="katex"`: lesson
+      # pages sit behind the sign-up wall, so their content ships in the exported
+      # RSC payload (`className\":\"katex\"`) rather than as prerendered HTML.
+      # Matching the class name alone holds for both shapes.
+      - name: Assert the KaTeX + syntax-highlight render path ran
+        run: |
+          page=web/out/learn/01-foundations.html
+          test -f "$page" || { echo "missing $page"; exit 1; }
+          grep -q 'katex-html' "$page" || { echo "no KaTeX visual output — remark-math/rehype-katex regressed"; exit 1; }
+          grep -q 'katex-mathml' "$page" || { echo "no MathML tree — screen readers get nothing from the math"; exit 1; }
+          # A rendered ket bracket proves the SHARED KATEX_MACROS table expanded
+          # \ket{...}, not just that KaTeX ran on something.
+          grep -q '⟩' "$page" || { echo "no rendered ket glyph — KATEX_MACROS regressed"; exit 1; }
+          # The wrapper class AND a token class: the first proves rehype-highlight
+          # visited the fence, the second that it actually tokenized it.
+          grep -q 'hljs' "$page" || { echo "no hljs fences — rehype-highlight regressed"; exit 1; }
+          grep -q 'hljs-' "$page" || { echo "fences carry no token spans — highlighting produced nothing"; exit 1; }
+          # rehype-katex 7 never aborts the build on a malformed expression: it
+          # catches its own ParseError and emits a red .katex-error span, so a
+          # broken formula ships silently (one did, on /learn/02-hardware, in the
+          # sentence teaching the project's cost discipline). No page may ship one.
+          if grep -rl 'katex-error' web/out --include='*.html'; then
+            echo "katex-error span(s) shipped in the static export — see the page(s) above"; exit 1
+          fi
+          echo "Render path OK: katex + mathml + \\ket macro + hljs present, zero katex-error"
+
       # Real in-browser smoke: run a browser-runnable notebook under actual Pyodide
       # + the local qcsim wheel and assert its deterministic output. Reuses the
       # web/out/ + web/public/lab/ this job already built (no second build).

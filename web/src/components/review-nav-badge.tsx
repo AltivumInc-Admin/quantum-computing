@@ -16,11 +16,20 @@ export function ReviewNavBadge() {
   return (
     <Link
       href="/review"
+      // Without an explicit name the computed one is the concatenation
+      // "Review 3", where nothing says 3 is a count of due cards rather than an
+      // ordinal or a section number — and it mutates silently as cards are
+      // graded elsewhere on the site. The chip is hidden from AT so the number
+      // is not also read twice.
+      aria-label={count > 0 ? `Review, ${count} card${count === 1 ? "" : "s"} due` : "Review"}
       className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-accent dark:hover:text-accent-light interactive focus-ring"
     >
       Review
       {count > 0 && (
-        <span className="inline-flex min-w-5 items-center justify-center rounded-chip bg-accent/15 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-accent-dark dark:text-accent-light">
+        <span
+          aria-hidden="true"
+          className="inline-flex min-w-5 items-center justify-center rounded-chip bg-accent/15 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-accent-dark dark:text-accent-light"
+        >
           {count}
         </span>
       )}

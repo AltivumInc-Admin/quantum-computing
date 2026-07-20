@@ -44,6 +44,26 @@ The lesson runtime executes learner Python in a **dedicated worker**
 this spec's network assertions also pin down that worker-originated requests
 (the wasm boot, the wheel install) stay same-origin.
 
+## `runnable-editor.e2e.ts`
+
+Covers the inline ```runnable fence (01-foundations' live Python sandbox), which
+had no browser coverage at all: `__tests__/components/code-editor.test.tsx` mocks
+`@monaco-editor/react` wholesale, and `__tests__/components/runnable-editor.test.tsx`
+substitutes a plain `<textarea>` for `CodeEditor`, so **nothing** exercised the
+Monaco self-hosting migration. Loads `/e2e-fixtures/runnable-editor` and proves
+the real path: Monaco boots from the self-hosted, version-stamped
+`/monaco/<version>/vs` and becomes editable, the fence source runs on the shared
+worker-hosted Pyodide runtime + the real qcsim wheel (the Bell amplitudes come
+back), a **typed edit** reaches Python (proving the editor's model, not the
+seeded `source` prop, is what executes), and Reset restores the fence.
+
+Two guards ride along: zero third-party requests (Monaco must never regress to
+`@monaco-editor/loader`'s jsdelivr default) and **no failed same-origin
+response** — which is what makes `scripts/stage-monaco.mjs`'s unreachable-asset
+filter (the ts/css/html/json language-service workers and the localized
+`nls.messages` bundles, ~10 MB the Python-only editor can never reach) safe: if
+the editor ever did ask for a dropped file it surfaces here as a 404.
+
 ## `py-grader-timeout.e2e.ts`
 
 Proves the worker watchdog on the same fixture page (loaded with

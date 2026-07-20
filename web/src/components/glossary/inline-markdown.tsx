@@ -1,9 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { KATEX_MACROS } from "@/lib/katex-macros";
-// KaTeX styles ship route-scoped with the math consumers (here and the lesson
-// MarkdownRenderer) instead of in globals.css, keeping the funnel pages lean.
+import { KATEX_OPTIONS } from "@/lib/katex-macros";
+// Route-scoped, same rationale as markdown-renderer.tsx (see globals.css:2).
 import "katex/dist/katex.min.css";
 
 /**
@@ -23,7 +22,7 @@ export function InlineMarkdown({ children }: { children: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkMath]}
-      rehypePlugins={[[rehypeKatex, { macros: KATEX_MACROS, throwOnError: false }]]}
+      rehypePlugins={[[rehypeKatex, KATEX_OPTIONS]]}
       components={{ p: ({ children }) => <>{children}</> }}
     >
       {children}

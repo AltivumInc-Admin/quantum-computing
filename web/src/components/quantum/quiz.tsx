@@ -1,62 +1,36 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
-import {
-  cardShell,
-  ErrorCard,
-  EyebrowLabel,
-} from "./widget-ui";
+// The LEAN import path (./error-card, not ./widget-ui): quiz needs only the
+// shell, the failure card, the eyebrow and the reveal-panel tones, and
+// widget-ui statically pulls the math kernel, the Dirac state readout, format
+// and CopyButton — none of which quiz can execute — straight into this
+// widget's own code-split chunk.
+import { cardShell, ErrorCard, EyebrowLabel, REVEAL_PANEL } from "./error-card";
+import { parseQuiz } from "@/lib/quiz-schema";
 
 /**
- * Interactive placement quiz rendered from a ```quiz fenced block in a GUIDE.
+ * Interactive self-check rendered from a ```quiz fenced block in a GUIDE.
  * Each question carries an optional thoughtful hint and a worked answer, both
- * revealed on demand so the learner chooses when to see them. Fully static —
- * the answer text ships in the HTML and is toggled client-side.
+ * revealed on demand so the learner chooses when to see them.
  *
- * Data shape (JSON inside the fence):
+ * This is a REVEAL-ANSWER self-check BY DESIGN: no answer is captured, no
+ * verdict is computed, and nothing is persisted. It is not a graded Rep and
+ * carries no schedule.
+ *
+ * Data shape (JSON inside the fence) — parsed by @/lib/quiz-schema, which the
+ * GUIDE-corpus gate validates at build time:
  *   { "questions": [ { "q": "...", "hint": "...", "a": "..." }, ... ] }
+ *
+ * Rendering is client-side: like every fenced widget this mounts behind
+ * widget-fence's approach gate with `ssr:false`, so the answer text arrives in
+ * the RSC payload rather than as server-rendered DOM, and the reveal toggles it
+ * into the document.
  *
  * Field bodies use only inline `code` (no block math), so a tiny inline
  * formatter handles rendering — keeping this component free of the ESM-only
  * markdown pipeline, exactly like CircuitLab.
  */
-
-interface QuizQuestion {
-  q: string;
-  hint?: string;
-  a: string;
-}
-
-interface ParsedQuiz {
-  questions: QuizQuestion[];
-  error?: string;
-}
-
-function parseQuiz(source: string): ParsedQuiz {
-  try {
-    const data = JSON.parse(source) as { questions?: unknown };
-    if (!data || !Array.isArray(data.questions)) {
-      throw new Error('expected a { "questions": [ ... ] } object');
-    }
-    if (data.questions.length === 0) {
-      throw new Error("quiz needs at least one question");
-    }
-    data.questions.forEach((item, i) => {
-      const q = item as Partial<QuizQuestion>;
-      if (typeof q.q !== "string" || typeof q.a !== "string") {
-        throw new Error(`question ${i + 1} needs string "q" and "a" fields`);
-      }
-      // Guard the optional hint so a malformed (non-string truthy) value surfaces
-      // as the friendly parse-error card instead of crashing renderInline.
-      if (q.hint != null && typeof q.hint !== "string") {
-        throw new Error(`question ${i + 1} "hint" must be a string`);
-      }
-    });
-    return { questions: data.questions as QuizQuestion[] };
-  } catch (e) {
-    return { questions: [], error: (e as Error).message };
-  }
-}
 
 // Backtick-delimited spans become branded inline-code chips; everything else is
 // plain text. Sufficient for the quiz content and keeps this a CommonJS-testable
@@ -143,13 +117,19 @@ export function Quiz({ source }: { source: string }) {
   return (
     <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
+        {/* Section-neutral: the same fence is a placement test in 00-prereqs
+            and an end-of-module retention check in the other four sections,
+            whose own headings say "check yourself" — a hardcoded "Placement
+            quiz" contradicted the heading directly above it in 4 of 5 sites. */}
         <EyebrowLabel strong>
-          Placement quiz
+          Self-check
         </EyebrowLabel>
+        {/* No aria-pressed: the label already flips, and "Hide all answers,
+            pressed" announces a state opposite to what the label names. The
+            per-question controls use aria-expanded for the same reason. */}
         <button
           type="button"
           onClick={toggleAll}
-          aria-pressed={allOpen}
           className="inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-xs font-medium text-caption hover:text-accent-dark dark:hover:text-accent-light hover:bg-accent/5 interactive focus-ring"
         >
           {allOpen ? "Hide all answers" : "Show all answers"}
@@ -199,16 +179,22 @@ export function Quiz({ source }: { source: string }) {
                   </button>
                 </div>
 
+                {/* role="group", not role="region": a named region IS a
+                    landmark, so "Show all answers" on the 10-question
+                    00-prereqs quiz would inject ten landmarks into the rotor at
+                    once. The role cannot simply be dropped — aria-label on a
+                    bare div is prohibited naming on role=generic — and group
+                    conveys the same containment without entering the rotor. */}
                 {item.hint && hintOpen && (
                   <div
                     id={hintId}
-                    role="region"
+                    role="group"
                     aria-label={`Hint for question ${i + 1}`}
-                    className="mt-3 rounded-control border-l-2 border-warm/60 bg-warm/5 dark:bg-warm/10 px-3.5 py-3 animate-fade-up"
+                    className={`mt-3 rounded-control ${REVEAL_PANEL.warm} px-3.5 py-3 animate-fade-up`}
                   >
-                    <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-warm-dark dark:text-warm-light mb-1 font-mono">
+                    <EyebrowLabel strong tone="warm" className="block mb-1">
                       Hint
-                    </span>
+                    </EyebrowLabel>
                     <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.hint)}
                     </p>
@@ -218,9 +204,9 @@ export function Quiz({ source }: { source: string }) {
                 {answerOpen && (
                   <div
                     id={answerId}
-                    role="region"
+                    role="group"
                     aria-label={`Answer to question ${i + 1}`}
-                    className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
+                    className={`mt-3 rounded-control ${REVEAL_PANEL.accent} px-3.5 py-3 animate-fade-up`}
                   >
                     <EyebrowLabel strong className="block mb-1">
                       Answer

@@ -9,7 +9,7 @@ import {
   clampToleranceDeg,
   blochTargetReviewAnswer,
 } from "@/lib/bloch-target-grade";
-import { blochCardId, ratingForSolve } from "@/lib/challenge-review";
+import { cardIdFor, ratingForSolve } from "@/lib/challenge-review";
 import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { singleQubitState, blochVector, probabilities } from "./math";
@@ -22,6 +22,7 @@ import {
   LabeledSlider,
   primaryActionClass,
   ProbBars,
+  ScheduleNote,
   StateReadout,
   VerdictBadge,
   WidgetCard,
@@ -94,7 +95,7 @@ export function BlochTargetWidget({
   // a mounted region is reliably announced, mounting a new region is not.
   const outcomeRef = useRef<HTMLDivElement>(null);
 
-  const cardId = blochCardId(spec?.id ?? "invalid");
+  const cardId = cardIdFor("bloch", spec?.id ?? "invalid");
   const learnerState = useMemo(() => singleQubitState(theta, phi), [theta, phi]);
   const probs = useMemo(() => probabilities(learnerState), [learnerState]);
 
@@ -248,15 +249,7 @@ export function BlochTargetWidget({
                 On target — {fmtDeg(solvedDeg)} from {targetKet}.
               </p>
               {scheduled !== null && (
-                <p className="mt-1 text-xs text-caption animate-fade-up">
-                  {surface === "review"
-                    ? scheduled <= 1
-                      ? "Reviewed — next review tomorrow."
-                      : `Reviewed — next review in ${scheduled} days.`
-                    : scheduled <= 1
-                      ? "Added to your review — back tomorrow."
-                      : `Added to your review — back in ${scheduled} days.`}
-                </p>
+                <ScheduleNote days={scheduled} surface={surface} />
               )}
             </>
           )}

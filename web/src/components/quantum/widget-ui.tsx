@@ -5,8 +5,16 @@ import { basisLabel, type Complex } from "./math";
 import type { ParsedGate } from "./qsim-dsl";
 import { diracString, toPythonState } from "./state-readout";
 import { formatFixed, formatPercent } from "./format";
-import { cardShell, ErrorCard } from "./error-card";
+import {
+  cardShell,
+  ErrorCard,
+  EyebrowLabel,
+  REVEAL_PANEL,
+  CheckIcon,
+  VerdictBadge,
+} from "./error-card";
 import { CopyButton } from "../copy-button";
+import { reviewDayPhrase } from "@/lib/review-schedule";
 
 /**
  * Shared presentational primitives for the circuit-family explorables
@@ -36,22 +44,18 @@ export function gateLabel(g: ParsedGate): string {
 }
 
 /**
- * The check glyph shared by every solved/correct affordance in the widget
- * family (previously redeclared byte-identically in six modules, shipping the
- * same markup in six separate dynamic chunks). `size` keeps the geometry a
- * caller concern so larger consumers can adopt it unchanged.
+ * The transport glyph shared by every play/pause affordance (the wavefunction
+ * scrubber, the playground's state panel, the runnable editor's Run button).
+ * Same rationale as CheckIcon (now in ./error-card, re-exported below): it had
+ * been redeclared byte-identically in
+ * three modules, shipping the same markup in three separate dynamic chunks.
+ * `playing` swaps in the pause bars; callers with no paused state (Run) omit it
+ * and get the triangle.
  */
-export function CheckIcon({ size = "h-3.5 w-3.5" }: { size?: string } = {}) {
+export function PlayIcon({ playing = false }: { playing?: boolean } = {}) {
   return (
-    <svg
-      className={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      aria-hidden="true"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      {playing ? <path d="M8 5h3v14H8zM13 5h3v14h-3z" /> : <path d="M8 5v14l11-7z" />}
     </svg>
   );
 }
@@ -240,48 +244,13 @@ export function StateReadout({ state, n }: { state: Complex[]; n: number }) {
   );
 }
 
-// `cardShell` and `ErrorCard` live in ./error-card so the widget fence can
-// render the failure state without pulling this module (and its math/copy
-// dependencies) into the eagerly-loaded lesson chunk. Re-exported here so
-// widgets keep importing everything from "./widget-ui".
-export { cardShell, ErrorCard };
-
-/**
- * The micro-label above a widget or a section inside one. `strong` is the
- * heavier activity/Rep idiom (font-semibold) the challenge/quiz/predict family
- * uses; the default font-medium is the explorable idiom. Both spellings were
- * copy-pasted across nine files and had already drifted on the dark-mode color
- * (`dark:text-accent` vs `dark:text-accent-light`) — `dark:text-accent` is
- * canonical, so two Rep widgets in one lesson can no longer render different
- * header colors.
- */
-export function EyebrowLabel({
-  children,
-  as: Tag = "span",
-  id,
-  strong = false,
-  className = "",
-}: {
-  children: ReactNode;
-  as?: "span" | "h3";
-  id?: string;
-  strong?: boolean;
-  /** Layout only (e.g. `mb-2 block`) — never color/weight. */
-  className?: string;
-}) {
-  return (
-    <Tag
-      id={id}
-      className={`font-mono text-[10px] ${
-        strong ? "font-semibold" : "font-medium"
-      } uppercase tracking-[0.2em] text-accent-dark dark:text-accent${
-        className ? ` ${className}` : ""
-      }`}
-    >
-      {children}
-    </Tag>
-  );
-}
+// `cardShell`, `ErrorCard`, `EyebrowLabel`, `REVEAL_PANEL`, `CheckIcon` and
+// `VerdictBadge` live in ./error-card so the widget fence — and any light
+// consumer that needs only a shell, a label or a badge (quiz, review-card, the
+// /review dashboard) — can use them without pulling this module (and its
+// math/copy dependencies) into its chunk. Re-exported here so widgets that
+// already need the heavy module keep importing everything from "./widget-ui".
+export { cardShell, ErrorCard, EyebrowLabel, REVEAL_PANEL, CheckIcon, VerdictBadge };
 
 /**
  * Chip tones. `neutral` is the resting descriptor. `warn` is the caution tier
@@ -354,31 +323,58 @@ export function WidgetCard({
 }
 
 /**
- * The header verdict badge shared by the Rep/activity widgets. `tone` picks the
- * semantic pair: `accent` for a correct/solved outcome, `warm` for a
- * not-quite one. Previously copy-pasted byte-identically across six widgets.
+ * The schedule note under a graded Rep's verdict ("Reviewed — next review in 6
+ * days." on /review, "Added to your review — back in 6 days." in a lesson).
+ * The 6-line nested ternary behind it was copy-pasted byte-identically across
+ * all six graded Reps, and the wrapper had already drifted on the top margin
+ * (mt-2 vs mt-1).
+ *
+ * Deliberately carries NO `role="status"`: five of the six call sites already
+ * sit inside an outcome live region, and a nested live region is not reliably
+ * announced. Callers that need one own the wrapper.
  */
-export function VerdictBadge({
-  tone,
-  children,
-  showCheck = tone === "accent",
+export function ScheduleNote({
+  days,
+  surface,
 }: {
-  tone: "accent" | "warm";
-  children: ReactNode;
-  /** The check glyph; defaults on for the accent (correct/solved) tone. */
-  showCheck?: boolean;
+  days: number;
+  surface?: "lesson" | "review";
+}) {
+  const phrase = reviewDayPhrase(days);
+  return (
+    <p className="mt-2 text-xs text-caption animate-fade-up">
+      {surface === "review"
+        ? `Reviewed — next review ${phrase}.`
+        : `Added to your review — back ${phrase}.`}
+    </p>
+  );
+}
+
+/**
+ * The shortest-solution caption on the two DSL-editor Reps, identical but for
+ * the leading verb (challenge "Solved", debug-circuit "Fixed"). Sits beside
+ * ScheduleNote above and shares its `mt-2` offset so the pair reads as one block.
+ *
+ * Like ScheduleNote, carries no `role="status"` — both call sites already sit
+ * inside an outcome live region.
+ */
+export function BestGatesNote({
+  verb,
+  gates,
+  best,
+}: {
+  verb: "Solved" | "Fixed";
+  gates: number;
+  /** The personal best; only mentioned when this solve did not match it. */
+  best: number | null;
 }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 text-xs font-semibold ${
-        tone === "accent"
-          ? "bg-accent/10 text-accent-dark dark:text-accent-light"
-          : "bg-warm/10 text-warm-dark dark:text-warm-light"
-      }`}
-    >
-      {showCheck && <CheckIcon />}
-      {children}
-    </span>
+    <p className="mt-2 text-xs text-caption tabular-nums animate-fade-up">
+      {verb} in {gates} gate{gates === 1 ? "" : "s"}
+      {best !== null && best < gates
+        ? ` — your best is ${best}. Can you match it?`
+        : " — your best."}
+    </p>
   );
 }
 
@@ -390,10 +386,8 @@ export function VerdictBadge({
  * strengths for the same state. --bd (challenge's value) is canonical.
  */
 export const VERDICT_STYLES: Record<"solved" | "wrong" | "error", string> = {
-  solved:
-    "border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 text-accent-dark dark:text-accent-light",
-  wrong:
-    "border-l-2 border-warm/60 bg-warm/5 dark:bg-warm/10 text-warm-dark dark:text-warm-light",
+  solved: `${REVEAL_PANEL.accent} text-accent-dark dark:text-accent-light`,
+  wrong: `${REVEAL_PANEL.warm} text-warm-dark dark:text-warm-light`,
   error: "border-l-2 border-(--bd) bg-(--field) text-caption",
 };
 

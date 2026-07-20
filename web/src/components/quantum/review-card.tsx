@@ -7,12 +7,17 @@ import {
   setCardContent,
   PROGRESS_EVENT_NAME,
 } from "@/lib/review-store";
-import { nextIntervalDays, type CardState, type Rating } from "@/lib/review-schedule";
 import {
-  cardShell,
-  ErrorCard,
-  EyebrowLabel,
-} from "./widget-ui";
+  nextIntervalDays,
+  parseCardState,
+  reviewDayPhrase,
+  type CardState,
+  type Rating,
+} from "@/lib/review-schedule";
+// The LEAN import path (./error-card, not ./widget-ui) — this card uses no
+// math, no state readout and no copy button, and widget-ui would pull all three
+// into its chunk. See error-card.tsx's module doc.
+import { cardShell, ErrorCard, EyebrowLabel, REVEAL_PANEL } from "./error-card";
 
 /**
  * A spaced-repetition review prompt rendered from a ```qcard fenced block in a
@@ -82,14 +87,11 @@ function useCardState(id: string): CardState | null {
     () => getCardStateRaw(id),
     () => null
   );
-  return useMemo(() => {
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as CardState;
-    } catch {
-      return null;
-    }
-  }, [raw]);
+  // parseCardState, not a bare JSON.parse: a corrupt-but-valid-JSON record
+  // ({}, truncated, an old schema) must be discarded here exactly as
+  // getCardState discards it, or this card and the /review dashboard disagree
+  // about the same record and the header prints "reviewed undefined".
+  return useMemo(() => parseCardState(raw), [raw]);
 }
 
 const RATINGS: { rating: Rating; label: string; tone: string }[] = [
@@ -104,8 +106,13 @@ export function ReviewCard({ source }: { source: string }) {
   const spec = parsed.spec;
   const state = useCardState(spec?.id ?? "");
   const [revealed, setRevealed] = useState(false);
-  const [justGraded, setJustGraded] = useState<CardState | null>(null);
-  const [regradeNoop, setRegradeNoop] = useState(false);
+  // ONE state for one outcome: a grade either advanced the schedule or was a
+  // not-due no-op. The previous `CardState | null` + separate boolean pair had
+  // to be cross-cleared by hand in the click handler and could not be narrowed,
+  // forcing non-null assertions in the render.
+  const [outcome, setOutcome] = useState<
+    { kind: "graded"; state: CardState } | { kind: "noop" } | null
+  >(null);
   const answerId = useId();
 
   // Cache the card's content so the /review page can re-render it from the
@@ -123,17 +130,17 @@ export function ReviewCard({ source }: { source: string }) {
   // "Good" clicks would otherwise compound the interval toward the 365-day cap.
   const onGrade = (rating: Rating) => {
     const next = gradeCardIfDue(spec.id, rating);
-    if (next) {
-      setJustGraded(next);
-      setRegradeNoop(false);
-    } else {
-      setRegradeNoop(true);
-    }
+    setOutcome(next ? { kind: "graded", state: next } : { kind: "noop" });
     setRevealed(false);
   };
 
-  const reviewedBefore = state !== null;
-  const feedback = justGraded;
+  // `reps` is the CONSECUTIVE-success streak (review-schedule.ts:21 — reset to
+  // 0 on every "Again"), not a lifetime review count. Labelled as the streak it
+  // is, and suppressed at 0, so a card the learner just lapsed shows nothing
+  // rather than telling a six-review history "reviewed 0×". Hidden after a real
+  // grade (the fresh "Next review …" line carries the story), but kept after a
+  // not-due no-op, which changed nothing.
+  const streak = state !== null && outcome?.kind !== "graded" ? state.reps : 0;
 
   return (
     <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
@@ -141,9 +148,9 @@ export function ReviewCard({ source }: { source: string }) {
         <EyebrowLabel strong>
           Recall
         </EyebrowLabel>
-        {reviewedBefore && !feedback && (
+        {streak > 0 && (
           <span className="text-xs tabular-nums text-caption">
-            reviewed {state.reps === 1 ? "once" : `${state.reps}×`}
+            {streak} in a row
           </span>
         )}
       </div>
@@ -167,7 +174,7 @@ export function ReviewCard({ source }: { source: string }) {
               id={answerId}
               role="region"
               aria-label="Answer"
-              className="mt-3 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
+              className={`mt-3 rounded-control ${REVEAL_PANEL.accent} px-3.5 py-3 animate-fade-up`}
             >
               <EyebrowLabel strong className="block mb-1">
                 Answer
@@ -197,16 +204,14 @@ export function ReviewCard({ source }: { source: string }) {
           </>
         )}
 
-        {(feedback || regradeNoop) && (
+        {outcome && (
           <p
             role="status"
             className="mt-3 text-sm text-caption animate-fade-up"
           >
-            {regradeNoop
+            {outcome.kind === "noop"
               ? "Schedule unchanged — this card was already reviewed and isn't due again yet."
-              : nextIntervalDays(feedback!) === 1
-                ? "Next review tomorrow."
-                : `Next review in ${nextIntervalDays(feedback!)} days.`}
+              : `Next review ${reviewDayPhrase(nextIntervalDays(outcome.state))}.`}
           </p>
         )}
       </div>

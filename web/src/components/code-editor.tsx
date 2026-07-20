@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { loader, type OnMount } from "@monaco-editor/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTheme } from "next-themes";
+import { MONACO_VS_PATH } from "@/lib/monaco-path";
 
 export interface CodeEditorProps {
   value: string;
@@ -14,15 +15,28 @@ export interface CodeEditorProps {
 
 // Monaco can't render on the server (it needs `window`) and is heavy, so it is
 // dynamically imported client-only. The editor core itself is SELF-HOSTED:
-// scripts/stage-monaco.mjs copies monaco-editor/min/vs into public/monaco/vs at
-// build time (prebuild/predev hooks) and the loader below boots it from that
-// same-origin path — no CDN request, mirroring the self-hosted Pyodide runtime.
-loader.config({ paths: { vs: "/monaco/vs" } });
+// scripts/stage-monaco.mjs copies monaco-editor/min/vs into
+// public/monaco/<version>/vs at build time (prebuild/predev hooks) and the
+// loader below boots it from that same-origin, version-stamped path — no CDN
+// request, mirroring the self-hosted Pyodide runtime. The version lives in the
+// path because the tree is served `immutable` for a year; see monaco-path.ts.
+loader.config({ paths: { vs: MONACO_VS_PATH } });
 
 // If the editor core hasn't mounted after this long (offline, blocked asset,
 // broken deploy), an explicit error state replaces the placeholder instead of
 // it reading "Loading editor…" forever.
-const LOAD_TIMEOUT_MS = 15_000;
+//
+// Sized to the payload it actually covers, not a round number. The critical
+// path is four requests off the staged tree — loader.js (39.8 KB / 10.7 KB gz),
+// editor/editor.main.js (79.1 KB / 18.1 KB gz), editor/editor.main.css
+// (309.0 KB / 102.5 KB gz) and editor.api-<hash>.js (3.67 MB / 947.8 KB gz) —
+// so ~1.08 MB gzipped, ~4.1 MB of JavaScript to parse on the learner's device.
+// On a ~1 Mbps link that is ~9s of transfer before a byte executes, so the old
+// 15s budget failed ordinary slow connections on an editor moments from
+// mounting — and the failure is unrecoverable without a reload (nothing clears
+// `timedOut`). This matches the sibling runtime's stated slow-link reasoning:
+// pyodide-runtime.ts allows 75s for a ~3 MB brotli'd wasm.
+const LOAD_TIMEOUT_MS = 45_000;
 
 // Fills its parent (h-full) so placeholder/error always match the editor's
 // height — no layout shift on mount regardless of the height prop.

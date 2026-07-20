@@ -31,11 +31,16 @@
 // /e2e-fixtures/py-challenge — keep those specs in lockstep when changing
 // grading semantics here.
 
-import { simulate, statesApproxEqual, type Complex } from "@/components/quantum/math";
-import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";
-import { getPyodide, runSerialized, PythonTimeoutError, type Pyodide } from "./pyodide-runtime";
+import { statesApproxEqual, isFiniteState, type Complex } from "@/components/quantum/math";
+import {
+  getPyodide,
+  runSerialized,
+  PythonTimeoutError,
+  PythonRuntimeError,
+  type Pyodide,
+} from "./pyodide-runtime";
 import type { ChallengeSpec } from "./challenge-schema";
-import type { GradeResult } from "./challenge-grade";
+import { resolveTarget, type GradeResult } from "./challenge-grade";
 
 // The grading harness, invariant to learner input. It imports json/numpy and
 // binds the readout callables as default-argument LOCALS (evaluated at def time,
@@ -48,6 +53,7 @@ import type { GradeResult } from "./challenge-grade";
 // to __grader_extract — the only thing that varies between grades.
 const GRADER_HEAD =
   "import json as __grader_json\n" +
+  "import math as __grader_math\n" +
   "import numpy as __grader_np\n" +
   "\n" +
   "def __grader_extract(\n" +
@@ -56,6 +62,7 @@ const GRADER_HEAD =
   "    __grader_real=__grader_np.real,\n" +
   "    __grader_imag=__grader_np.imag,\n" +
   "    __grader_as_float=float,\n" +
+  "    __grader_isfinite=__grader_math.isfinite,\n" +
   "):\n" +
   "    __grader_ns = {}\n" +
   "    exec(__grader_src, __grader_ns)\n" +
@@ -63,11 +70,50 @@ const GRADER_HEAD =
   "    if __grader_circuit is None:\n" +
   "        raise NameError(\"name 'circuit' is not defined\")\n" +
   "    __grader_sv = __grader_circuit.state_vector()\n" +
-  "    return __grader_dumps(\n" +
-  "        [[__grader_as_float(__grader_real(z)), __grader_as_float(__grader_imag(z))]\n" +
-  "         for z in __grader_sv]\n" +
-  "    )\n" +
+  "    __grader_out = []\n" +
+  "    for z in __grader_sv:\n" +
+  "        __grader_re = __grader_as_float(__grader_real(z))\n" +
+  "        __grader_im = __grader_as_float(__grader_imag(z))\n" +
+  "        if not __grader_isfinite(__grader_re) or not __grader_isfinite(__grader_im):\n" +
+  // A non-finite amplitude (an out-of-domain angle like asin(2) -> nan) cannot
+  // be JSON: default json.dumps emits a bare `NaN` token, which is not valid
+  // JSON, so the CLIENT's JSON.parse threw and the learner was told their code
+  // raised a SyntaxError they never raised. Report it as a typed sentinel and
+  // let the client word the verdict; allow_nan=False below is the backstop that
+  // keeps an invalid-JSON payload structurally impossible.
+  "            return __grader_dumps({'__grader_error': 'non-finite'})\n" +
+  "        __grader_out.append([__grader_re, __grader_im])\n" +
+  "    return __grader_dumps(__grader_out, allow_nan=False)\n" +
   "\n";
+
+const NON_FINITE_STATE =
+  "Your circuit produced a non-finite amplitude, so it can't be graded. " +
+  "Check for an out-of-domain angle — np.arcsin or np.arccos of a value " +
+  "outside [-1, 1] returns nan, which spreads through the whole state vector.";
+
+const UNREADABLE_STATE =
+  "The grader couldn't read your circuit's state vector. Run it again — if it " +
+  "keeps happening, reload the page to restart the Python environment.";
+
+/** The harness's typed sentinel for a state vector it refused to encode. */
+function isNonFiniteSentinel(v: unknown): boolean {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    (v as { __grader_error?: unknown }).__grader_error === "non-finite"
+  );
+}
+
+/**
+ * Every amplitude is a finite [real, imag] pair.
+ *
+ * This is load-bearing, not defensive decoration: statesApproxEqual compares
+ * with `Math.abs(x - y) > eps`, and EVERY comparison against NaN is false, so an
+ * all-NaN state vector compares EQUAL to any target — a silent false pass, the
+ * worst verdict this grader can return. The harness now refuses to emit
+ * non-finite amplitudes, and this is the client-side half of that guarantee.
+ */
 
 export async function gradePy(
   learnerSource: string,
@@ -89,38 +135,58 @@ export async function gradePy(
 
   // Run in a fresh, serialized namespace so a `circuit` left over from an earlier
   // editor/grader run can never stand in for one the submission failed to define.
-  let learnerState: Complex[];
+  //
+  // The RUN and the DECODE are caught separately on purpose. Folding them into
+  // one try made a grader-side JSON.parse failure indistinguishable from a
+  // learner exception, so a payload the harness could not encode came back as
+  // "Your code raised: Unexpected token 'N'..." — an error the learner's code
+  // never raised. Only a rejection from the run itself is the learner's.
+  let raw: unknown;
   try {
-    learnerState = JSON.parse((await runSerialized(py, program)) as string) as Complex[];
+    raw = await runSerialized(py, program);
   } catch (e) {
     // A watchdog kill is not a Python exception: its message is already
     // learner-facing and complete (what happened, that the environment was
     // reset, check for an infinite loop) -- show it verbatim, unprefixed.
-    if (e instanceof PythonTimeoutError) {
+    if (e instanceof PythonTimeoutError || e instanceof PythonRuntimeError) {
+      // Neither is the learner's exception: the watchdog killed an infinite
+      // loop, or the worker crashed / was already dead from an earlier reset.
+      // Both messages are already learner-facing and complete -- show them
+      // verbatim. Prefixing them with "Your code raised:" would blame the
+      // learner for an environment failure they cannot act on.
       return { status: "error", message: e.message };
     }
     return { status: "error", message: `Your code raised: ${(e as Error).message}` };
   }
 
-  const target = parseProgram(spec.target.program);
-  // Reference circuit must be valid and concrete — see gradeTs for the same guard.
-  if (target.error) {
-    return { status: "error", message: `This challenge's target circuit is invalid: ${target.error}` };
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(raw as string);
+  } catch {
+    return { status: "error", message: UNREADABLE_STATE };
   }
-  if (target.hasTheta) {
-    return { status: "error", message: "This challenge's target circuit must be concrete (no slider theta)." };
+  if (isNonFiniteSentinel(decoded)) {
+    return { status: "error", message: NON_FINITE_STATE };
   }
-  const n = Math.max(target.n, Math.round(Math.log2(learnerState.length)) || 1, 1);
-  // Bound the reference simulation: learnerState.length is whatever the learner's
-  // Python produced (Pyodide-memory-bounded, not DSL-clamped), so cap n before a
-  // 2**n target allocation.
-  if (n > MAX_QUBITS) {
-    return {
-      status: "error",
-      message: `This challenge is configured for ${n} qubits, beyond the ${MAX_QUBITS}-qubit limit for in-browser grading.`,
-    };
+  // Not reachable from the harness (it emits the sentinel above and dumps with
+  // allow_nan=False), but JSON.parse still yields Infinity for an overflowing
+  // literal like 1e400 — and an all-non-finite vector compares EQUAL to any
+  // target, so this must never fall through to statesApproxEqual.
+  if (!isFiniteState(decoded)) {
+    return { status: "error", message: UNREADABLE_STATE };
   }
-  const targetState = simulate(opsFor(target, 0), n);
+  const learnerState: Complex[] = decoded;
+
+  // Reference circuit: validated + simulated by the shared kernel gate, so both
+  // tiers can never disagree about whether the same authored fence is gradeable.
+  const resolved = resolveTarget(
+    spec,
+    Math.round(Math.log2(learnerState.length)) || 1
+  );
+  if ("error" in resolved) {
+    return { status: "error", message: resolved.error };
+  }
+  const targetState = resolved.state;
 
   if (statesApproxEqual(learnerState, targetState)) {
     return { status: "solved", message: "Correct — verified against the reference state vector." };

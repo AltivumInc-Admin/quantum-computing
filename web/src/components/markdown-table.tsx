@@ -9,10 +9,9 @@ import { useScrollRegion } from "@/hooks/use-scroll-region";
  * content box, so without this wrapper the entire lesson page scrolls
  * horizontally (WCAG 1.4.10 reflow).
  *
- * Follows CodeBlock's measure-then-expose idiom (single-sourced in
- * useScrollRegion): the wrapper becomes a keyboard-focusable, labelled scroll
- * region ONLY when the table actually overflows, so narrow tables add no tab
- * stops. Re-measures on resize.
+ * Uses the shared useScrollRegion hook (CodeBlock's other consumer): the wrapper
+ * becomes a keyboard-focusable, labelled scroll region ONLY when the table
+ * actually overflows, so narrow tables add no tab stops. Re-measures on resize.
  */
 export function MarkdownTable(props: ComponentPropsWithoutRef<"table">) {
   const { regionProps } = useScrollRegion<HTMLDivElement>("Scrollable table");

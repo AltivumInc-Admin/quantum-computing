@@ -5,13 +5,20 @@
 // the runnable code editor embedded in lessons. A run that exceeds the runtime's
 // watchdog timeout surfaces its learner-facing reset message via `error`.
 
-import { getPyodide, runSerialized } from "./pyodide-runtime";
+import { getPyodide, runSerialized, PY_BOOT_FAILURE_PREFIX } from "./pyodide-runtime";
 
+/**
+ * The outcome of one run. `error` is the ONLY success discriminant: it is
+ * present iff the run failed (the code raised, the watchdog killed it, or the
+ * interpreter never booted). There used to be a sibling `ok: boolean` that no
+ * consumer ever read -- two sources of truth for the same fact, which would
+ * have rendered an `{ ok: false }` with no `error` as a successful run with
+ * "(no output)".
+ */
 export interface RunResult {
-  ok: boolean;
   /** Combined stdout + stderr produced by the run. */
   output: string;
-  /** Present when the code raised; the exception message. */
+  /** Present when the run failed; the learner-facing message. */
   error?: string;
 }
 
@@ -20,7 +27,7 @@ export async function runPython(code: string): Promise<RunResult> {
   try {
     py = await getPyodide();
   } catch (e) {
-    return { ok: false, output: "", error: `Couldn't start Python: ${(e as Error).message}` };
+    return { output: "", error: `${PY_BOOT_FAILURE_PREFIX}${(e as Error).message}` };
   }
 
   // Each run executes in a fresh namespace under the shared interpreter lock, so
@@ -28,8 +35,8 @@ export async function runPython(code: string): Promise<RunResult> {
   const chunks: string[] = [];
   try {
     await runSerialized(py, code, (text) => chunks.push(text));
-    return { ok: true, output: chunks.join("") };
+    return { output: chunks.join("") };
   } catch (e) {
-    return { ok: false, output: chunks.join(""), error: (e as Error).message };
+    return { output: chunks.join(""), error: (e as Error).message };
   }
 }

@@ -168,16 +168,62 @@ describe("ReviewDashboard live re-attempt dispatch", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("falls back to the recall card for a corrupt stored kind", async () => {
-    seedDueCard("challenge:corrupt", {
-      prompt: "Corrupt kind prompt.",
-      answer: "A.",
-      kind: "not-a-kind",
-      source: challengeSource,
-    });
+  // "not-a-kind" is an own-property MISS, the one class of corrupt value that
+  // can never reach Object.prototype — so it passed even while a raw index read
+  // resolved "constructor" to Object, which React then invoked as a component
+  // and threw "Objects are not valid as a React child", taking out the whole
+  // route (src/app carries no error.tsx).
+  it.each(["not-a-kind", "constructor", "__proto__", "toString"])(
+    "falls back to the recall card for the corrupt stored kind %p",
+    async (kind) => {
+      seedDueCard("challenge:corrupt", {
+        prompt: "Corrupt kind prompt.",
+        answer: "A.",
+        kind,
+        source: challengeSource,
+      });
+      render(<ReviewDashboard />);
+      expect(await screen.findByText("Corrupt kind prompt.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /show answer/i })).toBeInTheDocument();
+      // The sr-only roster line must not leak engine text either.
+      expect(screen.queryByText(/native code/i)).not.toBeInTheDocument();
+    }
+  );
+
+  it("drops a due card whose content cache is missing instead of drawing a blank slot", async () => {
+    // The schedule write and the content write are independent setItem calls,
+    // so a failed/evicted content write mints a due card the roster cannot draw.
+    const today = epochDay(Date.now());
+    localStorage.setItem(
+      "qc:card:orphan-1",
+      JSON.stringify({
+        reps: 1, lapses: 0, stability: 1, difficulty: 5,
+        dueEpochDay: today - 1, lastEpochDay: today - 2,
+      })
+    );
+    seedDueCard("basic-1", { prompt: "P?", answer: "A." });
     render(<ReviewDashboard />);
-    expect(await screen.findByText("Corrupt kind prompt.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /show answer/i })).toBeInTheDocument();
+
+    await screen.findByText("P?");
+    // One renderable item, and the counter says so — it used to read "1 / 2"
+    // (or skip a number entirely) by counting the undrawable card.
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText(/1 \/ 1 · Recall/)).toBeInTheDocument();
+  });
+
+  it("shows the honest empty state when every due card is undrawable", async () => {
+    const today = epochDay(Date.now());
+    localStorage.setItem(
+      "qc:card:orphan-1",
+      JSON.stringify({
+        reps: 1, lapses: 0, stability: 1, difficulty: 5,
+        dueEpochDay: today - 1, lastEpochDay: today - 2,
+      })
+    );
+    render(<ReviewDashboard />);
+    // Previously: a "1 due now" header above completely empty space, because the
+    // empty state gated on the unfiltered roster length.
+    expect(await screen.findByText(/nothing due/i)).toBeInTheDocument();
   });
 
   it("renders the roster with list semantics and per-item status chips", async () => {

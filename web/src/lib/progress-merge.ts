@@ -41,7 +41,7 @@
 // tombstoned so the next sync doesn't silently re-add them under the click.
 
 import { PROGRESS_EVENT_NAME } from "./progress-event";
-import { epochDay, isValidCardState, MAX_INTERVAL, type CardState } from "./review-schedule";
+import { epochDay, MAX_INTERVAL, parseCardState, type CardState } from "./review-schedule";
 
 export type ProgressSnapshot = Record<string, string>;
 
@@ -135,15 +135,6 @@ export function wipeLocalProgress(alsoKeys: string[] = []): number {
   return keys.length;
 }
 
-function parseCard(raw: string): CardState | null {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return isValidCardState(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function plausible(card: CardState, todayEpochDay: number): boolean {
   // Two invariants the real scheduler always upholds:
   //  (a) lastEpochDay is at most today (+ a grace window for UTC-boundary
@@ -167,8 +158,8 @@ const lexMax = (a: string, b: string): string => (a >= b ? a : b);
 
 /** The more recently REVIEWED CardState string, taken whole. */
 function mergeCard(a: string, b: string, todayEpochDay: number): string {
-  const ca = parseCard(a);
-  const cb = parseCard(b);
+  const ca = parseCardState(a);
+  const cb = parseCardState(b);
   if (!ca) return cb ? b : lexMax(a, b);
   if (!cb) return a;
   // Clock-skew quarantine: an implausibly future copy loses to any plausible
@@ -297,7 +288,7 @@ export function applySnapshot(
       // and the pair would flip the key forever (confirmed non-convergence).
       if (sessionTombstones.has(key)) continue;
       if (key.startsWith("qc:card:")) {
-        const card = parseCard(value);
+        const card = parseCardState(value);
         if (card && !plausible(card, todayEpochDay)) continue;
       }
       if (localStorage.getItem(key) !== value) {

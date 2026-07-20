@@ -146,3 +146,30 @@ export function isDue(state: CardState, todayEpochDay: number): boolean {
 export function nextIntervalDays(state: CardState): number {
   return Math.max(0, state.dueEpochDay - state.lastEpochDay);
 }
+
+/**
+ * The day phrasing every schedule note shares ("tomorrow" / "in 6 days"). The
+ * six graded Reps and the recall card each render a different sentence around
+ * it ("Reviewed — next review …", "Added to your review — back …", "Next review
+ * …"), but the boundary test belongs in one place: the widgets had drifted onto
+ * `<= 1` while review-card used `=== 1` for the identical decision.
+ */
+export function reviewDayPhrase(days: number): string {
+  return days <= 1 ? "tomorrow" : `in ${days} days`;
+}
+
+/**
+ * Parse a stored card record, discarding anything `isValidCardState` rejects.
+ * Storage-free and clock-free, so it lives beside the guard rather than being
+ * re-implemented at each trust boundary — review-store, progress-merge and
+ * review-card all read the same raw strings and must agree on what is usable.
+ */
+export function parseCardState(raw: string | null): CardState | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isValidCardState(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}

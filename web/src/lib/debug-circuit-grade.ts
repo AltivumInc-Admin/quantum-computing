@@ -12,24 +12,17 @@
 // would mint a free FSRS card at first Check.
 
 import { simulate, statesApproxEqual, zeroState, type Complex } from "@/components/quantum/math";
-import { parseProgram, opsFor, MAX_QUBITS, type Program } from "@/components/quantum/qsim-dsl";
+import { parseProgram, opsFor, MAX_QUBITS } from "@/components/quantum/qsim-dsl";
 import type { DebugCircuitSpec } from "./debug-circuit-schema";
-import type { GradeResult } from "./challenge-grade";
+// gateViolation lives in the challenge kernel this module already depends on:
+// both graders enforce one whitelist rule, so it has exactly one implementation.
+import { gateViolation, type GradeResult } from "./challenge-grade";
 
 export interface DebugTruth {
   targetState: Complex[];
   brokenState: Complex[];
   n: number;
   error?: string;
-}
-
-function gateViolation(parsed: Program, allowedGates: string[] | undefined): string | null {
-  if (!allowedGates || allowedGates.length === 0) return null;
-  const allowed = new Set(allowedGates.map((g) => g.toUpperCase()));
-  for (const g of parsed.gates) {
-    if (!allowed.has(g.gate.toUpperCase())) return g.gate;
-  }
-  return null;
 }
 
 /**

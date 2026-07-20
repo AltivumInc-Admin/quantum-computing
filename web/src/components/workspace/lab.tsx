@@ -66,10 +66,17 @@ export function Lab({
           {sections.map((s, i) => {
             // Chip label from the real manifest title (correctly cased), not the
             // slug — slug-recasing turned "04-quantum-ml" into "Quantum Ml". Trim
-            // a leading "Quantum " and any ": subtitle" so the chip stays tight;
-            // the full title is the accessible name + tooltip below.
+            // a leading "Quantum " and any ": subtitle" so the chip stays tight.
             const label = s.title.replace(/:.*$/, "").replace(/^Quantum\s+/, "");
             const short = `${String(s.index).padStart(2, "0")} ${label}`;
+            // WCAG 2.5.3 Label in Name: the accessible name must CONTAIN the
+            // visible text. Deriving it from `short` rather than beside it is the
+            // whole point — the raw title alone both gains a "Quantum " the chip
+            // drops and lacks the numeric prefix the chip adds, so a speech-input
+            // user saying "click 04 Machine Learning" matched nothing. Prefixing
+            // keeps the full title available to screen-reader users, and the
+            // tooltip is the same expression so the two cannot drift again.
+            const accessibleName = `${short} — ${s.title}`;
             const on = i === selected;
             return (
               <button
@@ -81,8 +88,8 @@ export function Lab({
                 role="radio"
                 aria-checked={on}
                 tabIndex={on ? 0 : -1}
-                title={s.title}
-                aria-label={s.title}
+                title={accessibleName}
+                aria-label={accessibleName}
                 onClick={() => setSelected(i)}
                 onKeyDown={(e) => onKeyDown(e, i)}
                 style={{ "--hue": s.hue } as React.CSSProperties}

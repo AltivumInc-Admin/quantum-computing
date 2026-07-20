@@ -5,16 +5,11 @@ import "@testing-library/jest-dom";
 import { render } from "@testing-library/react";
 import React from "react";
 
-// markdown-renderer imports react-markdown (ESM); mock it so the module loads
-// under ts-jest's CJS. makeComponents and MarkdownTable are real code under test.
-jest.mock("react-markdown", () => ({ __esModule: true, default: () => null }));
-jest.mock("remark-gfm", () => () => {});
-jest.mock("remark-math", () => () => {});
-jest.mock("rehype-katex", () => () => {});
-jest.mock("rehype-highlight", () => () => {});
-
+// makeComponents and MarkdownTable are real code under test; both live apart
+// from the ESM-only react-markdown/remark/rehype pipeline, so this suite needs
+// no jest.mock preamble to load them under ts-jest's CJS.
 import { MarkdownTable } from "@/components/markdown-table";
-import { makeComponents } from "@/components/markdown-renderer";
+import { makeComponents } from "@/components/markdown-components";
 
 function renderTable() {
   return render(

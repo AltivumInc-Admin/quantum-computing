@@ -1,6 +1,7 @@
 import { gradePy } from "@/lib/pyodide-grader";
+import { gradeTs } from "@/lib/challenge-grade";
 import { getPyodide, runSerialized } from "@/lib/pyodide-runtime";
-import type { ChallengeSpec } from "@/lib/challenge-schema";
+import { parseChallenge, type ChallengeSpec } from "@/lib/challenge-schema";
 
 // Mirror the pyodide-run.test.ts seam: the runtime is browser-only, so unit
 // tests mock it. runSerialized stands in for the worker — it returns whatever
@@ -14,10 +15,21 @@ jest.mock("@/lib/pyodide-runtime", () => {
       this.name = "PythonTimeoutError";
     }
   }
-  return { getPyodide: jest.fn(), runSerialized: jest.fn(), PythonTimeoutError };
+  class PythonRuntimeError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "PythonRuntimeError";
+    }
+  }
+  return {
+    getPyodide: jest.fn(),
+    runSerialized: jest.fn(),
+    PythonTimeoutError,
+    PythonRuntimeError,
+  };
 });
 
-const { PythonTimeoutError } = jest.requireMock("@/lib/pyodide-runtime");
+const { PythonTimeoutError, PythonRuntimeError } = jest.requireMock("@/lib/pyodide-runtime");
 const mockGetPyodide = getPyodide as jest.Mock;
 const mockRunSerialized = runSerialized as jest.Mock;
 
@@ -99,6 +111,46 @@ describe("gradePy — verdicts", () => {
     expect(mockRunSerialized).not.toHaveBeenCalled();
   });
 
+  // A learner circuit CAN reach a non-finite state through ordinary content:
+  // qcsim's rotation gates take any float with no domain check, so
+  // `circuit.ry(0, np.arcsin(x))` with |x| > 1 (angle encoding — the exact
+  // subject of the shipped qml-angle-encode-py-1 Rep) yields nan amplitudes.
+  // The harness used to json.dumps those at allow_nan=True, emitting a bare
+  // `NaN` token; JSON.parse then threw INSIDE the same try as the run, so the
+  // learner was told "Your code raised: Unexpected token 'N'..." — a Python
+  // exception they never raised.
+  it("reports a non-finite amplitude as a teachable error, not as a raised exception", async () => {
+    mockRunSerialized.mockResolvedValue(JSON.stringify({ __grader_error: "non-finite" }));
+    const r = await gradePy("circuit = Circuit().ry(0, np.arcsin(2.0))", bellSpec);
+    expect(r.status).toBe("error");
+    expect(r.message).toMatch(/non-finite amplitude/i);
+    expect(r.message).toMatch(/arcsin/i); // names the actual cause
+    expect(r.message).not.toMatch(/Your code raised:/);
+  });
+
+  // The worst outcome this grader can produce is a FALSE PASS, and non-finite
+  // amplitudes are how one gets in: statesApproxEqual compares with
+  // `Math.abs(x - y) > eps`, and every comparison against NaN is false, so an
+  // all-NaN vector reports EQUAL to any target. JSON cannot carry NaN, but it
+  // carries Infinity via an overflowing literal (1e400) — so the guard has to
+  // hold on the decoded value, not just on the encoder.
+  it("never grades a non-finite state as solved (the false-pass this guard exists for)", async () => {
+    // 1e400 decodes to Infinity; the rest of the vector matches the Bell target.
+    mockRunSerialized.mockResolvedValue("[[1e400,0],[0,0],[0,0],[1e400,0]]");
+    const r = await gradePy("circuit = ...", bellSpec);
+    expect(r.status).not.toBe("solved");
+    expect(r.status).toBe("error");
+  });
+
+  it("reports an undecodable payload as a grader fault, never as the learner's exception", async () => {
+    mockRunSerialized.mockResolvedValue("[[NaN, 0.0],[0.0,0.0]]"); // not valid JSON
+    const r = await gradePy("circuit = ...", bellSpec);
+    expect(r.status).toBe("error");
+    expect(r.message).not.toMatch(/Your code raised:/);
+    expect(r.message).not.toMatch(/Unexpected token/);
+    expect(r.message).toMatch(/couldn't read your circuit's state vector/i);
+  });
+
   it("rejects a learner state that exceeds the in-browser qubit cap", async () => {
     // 2**5 amplitudes -> 5 qubits, beyond MAX_QUBITS (4): bounded before a 2**n
     // reference allocation.
@@ -106,6 +158,48 @@ describe("gradePy — verdicts", () => {
     const r = await gradePy("circuit = ...", bellSpec);
     expect(r.status).toBe("error");
     expect(r.message).toMatch(/beyond the .* limit/i);
+  });
+});
+
+// Reference-target validation used to be a byte-identical copy in each grader,
+// and both prior fixes to it (the hasTheta guard, the MAX_QUBITS cap) had to be
+// applied twice. Each tier asserted its own copy in its own suite, so neither
+// suite would have failed if one tier lost a guard. These cases pin the two
+// tiers to ONE answer, which is the property the shared resolveTarget buys.
+describe("reference-target validation is identical across both tiers", () => {
+  const specWith = (target: string, qubits?: number): ChallengeSpec =>
+    parseChallenge(
+      JSON.stringify({ id: "x-1", prompt: "p", qubits, target: { program: target } })
+    ).spec!;
+
+  it.each([
+    ["a malformed target", "FOO 0"],
+    ["a slider-bound theta target", "RY 0 theta"],
+  ])("agrees on %s — same status and the same learner-facing message", async (_n, target) => {
+    const spec = { ...specWith(target), tier: "py" as const };
+    mockRunSerialized.mockResolvedValue(BELL);
+
+    const py = await gradePy("circuit = ...", spec);
+    const ts = gradeTs("H 0\nCNOT 0 1", { ...spec, tier: "ts" });
+
+    expect(py.status).toBe("error");
+    expect(ts.status).toBe("error");
+    expect(py.message).toBe(ts.message);
+  });
+
+  // The ONE thing the two tiers deliberately do NOT share is where the grading
+  // WIDTH comes from, which is why resolveTarget takes it as a parameter:
+  // gradeTs folds in the authored spec.qubits, gradePy uses the width the
+  // learner's Python actually produced (spec.qubits is not a bound on what
+  // Pyodide returns). A `qubits: 30` typo is therefore caught for BOTH tiers at
+  // the authoring gate — rep-schema runs gradeTs over the author's own target —
+  // and gradePy still caps on the learner's real width (see the case above).
+  it("derives the grading width per tier: authored qubits for ts, the learner's state for py", async () => {
+    const spec = { ...specWith("H 0", 30), tier: "py" as const };
+    mockRunSerialized.mockResolvedValue(BELL); // 4 amplitudes -> 2 qubits
+
+    expect(gradeTs("H 0", { ...spec, tier: "ts" }).message).toMatch(/beyond the .* limit/i);
+    expect((await gradePy("circuit = ...", spec)).status).toBe("wrong");
   });
 });
 
@@ -167,5 +261,34 @@ describe("gradePy — namespace isolation (grading integrity)", () => {
     expect(program).toContain("__grader_real=__grader_np.real");
     expect(program).toContain("__grader_imag=__grader_np.imag");
     expect(program).toContain("__grader_as_float=float");
+    // The finiteness check is captured the same way, so a learner cannot shadow
+    // math.isfinite to smuggle a nan state past the guard.
+    expect(program).toContain("__grader_isfinite=__grader_math.isfinite");
+  });
+
+  it("can never emit invalid JSON: non-finite is a typed sentinel, and allow_nan is off", async () => {
+    mockRunSerialized.mockResolvedValue(BELL);
+    await gradePy("circuit = ...", bellSpec);
+    const program = lastProgram();
+    // The backstop: default json.dumps writes a bare `NaN` token, which is not
+    // JSON at all — the client's JSON.parse threw and the failure was reported
+    // as the learner's own exception.
+    expect(program).toContain("allow_nan=False");
+    expect(program).toContain("__grader_error");
+  });
+});
+
+describe("gradePy — lifecycle failures are not the learner's exception", () => {
+  it("shows a worker-crash message verbatim, never prefixed with 'Your code raised:'", async () => {
+    // A dead/crashed worker rejects with PythonRuntimeError. Prefixing it as a
+    // learner exception blames them for an environment failure they cannot act
+    // on -- the same class of misattribution as the JSON-decode bug.
+    mockRunSerialized.mockRejectedValueOnce(
+      new PythonRuntimeError("The Python runtime crashed. Run again to restart it.")
+    );
+    const result = await gradePy("circuit = ...", bellSpec);
+    expect(result.status).toBe("error");
+    expect(result.message).toBe("The Python runtime crashed. Run again to restart it.");
+    expect(result.message).not.toMatch(/Your code raised/);
   });
 });

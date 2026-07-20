@@ -4,20 +4,14 @@
 import "@testing-library/jest-dom";
 import React from "react";
 
-// markdown-renderer.tsx imports react-markdown + the remark/rehype plugins at
-// module load (ESM-only); the repo's jest runs in CommonJS, so mock them to
-// avoid an import error. We do NOT use ReactMarkdown here — we exercise the REAL
-// fence-routing branch in makeComponents().pre() directly and assert the routing
-// DECISION (which element each fence maps to), independent of the now-lazy widget
-// chunks. The widgets' own UI is covered by their dedicated tests; the registry
-// that maps a token to a component is covered in widget-fence.test.tsx.
-jest.mock("react-markdown", () => ({ __esModule: true, default: () => null }));
-jest.mock("remark-gfm", () => () => {});
-jest.mock("remark-math", () => () => {});
-jest.mock("rehype-katex", () => () => {});
-jest.mock("rehype-highlight", () => () => {});
-
-import { makeComponents } from "@/components/markdown-renderer";
+// We exercise the REAL fence-routing branch in makeComponents().pre() directly
+// and assert the routing DECISION (which element each fence maps to),
+// independent of the now-lazy widget chunks. The widgets' own UI is covered by
+// their dedicated tests; the registry that maps a token to a component is
+// covered in widget-fence.test.tsx. makeComponents lives in
+// markdown-components.tsx, apart from the ESM-only react-markdown/remark/rehype
+// pipeline, so no jest.mock preamble is needed to load it under ts-jest's CJS.
+import { makeComponents } from "@/components/markdown-components";
 import { WidgetFence } from "@/components/quantum/widget-fence";
 import { CodeBlock } from "@/components/code-block";
 import { WIDGET_LANGS } from "@/components/quantum/widget-langs";

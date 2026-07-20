@@ -4,13 +4,35 @@
 // (challenge.tsx) and the store (review-store.ts) supply the effects.
 
 import type { Rating } from "./review-schedule";
+import type { CardKind } from "./review-store";
 
 /**
- * Review-card id for a challenge, namespaced under `challenge:` so it can never
- * collide with an authored ```qcard id sharing the same `qc:card:` key space.
+ * Review-card id for a graded Rep: `<kind>:<id>`, so a Rep can never collide
+ * with an authored ```qcard — or with another kind's Rep — sharing the same
+ * `qc:card:` key space.
+ *
+ * Typed against `CardKind`, deliberately mirroring `solvedFlagKey(kind, id)` in
+ * use-persistent-solved.ts (which builds the sibling `qc:<kind>:<id>` flag key
+ * from the same vocabulary). The six one-line per-kind builders this replaces
+ * took and returned bare `string`, so nothing tied the prefix vocabulary to the
+ * union: a seventh kind could be added to CardKind, KIND_LABELS and LIVE_WIDGETS
+ * while its id builder silently used a prefix that matched nothing.
+ *
+ * Each widget passes the SAME literal it already passes to usePersistentSolved
+ * on the adjacent line, so the two key spaces are provably built from one
+ * typed vocabulary.
+ */
+export function cardIdFor(kind: CardKind, id: string): string {
+  return `${kind}:${id}`;
+}
+
+/**
+ * `cardIdFor("challenge", id)`. Retained as a named alias only because
+ * challenge.tsx is owned by a concurrent workstream; migrate it to `cardIdFor`
+ * and delete this.
  */
 export function challengeCardId(challengeId: string): string {
-  return `challenge:${challengeId}`;
+  return cardIdFor("challenge", challengeId);
 }
 
 /**
@@ -41,14 +63,6 @@ export function challengeReviewAnswer(program: string): string {
 }
 
 /**
- * Review-card id for a predict-then-run Rep, namespaced under `predict:` so it
- * can never collide with a `challenge:` card (or an authored qcard) of the same id.
- */
-export function predictCardId(id: string): string {
-  return `predict:${id}`;
-}
-
-/**
  * Map a predict-then-run commit to a rating. Unlike a challenge, a prediction is
  * one irreversible shot — once the outcome is revealed a retry is trivially
  * correct — so ratingForSolve's retry model does not apply: a correct prediction
@@ -58,44 +72,12 @@ export function ratingForPrediction(correct: boolean): Rating {
   return correct ? "good" : "again";
 }
 
-/**
- * Review-card id for a Bloch-target Rep, namespaced under `bloch:` so it can
- * never collide with a `challenge:`/`predict:` card (or an authored qcard) of
- * the same id. A Bloch-target solve is retryable like a challenge — the learner
- * adjusts and Checks again — so it maps to a rating through the same
- * ratingForSolve (clean first Check "good", any miss first "hard").
- */
-export function blochCardId(id: string): string {
-  return `bloch:${id}`;
-}
-
-/**
- * Review-card id for a cost-estimate Rep, namespaced under `cost:`. Like a
- * prediction, a cost estimate is one irreversible commit — once the breakdown
- * is revealed a retry is trivially correct — so it rates through
- * ratingForPrediction (correct "good", miss an "again" lapse).
- */
-export function costCardId(id: string): string {
-  return `cost:${id}`;
-}
-
-/**
- * Review-card id for a debug-a-circuit Rep, namespaced under `debug:`. A debug
- * solve is retryable like a challenge — the learner edits the broken circuit
- * and Checks again — so it rates through the same ratingForSolve (clean first
- * Check "good", any genuine miss first "hard"). Its recall answer reuses
- * challengeReviewAnswer: for a debug Rep too, "the answer" is a correct circuit.
- */
-export function debugCardId(id: string): string {
-  return `debug:${id}`;
-}
-
-/**
- * Review-card id for an expectation-value Rep, namespaced under `expect:`.
- * Like a prediction, committing to a value is one irreversible shot — once
- * the reveal shows the single-shot story a retry is trivially correct — so it
- * rates through ratingForPrediction (correct "good", miss an "again" lapse).
- */
-export function expectCardId(id: string): string {
-  return `expect:${id}`;
-}
+// Which rating adapter each remaining kind uses, recorded once instead of in
+// six near-identical builder docstrings:
+//   bloch  — retryable like a challenge (adjust and Check again) -> ratingForSolve
+//   debug  — retryable like a challenge (edit the broken circuit) -> ratingForSolve,
+//            and its recall answer reuses challengeReviewAnswer, since for a debug
+//            Rep too "the answer" is a correct circuit
+//   cost   — one irreversible commit; once the breakdown is revealed a retry is
+//            trivially correct -> ratingForPrediction
+//   expect — one irreversible commit, for the same reason -> ratingForPrediction

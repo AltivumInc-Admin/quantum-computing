@@ -93,6 +93,22 @@ describe("NotebookLink", () => {
     const chip = screen.getByText("Run in browser");
     expect(chip).not.toHaveAttribute("aria-disabled");
     expect(chip.tagName).toBe("SPAN");
-    expect(chip).toHaveTextContent(/unavailable, requires AWS Braket hardware access/);
+    expect(chip).toHaveTextContent(/unavailable in the browser runtime/);
+  });
+
+  it("gives a reason that is true for every non-runnable notebook", () => {
+    // 11 of the 13 non-runnable notebooks are blocked by AWS hardware imports,
+    // but 04-quantum-ml/04-pennylane-braket and 05-quantum-chemistry/04-vqe-lih
+    // touch no AWS at all — PennyLane simply cannot install under Pyodide. The
+    // chip has no per-notebook reason plumbed in, so its one sentence must not
+    // claim a cause it cannot know.
+    render(<NotebookLink filename="04-vqe-lih.ipynb" sectionDir="05-quantum-chemistry" />);
+    const chip = screen.getByText("Run in browser");
+    expect(chip).not.toHaveTextContent(/AWS/i);
+    expect(chip).not.toHaveTextContent(/Braket/i);
+    expect(chip).not.toHaveTextContent(/hardware/i);
+    expect(chip.getAttribute("title")).not.toMatch(/AWS|Braket|hardware/i);
+    // …and it must still SAY something actionable, not just go quiet.
+    expect(chip).toHaveTextContent(/run it locally/i);
   });
 });
