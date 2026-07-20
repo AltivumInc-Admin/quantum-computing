@@ -186,6 +186,27 @@ test("E: a question is sliced to the SHARED cap the client's textarea enforces",
   assert.equal(MAX_QUESTION_CHARS, 2000);
 });
 
+
+/**
+ * A stall that outlives the deadline and then settles harmlessly.
+ *
+ * Two traps here, both of which made these tests pass on Node 26 and fail on
+ * CI's Node 20:
+ *   1. `new Promise(() => {})` never settles, so the runner reports "Promise
+ *      resolution is still pending but the event loop has already resolved".
+ *   2. An UNREF'd timer is worse: the handler's own deadline guard also unrefs,
+ *      so with both unref'd nothing holds the loop open, Node 20 drains it, and
+ *      every pending subtest is cancelled (reported as `not ok` with `fail 0`).
+ * So this timer is deliberately REF'd — it keeps the loop alive across the
+ * ~20ms deadline — and it RESOLVES rather than rejects, so the discarded
+ * race-loser can never surface as an unhandled rejection.
+ */
+function stalls(ms = 200) {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve({ done: true, value: undefined }), ms);
+  });
+}
+
 test("F: a stalled model stream hits the deadline and emits the sentinel", async () => {
   // The one failure the in-band sentinel cannot otherwise cover: nothing throws,
   // the stream simply never yields. Before the deadline this ran until the Lambda
@@ -196,7 +217,7 @@ test("F: a stalled model stream hits the deadline and emits the sentinel", async
     send: async () => ({
       stream: {
         [Symbol.asyncIterator]: () => ({
-          next: () => new Promise(() => {}), // never settles
+          next: () => stalls(), // outlives the 20ms deadline, then settles
         }),
       },
     }),
@@ -210,7 +231,7 @@ test("F: a stalled model stream hits the deadline and emits the sentinel", async
 });
 
 test("F2: a send that never returns headers also hits the deadline", async () => {
-  const client = { send: () => new Promise(() => {}) };
+  const client = { send: () => stalls() };
   const stream = makeStream();
   await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 20 })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
