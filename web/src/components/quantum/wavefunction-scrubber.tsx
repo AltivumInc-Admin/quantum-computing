@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import { simulateSteps, probabilities, zeroState } from "./math";
+import BlochSphere3D, { SPHERE_PX } from "./bloch-sphere-3d-lazy";
+import { simulateSteps, probabilities, zeroState, basisLabel } from "./math";
 import { parseProgram, opsFor } from "./qsim-dsl";
 import { BlochDial, BlochVectorSR } from "./bloch-dial";
-import { GateChips, LabeledSlider, ProbBars, StateReadout, WidgetCard } from "./widget-ui";
+import {
+  ErrorCard,
+  GateChips,
+  LabeledSlider,
+  LiveStatus,
+  ProbBars,
+  StateReadout,
+  WidgetCard,
+} from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
-import { formatRadians } from "./format";
+import { formatRadians, percentSR } from "./format";
 
 /**
  * Scrubbable, gate-by-gate state-evolution player rendered from a ```qscrub
@@ -16,14 +24,6 @@ import { formatRadians } from "./format";
  * The single-qubit Bloch readout upgrades to a draggable 3D sphere when motion
  * is allowed and WebGL is present, falling back to the 2D BlochDial otherwise.
  */
-
-// three.js is heavy; load it lazily and never on the server (static export).
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
-  ssr: false,
-  // Reserve the sphere's exact footprint while the lazy three.js chunk loads,
-  // so the first post-hydration dial->3D flip can't collapse the layout.
-  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
-});
 
 const STEP_MS = 750;
 
@@ -76,17 +76,18 @@ export function WavefunctionScrubber({ source }: { source: string }) {
 
   if (program.error) {
     return (
-      <div className="not-prose my-6 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          qsim parse error: {program.error}
-        </p>
-      </div>
+      <ErrorCard label="qsim parse" message={program.error} />
     );
   }
 
   const current = frames[safeStep] ?? zeroState(program.n);
   const probs = probabilities(current);
   const activeGate = safeStep - 1; // gate that produced the current frame (-1 = initial)
+  // One concise announcement per settled step. Suppressed during playback so
+  // auto-advance does not queue a readout every STEP_MS.
+  let top = 0;
+  for (let i = 1; i < probs.length; i++) if (probs[i] > probs[top]) top = i;
+  const summary = `Step ${safeStep} of ${lastStep}. Most likely outcome ${basisLabel(top, program.n)} at ${percentSR(probs[top] * 100)}.`;
   const show3D = !reduced && webgl && program.n === 1;
 
   return (
@@ -98,8 +99,14 @@ export function WavefunctionScrubber({ source }: { source: string }) {
         </div>
       }
     >
+      <LiveStatus>{isPlaying ? "" : summary}</LiveStatus>
+
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
-        <div className="min-w-0 flex-1" role="status" aria-live={isPlaying ? "off" : "polite"}>
+        {/* Deliberately NOT a live region: StateReadout's two CopyButtons each
+            own a role="status" span, so wrapping this column nested live
+            regions inside one another. The concise LiveStatus above carries the
+            announcement instead, matching circuit-lab and bloch-builder. */}
+        <div className="min-w-0 flex-1">
           <ProbBars probs={probs} n={program.n} />
           <StateReadout state={current} n={program.n} />
         </div>
@@ -113,7 +120,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
               <BlochVectorSR state={current} />
             </div>
           ) : (
-            <BlochDial state={current} size={180} />
+            <BlochDial state={current} size={SPHERE_PX} />
           ))}
       </div>
 
@@ -137,8 +144,12 @@ export function WavefunctionScrubber({ source }: { source: string }) {
             <button
               type="button"
               onClick={togglePlay}
+              // Action-named label swap ONLY — the media-transport convention.
+              // Pairing it with aria-pressed announced "Pause animation, toggle
+              // button, pressed" while playing, which reads as "paused is
+              // engaged": the exact inverse of the state. The label plus the
+              // icon already convey it unambiguously.
               aria-label={isPlaying ? "Pause animation" : "Play animation"}
-              aria-pressed={isPlaying}
               className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-accent/10 text-accent-dark hover:bg-accent/20 dark:text-accent-light interactive focus-ring"
             >
               <PlayIcon playing={isPlaying} />
@@ -159,7 +170,7 @@ export function WavefunctionScrubber({ source }: { source: string }) {
           ariaValueText={`${theta.toFixed(2)} radians`}
           display={formatRadians(theta)}
           rowClassName="flex items-center gap-3 border-t border-(--bd) px-4 py-3"
-          labelClassName="font-mono text-sm text-(--mut)"
+          labelClassName="font-mono text-sm text-caption"
         />
       )}
     </WidgetCard>

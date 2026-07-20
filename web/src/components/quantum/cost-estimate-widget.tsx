@@ -13,7 +13,17 @@ import { gradeCardIfDue, getCardState, setCardContent } from "@/lib/review-store
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { PRICING, costLabel } from "./cost";
 import { usePersistentSolved } from "./use-persistent-solved";
-import { Chip, ErrorCard, WidgetCard, primaryActionClass } from "./widget-ui";
+import {
+  CheckIcon,
+  Chip,
+  ErrorCard,
+  EyebrowLabel,
+  OPTION_BASE,
+  OPTION_TONE,
+  primaryActionClass,
+  VerdictBadge,
+  WidgetCard,
+} from "./widget-ui";
 import { formatFixed } from "./format";
 
 /**
@@ -34,23 +44,8 @@ import { formatFixed } from "./format";
  *     "tasks"?: 1, "hint"?: "..." }
  */
 
-function CheckIcon() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-const OPTION_BASE =
-  "rounded-control border px-3 py-1.5 font-mono text-sm tabular-nums interactive focus-ring disabled:cursor-default";
-const TONE = {
-  neutral:
-    "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
-  selected: "border-accent/50 bg-accent/15 text-accent-dark dark:text-accent-light",
-  correct: "border-accent/60 bg-accent/15 text-accent-dark dark:text-accent-light",
-  wrong: "border-warm/60 bg-warm/10 text-warm-dark dark:text-warm-light",
-};
+// Sizing only — the recipe and the tones come from widget-ui.
+const OPTION_SIZE = "px-3 py-1.5 tabular-nums";
 
 // Two significant figures below 1%, one decimal above — a fixed one-decimal
 // display would round 1,000,000 shots' 0.05% up to "0.1%", overstating the
@@ -133,10 +128,10 @@ export function CostEstimateWidget({
   };
 
   const optionTone = (i: number): string => {
-    if (!committed) return selected === i ? TONE.selected : TONE.neutral;
-    if (i === truth.correctIndex) return TONE.correct;
-    if (selected === i) return TONE.wrong;
-    return TONE.neutral;
+    if (!committed) return selected === i ? OPTION_TONE.selected : OPTION_TONE.neutral;
+    if (i === truth.correctIndex) return OPTION_TONE.correct;
+    if (selected === i) return OPTION_TONE.wrong;
+    return OPTION_TONE.neutral;
   };
 
   return (
@@ -144,16 +139,9 @@ export function CostEstimateWidget({
       eyebrow="Cost estimate"
       headerRight={
         committed ? (
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 text-xs font-semibold ${
-              correct
-                ? "bg-accent/10 text-accent-dark dark:text-accent-light"
-                : "bg-warm/10 text-warm-dark dark:text-warm-light"
-            }`}
-          >
-            {correct && <CheckIcon />}
+          <VerdictBadge tone={correct ? "accent" : "warm"}>
             {correct ? "Correct" : "Not quite"}
-          </span>
+          </VerdictBadge>
         ) : undefined
       }
     >
@@ -182,7 +170,7 @@ export function CostEstimateWidget({
                 aria-pressed={selected === i}
                 onClick={() => !committed && setSelected(i)}
                 disabled={committed}
-                className={`${OPTION_BASE} ${optionTone(i)}`}
+                className={`${OPTION_BASE} ${OPTION_SIZE} ${optionTone(i)}`}
               >
                 {fmtUsd(v)}
               </button>
@@ -207,9 +195,9 @@ export function CostEstimateWidget({
               aria-label="Itemized cost"
               className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
             >
-              <span className="mb-2 block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
+              <EyebrowLabel strong className="mb-2 block">
                 Itemized
-              </span>
+              </EyebrowLabel>
               <dl className="space-y-1 font-mono text-sm tabular-nums text-(--mut)">
                 <div className="flex justify-between gap-4">
                   <dt className="text-caption">

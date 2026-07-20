@@ -57,6 +57,35 @@ describe("JwExplorer", () => {
     expect(container).toHaveTextContent(/q0 through q1/);
   });
 
+  // The convention-critical rendering: a_p^dagger = (X - iY)/2 and
+  // a_p = (X + iY)/2. Derived rather than assumed — with |0> empty and |1>
+  // occupied, (X - iY)/2 = [[0,0],[1,0]] = |1><0|, which is creation; flip the
+  // glyph and the widget teaches that a^dagger is the annihilator, exactly the
+  // miseducation it exists to prevent. jw.test.ts pins ySign at the model layer;
+  // this pins the last link, the view's mapping of ySign onto the glyph.
+  it("renders a MINUS in the creation operator's (X - iY)/2", () => {
+    const { container } = render(
+      <JwExplorer source={JSON.stringify({ modes: 4, electrons: 2, mode: 0, dagger: true })} />
+    );
+    expect(container).toHaveTextContent(/\(X\s*[−-]\s*iY\)\s*\/\s*2/);
+    expect(container).not.toHaveTextContent(/\(X\s*\+\s*iY\)/);
+  });
+
+  it("renders a PLUS in the annihilation operator's (X + iY)/2", () => {
+    const { container } = render(
+      <JwExplorer source={JSON.stringify({ modes: 4, electrons: 2, mode: 0, dagger: false })} />
+    );
+    expect(container).toHaveTextContent(/\(X\s*\+\s*iY\)\s*\/\s*2/);
+    expect(container).not.toHaveTextContent(/\(X\s*[−-]\s*iY\)/);
+  });
+
+  it("names the creation/annihilation toggle pair as a group", () => {
+    render(<JwExplorer source="" />);
+    expect(
+      screen.getByRole("group", { name: /operator type/i })
+    ).toBeInTheDocument();
+  });
+
   it("announces the operator when toggled to annihilation", () => {
     render(<JwExplorer source="" />);
     fireEvent.click(screen.getByRole("button", { name: /annihilation/i }));

@@ -14,7 +14,18 @@ describe("ShotsSampler", () => {
     render(<ShotsSampler source={"qubits 1\nH 0"} />);
     fireEvent.click(screen.getByRole("button", { name: "1000 shots" }));
     fireEvent.click(screen.getByRole("button", { name: /run/i }));
-    expect(screen.getByText("1000 shots")).toBeInTheDocument();
+    expect(screen.getByText("1,000 shots")).toBeInTheDocument();
+  });
+
+  it("groups the count identically before Run, in the chip, and in the announcement", () => {
+    render(<ShotsSampler source={"qubits 1\nH 0"} />);
+    fireEvent.click(screen.getByRole("button", { name: "10000 shots" }));
+    // Pending hint.
+    expect(screen.getByText(/press run to sample 10,000 shots/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /run/i }));
+    // Header chip and screen-reader line, same grouping.
+    expect(screen.getByText("10,000 shots")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/sampled 10,000 shots/i);
   });
   it("renders a parse-error card for a bad circuit", () => {
     render(<ShotsSampler source={"NOTAGATE 0"} />);
@@ -33,7 +44,15 @@ describe("ShotsSampler", () => {
     fireEvent.click(screen.getByRole("button", { name: "1000 shots" }));
     fireEvent.click(screen.getByRole("button", { name: /run/i }));
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent(/sampled 1000 shots/i);
+    expect(status).toHaveTextContent(/sampled 1,000 shots/i);
     expect(status).toHaveTextContent(/empirical/i);
+  });
+
+  it("rejects a slider-bound theta instead of silently sampling at theta=0", () => {
+    // The DSL parses `theta` in any fence, but this widget renders no slider,
+    // so it would have shown a flat P(0)=100% under the "Exact probability"
+    // legend with a chip advertising "RY(θ) q0".
+    render(<ShotsSampler source={"qubits 1\nRY 0 theta"} />);
+    expect(screen.getByText(/slider-bound theta is not supported/i)).toBeInTheDocument();
   });
 });

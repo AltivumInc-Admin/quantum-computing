@@ -57,6 +57,35 @@ export function readNumber(
 }
 
 /**
+ * Read a numeric field that must fall inside a closed range: missing -> the
+ * fallback; present-but-not-finite or out-of-range -> a typed error. The
+ * erroring twin of `readNumber` (which clamps instead), for the fence bodies
+ * where silently moving an author's value would be worse than telling them.
+ * `unit` is appended to the range message; pass it lowercase ("angstrom"), the
+ * spelling format.ts's angstromSR/hartreeSR use and hamiltonian-explorer's
+ * suite pins.
+ */
+export function readNumberInRange(
+  obj: Record<string, unknown>,
+  key: string,
+  fallback: number,
+  lo: number,
+  hi: number,
+  unit?: string
+): { ok: true; value: number } | { ok: false; error: string } {
+  const raw = obj[key];
+  if (raw === undefined) return { ok: true, value: fallback };
+  const suffix = unit ? ` (${unit})` : "";
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return { ok: false, error: `"${key}" must be a finite number${suffix}` };
+  }
+  if (raw < lo || raw > hi) {
+    return { ok: false, error: `"${key}" must be within [${lo}, ${hi}]${unit ? ` ${unit}` : ""}` };
+  }
+  return { ok: true, value: raw };
+}
+
+/**
  * Parse a whitespace-DSL token as a non-negative integer index. Unlike
  * parseInt, this rejects signs, decimals, and trailing garbage: parseInt("-1")
  * is -1 and parseInt("0abc") is 0, both of which would otherwise build a wrong

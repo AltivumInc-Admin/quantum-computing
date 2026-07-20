@@ -72,20 +72,21 @@ export function zeroState(n: number): Complex[] {
   return state;
 }
 
-/** Apply a 2x2 gate to `qubit` (big-endian: qubit 0 is the MSB). */
+/**
+ * Apply a 2x2 gate to `qubit` (big-endian: qubit 0 is the MSB), returning a new
+ * state. Delegates to the in-place kernel over a fresh copy rather than
+ * repeating the butterfly loop: the two loops were byte-identical apart from
+ * the write target, so a fix to the index math in one could silently miss the
+ * other. The delegation is exact because each (i, j) pair is fully read before
+ * either index is written (see applyGate1InPlace).
+ */
 export function applyGate1(state: Complex[], gate: Gate2, qubit: number, n: number): Complex[] {
-  const out = state.map((c) => [c[0], c[1]] as Complex);
-  const stride = 1 << (n - 1 - qubit);
-  for (let i = 0; i < state.length; i++) {
-    if ((i & stride) === 0) {
-      const j = i | stride;
-      const a = state[i];
-      const b = state[j];
-      out[i] = cAdd(cMul(gate[0][0], a), cMul(gate[0][1], b));
-      out[j] = cAdd(cMul(gate[1][0], a), cMul(gate[1][1], b));
-    }
-  }
-  return out;
+  return applyGate1InPlace(
+    state.map((c) => [c[0], c[1]] as Complex),
+    gate,
+    qubit,
+    n,
+  );
 }
 
 /**

@@ -14,19 +14,37 @@ import { formatPercent, percentSR } from "./format";
  * ideal vs noisy probability bars plus a fidelity readout.
  */
 
-const CHANNELS: { value: ChannelName; label: string }[] = [
-  { value: "depolarizing", label: "Depolarizing" },
-  { value: "amplitude-damping", label: "Amplitude damping" },
-  { value: "bit-flip", label: "Bit flip" },
-];
+/**
+ * Everything that varies per noise channel, in ONE table: the select label, the
+ * slider label, and the slider's upper bound. These were previously three
+ * parallel channel-keyed mappings (a {value,label} array, an if/if/return
+ * label function, and a `p === "depolarizing" ? 0.75 : 1` ternary written out
+ * twice), so adding a channel meant four edits and missing the second ternary
+ * silently desynced the render-time clamp from the switch-time one.
+ *
+ * `param` is channel-specific because the slider drives a different physical
+ * quantity each time (Pauli-error probability, amplitude-damping rate, flip
+ * probability) — not a generic "error rate". `max` is teaching-meaningful:
+ * depolarizing tops out at p = 0.75, where the Kraus weights (sqrt(p/3) on each
+ * of X, Y, Z) make the state maximally mixed; past that the channel would start
+ * un-mixing, which is not a thing hardware does.
+ */
+const CHANNEL_INFO: Record<ChannelName, { label: string; param: string; max: number }> = {
+  depolarizing: { label: "Depolarizing", param: "Depolarizing p", max: 0.75 },
+  "amplitude-damping": { label: "Amplitude damping", param: "Damping γ", max: 1 },
+  "bit-flip": { label: "Bit flip", param: "Flip probability", max: 1 },
+};
 
-// The slider parameter is a different physical quantity per channel (Pauli-error
-// probability, amplitude-damping rate, flip probability), so the label is
-// channel-aware rather than a generic "Error rate".
-function parameterLabel(channel: ChannelName): string {
-  if (channel === "depolarizing") return "Depolarizing p";
-  if (channel === "amplitude-damping") return "Damping γ";
-  return "Flip probability";
+// Keyed by the ChannelName union, so adding a channel to noise.ts fails
+// typecheck here until its label/param/max are declared. Object.keys preserves
+// declaration order, so the select renders unchanged.
+const CHANNELS = (Object.keys(CHANNEL_INFO) as ChannelName[]).map((value) => ({
+  value,
+  ...CHANNEL_INFO[value],
+}));
+
+function channelInfo(channel: ChannelName) {
+  return CHANNEL_INFO[channel];
 }
 
 export function NoiseVisualizer({ source }: { source: string }) {
@@ -38,7 +56,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
   const channelId = useId();
 
   // Slider max depends on channel; clamp p when switching from a higher-max channel.
-  const pMax = channel === "depolarizing" ? 0.75 : 1;
+  const { max: pMax, param: paramLabel } = channelInfo(channel);
   const pClamped = Math.min(p, pMax);
   // Keep the thumb + label on the immediate value, but defer the heavy
   // density-matrix Kraus simulation so a fast drag runs at most one sim per
@@ -89,7 +107,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
 
   function handleChannelChange(next: ChannelName) {
     setChannel(next);
-    const nextMax = next === "depolarizing" ? 0.75 : 1;
+    const nextMax = channelInfo(next).max;
     setP((prev) => Math.min(prev, nextMax));
   }
 
@@ -165,7 +183,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
         <div className="flex items-center gap-3">
           <label
             htmlFor={channelId}
-            className="shrink-0 text-xs text-(--mut)"
+            className="shrink-0 text-xs text-caption"
           >
             Channel
           </label>
@@ -185,16 +203,16 @@ export function NoiseVisualizer({ source }: { source: string }) {
 
         {/* Error rate slider */}
         <LabeledSlider
-          label={parameterLabel(channel)}
+          label={paramLabel}
           value={pClamped}
           min={0}
           max={pMax}
           step={0.01}
           onChange={setP}
-          ariaLabel={parameterLabel(channel)}
+          ariaLabel={paramLabel}
           ariaValueText={formatPercent(pClamped * 100, 0)}
           display={formatPercent(pClamped * 100, 0)}
-          labelClassName="shrink-0 text-xs text-(--mut)"
+          labelClassName="shrink-0 text-xs text-caption"
           valueWidth="w-10"
         />
       </div>

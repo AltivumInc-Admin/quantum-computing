@@ -3,6 +3,10 @@
 import { useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { runPython, type RunResult } from "@/lib/pyodide-run";
+import {
+  cardShell,
+  EyebrowLabel,
+} from "./widget-ui";
 
 /**
  * A live Python sandbox rendered from a ```runnable fenced block. The learner
@@ -45,7 +49,7 @@ export function RunnableEditor({ source }: { source: string }) {
       : "busy";
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+    <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       {/* Live-cell accent ribbon — marks this as runnable, not a static block. */}
       <div
         aria-hidden="true"
@@ -54,9 +58,9 @@ export function RunnableEditor({ source }: { source: string }) {
 
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-2.5">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
+          <EyebrowLabel strong>
             Run it yourself
-          </span>
+          </EyebrowLabel>
           <span className="rounded-chip border border-(--bd) bg-(--field) px-1.5 py-0.5 font-mono text-[10px] text-caption">
             python
           </span>

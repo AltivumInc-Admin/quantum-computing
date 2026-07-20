@@ -3,9 +3,8 @@
 import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard } from "./widget-ui";
 import { wastedNoCheckpoint, wastedWithCheckpoint } from "./hybrid";
-import { H2 as H } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
-import { clampInt, parseJsonObject } from "./parse-utils";
+import { clamp, clampInt, parseJsonObject, readNumber } from "./parse-utils";
 
 /**
  * Inline checkpointing explorer rendered from a ```qcheckpoint fenced block in
@@ -45,24 +44,22 @@ function parseSource(source: string): ParseResult {
   if (!base.ok) return { ok: false, error: base.error };
   if (base.obj) {
     const obj = base.obj;
-    if (obj["iterations"] !== undefined) {
-      if (typeof obj["iterations"] !== "number") {
-        return { ok: false, error: '"iterations" must be a number' };
-      }
-      iterations = obj["iterations"];
-    }
-    if (obj["failAt"] !== undefined) {
-      if (typeof obj["failAt"] !== "number") {
-        return { ok: false, error: '"failAt" must be a number' };
-      }
-      failAt = obj["failAt"];
-    }
-    if (obj["every"] !== undefined) {
-      if (typeof obj["every"] !== "number") {
-        return { ok: false, error: '"every" must be a number' };
-      }
-      every = obj["every"];
-    }
+    // readNumber (not a hand-rolled typeof check) so this widget rejects the
+    // same malformed fence bodies its F11 siblings do. A bare `typeof x ===
+    // "number"` accepts Infinity — which JSON.parse produces for a literal like
+    // 1e999 — and clampInt then silently coerced it to a plausible 120, so the
+    // same bad config errored loudly in qjob and rendered a wrong-but-credible
+    // timeline here. Bounds are the static outer ones; the failAt/every bounds
+    // that DEPEND on the resolved iteration count are still applied below.
+    const it = readNumber(obj, "iterations", DEFAULTS.iterations, 2, 120);
+    if (!it.ok) return { ok: false, error: it.error };
+    const fa = readNumber(obj, "failAt", DEFAULTS.failAt, 0, 120);
+    if (!fa.ok) return { ok: false, error: fa.error };
+    const ev = readNumber(obj, "every", DEFAULTS.every, 1, 120);
+    if (!ev.ok) return { ok: false, error: ev.error };
+    iterations = it.value;
+    failAt = fa.value;
+    every = ev.value;
   }
 
   // Clamp iterations first, then derive the dependent bounds from it.
@@ -189,8 +186,8 @@ export function CheckpointExplorer({ source }: { source: string }) {
   const reduced = usePrefersReducedMotion();
 
   // Clamp interactive state to the parsed iteration count (source may shrink it).
-  const clampedFail = Math.max(0, Math.min(failAt, iterations));
-  const clampedEvery = Math.max(1, Math.min(every, iterations));
+  const clampedFail = clamp(failAt, 0, iterations);
+  const clampedEvery = clamp(every, 1, iterations);
 
   const metrics = useMemo(() => {
     const wastedNo = wastedNoCheckpoint(clampedFail);
@@ -205,19 +202,18 @@ export function CheckpointExplorer({ source }: { source: string }) {
   }
 
   const { wastedNo, wastedWith, lastCheckpoint, saving } = metrics;
-  const bondLengths = H.points.length;
 
   return (
     <WidgetCard
       eyebrow="Checkpointing"
       eyebrowAs="h3"
       eyebrowId={headingId}
-      chips={
-        <>
-          <Chip>{iterations} iters</Chip>
-          <Chip>{bondLengths} bond lengths</Chip>
-        </>
-      }
+      // No bond-length chip: the H2 fixture's 49 points are fixed while
+      // `iterations` is fence-configurable (2..120), so the two numbers have no
+      // mapping — and bondLengths never enters the checkpointing model at all
+      // (it depends only on failAt and every). Sitting beside the iteration
+      // chip it read as a driver and invited a relationship that isn't there.
+      chips={<Chip>{iterations} iters</Chip>}
     >
       <LiveStatus>
         {`Failure at iteration ${clampedFail}, checkpoint every ${clampedEvery}: ${saving.toFixed(
@@ -229,16 +225,16 @@ export function CheckpointExplorer({ source }: { source: string }) {
 
       <div className="px-4 py-4">
         <p className="text-xs leading-relaxed text-caption">
-          A long VQE sweep over the H2 curve ({bondLengths} bond lengths) runs as{" "}
-          {iterations} job iterations. When the managed instance is reclaimed at
-          the failure point, a restart redoes the shaded work.
-          save_job_checkpoint resumes from the last checkpoint instead.
+          A long VQE sweep over the H2 dissociation curve runs as {iterations}{" "}
+          job iterations. When the managed instance is reclaimed at the failure
+          point, a restart redoes the shaded work. save_job_checkpoint resumes
+          from the last checkpoint instead.
         </p>
 
         {/* Timelines */}
         <div className="mt-4 flex flex-col gap-3">
           <div>
-            <p className="mb-1 text-[11px] font-medium text-(--mut)">
+            <p className="mb-1 text-[11px] font-medium text-caption">
               No checkpoint
             </p>
             <TimelineRow
@@ -253,7 +249,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
           </div>
 
           <div>
-            <p className="mb-1 text-[11px] font-medium text-(--mut)">
+            <p className="mb-1 text-[11px] font-medium text-caption">
               Checkpoint every {clampedEvery}
             </p>
             <TimelineRow
@@ -281,7 +277,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
             ariaLabel="Iteration at which the managed instance is reclaimed"
             ariaValueText={`${clampedFail} iterations`}
             display={clampedFail}
-            labelClassName="w-28 shrink-0 font-mono text-xs text-(--mut)"
+            labelClassName="w-28 shrink-0 font-mono text-xs text-caption"
             valueWidth="w-10"
           />
 
@@ -296,7 +292,7 @@ export function CheckpointExplorer({ source }: { source: string }) {
             ariaLabel="Checkpoint interval in iterations"
             ariaValueText={`${clampedEvery} iterations`}
             display={clampedEvery}
-            labelClassName="w-28 shrink-0 font-mono text-xs text-(--mut)"
+            labelClassName="w-28 shrink-0 font-mono text-xs text-caption"
             valueWidth="w-10"
           />
         </div>

@@ -28,6 +28,17 @@ const SRC = join(__dirname, "..", "src");
 const SOLID_ACCENT_FILL = /\b(?:bg|from|via|to)-accent\b(?![-/])/;
 const WHITE_TEXT = /\btext-white\b/;
 
+// The same sub-AA pairing spelled as SVG paint utilities. `fill-accent` on a
+// node with a `fill-white` label is exactly the failure above (white on the
+// light --accent computes 3.04:1), but it escaped the class-string form twice:
+// the utilities differ, and a JSX <circle> and its sibling <text> sit on
+// different lines. So this pair is matched over a WINDOW of lines rather than
+// one line — both the QAOA graph vertices and the topology gate nodes shipped
+// with the circle and the numeral ~9 lines apart.
+const SOLID_ACCENT_PAINT = /\bfill-accent\b(?![-/])/;
+const WHITE_PAINT = /\bfill-white\b/;
+const PAINT_WINDOW = 14;
+
 function collectSourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -48,6 +59,21 @@ describe("contrast guard: no solid bg-accent + white text", () => {
       const lines = readFileSync(file, "utf8").split("\n");
       lines.forEach((line, i) => {
         if (SOLID_ACCENT_FILL.test(line) && WHITE_TEXT.test(line)) {
+          violations.push(`${file.replace(SRC, "src")}:${i + 1}  ${line.trim()}`);
+        }
+      });
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("never pairs a solid fill-accent SVG node with a fill-white label", () => {
+    const violations: string[] = [];
+    for (const file of collectSourceFiles(SRC)) {
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, i) => {
+        if (!SOLID_ACCENT_PAINT.test(line)) return;
+        const window = lines.slice(i, i + PAINT_WINDOW);
+        if (window.some((l) => WHITE_PAINT.test(l))) {
           violations.push(`${file.replace(SRC, "src")}:${i + 1}  ${line.trim()}`);
         }
       });

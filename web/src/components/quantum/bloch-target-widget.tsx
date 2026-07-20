@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import BlochSphere3D, { SPHERE_PX } from "./bloch-sphere-3d-lazy";
 import { parseBlochTarget } from "@/lib/bloch-target-schema";
 import {
   blochTargetTruth,
@@ -16,24 +16,19 @@ import { singleQubitState, blochVector, probabilities } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial, BlochVectorSR } from "./bloch-dial";
 import {
+  CheckIcon,
   Chip,
   ErrorCard,
   LabeledSlider,
+  primaryActionClass,
   ProbBars,
   StateReadout,
+  VerdictBadge,
   WidgetCard,
-  primaryActionClass,
 } from "./widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
 import { usePersistentSolved } from "./use-persistent-solved";
 import { formatFixed, formatRadians } from "./format";
-
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
-  ssr: false,
-  // Reserve the sphere's exact footprint while the lazy three.js chunk loads,
-  // so the first post-hydration dial->3D flip can't collapse the layout.
-  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
-});
 
 /**
  * A Bloch-target Rep rendered from a ```qblochtarget fenced block. The learner
@@ -51,14 +46,6 @@ const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
  *     "toleranceDeg"?: 5, "hint"?: "...", "blind"?: false }
  */
 
-function CheckIcon() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
 const fmtDeg = (deg: number) => `${formatFixed(deg, 1)}°`;
 // Boundary-safe pairing for the miss line: the measured angle rounds UP and the
 // tolerance rounds DOWN, so a genuine miss can never display as "Off by 5.0° —
@@ -68,7 +55,7 @@ const fmtDegCeil = (deg: number) => `${formatFixed(Math.ceil(deg * 10 - 1e-7) / 
 const fmtDegFloor = (deg: number) => `${formatFixed(Math.floor(deg * 10 + 1e-7) / 10, 1)}°`;
 
 const SLIDER_ROW = "flex items-center gap-3 border-t border-(--bd) px-4 py-3";
-const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-(--mut)";
+const SLIDER_LABEL = "w-4 shrink-0 font-mono text-sm text-caption";
 
 export function BlochTargetWidget({
   source,
@@ -173,10 +160,7 @@ export function BlochTargetWidget({
       eyebrow="Bloch target"
       headerRight={
         showSolvedChip ? (
-          <span className="inline-flex items-center gap-1.5 rounded-chip bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent-dark dark:text-accent-light">
-            <CheckIcon />
-            On target
-          </span>
+          <VerdictBadge tone="accent">On target</VerdictBadge>
         ) : undefined
       }
     >
@@ -208,7 +192,7 @@ export function BlochTargetWidget({
         ) : (
           <BlochDial
             state={learnerState}
-            size={180}
+            size={SPHERE_PX}
             ghostVector={showGhost ? blochVector(targetState) : undefined}
           />
         )}

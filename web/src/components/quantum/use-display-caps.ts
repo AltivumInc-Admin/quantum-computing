@@ -27,16 +27,37 @@ function reducedMq(): MediaQueryList | null {
   return reducedMqRef;
 }
 
+// The three useSyncExternalStore arguments are hoisted to module scope, not
+// written inline at the call site. React stores the subscription as an effect
+// keyed on `subscribe`'s IDENTITY, so an inline closure — freshly allocated on
+// every render — tears the listener down and re-adds it on every commit of
+// every consumer. Since these hooks feed the hot, slider-driven widgets, that
+// is a removeEventListener/addEventListener pair per drag frame, exactly the
+// churn the memoized probes above were written to eliminate. (Same pattern as
+// use-persistent-solved.ts, which already passes a module-level subscribe.)
+function subscribeReducedMotion(onChange: () => void): () => void {
+  const mq = reducedMq();
+  mq?.addEventListener("change", onChange);
+  return () => mq?.removeEventListener("change", onChange);
+}
+
+function getReducedMotion(): boolean {
+  return reducedMq()?.matches ?? false;
+}
+
+/** A store that never notifies (session-invariant capabilities). */
+function subscribeNever(): () => void {
+  return noop;
+}
+function noop(): void {}
+
+/** Stable server snapshot: the static export prerenders the safe fallback. */
+function serverFalse(): boolean {
+  return false;
+}
+
 export function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mq = reducedMq();
-      mq?.addEventListener("change", onChange);
-      return () => mq?.removeEventListener("change", onChange);
-    },
-    () => reducedMq()?.matches ?? false,
-    () => false
-  );
+  return useSyncExternalStore(subscribeReducedMotion, getReducedMotion, serverFalse);
 }
 
 export function detectWebGL(): boolean {
@@ -59,9 +80,5 @@ function detectWebGLCached(): boolean {
 
 export function useWebGL(): boolean {
   // WebGL support does not change during a session, so the store never notifies.
-  return useSyncExternalStore(
-    () => () => {},
-    detectWebGLCached,
-    () => false
-  );
+  return useSyncExternalStore(subscribeNever, detectWebGLCached, serverFalse);
 }

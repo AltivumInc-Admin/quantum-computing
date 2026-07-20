@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import BlochSphere3D, { SPHERE_PX } from "@/components/quantum/bloch-sphere-3d-lazy";
 import { simulateSteps, probabilities, zeroState } from "@/components/quantum/math";
 import { opsFor, type ParsedGate, type Program } from "@/components/quantum/qsim-dsl";
 import { BlochDial, BlochVectorSR } from "@/components/quantum/bloch-dial";
@@ -17,13 +17,6 @@ import { Panel } from "@/components/workspace/panel";
  * the learner is parked on the final frame, adding gates FOLLOWS the end (the
  * live-final-state feel that makes a run button unnecessary).
  */
-
-// three.js is heavy; load it lazily and never on the server (static export).
-const BlochSphere3D = dynamic(() => import("@/components/quantum/bloch-sphere-3d"), {
-  ssr: false,
-  // Reserve the sphere's exact footprint while the lazy chunk loads.
-  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
-});
 
 const STEP_MS = 750;
 
@@ -128,7 +121,7 @@ export function StatePanel({ program, theta }: { program: Program; theta: number
               <BlochVectorSR state={current} />
             </div>
           ) : (
-            <BlochDial state={current} size={180} />
+            <BlochDial state={current} size={SPHERE_PX} />
           ))}
       </div>
 

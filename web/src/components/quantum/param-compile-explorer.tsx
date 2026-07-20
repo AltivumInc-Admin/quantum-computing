@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard } from "./widget-ui";
 import { paramSavedSec, paramTimeNaive, paramTimeReused } from "./hybrid";
 import { usePrefersReducedMotion } from "./use-display-caps";
 import { clamp, parseJsonObject, readNumber } from "./parse-utils";
+import { formatPercent } from "./format";
 
 /**
  * Inline parametric-compilation explorer rendered from a ```qparam fenced block in
@@ -73,6 +74,28 @@ function ErrorCard({ message }: { message: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Shared row geometry (time bars + slider rows)
+// ---------------------------------------------------------------------------
+
+/**
+ * One narrow-viewport layout for every labeled row in this widget. Below `sm`
+ * the label takes a full line of its own and the control + readout wrap under
+ * it; from `sm` up the original single-row label column returns.
+ *
+ * Why: a fixed `w-40` label plus a `w-20` readout plus the range input's ~129px
+ * intrinsic floor needs ~393px of row, but the lesson column only gives the
+ * card 311px of inner width at a 375px viewport. The row could not shrink, so
+ * WidgetCard's overflow-hidden clipped all three slider readouts out of sight
+ * and the two to-scale comparison bars — the widget's central teaching visual —
+ * absorbed the squeeze down to ~45px. Wrapping the label frees ~219px for the
+ * bar (its 220px design width) and 221px for input + readout, both of which fit.
+ */
+const ROW = "flex flex-wrap items-center gap-x-3 gap-y-1";
+const LABEL_COL = "w-full shrink-0 sm:w-40";
+/** Readout column. LabeledSlider appends its own `shrink-0`; TimeBar adds one. */
+const VALUE_COL = "w-20";
+
+// ---------------------------------------------------------------------------
 // Time bar
 // ---------------------------------------------------------------------------
 
@@ -100,27 +123,21 @@ function TimeBar({
       : "var(--accent)";
 
   return (
-    <div className="flex items-center gap-3">
-      <span className="w-40 shrink-0 text-xs text-gray-600 dark:text-gray-300">
-        {label}
-      </span>
+    <div className={ROW}>
+      <span className={`${LABEL_COL} text-xs text-caption`}>{label}</span>
       <svg
         viewBox={`0 0 ${BAR_W} ${BAR_H}`}
         width={BAR_W}
         height={BAR_H}
         role="img"
         aria-label={`${label}: ${formatSec(seconds)} wall-clock.`}
-        className="flex-1 max-w-[220px]"
+        // min-w-0 so the to-scale bar is never squeezed by an intrinsically
+        // wider sibling: at 375px the label wraps to its own line above, which
+        // leaves the bar its full design width instead of a ~45px sliver.
+        className="min-w-0 flex-1 max-w-[220px]"
         preserveAspectRatio="none"
       >
-        <rect
-          x={0}
-          y={0}
-          width={BAR_W}
-          height={BAR_H}
-          rx={4}
-          className="fill-gray-100 dark:fill-gray-800"
-        />
+        <rect x={0} y={0} width={BAR_W} height={BAR_H} rx={4} fill="var(--track)" />
         <rect
           x={0}
           y={0}
@@ -132,7 +149,7 @@ function TimeBar({
           style={reduced ? { transition: "none" } : undefined}
         />
       </svg>
-      <span className="w-20 shrink-0 text-right font-mono text-xs tabular-nums text-gray-700 dark:text-gray-200">
+      <span className={`${VALUE_COL} shrink-0 text-right font-mono text-xs tabular-nums text-(--ink)`}>
         {formatSec(seconds)}
       </span>
     </div>
@@ -143,7 +160,7 @@ function TimeBar({
 // Slider row
 // ---------------------------------------------------------------------------
 
-const SLIDER_LABEL = "w-40 shrink-0 font-mono text-xs text-gray-600 dark:text-gray-300";
+const SLIDER_LABEL = `${LABEL_COL} font-mono text-xs text-caption`;
 
 function SliderRow({
   label,
@@ -166,9 +183,9 @@ function SliderRow({
     <LabeledSlider
       {...rest}
       label={label}
-      rowClassName="mt-3 flex items-center gap-3"
+      rowClassName={`mt-3 ${ROW}`}
       labelClassName={SLIDER_LABEL}
-      valueWidth="w-20"
+      valueWidth={VALUE_COL}
       display={
         <>
           {display}
@@ -187,6 +204,7 @@ export function ParamCompileExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseSource(source), [source]);
 
   const reduced = usePrefersReducedMotion();
+  const headingId = useId();
   const base = parsed.ok ? parsed.config : DEFAULTS;
   const [iterations, setIterations] = useState(base.iterations);
   const [compileSec, setCompileSec] = useState(base.compileSec);
@@ -211,11 +229,16 @@ export function ParamCompileExplorer({ source }: { source: string }) {
   const maxSeconds = Math.max(naive, reused, 1e-9);
 
   return (
-    <WidgetCard eyebrow="Parametric compilation" chips={<Chip>{n} iter</Chip>}>
+    <WidgetCard
+      eyebrow="Parametric compilation"
+      eyebrowAs="h3"
+      eyebrowId={headingId}
+      chips={<Chip>{n} iter</Chip>}
+    >
       <LiveStatus>
-        {`Compile once and reuse saves ${formatSec(saved)} (${percent.toFixed(
-          1
-        )}% less wall-clock) over ${n} iterations.`}
+        {`Compile once and reuse saves ${formatSec(saved)} (${formatPercent(
+          percent
+        )} less wall-clock) over ${n} iterations.`}
       </LiveStatus>
 
       <div className="px-4 py-4">
@@ -238,13 +261,13 @@ export function ParamCompileExplorer({ source }: { source: string }) {
         </div>
 
         {/* Saved readout */}
-        <p className="mt-4 text-sm text-gray-800 dark:text-gray-100">
+        <p className="mt-4 text-sm text-(--ink)">
           saved{" "}
           <span className="font-semibold tabular-nums text-accent-dark dark:text-accent-light">
             {formatSec(saved)}
           </span>{" "}
-          <span className="text-gray-500 dark:text-gray-400">
-            ({percent.toFixed(1)}% less wall-clock)
+          <span className="text-caption">
+            ({formatPercent(percent)} less wall-clock)
           </span>
         </p>
 
@@ -289,7 +312,7 @@ export function ParamCompileExplorer({ source }: { source: string }) {
         </div>
 
         {/* Note */}
-        <p className="mt-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+        <p className="mt-4 text-xs leading-relaxed text-caption">
           Braket compiles a FreeParameter circuit once and reuses it across
           iterations on transpiled / superconducting QPUs. Per-circuit compile time
           is an illustrative input that varies by device and circuit; the

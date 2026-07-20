@@ -1,25 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard, secondaryActionClass } from "./widget-ui";
-import { h2OneQubit, type H2Point } from "./chemistry";
-import { H2 as H } from "./h2-data";
-import { usePrefersReducedMotion } from "./use-display-caps";
-import { parseJsonObject } from "./parse-utils";
+import { Bar, Chip, ErrorCard, LabeledSlider, LiveStatus, WidgetCard, secondaryActionClass } from "./widget-ui";
+import { type H2Point } from "./chemistry";
+import { H2, R_MAX, R_MIN, R_PITCH } from "./h2-data";
+import { parseJsonObject, readNumberInRange } from "./parse-utils";
 import { formatFixed, formatAngstrom, angstromSR, hartreeSR } from "./format";
 
 /**
  * Inline H2 Hamiltonian + symmetry-tapering explorer rendered from a ```qham
- * fenced block. Parses an optional `{ "R": 0.75, "tapered": false }` body, picks
- * the nearest committed fixture point for the chosen bond length, and shows the
- * full 15-term Jordan-Wigner Hamiltonian as live magnitude bars. The tapered
- * toggle folds the 4-qubit / 15-term operator down to the Z2-tapered single
- * qubit H = c0 I + cz Z + cx X (h2OneQubit), with a qubit-budget readout that
- * motivates active-space reduction for larger molecules.
+ * fenced block. Parses an optional `{ "R": 0.75, "tapered": false }` body, snaps
+ * the bond length onto the fixture's own sampling grid, and shows the full
+ * 15-term Jordan-Wigner Hamiltonian as live magnitude bars. The tapered toggle
+ * folds the 4-qubit / 15-term operator down to the Z2-tapered single qubit
+ * H = c0 I + cz Z + cx X, with a qubit-budget readout that motivates
+ * active-space reduction for larger molecules.
  *
- * Coefficients come exclusively from H (the committed PennyLane DHF STO-3G
- * fixture, see scripts/gen_h2_fixture.py) and are never invented. Pure client,
- * static-export safe, no AWS / network / SSR-only calls.
+ * ONE sampling rule governs the whole widget: every number on screen is read
+ * off a single committed fixture row (`point`). The tapered coefficients used to
+ * come from h2OneQubit(R), which linearly INTERPOLATES — so at the shipped
+ * R = 0.74 the two modes displayed two different Hamiltonians (c0 -0.3262 vs
+ * -0.3387) under one caption claiming both were "sampled at R = 0.75", and under
+ * a footer promising none were invented. The seeded R is snapped to the same
+ * grid the slider steps on, so the thumb, the readout, the aria-valuetext and
+ * the caption cannot disagree either. Pure client, static-export safe, no AWS.
  */
 
 const BAR_PRECISION = 4; // signed coefficient digits
@@ -33,29 +37,15 @@ type ParseResult =
   | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
-  const minR = H.points[0].R;
-  const maxR = H.points[H.points.length - 1].R;
   const base = parseJsonObject(source);
   if (!base.ok) return base;
   if (base.obj === null) {
-    return { ok: true, R: H.equilibrium.R, tapered: false };
+    return { ok: true, R: H2.equilibrium.R, tapered: false };
   }
   const obj = base.obj;
 
-  let R = H.equilibrium.R;
-  const rawR = obj["R"];
-  if (rawR !== undefined) {
-    if (typeof rawR !== "number" || Number.isNaN(rawR)) {
-      return { ok: false, error: '"R" must be a number' };
-    }
-    if (rawR < minR || rawR > maxR) {
-      return {
-        ok: false,
-        error: `"R" must be within [${minR}, ${maxR}] Angstrom`,
-      };
-    }
-    R = rawR;
-  }
+  const r = readNumberInRange(obj, "R", H2.equilibrium.R, R_MIN, R_MAX, "angstrom");
+  if (!r.ok) return r;
 
   let tapered = false;
   const rawTapered = obj["tapered"];
@@ -66,7 +56,7 @@ function parseSource(source: string): ParseResult {
     tapered = rawTapered;
   }
 
-  return { ok: true, R, tapered };
+  return { ok: true, R: r.value, tapered };
 }
 
 // ---------------------------------------------------------------------------
@@ -92,14 +82,6 @@ interface WeightedTerm {
 }
 
 // ---------------------------------------------------------------------------
-// Error card
-// ---------------------------------------------------------------------------
-
-function ErrorCard({ message }: { message: string }) {
-  return <SharedErrorCard label="qham" message={message} />;
-}
-
-// ---------------------------------------------------------------------------
 // Signed-coefficient helper
 // ---------------------------------------------------------------------------
 
@@ -110,50 +92,34 @@ function signed(x: number, digits: number): string {
   return s.startsWith("-") ? s : `+${s}`;
 }
 
+// A negative coefficient reads as a lighter wash of the same accent, so sign is
+// legible without introducing a second hue into the bar list.
+const NEGATIVE_FILL = "bg-[color-mix(in_oklab,var(--accent)_45%,transparent)]";
+
 // ---------------------------------------------------------------------------
 // Magnitude-bar term list (one shared renderer for tapered + untapered)
 // ---------------------------------------------------------------------------
 
-function TermBars({
-  terms,
-  maxMag,
-  animate,
-}: {
-  terms: WeightedTerm[];
-  maxMag: number;
-  animate: boolean;
-}) {
+function TermBars({ terms, maxMag }: { terms: WeightedTerm[]; maxMag: number }) {
   const denom = Math.max(maxMag, 1e-12);
   return (
     <ul className="space-y-1.5">
-      {terms.map((t) => {
-        const pct = (Math.abs(t.coeff) / denom) * 100;
-        const positive = t.coeff >= 0;
-        return (
-          <li key={t.label} className="flex items-center gap-2">
-            <span className="w-12 shrink-0 font-mono text-xs text-(--mut)">
-              {t.label}
-            </span>
-            <span className="relative h-3 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-              <span
-                className={
-                  "absolute inset-y-0 left-0 rounded-full " +
-                  (positive
-                    ? "bar-fill"
-                    : "bg-[color-mix(in_oklab,var(--accent)_45%,transparent)]") +
-                  (animate
-                    ? " transition-[width] duration-300 motion-reduce:transition-none"
-                    : "")
-                }
-                style={{ width: `${pct.toFixed(2)}%` }}
-              />
-            </span>
-            <span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums text-caption">
-              {signed(t.coeff, BAR_PRECISION)}
-            </span>
-          </li>
-        );
-      })}
+      {terms.map((t) => (
+        // The shared Bar row, with its Dirac ket turned off: these labels are
+        // Pauli strings (IIIZ, XXYY), not basis states. That one wrapper was the
+        // only thing blocking reuse, so this file used to carry a hand-rolled
+        // copy that had drifted onto an opaque gray track.
+        <li key={t.label}>
+          <Bar
+            label={t.label}
+            ket={false}
+            fraction={Math.abs(t.coeff) / denom}
+            valueText={signed(t.coeff, BAR_PRECISION)}
+            fillClass={t.coeff >= 0 ? "bar-fill" : NEGATIVE_FILL}
+            valueWidth="w-16"
+          />
+        </li>
+      ))}
     </ul>
   );
 }
@@ -165,57 +131,53 @@ function TermBars({
 export function HamiltonianExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseSource(source), [source]);
 
-  const minR = H.points[0].R;
-  const maxR = H.points[H.points.length - 1].R;
-  const stepR = useMemo(() => {
-    // Use the fixture's own sampling pitch so the slider snaps onto real points.
-    if (H.points.length < 2) return 0.05;
-    return Math.round((H.points[1].R - H.points[0].R) * 1000) / 1000;
-  }, []);
-
-  const [R, setR] = useState(() => (parsed.ok ? parsed.R : H.equilibrium.R));
+  // Seed on the fixture's own lattice. A fence body of { "R": 0.74 } is a
+  // step mismatch for a slider whose step is the 0.05 pitch: the range input
+  // sanitizes its DOM value to 0.75 while React state holds 0.74, so the thumb,
+  // the readout and the live region disagreed from first paint and the first
+  // arrow press jumped two nodes (0.74 -> 0.80).
+  const [R, setR] = useState(() =>
+    nearestPoint(parsed.ok ? parsed.R : H2.equilibrium.R, H2.points).R
+  );
   const [tapered, setTapered] = useState(() => (parsed.ok ? parsed.tapered : false));
-  const reduced = usePrefersReducedMotion();
 
-  // Nearest committed fixture point for the chosen R (defensive default).
-  const point = useMemo(() => nearestPoint(R, H.points), [R]);
+  // The single committed fixture row every number on screen is read from.
+  const point = useMemo(() => nearestPoint(R, H2.points), [R]);
 
   // Full 15-term JW Hamiltonian for this point, sorted by |coeff| descending.
   const fullTerms = useMemo<WeightedTerm[]>(() => {
-    return H.jwTerms
+    return H2.jwTerms
       .map((label, i) => ({ label, coeff: point.jw[i] }))
       .sort((a, b) => Math.abs(b.coeff) - Math.abs(a.coeff));
   }, [point]);
 
-  // Tapered single-qubit coefficients, kept in fixed c0/cz/cx order for the
-  // slider's aria-valuetext (the sorted term list below reorders by magnitude).
-  const taperedCoeffs = useMemo(() => h2OneQubit(R, H.points), [R]);
-
-  // Tapered single-qubit H = c0 I + cz Z + cx X, sorted by |coeff| descending.
-  const taperedTerms = useMemo<WeightedTerm[]>(() => {
-    const { c0, cz, cx } = taperedCoeffs;
-    return [
-      { label: "I", coeff: c0 },
-      { label: "Z", coeff: cz },
-      { label: "X", coeff: cx },
-    ].sort((a, b) => Math.abs(b.coeff) - Math.abs(a.coeff));
-  }, [taperedCoeffs]);
+  // Tapered single-qubit H = c0 I + cz Z + cx X, from the SAME row as the
+  // 15 terms above, so the toggle is an exact folding of the displayed
+  // operator rather than a comparison of two different bond lengths.
+  const taperedTerms = useMemo<WeightedTerm[]>(
+    () =>
+      [
+        { label: "I", coeff: point.c0 },
+        { label: "Z", coeff: point.cz },
+        { label: "X", coeff: point.cx },
+      ].sort((a, b) => Math.abs(b.coeff) - Math.abs(a.coeff)),
+    [point]
+  );
 
   // --- all hooks above this line; safe to early-return now ---
   if (!parsed.ok) {
-    return <ErrorCard message={parsed.error} />;
+    return <ErrorCard label="qham" message={parsed.error} />;
   }
 
   const shownTerms = tapered ? taperedTerms : fullTerms;
   const maxMag = shownTerms.reduce((m, t) => Math.max(m, Math.abs(t.coeff)), 0);
-  const animate = !reduced;
 
   const listLabel = tapered
     ? `Single-qubit tapered H2 Hamiltonian: 3 weighted Pauli terms at bond length ${angstromSR(
-        R
+        point.R
       )}, largest magnitude ${hartreeSR(maxMag)}.`
     : `Four-qubit Jordan-Wigner H2 Hamiltonian: 15 weighted Pauli terms at bond length ${angstromSR(
-        R
+        point.R
       )}, largest magnitude ${hartreeSR(maxMag)}.`;
 
   return (
@@ -223,14 +185,14 @@ export function HamiltonianExplorer({ source }: { source: string }) {
       eyebrow="H2 Hamiltonian"
       chips={
         <>
-          <Chip>STO-3G minimal basis</Chip>
+          <Chip tone="warn">STO-3G minimal basis</Chip>
           <Chip>{tapered ? "1q / 3 terms" : "4q / 15 terms"}</Chip>
         </>
       }
     >
       <LiveStatus>
         {`${tapered ? "Tapered 1-qubit" : "4-qubit"} H2 at R = ${angstromSR(
-          R
+          point.R
         )}. Largest term ${shownTerms[0].label} = ${signed(
           shownTerms[0].coeff,
           BAR_PRECISION
@@ -242,11 +204,11 @@ export function HamiltonianExplorer({ source }: { source: string }) {
         <LabeledSlider
           label="R"
           value={R}
-          min={minR}
-          max={maxR}
-          step={stepR}
+          min={R_MIN}
+          max={R_MAX}
+          step={R_PITCH}
           onChange={setR}
-          ariaLabel="H2 bond length R in Angstrom"
+          ariaLabel="H2 bond length R in angstrom"
           // Tapered mode: valuetext carries the full c0/cz/cx coefficient set the
           // slider drives — complementary to the LiveStatus, which keeps mode +
           // largest term. Full mode stays bond-length-only: LiveStatus already
@@ -254,26 +216,28 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           // here would double-announce the same label + coefficient.
           ariaValueText={
             tapered
-              ? `${angstromSR(R)}; coefficients c0 ${signed(
-                  taperedCoeffs.c0,
+              ? `${angstromSR(point.R)}; coefficients c0 ${signed(
+                  point.c0,
                   BAR_PRECISION
-                )}, cz ${signed(taperedCoeffs.cz, BAR_PRECISION)}, cx ${signed(
-                  taperedCoeffs.cx,
+                )}, cz ${signed(point.cz, BAR_PRECISION)}, cx ${signed(
+                  point.cx,
                   BAR_PRECISION
                 )} hartree`
-              : angstromSR(R)
+              : angstromSR(point.R)
           }
           display={formatAngstrom(R)}
           labelClassName="w-8 shrink-0 font-mono text-sm text-(--mut)"
           valueWidth="w-20"
         />
 
-        {/* Tapered toggle */}
+        {/* Tapered toggle. A plain action button, not role="switch": the label
+            flips to name the NEXT action, and a switch whose accessible name
+            inverts with its own aria-checked announces "Show full 4-qubit
+            Hamiltonian, switch, on" — the opposite of the active mode. The chip
+            row and the LiveStatus both already state the resulting mode. */}
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            role="switch"
-            aria-checked={tapered}
             onClick={() => setTapered((v) => !v)}
             className={secondaryActionClass}
           >
@@ -291,18 +255,12 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           </p>
         )}
 
-        {/* Term bars */}
+        {/* Term bars. The summary rides the repo's sr-only clip pattern; it used
+            to hang off a 0x0 <svg role="img">, and zero-area graphics are pruned
+            from the accessibility tree by some engines. */}
         <div className="mt-4">
-          <svg
-            width={0}
-            height={0}
-            role="img"
-            aria-label={listLabel}
-            className="absolute"
-          >
-            <title>{listLabel}</title>
-          </svg>
-          <TermBars terms={shownTerms} maxMag={maxMag} animate={animate} />
+          <p className="sr-only">{listLabel}</p>
+          <TermBars terms={shownTerms} maxMag={maxMag} />
         </div>
 
         {/* Active-space projection (always visible to motivate the technique) */}
@@ -313,11 +271,12 @@ export function HamiltonianExplorer({ source }: { source: string }) {
           is why larger molecules lean on active spaces.
         </p>
 
-        {/* Honesty / provenance */}
+        {/* Honesty / provenance — sourced from the fixture itself rather than
+            restated as a literal that a regen would silently strand. */}
         <p className="mt-3 text-[11px] leading-relaxed text-caption">
-          Coefficients are read directly from the committed {H.molecule} fixture
-          (basis {H.basis}); none are invented. Data from PennyLane
-          differentiable Hartree-Fock, see scripts/gen_h2_fixture.py.
+          Every coefficient above is read directly from one row of the committed{" "}
+          {H2.molecule} fixture (basis {H2.basis}); none are interpolated or
+          invented. {H2.provenance}
         </p>
       </div>
     </WidgetCard>

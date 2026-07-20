@@ -4,7 +4,13 @@ import { useMemo, useState } from "react";
 import { simulate, probabilities, basisLabel } from "./math";
 import { opsFor } from "./qsim-dsl";
 import { parseCorrelation, sampleOutcome } from "./correlation";
-import { Bar, GateChips, WidgetCard } from "./widget-ui";
+import {
+  Bar,
+  ErrorCard,
+  GateChips,
+  LiveStatus,
+  WidgetCard,
+} from "./widget-ui";
 import { formatPercent } from "./format";
 import type { Program } from "./qsim-dsl";
 
@@ -31,7 +37,7 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
   return (
     <div className="flex-1 min-w-0">
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs font-semibold text-(--mut) mr-1">{label}</span>
+        <span className="text-xs font-semibold text-caption mr-1">{label}</span>
         <GateChips gates={program.gates} />
       </div>
 
@@ -61,7 +67,7 @@ function Panel({ label, program, tally, lastOutcome, measurements }: PanelProps)
               valueText={
                 measurements > 0 ? (
                   <>
-                    <span className="text-(--mut)">{count}</span>
+                    <span className="text-caption">{count}</span>
                     <span className="text-caption"> / {formatPercent(pct)}</span>
                   </>
                 ) : (
@@ -96,13 +102,7 @@ export function CorrelationDemo({ source }: { source: string }) {
   }, [parsed.spec]);
 
   if (!parsed.spec) {
-    return (
-      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          correlation error: {parsed.error}
-        </p>
-      </div>
-    );
+    return <ErrorCard label="correlation" message={parsed.error} className="my-8" />;
   }
 
   function handleMeasure() {
@@ -137,11 +137,11 @@ export function CorrelationDemo({ source }: { source: string }) {
     >
       {/* One concise screen-reader announcement per Measure (replaces the two
           competing tally-table live regions that read 8 rows on every click) */}
-      <p className="sr-only" role="status" aria-live="polite">
+      <LiveStatus>
         {measurements > 0 && entangledLast !== null && productLast !== null
           ? `Entangled measured ${basisLabel(entangledLast, 2)}, product measured ${basisLabel(productLast, 2)}; ${measurements} measurement${measurements === 1 ? "" : "s"} total.`
           : ""}
-      </p>
+      </LiveStatus>
 
       {/* Prompt */}
       <div className="px-4 pt-4 pb-2">
@@ -183,7 +183,7 @@ export function CorrelationDemo({ source }: { source: string }) {
           type="button"
           aria-label="Reset"
           onClick={handleReset}
-          className="rounded-control border border-(--bd) px-3 py-1.5 text-sm font-medium text-(--mut) hover:bg-gray-50 dark:hover:bg-gray-800 interactive focus-ring"
+          className="rounded-control border border-(--bd) px-3 py-1.5 text-sm font-medium text-caption hover:bg-(--field) interactive focus-ring"
         >
           Reset
         </button>

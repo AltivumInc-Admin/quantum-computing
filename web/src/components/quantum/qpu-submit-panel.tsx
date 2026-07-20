@@ -29,6 +29,9 @@ import {
   type HardwareReach,
 } from "@/lib/qpu-budget";
 import { PRICING } from "./cost";
+import {
+  cardShell,
+} from "./widget-ui";
 
 /**
  * The one surface where a REAL quantum computer runs a learner's circuit — and the
@@ -130,8 +133,7 @@ const PRESETS: { name: string; qasm: string }[] = [
   },
 ];
 
-const card =
-  "rounded-card glass shadow-(--shadow-resting)";
+const card = cardShell;
 
 export function QpuSubmitPanel({ className }: { className?: string }) {
   if (!isQpuConfigured()) return null;

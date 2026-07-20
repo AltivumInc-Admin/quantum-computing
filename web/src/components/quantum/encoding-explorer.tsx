@@ -1,11 +1,13 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { cAbs2, type Complex } from "./math";
+import { basisLabel, cAbs2, type Complex } from "./math";
 import { diracString } from "./state-readout";
 import { BlochDial } from "./bloch-dial";
 import { angleState, amplitudeState, iqpState, reducedBloch } from "./encoding";
-import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard, LabeledSlider, LiveStatus, ProbBars, WidgetCard, fieldClass } from "./widget-ui";
+import { parseJsonObject } from "./parse-utils";
+import { percentSR } from "./format";
 
 /**
  * Inline data-encoding explorer rendered from a ```qencode fenced block. Parses a
@@ -14,6 +16,9 @@ import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, ProbBars
  * shows: per-basis amplitude bars with the |bxy> labels, the Dirac string, a live
  * unit-norm readout, and Bloch dials for the per-qubit reduced state (angle) or
  * the single qubit (amplitude). No backend, no SSR.
+ *
+ * Shape: `EncodingExplorer` only parses; `EncodingView` owns every hook with an
+ * already-validated config.
  */
 
 type Encoding = "angle" | "amplitude" | "iqp";
@@ -42,29 +47,36 @@ function isEncoding(v: unknown): v is Encoding {
 
 type ParseResult = { ok: true; value: Parsed } | { ok: false; error: string };
 
+const PI = Math.PI;
+
 function parseSource(source: string): ParseResult {
-  const trimmed = source.trim();
-  if (trimmed.length === 0) return { ok: true, value: DEFAULTS };
-  let raw: unknown;
-  try {
-    raw = JSON.parse(trimmed);
-  } catch {
-    return { ok: false, error: "invalid JSON" };
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { ok: false, error: "expected a JSON object" };
-  }
-  const obj = raw as Record<string, unknown>;
+  const base = parseJsonObject(source);
+  if (!base.ok) return base;
+  if (base.obj === null) return { ok: true, value: DEFAULTS };
+  const obj = base.obj;
 
   let x: [number, number] = [...DEFAULTS.x];
   const rawX = obj["x"];
   if (rawX !== undefined) {
+    // Exactly two elements, both finite numbers. The old guard checked only
+    // `length < 2`, so {"x": [0.6, 0.9, "junk"]} parsed clean and the third
+    // element was silently dropped — while the error string below already
+    // promised a TWO-number array.
     if (
-      !Array.isArray(rawX) || rawX.length < 2 ||
+      !Array.isArray(rawX) || rawX.length !== 2 ||
       typeof rawX[0] !== "number" || typeof rawX[1] !== "number" ||
       !Number.isFinite(rawX[0]) || !Number.isFinite(rawX[1])
     ) {
       return { ok: false, error: '"x" must be a two-number array' };
+    }
+    // Range is validated rather than silently clamped: the sliders span
+    // [-pi, pi], so an out-of-range authored value used to render a
+    // plausible-looking widget parked at the wrong point with no signal. The
+    // typed, value-echoing error matches barren-explorer's family convention.
+    for (const [i, v] of ([rawX[0], rawX[1]] as const).entries()) {
+      if (v < -PI || v > PI) {
+        return { ok: false, error: `x[${i}] must be in -pi..pi (got ${v})` };
+      }
     }
     x = [rawX[0], rawX[1]];
   }
@@ -80,20 +92,22 @@ function parseSource(source: string): ParseResult {
   return { ok: true, value: { x, encoding } };
 }
 
-const PI = Math.PI;
-const clamp = (v: number) => Math.max(-PI, Math.min(PI, v));
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export function EncodingExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseSource(source), [source]);
-  const fallback = parsed.ok ? parsed.value : DEFAULTS;
+  if (!parsed.ok) {
+    return <ErrorCard label="qencode" message={parsed.error} />;
+  }
+  return <EncodingView config={parsed.value} />;
+}
 
-  const [x0, setX0] = useState(() => clamp(fallback.x[0]));
-  const [x1, setX1] = useState(() => clamp(fallback.x[1]));
-  const [encoding, setEncoding] = useState<Encoding>(fallback.encoding);
+function EncodingView({ config }: { config: Parsed }) {
+  const [x0, setX0] = useState(config.x[0]);
+  const [x1, setX1] = useState(config.x[1]);
+  const [encoding, setEncoding] = useState<Encoding>(config.encoding);
   const encId = useId();
 
   const state = useMemo<Complex[]>(() => {
@@ -111,9 +125,18 @@ export function EncodingExplorer({ source }: { source: string }) {
 
   const dirac = useMemo(() => diracString(state, n), [state, n]);
 
-  if (!parsed.ok) {
-    return <SharedErrorCard label="qencode" message={parsed.error} />;
-  }
+  // The announcement names the map and the state's dominant basis outcome — the
+  // things that actually change as the sliders move. It deliberately does NOT
+  // carry the full Dirac expansion (four parenthesized complex terms for IQP,
+  // re-read in full on every one of the 120 slider positions) nor the norm,
+  // which all three encodings pin at exactly 1.000 by construction — swept over
+  // the whole 121x121 reachable grid, max |norm - 1| is 8.9e-16. Both remain
+  // available as visible text in reading order below the bars.
+  const dominant = useMemo(() => {
+    const probs = state.map(cAbs2);
+    const idx = probs.reduce((best, p, i) => (p > probs[best] ? i : best), 0);
+    return { label: basisLabel(idx, n), pct: probs[idx] * 100 };
+  }, [state, n]);
 
   return (
     <WidgetCard
@@ -121,9 +144,7 @@ export function EncodingExplorer({ source }: { source: string }) {
       chips={<Chip>{ENCODING_LABEL[encoding]}</Chip>}
     >
       <LiveStatus>
-        {`${ENCODING_LABEL[encoding]} feature map. ‖ψ‖ = ${norm.toFixed(
-          3
-        )}. |ψ⟩ = ${dirac}.`}
+        {`${ENCODING_LABEL[encoding]} feature map. Most probable basis state ${dominant.label} at ${percentSR(dominant.pct, 0)}.`}
       </LiveStatus>
 
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
@@ -152,14 +173,14 @@ export function EncodingExplorer({ source }: { source: string }) {
         <div className="min-w-0 flex-1">
           {/* encoding select */}
           <div className="flex items-center gap-3">
-            <label htmlFor={encId} className="shrink-0 text-sm text-(--mut)">
+            <label htmlFor={encId} className="shrink-0 text-sm text-caption">
               Map
             </label>
             <select
               id={encId}
               value={encoding}
               onChange={(e) => setEncoding(e.target.value as Encoding)}
-              className="focus-ring rounded-control border border-(--bd) bg-(--field) px-2 py-1 text-sm text-(--ink)"
+              className={`${fieldClass} px-2 py-1 text-sm`}
               aria-label="Feature-map encoding"
             >
               {ENCODINGS.map((enc) => (
@@ -179,10 +200,10 @@ export function EncodingExplorer({ source }: { source: string }) {
             step={PI / 60}
             onChange={setX0}
             ariaLabel="Feature x0"
-            ariaValueText={`x0 = ${x0.toFixed(2)}, norm ${norm.toFixed(3)}`}
+            ariaValueText={`x0 = ${x0.toFixed(2)}`}
             display={x0.toFixed(2)}
             rowClassName="mt-3 flex items-center gap-3"
-            labelClassName="w-10 shrink-0 font-mono text-sm text-(--mut)"
+            labelClassName="w-10 shrink-0 font-mono text-sm text-caption"
             valueWidth="w-14"
           />
 
@@ -195,10 +216,10 @@ export function EncodingExplorer({ source }: { source: string }) {
             step={PI / 60}
             onChange={setX1}
             ariaLabel="Feature x1"
-            ariaValueText={`x1 = ${x1.toFixed(2)}, norm ${norm.toFixed(3)}`}
+            ariaValueText={`x1 = ${x1.toFixed(2)}`}
             display={x1.toFixed(2)}
             rowClassName="mt-2 flex items-center gap-3"
-            labelClassName="w-10 shrink-0 font-mono text-sm text-(--mut)"
+            labelClassName="w-10 shrink-0 font-mono text-sm text-caption"
             valueWidth="w-14"
           />
 
@@ -208,7 +229,7 @@ export function EncodingExplorer({ source }: { source: string }) {
           </div>
 
           {/* Dirac string + norm readout */}
-          <p className="mt-4 break-words font-mono text-xs text-(--mut)">
+          <p className="mt-4 break-words font-mono text-xs text-caption">
             |&#968;&#10217; = {dirac}
           </p>
           <p className="mt-1 font-mono text-xs text-caption">

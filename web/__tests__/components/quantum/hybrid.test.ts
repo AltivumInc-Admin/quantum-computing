@@ -29,7 +29,8 @@ describe("hybrid wall-clock models", () => {
 
 describe("hybrid cost models", () => {
   it("qpuCost uses the cost.ts per-task + per-shot rates for per-shot providers", () => {
-    // IonQ: perTask 0.30 + perShot 0.01; 10 iters * 1000 shots
+    // IonQ Forte: perTask $0.30 + perShot $0.08 (cost.ts); 10 iters * 1000 shots.
+    // The old comment here quoted $0.01/shot — retired Aria's rate, ~8x under.
     const expected = 10 * (PRICING.IonQ.perTask + PRICING.IonQ.perShot * 1000);
     expect(qpuCost("IonQ", 10, 1000)).toBeCloseTo(expected, 10);
     expect(qpuCost("IonQ", 10, 1000)).toBeCloseTo(803, 10); // 10*(0.3+80) — Forte $0.08/shot

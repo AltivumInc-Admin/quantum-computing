@@ -8,12 +8,23 @@ function popcount(x: number): number {
   return c;
 }
 
-export const ORACLES: Record<string, Oracle> = {
-  constant0: () => 0,
-  constant1: () => 1,
-  parity: (x) => (popcount(x) % 2) as 0 | 1, // balanced
-  lowbit: (x) => (x & 1) as 0 | 1, // balanced
-};
+/**
+ * The selectable oracles, each paired with the label the picker shows for it.
+ * The label used to live in dj-demo as a SECOND `Record<string, string>` keyed
+ * by these same strings and joined only by `??` fallbacks, so adding a fifth
+ * oracle here rendered a dropdown option captioned with the raw key ("lowbit")
+ * and a typo'd key silently evaluated constant0 instead. One literal makes both
+ * of those a type error. `satisfies` keeps the key union literal (see
+ * `OracleKey`) while still checking each entry against the shape.
+ */
+export const ORACLES = {
+  constant0: { f: (): 0 => 0, label: "f(x) = 0 (always)" },
+  constant1: { f: (): 1 => 1, label: "f(x) = 1 (always)" },
+  parity: { f: (x: number) => (popcount(x) % 2) as 0 | 1, label: "f(x) = parity of x" }, // balanced
+  lowbit: { f: (x: number) => (x & 1) as 0 | 1, label: "f(x) = lowest bit of x" }, // balanced
+} satisfies Record<string, { f: Oracle; label: string }>;
+
+export type OracleKey = keyof typeof ORACLES;
 
 /** Deutsch-Jozsa via phase oracle: H^n, amp_x *= (-1)^f(x), H^n; returns |amp|^2. */
 export function djProbabilities(n: number, f: Oracle): number[] {

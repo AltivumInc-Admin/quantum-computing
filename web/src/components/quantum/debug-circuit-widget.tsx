@@ -9,6 +9,14 @@ import { debugCardId, ratingForSolve, challengeReviewAnswer } from "@/lib/challe
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { recordBest, getBest } from "@/lib/skill-measure";
 import { usePersistentSolved } from "./use-persistent-solved";
+import {
+  CheckIcon,
+  cardShell,
+  ErrorCard,
+  EyebrowLabel,
+  VERDICT_STYLES,
+  VerdictBadge,
+} from "./widget-ui";
 
 /**
  * A debug-a-circuit Rep rendered from a ```qdebug fenced block. The editor is
@@ -19,23 +27,6 @@ import { usePersistentSolved } from "./use-persistent-solved";
  * the hint. Retryable like a challenge, so a solve rates via ratingForSolve
  * (clean first Check "good", any genuine miss first "hard").
  */
-
-function CheckIcon() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-const VERDICT_STYLES: Record<GradeResult["status"], string> = {
-  solved:
-    "border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 text-accent-dark dark:text-accent-light",
-  wrong:
-    "border-l-2 border-warm/60 bg-warm/5 dark:bg-warm/10 text-warm-dark dark:text-warm-light",
-  error:
-    "border-l-2 border-(--bd-2) bg-(--field) text-(--mut)",
-};
 
 export function DebugCircuitWidget({
   source,
@@ -99,20 +90,12 @@ export function DebugCircuitWidget({
 
   if (!spec || !truth) {
     return (
-      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          debug error: {parsed.error}
-        </p>
-      </div>
+      <ErrorCard label="debug" message={parsed.error} className="my-8" />
     );
   }
   if (truth.error) {
     return (
-      <div className="not-prose my-8 rounded-card glass shadow-(--shadow-resting) px-4 py-3">
-        <p className="font-mono text-sm text-caption">
-          debug error: {truth.error}
-        </p>
-      </div>
+      <ErrorCard label="debug" message={truth.error} className="my-8" />
     );
   }
 
@@ -165,16 +148,13 @@ export function DebugCircuitWidget({
     (surface !== "review" && solved) || sessionSolved || result?.status === "solved";
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
+    <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
+        <EyebrowLabel strong>
           Fix the circuit
-        </span>
+        </EyebrowLabel>
         {showSolved && (
-          <span className="inline-flex items-center gap-1.5 rounded-chip bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent-dark dark:text-accent-light">
-            <CheckIcon />
-            Fixed
-          </span>
+          <VerdictBadge tone="accent">Fixed</VerdictBadge>
         )}
       </div>
 

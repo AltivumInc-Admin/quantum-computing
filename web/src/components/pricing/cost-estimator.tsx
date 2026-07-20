@@ -146,7 +146,13 @@ export function CostEstimator() {
               step={100}
               value={shots}
               onChange={(e) => setShots(Number(e.target.value))}
-              className="slider w-full"
+              // `focus-ring` + `aria-valuetext` are the shared slider contract
+              // LabeledSlider single-sources for every widget slider; these two
+              // pricing rows keep their own stacked layout, so they carry the
+              // contract explicitly rather than announcing a bare number with
+              // no visible focus affordance.
+              className="slider w-full focus-ring"
+              aria-valuetext={`${shots.toLocaleString("en-US")} shots`}
             />
             <div className="mt-3">
               <PresetChips
@@ -219,7 +225,8 @@ export function CostEstimator() {
               step={10}
               value={questions}
               onChange={(e) => setQuestions(Number(e.target.value))}
-              className="slider w-full"
+              className="slider w-full focus-ring"
+              aria-valuetext={`${questions.toLocaleString("en-US")} questions per month`}
             />
             <div className="mt-3">
               <PresetChips

@@ -2,18 +2,21 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import {
   Bar,
   Chip,
   EyebrowLabel,
   ErrorCard,
   fieldClass,
+  gateLabel,
   GateChip,
+  LabeledSlider,
   LiveStatus,
   primaryActionClass,
   ProbBars,
   StateReadout,
+  VerdictBadge,
   WidgetCard,
 } from "@/components/quantum/widget-ui";
 import { zeroState } from "@/components/quantum/math";
@@ -277,5 +280,126 @@ describe("primaryActionClass", () => {
     // Forbid the flat `bg-accent` fill only — not the accessible bg-accent-dark /
     // bg-accent-light variants (the trailing (?!-) keeps the hyphenated tokens legal).
     expect(primaryActionClass).not.toMatch(/\bbg-accent\b(?!-)/);
+  });
+});
+
+describe("gateLabel", () => {
+  it("renders a literal angle to two decimals", () => {
+    expect(gateLabel({ gate: "RZ", target: 0, theta: 1.5708 })).toBe("RZ(1.57) q0");
+  });
+
+  it("snaps a tiny negative angle instead of printing the -0.00 wart", () => {
+    // parseAngle deliberately accepts negative rotations, and raw
+    // Number("-0.001").toFixed(2) is "-0.00" — the signed-zero display the #79
+    // formatFixed campaign removed from every other readout.
+    expect(gateLabel({ gate: "RZ", target: 0, theta: -0.001 })).toBe("RZ(0.00) q0");
+  });
+
+  it("keeps a genuinely negative angle signed", () => {
+    expect(gateLabel({ gate: "RX", target: 1, theta: -1.5708 })).toBe("RX(-1.57) q1");
+  });
+});
+
+describe("VerdictBadge", () => {
+  it("carries the accent tone and a check glyph for a correct verdict", () => {
+    const { container } = render(<VerdictBadge tone="accent">Solved</VerdictBadge>);
+    const badge = screen.getByText(/Solved/);
+    expect(badge.className).toContain("bg-accent/10");
+    expect(container.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("carries the warm failure tone and no check for a miss", () => {
+    const { container } = render(<VerdictBadge tone="warm">Not quite</VerdictBadge>);
+    expect(screen.getByText(/Not quite/).className).toContain("bg-warm/10");
+    expect(container.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("LabeledSlider", () => {
+  const base = {
+    value: 5,
+    min: 0,
+    max: 10,
+    step: 1,
+    ariaLabel: "Depth",
+    display: "5",
+    onChange: () => {},
+  };
+
+  it("wires its own useId label htmlFor to the input id", () => {
+    // Queried as an element, NOT by accessible name: the input also carries
+    // aria-label, which wins the name computation — so a broken htmlFor would
+    // silently kill click-label-to-focus without failing a getByLabelText test.
+    const { container } = render(<LabeledSlider {...base} label="Depth" />);
+    const label = container.querySelector("label")!;
+    const input = container.querySelector("input[type=range]")!;
+    expect(label.getAttribute("for")).toBe(input.id);
+    expect(input.id).toBeTruthy();
+  });
+
+  it("renders no label element when label is omitted (aria-label only)", () => {
+    const { container } = render(<LabeledSlider {...base} />);
+    expect(container.querySelector("label")).toBeNull();
+    expect(container.querySelector("input")).toHaveAttribute("aria-label", "Depth");
+  });
+
+  it("parses the raw value with parseFloat by default", () => {
+    const onChange = jest.fn();
+    const { container } = render(
+      <LabeledSlider {...base} label="Theta" onChange={onChange} step={0.5} />
+    );
+    fireEvent.change(container.querySelector("input")!, { target: { value: "2.5" } });
+    expect(onChange).toHaveBeenCalledWith(2.5);
+  });
+
+  it("honors a parse override (integer sliders pass parseInt)", () => {
+    const onChange = jest.fn();
+    const { container } = render(
+      <LabeledSlider
+        {...base}
+        label="Shots"
+        onChange={onChange}
+        parse={(raw) => parseInt(raw, 10)}
+      />
+    );
+    fireEvent.change(container.querySelector("input")!, { target: { value: "7" } });
+    expect(onChange).toHaveBeenCalledWith(7);
+  });
+
+  it("passes aria-valuetext through to the input", () => {
+    const { container } = render(
+      <LabeledSlider {...base} label="Theta" ariaValueText="1.57 radians" />
+    );
+    expect(container.querySelector("input")).toHaveAttribute(
+      "aria-valuetext",
+      "1.57 radians"
+    );
+  });
+
+  it("keeps the shared slider contract classes on the input", () => {
+    const { container } = render(<LabeledSlider {...base} label="Depth" />);
+    const input = container.querySelector("input")!;
+    expect(input.className).toContain("slider");
+    expect(input.className).toContain("focus-ring");
+  });
+
+  it("labelAbove stacks the label above the control row", () => {
+    const { container } = render(
+      <LabeledSlider {...base} label="Depth" labelAbove rowClassName="stack" />
+    );
+    const row = container.firstElementChild!;
+    expect(row.className).toBe("stack");
+    // label first, then the flex row holding the input + readout
+    expect(row.children[0].tagName).toBe("LABEL");
+    expect(row.children[1].querySelector("input[type=range]")).not.toBeNull();
+  });
+
+  it("injects `leading` before the input in the inline layout", () => {
+    const { container } = render(
+      <LabeledSlider {...base} label="Depth" leading={<button>play</button>} />
+    );
+    const row = container.firstElementChild!;
+    expect(row.children[0].tagName).toBe("BUTTON");
+    expect(row.children[1].tagName).toBe("LABEL");
   });
 });

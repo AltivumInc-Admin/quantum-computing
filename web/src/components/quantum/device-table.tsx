@@ -3,15 +3,21 @@
 import { useId, useState } from "react";
 import { DEVICES, sortDevices, type SortKey } from "./devices";
 import { costLabel } from "./cost";
-import { LiveStatus, fieldClass } from "./widget-ui";
+import { fieldClass, LiveStatus, WidgetCard } from "./widget-ui";
+import { useScrollRegion } from "@/hooks/use-scroll-region";
 
-const TECHNOLOGIES = ["All", "Trapped ion", "Superconducting", "Neutral atom", "Simulator"] as const;
+// Derived from the catalog, not hand-maintained: a device with a new technology
+// family shows up under the filter automatically, and retiring the last device
+// of a family retires its option instead of leaving one that yields an empty
+// table. Set preserves DEVICES' insertion order, so the rendering is unchanged.
+export const TECHNOLOGIES = ["All", ...new Set(DEVICES.map((d) => d.technology))];
 
 export function DeviceTable() {
   const techId = useId();
   const [sortKey, setSortKey] = useState<SortKey>("model");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [tech, setTech] = useState<string>("All");
+  const { regionProps } = useScrollRegion<HTMLDivElement>("Scrollable device table");
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -26,29 +32,20 @@ export function DeviceTable() {
   const sorted = sortDevices(filtered, sortKey, sortDir);
   const hasAnalog = sorted.some((d) => !d.gateModel);
 
-  const ariaSort = (key: SortKey): "ascending" | "descending" | "none" => {
-    if (key !== sortKey) return "none";
-    return sortDir === "asc" ? "ascending" : "descending";
-  };
+  const sortProps = (key: SortKey, label: string) => ({
+    sortBy: key,
+    label,
+    active: key === sortKey,
+    dir: sortDir,
+    onSort: handleSort,
+  });
 
   return (
-    <div className="not-prose my-6 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
-      <LiveStatus>
-        {`${sorted.length} device${sorted.length === 1 ? "" : "s"} shown${
-          tech === "All" ? "" : `, ${tech}`
-        }.`}
-      </LiveStatus>
-
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-(--bd) px-4 py-2">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent-light">
-          Devices
-        </span>
+    <WidgetCard
+      eyebrow="Devices"
+      headerRight={
         <div className="flex items-center gap-2">
-          <label
-            htmlFor={techId}
-            className="text-xs text-caption"
-          >
+          <label htmlFor={techId} className="text-xs text-caption">
             Technology
           </label>
           <select
@@ -65,10 +62,19 @@ export function DeviceTable() {
             ))}
           </select>
         </div>
-      </div>
+      }
+    >
+      <LiveStatus>
+        {`${sorted.length} device${sorted.length === 1 ? "" : "s"} shown${
+          tech === "All" ? "" : `, ${tech}`
+        }.`}
+      </LiveStatus>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
+      {/* Table. Seven nowrap columns overflow a phone's content box, so the
+          wrapper is a labelled keyboard scroll region when (and only when) it
+          actually scrolls — the sort buttons inside it suppress the browser's
+          implicit focusable-scroller fallback. */}
+      <div {...regionProps}>
         <table className="w-full text-sm border-collapse">
           <caption className="sr-only">
             Quantum devices by technology. Rows tinted amber are analog
@@ -76,58 +82,19 @@ export function DeviceTable() {
           </caption>
           <thead>
             <tr className="border-b border-(--bd) bg-(--field)">
-              <th
-                scope="col"
-                aria-sort={ariaSort("model")}
-                className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap"
-              >
-                <button
-                  onClick={() => handleSort("model")}
-                  aria-label="Sort by model"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
-                >
-                  Model
-                  <SortIndicator active={sortKey === "model"} dir={sortDir} />
-                </button>
-              </th>
-              <th
-                scope="col"
-                aria-sort={ariaSort("technology")}
-                className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap"
-              >
-                <button
-                  onClick={() => handleSort("technology")}
-                  aria-label="Sort by technology"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
-                >
-                  Technology
-                  <SortIndicator active={sortKey === "technology"} dir={sortDir} />
-                </button>
-              </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
+              <SortableTh {...sortProps("model", "Model")} />
+              <SortableTh {...sortProps("technology", "Technology")} />
+              <th scope="col" className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap">
                 Vendor
               </th>
-              <th
-                scope="col"
-                aria-sort={ariaSort("qubits")}
-                className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap"
-              >
-                <button
-                  onClick={() => handleSort("qubits")}
-                  aria-label="Sort by qubits"
-                  className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
-                >
-                  Qubits
-                  <SortIndicator active={sortKey === "qubits"} dir={sortDir} />
-                </button>
-              </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
+              <SortableTh {...sortProps("qubits", "Qubits")} />
+              <th scope="col" className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap">
                 Connectivity
               </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap">
                 Gate model
               </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium text-(--mut) whitespace-nowrap">
+              <th scope="col" className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap">
                 Cost
               </th>
             </tr>
@@ -148,22 +115,22 @@ export function DeviceTable() {
                   <td className="px-4 py-2.5 font-mono font-medium text-(--ink) whitespace-nowrap">
                     {device.model}
                   </td>
-                  <td className="px-4 py-2.5 text-(--mut) whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-caption whitespace-nowrap">
                     {device.technology}
                   </td>
-                  <td className="px-4 py-2.5 text-(--mut) whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-caption whitespace-nowrap">
                     {device.vendor}
                   </td>
-                  <td className="px-4 py-2.5 text-(--mut) tabular-nums">
+                  <td className="px-4 py-2.5 text-caption tabular-nums">
                     {device.qubits}
                   </td>
-                  <td className="px-4 py-2.5 text-(--mut) whitespace-nowrap">
+                  <td className="px-4 py-2.5 text-caption whitespace-nowrap">
                     {device.connectivity}
                   </td>
-                  <td className="px-4 py-2.5 text-(--mut)">
+                  <td className="px-4 py-2.5 text-caption">
                     {device.gateModel ? "Yes" : "No"}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-(--mut) whitespace-nowrap">
+                  <td className="px-4 py-2.5 font-mono text-xs text-caption whitespace-nowrap">
                     {costLabel(device.provider)}
                     {device.note ? ` (${device.note})` : ""}
                   </td>
@@ -184,7 +151,46 @@ export function DeviceTable() {
           </span>
         </div>
       )}
-    </div>
+    </WidgetCard>
+  );
+}
+
+/**
+ * One sortable header cell. Single-sources the aria-sort wiring and the
+ * touch-target/focus class recipe that the Model/Technology/Qubits headers
+ * previously maintained in three byte-identical copies. Declared at module
+ * scope (not inside DeviceTable) so its element type is stable across renders —
+ * a per-render component would remount the header on every sort click and drop
+ * keyboard focus off the button the user just activated.
+ */
+function SortableTh({
+  sortBy,
+  label,
+  active,
+  dir,
+  onSort,
+}: {
+  sortBy: SortKey;
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+}) {
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
+      className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap"
+    >
+      <button
+        onClick={() => onSort(sortBy)}
+        aria-label={`Sort by ${label.toLowerCase()}`}
+        className="flex items-center gap-1 -mx-2 -my-1 px-2 py-1 rounded hover:text-(--ink) transition-colors interactive focus-ring"
+      >
+        {label}
+        <SortIndicator active={active} dir={dir} />
+      </button>
+    </th>
   );
 }
 

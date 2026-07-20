@@ -4,6 +4,8 @@ import { memo, useMemo, useState } from "react";
 import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, ProbBars, WidgetCard } from "./widget-ui";
 import {
   cutValue,
+  landscapeCell,
+  QAOA_DOMAIN,
   qaoaDistribution,
   qaoaExpectedFromDistribution,
   qaoaLandscape,
@@ -35,6 +37,24 @@ function vertexLabel(idx: number, n: number): string {
 
 const RES = 24;
 const SVG = { w: 220, h: 160, r: 12 };
+
+/**
+ * How the heatmap maps parameters to SVG axes — the ONE place it is stated in
+ * prose, so the visible caption and the accessible name are generated from the
+ * same fact and cannot contradict each other (or the render) again.
+ *
+ * The cells are drawn `x={bi}` / `y={RES - 1 - gi}`, and qaoa.ts builds the grid
+ * as `grid[gi][bi]` with gi driving gamma and bi driving beta. SVG `x` is
+ * horizontal, so BETA is the horizontal axis and GAMMA the vertical one (the
+ * `RES - 1 -` flip makes gamma grow upward). The caption shipped with these two
+ * reversed, which mattered rather than being a harmless relabel: the axes span
+ * DIFFERENT ranges, so reading a point off the plot under the swapped caption
+ * mis-scaled both angles by 2x in opposite directions.
+ */
+const AXES = {
+  horizontal: { glyph: "β", name: "beta", range: "0–π/2", srRange: "0 to pi/2" },
+  vertical: { glyph: "γ", name: "gamma", range: "0–π", srRange: "0 to pi" },
+} as const;
 
 // ---------------------------------------------------------------------------
 // Parsing + validation
@@ -155,7 +175,12 @@ const GraphSvg = memo(function GraphSvg({ edges, n }: { edges: Edge[]; n: number
             cx={cx}
             cy={cy}
             r={SVG.r}
-            className="fill-accent dark:fill-accent-light stroke-white dark:stroke-gray-900"
+            // fill-accent-dark, not fill-accent: white numerals on the raw
+            // light accent compute 3.04:1, below the 4.5:1 AA floor at
+            // fontSize 9 — and the caption ("bit order: vertex 0 on the left")
+            // makes these numerals load-bearing, with aria-hidden on the text
+            // there is no alternative channel. accent-dark gives 5.38:1.
+            className="fill-accent-dark dark:fill-accent-light stroke-white dark:stroke-gray-900"
             strokeWidth={2}
           />
           <text
@@ -238,9 +263,22 @@ export function QaoaExplorer({ source }: { source: string }) {
           fill={heatColor((v - gridMax.lo) / span)} />
       ))
     );
+    // The grid-max marker is STRUCTURALLY guaranteed to land on the most
+    // accent-saturated cell: heatColor(t) is raw var(--accent) at t = 1, and
+    // t = 1 is exactly where v === gridMax.value. A single amber hairline on
+    // that cell measures 1.11:1 (dark) / 1.42:1 (light) — invisible at the one
+    // place the learner looks. So it is drawn as two stacked strokes: a
+    // theme-inverted halo under a warm hairline, the same idiom the graph
+    // vertices already use (stroke-white dark:stroke-gray-900).
     const maxMarker = (
-      <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
-        stroke="currentColor" strokeWidth={0.5} className="text-amber-500 dark:text-amber-400" />
+      <>
+        <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
+          stroke="currentColor" strokeWidth={1.2}
+          className="text-white dark:text-gray-900" />
+        <rect x={gridMax.bi} y={RES - 1 - gridMax.gi} width={1} height={1} fill="none"
+          stroke="currentColor" strokeWidth={0.5}
+          className="text-warm-dark dark:text-warm-light" />
+      </>
     );
     return { cells, maxMarker };
   }, [landscape, gridMax]);
@@ -259,8 +297,9 @@ export function QaoaExplorer({ source }: { source: string }) {
 
   const { n, edges, expected, distribution } = live;
 
-  const curGi = Math.round((gamma / Math.PI) * (RES - 1));
-  const curBi = Math.round((beta / (Math.PI / 2)) * (RES - 1));
+  // Inverse of the kernel's own index->angle mapping, so the marker cannot
+  // drift off the cell it names if either range in qaoa.ts ever changes.
+  const { gi: curGi, bi: curBi } = landscapeCell(gamma, beta, RES);
 
   return (
     <WidgetCard eyebrow="QAOA" chips={<Chip>{n}q</Chip>}>
@@ -280,33 +319,37 @@ export function QaoaExplorer({ source }: { source: string }) {
               width={RES * 6}
               height={RES * 6}
               role="img"
-              aria-label={`Expected-cut landscape over gamma in [0, pi] and beta in [0, pi/2]. Grid maximum ${gridMax.value.toFixed(2)}.`}
+              aria-label={`Expected-cut landscape: ${AXES.horizontal.name} ${AXES.horizontal.srRange} on the horizontal axis, ${AXES.vertical.name} ${AXES.vertical.srRange} on the vertical axis. Grid maximum ${gridMax.value.toFixed(2)}.`}
               className="w-full max-w-[160px] mx-auto block rounded-control"
             >
               {heat.cells}
               {heat.maxMarker}
-              {/* current (gamma, beta) marker */}
+              {/* Current (gamma, beta) marker. The separating ring must be an
+                  EXPLICIT theme-inverted stroke: `stroke="currentColor"` here
+                  resolved to the inherited body --ink, which on the dark theme
+                  is 1.12:1 against the dot's own white fill — a no-op ring on
+                  a dot that is itself only 1.55:1 against the accent peak. */}
               <circle
                 cx={curBi + 0.5}
                 cy={RES - 1 - curGi + 0.5}
                 r={0.9}
-                className="fill-gray-900 dark:fill-white"
-                stroke="currentColor"
+                className="fill-gray-900 dark:fill-white stroke-white dark:stroke-gray-900"
                 strokeWidth={0.4}
               />
             </svg>
-            <p className="mt-1 text-center text-[10px] text-caption font-mono">
-              &#947; horizontal &middot; &#946; vertical
+            <p className="mt-1 text-center text-[10px] text-caption font-mono text-balance">
+              {AXES.horizontal.glyph} {AXES.horizontal.range} horizontal &middot;{" "}
+              {AXES.vertical.glyph} {AXES.vertical.range} vertical
             </p>
           </div>
         </div>
 
         {/* Controls + readout + distribution */}
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-gray-800 dark:text-gray-200">
+          <p className="text-sm text-(--ink)">
             expected cut ={" "}
             <span className="font-semibold tabular-nums">{expected.toFixed(2)}</span>{" "}
-            <span className="text-gray-500 dark:text-gray-400">(max = {maxCut})</span>
+            <span className="text-caption">(max = {maxCut})</span>
           </p>
 
           {/* gamma slider */}
@@ -314,14 +357,14 @@ export function QaoaExplorer({ source }: { source: string }) {
             label={<>&#947;</>}
             value={gamma}
             min={0}
-            max={Math.PI}
+            max={QAOA_DOMAIN.gammaMax}
             step={Math.PI / 60}
             onChange={setGamma}
             ariaLabel="QAOA cost angle gamma in radians"
             ariaValueText={`${gamma.toFixed(2)} radians`}
             display={formatRadians(gamma)}
             rowClassName="mt-3 flex items-center gap-3"
-            labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-8 shrink-0 font-mono text-sm text-caption"
             valueWidth="w-14"
           />
 
@@ -330,14 +373,14 @@ export function QaoaExplorer({ source }: { source: string }) {
             label={<>&#946;</>}
             value={beta}
             min={0}
-            max={Math.PI / 2}
+            max={QAOA_DOMAIN.betaMax}
             step={Math.PI / 60}
             onChange={setBeta}
             ariaLabel="QAOA mixer angle beta in radians"
             ariaValueText={`${beta.toFixed(2)} radians`}
             display={formatRadians(beta)}
             rowClassName="mt-2 flex items-center gap-3"
-            labelClassName="w-8 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-8 shrink-0 font-mono text-sm text-caption"
             valueWidth="w-14"
           />
 

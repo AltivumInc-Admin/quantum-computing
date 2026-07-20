@@ -1,8 +1,13 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { ErrorCard as SharedErrorCard } from "./widget-ui";
+import BlochSphere3D from "./bloch-sphere-3d-lazy";
+import {
+  ErrorCard as SharedErrorCard,
+  EyebrowLabel,
+  WidgetCard,
+} from "./widget-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { clamp } from "./math";
 import {
   parseScrolly,
   interpolateState,
@@ -27,15 +32,6 @@ import { usePrefersReducedMotion, useWebGL } from "./use-display-caps";
  * and upgrades after hydration, exactly like the 3D scrubber.
  */
 
-const BlochSphere3D = dynamic(() => import("./bloch-sphere-3d"), {
-  ssr: false,
-  // Reserve the sphere's exact footprint while the lazy three.js chunk loads —
-  // without it the already-mounted sticky row jumps ~180px when the chunk lands.
-  loading: () => <div className="h-[180px] w-[180px] shrink-0" aria-hidden="true" />,
-});
-
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-
 function ErrorCard({ message }: { message?: string }) {
   return <SharedErrorCard label="scrolly" className="my-8" message={message} />;
 }
@@ -43,25 +39,20 @@ function ErrorCard({ message }: { message?: string }) {
 /** Static, accessible fallback: every beat shown at once. */
 function StaticBeats({ beats }: { beats: Beat[] }) {
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-card glass shadow-(--shadow-resting)">
-      <div className="border-b border-(--bd) px-4 sm:px-5 py-3">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
-          Walkthrough
-        </span>
-      </div>
+    <WidgetCard eyebrow="Walkthrough" className="my-8">
       <ol className="list-none m-0 p-0 divide-y divide-(--bd)">
         {beats.map((beat, i) => (
           <li key={i} className="flex items-center gap-4 px-4 sm:px-5 py-4">
-            <div className="shrink-0 text-accent">
+            <div className="shrink-0">
               <BlochDial state={stateForBeat(beat)} />
             </div>
-            <p className="text-[0.95rem] leading-relaxed text-(--mut)">
+            <p className="text-[0.95rem] leading-relaxed text-caption">
               {beat.caption}
             </p>
           </li>
         ))}
       </ol>
-    </div>
+    </WidgetCard>
   );
 }
 
@@ -80,7 +71,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
       const span = rect.height - window.innerHeight;
       // Progress 0 when the section top reaches the viewport top; 1 when its
       // bottom reaches the viewport bottom. Linked to native scroll only.
-      setProgress(span > 0 ? clamp01(-rect.top / span) : 0);
+      setProgress(span > 0 ? clamp(-rect.top / span, 0, 1) : 0);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update);
@@ -112,9 +103,12 @@ function Explorable({ beats }: { beats: Beat[] }) {
           <BlochVectorSR state={state} />
         </div>
         <div className="min-w-0 flex-1" role="status" aria-live="polite">
-          <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent-dark dark:text-accent mb-2">
+          {/* The explorable weight (font-medium), matching the WidgetCard
+              eyebrows of every sibling widget on the same lesson page — the
+              hand-rolled copies this replaced had drifted to font-semibold. */}
+          <EyebrowLabel className="block mb-2">
             Beat {active + 1} / {beats.length}
-          </span>
+          </EyebrowLabel>
           <div className="relative min-h-24">
             {beats.map((beat, i) => (
               <p

@@ -10,7 +10,7 @@
  * the server (for the static fallback) and the client.
  */
 
-import { singleQubitState, type Complex } from "./math";
+import { clamp, singleQubitState, type Complex } from "./math";
 
 export interface Beat {
   /** Prose shown beside the sphere while this beat is active. */
@@ -47,7 +47,15 @@ export function parseScrolly(source: string): ParsedScrolly {
       if (typeof beat.theta !== "number" || !Number.isFinite(beat.theta)) {
         throw new Error(`beat ${i + 1} needs a numeric "theta"`);
       }
-      if (beat.phi !== undefined && typeof beat.phi !== "number") {
+      // Finiteness mirrors the theta guard above. JSON.parse maps an
+      // overflowing literal (1e999) to Infinity, which is typeof "number" —
+      // it would lerp into stateForAngles, make Math.cos/sin NaN, and leave a
+      // silently vanished state vector plus an "x NaN, y NaN, z NaN" sr
+      // readout instead of this widget's usual loud error card.
+      if (
+        beat.phi !== undefined &&
+        (typeof beat.phi !== "number" || !Number.isFinite(beat.phi))
+      ) {
         throw new Error(`beat ${i + 1} "phi" must be a number`);
       }
     });
@@ -76,7 +84,7 @@ function lerp(a: number, b: number, t: number): number {
  * progress 1 the last beat's.
  */
 export function interpolateState(beats: Beat[], progress01: number): Complex[] {
-  const p = Math.max(0, Math.min(1, progress01));
+  const p = clamp(progress01, 0, 1);
   const last = beats.length - 1;
   const pos = p * last;
   const i = Math.min(last - 1, Math.floor(pos));
@@ -90,6 +98,6 @@ export function interpolateState(beats: Beat[], progress01: number): Complex[] {
 
 /** Index of the beat whose caption should be highlighted at a given progress. */
 export function activeBeatIndex(beats: Beat[], progress01: number): number {
-  const p = Math.max(0, Math.min(1, progress01));
+  const p = clamp(progress01, 0, 1);
   return Math.round(p * (beats.length - 1));
 }

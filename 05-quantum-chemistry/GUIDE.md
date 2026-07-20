@@ -108,7 +108,7 @@ However the ledger is kept, reading it back out is a measurement. Under Jordan-W
 Run hydrogen through this pipeline in the minimal STO-3G basis and something concrete falls out: two H atoms, four spin-orbitals, four qubits, and a Hamiltonian that is a weighted sum of fifteen Pauli strings. No approximation has been made — this is the exact electronic structure problem for H2, rewritten as something a four-qubit device could measure. The coefficients are physics: stretch the bond and they shift.
 
 ```qham
-{ "R": 0.74, "tapered": false }
+{ "R": 0.75, "tapered": false }
 ```
 
 Every one of those fifteen strings is estimated the same way: prepare a state, measure the string, average over shots. The $ZZ$ terms are occupation-parity meters — they ask whether two orbitals agree. Put a single electron in a two-orbital pair and commit to the reading:
@@ -126,7 +126,7 @@ Every one of those fifteen strings is estimated the same way: prepare a state, m
 Now the payoff. Those four qubits carry redundancy — the symmetries that parity mapping exposes mean the real problem is far smaller than it looks. Tapering away the conserved quantities collapses the four-qubit, fifteen-term operator down to a **single qubit** with just three terms:
 
 $$
-H_{\text{H}_2} \approx -0.33\, I + 0.79\, Z + 0.18\, X
+H_{\text{H}_2} \approx -0.34\, I + 0.78\, Z + 0.18\, X
 $$
 
 That is the entire ground-state problem for a hydrogen molecule, living on one qubit. Flip the taper toggle above and watch fifteen terms fold into three. The lesson generalizes: the naive qubit count is almost never the real one, and choosing the right symmetries and active orbitals is the difference between a calculation that fits on today's hardware and one that does not.

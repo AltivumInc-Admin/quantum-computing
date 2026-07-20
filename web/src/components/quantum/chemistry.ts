@@ -323,6 +323,33 @@ export function loadH2Curve(json: unknown): H2Curve {
     if (p.R <= prevR) throw new Error("loadH2Curve: R must be strictly increasing");
     prevR = p.R;
   }
+  // `molecule` and `provenance` are rendered verbatim by qham's footer.
+  if (typeof o.molecule !== "string" || typeof o.provenance !== "string") {
+    throw new Error("loadH2Curve: missing molecule/provenance");
+  }
+  // `equilibrium` was the one declared field the loader never touched, yet qpes
+  // prints four teaching facts from it (equilibrium R, min FCI, well depth) and
+  // draws its amber marker at (equilibrium.R, equilibrium.fci) — a coordinate
+  // pair sourced independently of the FCI path it is supposed to sit on. qham
+  // and qvqe also open on equilibrium.R. So tie it to the curve: it must BE the
+  // sampled minimum, not a hand-maintained restatement of one.
+  const eq = o.equilibrium;
+  if (
+    !eq ||
+    typeof eq !== "object" ||
+    [eq.R, eq.fci, eq.hf].some((x) => typeof x !== "number" || !Number.isFinite(x))
+  ) {
+    throw new Error("loadH2Curve: malformed equilibrium block");
+  }
+  const argmin = o.points.reduce((a, b) => (b.fci < a.fci ? b : a));
+  // The fixture carries 6 decimals; 1e-6 is its own precision, not a tolerance.
+  if (
+    Math.abs(eq.R - argmin.R) > 1e-9 ||
+    Math.abs(eq.fci - argmin.fci) > 1e-6 ||
+    Math.abs(eq.hf - argmin.hf) > 1e-6
+  ) {
+    throw new Error("loadH2Curve: equilibrium is not the sampled minimum");
+  }
   return o as H2Curve;
 }
 

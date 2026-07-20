@@ -145,6 +145,56 @@ describe("H2 fixture (the source of truth)", () => {
     expect(eqm.fci).toBeCloseTo(-1.1373, 3);
     expect(eqm.R).toBeCloseTo(0.74, 1);
   });
+  // The `equilibrium` block is what qpes prints as four teaching facts, what it
+  // draws its amber marker from, and what qham/qvqe open on — but it used to be
+  // the one declared field loadH2Curve never read, so a regen on a different
+  // grid could move the curve's minimum and leave the block (and every number
+  // derived from it) silently stale.
+  describe("equilibrium block", () => {
+    const base = {
+      molecule: "H2",
+      basis: "sto-3g",
+      provenance: "test fixture",
+      jwTerms: ["I"],
+      points: [
+        { R: 0.5, c0: 0, cz: 1, cx: 0, fci: -1, hf: -0.9, jw: [1] },
+        { R: 0.6, c0: 0, cz: 1, cx: 0, fci: -2, hf: -1.9, jw: [1] },
+      ],
+    };
+
+    it("the committed fixture's equilibrium IS the argmin of its own points", () => {
+      const argmin = CURVE.points.reduce((a, b) => (b.fci < a.fci ? b : a));
+      expect(CURVE.equilibrium.R).toBe(argmin.R);
+      expect(CURVE.equilibrium.fci).toBeCloseTo(argmin.fci, 6);
+      expect(CURVE.equilibrium.hf).toBeCloseTo(argmin.hf, 6);
+    });
+
+    it("accepts a fixture whose equilibrium is the sampled minimum", () => {
+      expect(() =>
+        loadH2Curve({ ...base, equilibrium: { R: 0.6, fci: -2, hf: -1.9 } })
+      ).not.toThrow();
+    });
+
+    it("rejects an equilibrium that is not the sampled minimum", () => {
+      expect(() =>
+        loadH2Curve({ ...base, equilibrium: { R: 0.5, fci: -1, hf: -0.9 } })
+      ).toThrow(/sampled minimum/i);
+    });
+
+    it("rejects a missing equilibrium block", () => {
+      expect(() => loadH2Curve(base)).toThrow(/equilibrium/i);
+    });
+
+    it("rejects a fixture missing molecule/provenance (qham renders both)", () => {
+      const noMolecule: Record<string, unknown> = {
+        ...base,
+        equilibrium: { R: 0.6, fci: -2, hf: -1.9 },
+      };
+      delete noMolecule.molecule;
+      expect(() => loadH2Curve(noMolecule)).toThrow(/molecule\/provenance/i);
+    });
+  });
+
   it("interpolates (c0,cz,cx) between grid points", () => {
     const lo = CURVE.points[10];
     const hi = CURVE.points[11];

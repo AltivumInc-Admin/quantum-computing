@@ -11,10 +11,10 @@ export function expectZ0(state: Complex[]): number {
 }
 
 /** f(x;theta,bias) = <Z_0> after angle-encoding x then the ansatz, + bias. */
-export function vqcOutput(x: [number, number], theta: number[], bias: number, scale = 1): number {
+export function vqcOutput(x: [number, number], theta: number[], bias: number): number {
   let s = zeroState(2);
-  s = applyGate1(s, ry(scale * x[0]), 0, 2);
-  s = applyGate1(s, ry(scale * x[1]), 1, 2);
+  s = applyGate1(s, ry(x[0]), 0, 2);
+  s = applyGate1(s, ry(x[1]), 1, 2);
   let p = 0;
   for (let l = 0; l < 2; l++) {
     s = applyCNOT(s, 0, 1, 2);
@@ -28,29 +28,50 @@ export function vqcOutput(x: [number, number], theta: number[], bias: number, sc
 }
 
 /** Parameter-shift gradient of f w.r.t. theta[j] (bias cancels in the difference). */
-export function paramShiftGrad(x: [number, number], theta: number[], bias: number, j: number, scale = 1): number {
+export function paramShiftGrad(x: [number, number], theta: number[], bias: number, j: number): number {
   const tp = theta.slice(); tp[j] += Math.PI / 2;
   const tm = theta.slice(); tm[j] -= Math.PI / 2;
-  return 0.5 * (vqcOutput(x, tp, bias, scale) - vqcOutput(x, tm, bias, scale));
+  return 0.5 * (vqcOutput(x, tp, bias) - vqcOutput(x, tm, bias));
 }
 
-export function mseLoss(data: Point[], theta: number[], bias: number, scale = 1): number {
+export function mseLoss(data: Point[], theta: number[], bias: number): number {
   let s = 0;
-  for (const d of data) s += (vqcOutput(d.x, theta, bias, scale) - d.y) ** 2;
+  for (const d of data) s += (vqcOutput(d.x, theta, bias) - d.y) ** 2;
   return s / data.length;
 }
 
 /** One full-batch gradient-descent step on MSE; returns updated theta + bias. */
-export function trainStep(data: Point[], theta: number[], bias: number, lr: number, scale = 1): { theta: number[]; bias: number } {
+export function trainStep(data: Point[], theta: number[], bias: number, lr: number): { theta: number[]; bias: number } {
   const grads = new Array(theta.length).fill(0);
   let gb = 0;
   for (const d of data) {
-    const e = 2 * (vqcOutput(d.x, theta, bias, scale) - d.y);
+    const e = 2 * (vqcOutput(d.x, theta, bias) - d.y);
     gb += e;
-    for (let j = 0; j < theta.length; j++) grads[j] += e * paramShiftGrad(d.x, theta, bias, j, scale);
+    for (let j = 0; j < theta.length; j++) grads[j] += e * paramShiftGrad(d.x, theta, bias, j);
   }
   const M = data.length;
   return { theta: theta.map((t, j) => t - (lr * grads[j]) / M), bias: bias - (lr * gb) / M };
+}
+
+/**
+ * Fraction of `data` the classifier labels correctly (sign of f, thresholded at
+ * 0). Lives here rather than in the view: it is the model's own forward pass —
+ * the same one `mseLoss` runs — and it produces the headline number the learner
+ * reads, so it belongs inside the unit-tested boundary alongside kernel.ts's
+ * `accuracy`.
+ */
+export function accuracyOf(data: Point[], theta: number[], bias: number): number {
+  let correct = 0;
+  for (const d of data) {
+    const pred = vqcOutput(d.x, theta, bias) >= 0 ? 1 : -1;
+    if (pred === d.y) correct++;
+  }
+  return correct / data.length;
+}
+
+/** The trainer's initialization policy: N_PARAMS small random angles in [-0.1, 0.3). */
+export function initTheta(): number[] {
+  return Array.from({ length: N_PARAMS }, () => -0.1 + 0.4 * Math.random());
 }
 
 /** Two separable Gaussian blobs at (+/-0.7,+/-0.7), clipped to [-pi, pi]. */

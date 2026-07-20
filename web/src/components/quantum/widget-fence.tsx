@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React, { useEffect, useRef, useState, type ComponentType } from "react";
+import React, { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { cardShell, ErrorCard } from "./error-card";
 
 /**
  * Client boundary that lazily resolves a GUIDE fenced block (```q*) to its
@@ -24,11 +25,18 @@ import React, { useEffect, useRef, useState, type ComponentType } from "react";
  * in widget-fence.test.tsx guards against drift.
  */
 
+/**
+ * Shown twice before every explorable resolves (approach gate, then chunk
+ * load), so it wears the exact shell it becomes: `cardShell` — the same
+ * `.glass` recipe every mounted WidgetCard renders with. It used to carry the
+ * pre-Instrument flat-gray recipe, which made the gray-slab -> luminous-glass
+ * swap a visible pop on every lesson scroll.
+ */
 function WidgetSkeleton({ minH }: { minH: string }) {
   return (
     <div
       aria-hidden="true"
-      className={`not-prose my-6 ${minH} animate-pulse rounded-card border border-gray-200/80 bg-gray-50/70 dark:border-gray-700/40 dark:bg-white/[0.02] motion-reduce:animate-none`}
+      className={`not-prose my-6 ${minH} animate-pulse ${cardShell} motion-reduce:animate-none`}
     />
   );
 }
@@ -99,6 +107,40 @@ const WIDGETS: Record<string, WidgetEntry> = {
 /** Token keys the registry actually handles — used by the parity test. */
 export const REGISTERED_WIDGET_LANGS = Object.keys(WIDGETS);
 
+/**
+ * One widget's blast radius. Every widget is a lazily-fetched chunk, and a
+ * rejected import rethrows during render — the realistic trigger being a page
+ * held open across a deploy, since the static export ships content-hashed
+ * chunk filenames and the approach gate defers the fetch until the reader
+ * nears the widget (so the stale-chunk window is the whole reading session).
+ * Render-time throws from the kernel (chart-utils' `extent()` on an empty
+ * array, math.ts' unknown-gate guard) land here too. Without a boundary any of
+ * those unmounts the entire lesson route, prose included; with one, the single
+ * widget degrades to the shared failure card and the lesson keeps rendering.
+ *
+ * Class component because getDerivedStateFromError is the only React API for
+ * this — no new dependency. It sits at the single registry call site, so all
+ * 36 widgets are covered at once.
+ */
+class WidgetErrorBoundary extends React.Component<
+  { label: string; children: ReactNode },
+  { message: string | null }
+> {
+  state: { message: string | null } = { message: null };
+
+  static getDerivedStateFromError(error: unknown): { message: string } {
+    const raw = error instanceof Error ? error.message : String(error);
+    return { message: raw || "failed to load" };
+  }
+
+  render() {
+    if (this.state.message !== null) {
+      return <ErrorCard label={this.props.label} message={this.state.message} />;
+    }
+    return this.props.children;
+  }
+}
+
 /** Widgets come alive this far before they scroll into view. */
 const APPROACH_ROOT_MARGIN = "400px 0px";
 
@@ -143,5 +185,9 @@ export function WidgetFence({ language, source }: { language: string; source: st
       </div>
     );
   }
-  return <entry.Widget source={source} />;
+  return (
+    <WidgetErrorBoundary label={language}>
+      <entry.Widget source={source} />
+    </WidgetErrorBoundary>
+  );
 }
