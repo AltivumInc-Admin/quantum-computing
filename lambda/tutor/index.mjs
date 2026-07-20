@@ -19,7 +19,12 @@
  */
 import { readFileSync } from "node:fs";
 import { BedrockRuntimeClient, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
-import { buildSystemPrompt, OUT_OF_SCOPE_MESSAGE, TUTOR_ERROR_SENTINEL } from "./tutor-core.mjs";
+import {
+  buildSystemPrompt,
+  MAX_QUESTION_CHARS,
+  OUT_OF_SCOPE_MESSAGE,
+  TUTOR_ERROR_SENTINEL,
+} from "./tutor-core.mjs";
 
 // Re-exported so the handler test can assert the exact streamed strings.
 export { OUT_OF_SCOPE_MESSAGE, TUTOR_ERROR_SENTINEL };
@@ -41,14 +46,41 @@ try {
 
 const client = new BedrockRuntimeClient({});
 
-// A legit request is tiny ({slug, question<=2000 chars}); reject anything larger
-// before decoding/parsing so a public, unauthenticated URL can't be made to burn
-// CPU/memory JSON-parsing a multi-MB body per invocation.
+// A legit request is tiny ({slug, question<=MAX_QUESTION_CHARS}); reject anything
+// larger before decoding/parsing so a public, unauthenticated URL can't be made to
+// burn CPU/memory JSON-parsing a multi-MB body per invocation.
 const MAX_BODY_BYTES = 16 * 1024;
+
+/**
+ * Bound the model stream well under the function's own Timeout (60s). Without
+ * this, a stalled ConverseStream runs until the RUNTIME kills the process — and a
+ * process kill never runs the catch below, so the in-band sentinel (the only
+ * failure channel once the response is committed as 200) is never written and the
+ * client renders whatever partial text arrived as a finished, authoritative
+ * answer. 45s leaves headroom for the write-and-end after the throw.
+ */
+const STREAM_DEADLINE_MS = 45_000;
+
+/** Distinct from `{}`: an over-cap body is a length problem, not an unknown lesson. */
+const BODY_TOO_LARGE = Symbol("bodyTooLarge");
+
+/**
+ * What an over-cap body gets. It used to share OUT_OF_SCOPE_MESSAGE with the
+ * unknown-slug and empty-question paths, which told a learner sitting inside the
+ * lesson she just asked about that her question was off-topic — a false statement
+ * about the request, with no way to discover the real cause.
+ */
+export const TOO_LONG_MESSAGE =
+  "That question is too long for me to read. Trim it to the key part and ask again.";
 
 function parseBody(event) {
   if (!event?.body) return {};
-  if (event.body.length > MAX_BODY_BYTES) return {};
+  // Byte length of the wire body, not string length. `event.body.length` counts
+  // UTF-16 code units on a raw body (so a body of 3-byte math glyphs passed at up
+  // to ~48 KiB) and base64 characters on an encoded one — neither is bytes, which
+  // is what the constant names. Measured BEFORE base64-decoding on purpose: the
+  // whole point of the gate is to not materialize a huge body.
+  if (Buffer.byteLength(event.body, "utf8") > MAX_BODY_BYTES) return BODY_TOO_LARGE;
   const raw = event.isBase64Encoded ? Buffer.from(event.body, "base64").toString("utf8") : event.body;
   try {
     return JSON.parse(raw);
@@ -58,20 +90,46 @@ function parseBody(event) {
 }
 
 /**
+ * A promise that rejects once `ms` has elapsed, plus a `clear` to cancel it.
+ * Racing every await against it turns a hung stream into a normal throw, which
+ * the handler's catch can convert into the in-band sentinel — the failure path
+ * that a runtime-level timeout kill can never reach.
+ */
+function deadlineGuard(ms) {
+  let timer;
+  const signal = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`tutor stream exceeded ${ms}ms`)), ms);
+    // Never hold the event loop open on the guard alone.
+    timer.unref?.();
+  });
+  return { signal, clear: () => clearTimeout(timer) };
+}
+
+/**
  * The per-request tutor logic with dependencies injected. `client` is anything
  * with `.send(command)` returning `{ stream }` (an async-iterable of Converse
  * deltas); `corpus` maps slug -> { title, headings, text }; `modelId` is the
  * Bedrock model/inference-profile id. `stream` is any `{ write(s), end() }` sink
- * — the Lambda HttpResponseStream in prod, a fake in tests. Resolves when the
- * response has been fully written. On any failure it writes the in-band
- * TUTOR_ERROR_SENTINEL (the response is already committed as 200).
+ * — the Lambda HttpResponseStream in prod, a fake in tests. `deadlineMs` bounds
+ * the model stream (STREAM_DEADLINE_MS in prod; a few ms in the deadline test).
+ * Resolves when the response has been fully written. On any failure it writes the
+ * in-band TUTOR_ERROR_SENTINEL (the response is already committed as 200).
  */
-export function createHandlerCore({ client, corpus, modelId }) {
+export function createHandlerCore({ client, corpus, modelId, deadlineMs = STREAM_DEADLINE_MS }) {
   return async (event, stream) => {
     try {
       const body = parseBody(event);
+      if (body === BODY_TOO_LARGE) {
+        stream.write(TOO_LONG_MESSAGE);
+        stream.end();
+        return;
+      }
       const slug = String(body.slug || "").slice(0, 64);
-      const question = String(body.question || "").trim().slice(0, 2000);
+      // Single-sourced with the panel's textarea maxLength (tutor-core.mjs), so
+      // the browser stops the input at exactly the boundary this slices to
+      // instead of letting a long paste be amputated mid-word and answered as
+      // though it were the whole question.
+      const question = String(body.question || "").trim().slice(0, MAX_QUESTION_CHARS);
       // Own-property lookup: a plain object inherits keys like "__proto__",
       // "constructor", and "toString", which would otherwise resolve to a truthy
       // (but text-less) value and slip past the grounding guard into a paid,
@@ -91,10 +149,21 @@ export function createHandlerCore({ client, corpus, modelId }) {
         inferenceConfig: { maxTokens: 800, temperature: 0.2 },
       });
 
-      const response = await client.send(command);
-      for await (const item of response.stream) {
-        const text = item.contentBlockDelta?.delta?.text;
-        if (text) stream.write(text);
+      // Every await races the deadline, so both a send that never returns headers
+      // and a stream that goes silent mid-answer surface as a throw here rather
+      // than as a truncated body the client cannot distinguish from a finished one.
+      const guard = deadlineGuard(deadlineMs);
+      try {
+        const response = await Promise.race([client.send(command), guard.signal]);
+        const deltas = response.stream[Symbol.asyncIterator]();
+        for (;;) {
+          const next = await Promise.race([deltas.next(), guard.signal]);
+          if (next.done) break;
+          const text = next.value?.contentBlockDelta?.delta?.text;
+          if (text) stream.write(text);
+        }
+      } finally {
+        guard.clear();
       }
       stream.end();
     } catch (err) {
@@ -117,6 +186,15 @@ export function createHandlerCore({ client, corpus, modelId }) {
 // Lambda runtime (e.g. `node --test`) it is absent, so the module loads cleanly
 // (handler === undefined) and the test can import createHandlerCore. In
 // production the real runtime provides it and the streaming handler is created.
+//
+// The core is built ONCE at module scope, matching lambda/qpu and lambda/sync
+// (whose header says it mirrors this file's DI-core pattern). The previous
+// per-invocation rebuild was justified by "so process.env.TUTOR_MODEL_ID is read
+// each call", but an environment-variable update REPLACES the execution
+// environment, so the value cannot change within a container's life and the
+// rebuild bought nothing.
+const core = createHandlerCore({ client, corpus: CORPUS, modelId: process.env.TUTOR_MODEL_ID });
+
 export const handler =
   typeof awslambda !== "undefined" && typeof awslambda.streamifyResponse === "function"
     ? awslambda.streamifyResponse((event, responseStream) => {
@@ -124,8 +202,6 @@ export const handler =
           statusCode: 200,
           headers: { "Content-Type": "text/plain; charset=utf-8" },
         });
-        // Construct the core per-invocation so process.env.TUTOR_MODEL_ID is read
-        // each call (unchanged from the previous inline handler).
-        return createHandlerCore({ client, corpus: CORPUS, modelId: process.env.TUTOR_MODEL_ID })(event, stream);
+        return core(event, stream);
       })
     : undefined;

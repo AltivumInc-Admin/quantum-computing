@@ -10,7 +10,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHandlerCore, TUTOR_ERROR_SENTINEL, OUT_OF_SCOPE_MESSAGE } from "./index.mjs";
+import {
+  createHandlerCore,
+  TUTOR_ERROR_SENTINEL,
+  OUT_OF_SCOPE_MESSAGE,
+  TOO_LONG_MESSAGE,
+} from "./index.mjs";
+import { MAX_QUESTION_CHARS } from "./tutor-core.mjs";
 
 function makeStream() {
   const chunks = [];
@@ -120,7 +126,11 @@ test("C: out-of-scope (unknown slug / empty question / __proto__) returns the me
   }
 });
 
-test("D: a body over MAX_BODY_BYTES is rejected as out-of-scope, no model call", async () => {
+test("D: a body over MAX_BODY_BYTES is refused for LENGTH, not scope, with no model call", async () => {
+  // The size gate used to share OUT_OF_SCOPE_MESSAGE with the unknown-slug and
+  // empty-question paths, so an oversized paste told a learner sitting inside the
+  // lesson she just asked about that her question was off-topic. The no-paid-call
+  // guarantee is unchanged; only the claim the message makes is.
   let called = false;
   const client = {
     send: async () => {
@@ -134,6 +144,108 @@ test("D: a body over MAX_BODY_BYTES is rejected as out-of-scope, no model call",
     { body: JSON.stringify({ slug: "00-prereqs", question: huge }) },
     stream
   );
-  assert.equal(stream.text(), OUT_OF_SCOPE_MESSAGE);
+  assert.equal(stream.text(), TOO_LONG_MESSAGE);
+  assert.notEqual(stream.text(), OUT_OF_SCOPE_MESSAGE, "length is not a scope problem");
   assert.equal(called, false);
+});
+
+test("D2: the size gate measures BYTES, so multi-byte glyphs cannot smuggle a huge body past it", async () => {
+  // `event.body.length` counted UTF-16 code units, so a body of 3-byte glyphs
+  // passed at up to ~48 KiB — three times the constant's stated limit.
+  let called = false;
+  const client = {
+    send: async () => {
+      called = true;
+      return { stream: (async function* () {})() };
+    },
+  };
+  const stream = makeStream();
+  // ~7k UTF-16 units but ~21 KiB of UTF-8 — under the OLD gate, over the real one.
+  const glyphs = "⊗".repeat(7 * 1024);
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: glyphs }) },
+    stream
+  );
+  assert.ok(Buffer.byteLength(glyphs, "utf8") > 16 * 1024, "fixture must exceed the byte cap");
+  assert.equal(stream.text(), TOO_LONG_MESSAGE);
+  assert.equal(called, false);
+});
+
+test("E: a question is sliced to the SHARED cap the client's textarea enforces", async () => {
+  const client = okClient();
+  const stream = makeStream();
+  const long = "q".repeat(MAX_QUESTION_CHARS + 500);
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: long }) },
+    stream
+  );
+  const sent = client.sent[0].input.messages[0].content[0].text;
+  assert.equal(sent.length, MAX_QUESTION_CHARS);
+  // The cap is imported, never re-declared: a drift between the handler's slice
+  // and the panel's maxLength is exactly what silent mid-word truncation was.
+  assert.equal(MAX_QUESTION_CHARS, 2000);
+});
+
+
+/**
+ * A stall that outlives the deadline and then settles harmlessly.
+ *
+ * Two traps here, both of which made these tests pass on Node 26 and fail on
+ * CI's Node 20:
+ *   1. `new Promise(() => {})` never settles, so the runner reports "Promise
+ *      resolution is still pending but the event loop has already resolved".
+ *   2. An UNREF'd timer is worse: the handler's own deadline guard also unrefs,
+ *      so with both unref'd nothing holds the loop open, Node 20 drains it, and
+ *      every pending subtest is cancelled (reported as `not ok` with `fail 0`).
+ * So this timer is deliberately REF'd — it keeps the loop alive across the
+ * ~20ms deadline — and it RESOLVES rather than rejects, so the discarded
+ * race-loser can never surface as an unhandled rejection.
+ */
+function stalls(ms = 200) {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve({ done: true, value: undefined }), ms);
+  });
+}
+
+test("F: a stalled model stream hits the deadline and emits the sentinel", async () => {
+  // The one failure the in-band sentinel cannot otherwise cover: nothing throws,
+  // the stream simply never yields. Before the deadline this ran until the Lambda
+  // Timeout killed the process — and a process kill never runs the catch, so no
+  // sentinel was written and the client rendered the truncated body as a finished
+  // answer. deadlineMs is injected (a few ms here, 45s in production).
+  const client = {
+    send: async () => ({
+      stream: {
+        [Symbol.asyncIterator]: () => ({
+          next: () => stalls(), // outlives the 20ms deadline, then settles
+        }),
+      },
+    }),
+  };
+  const stream = makeStream();
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 20 })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+    stream
+  );
+  assert.ok(stream.text().startsWith(TUTOR_ERROR_SENTINEL), "deadline reaches the sentinel path");
+});
+
+test("F2: a send that never returns headers also hits the deadline", async () => {
+  const client = { send: () => stalls() };
+  const stream = makeStream();
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 20 })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+    stream
+  );
+  assert.ok(stream.text().startsWith(TUTOR_ERROR_SENTINEL));
+});
+
+test("F3: a healthy stream is never cut by the deadline guard", async () => {
+  const client = okClient();
+  const stream = makeStream();
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 5_000 })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+    stream
+  );
+  assert.equal(stream.text(), "Hello");
 });

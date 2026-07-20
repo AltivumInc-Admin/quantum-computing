@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   SECTION_CHAR_CAP,
+  MAX_QUESTION_CHARS,
   TUTOR_ERROR_SENTINEL,
   OUT_OF_SCOPE_MESSAGE,
   stripGuideForTutor,
@@ -18,9 +19,19 @@ import {
   buildSystemPrompt,
 } from "./tutor-core.mjs";
 
-test("constants: sentinel is a delimited token; out-of-scope message points back to lessons", () => {
+test("constants: sentinel is a delimited token; out-of-scope message is true inside a lesson", () => {
   assert.equal(TUTOR_ERROR_SENTINEL, "<<TUTOR-STREAM-ERROR>>");
-  assert.match(OUT_OF_SCOPE_MESSAGE, /only help with the lessons/i);
+  // The panel only renders inside /learn/<slug>, so the copy must not tell the
+  // learner to open a lesson they are demonstrably already reading.
+  assert.match(OUT_OF_SCOPE_MESSAGE, /don't have the text for this lesson/i);
+  assert.doesNotMatch(OUT_OF_SCOPE_MESSAGE, /open a lesson/i);
+});
+
+test("constants: the caps are sized for the real curriculum, not a placeholder", () => {
+  // 05-quantum-chemistry, the largest GUIDE, reduces to ~20.8k chars. A cap below
+  // that silently discards grounding text the prompt then denies having.
+  assert.ok(SECTION_CHAR_CAP >= 21_000, `SECTION_CHAR_CAP ${SECTION_CHAR_CAP} clips the largest lesson`);
+  assert.equal(MAX_QUESTION_CHARS, 2000);
 });
 
 test("stripGuideForTutor: removes fenced blocks, math, inline code, links, and Markdown marks", () => {
@@ -50,6 +61,60 @@ test("stripGuideForTutor: removes fenced blocks, math, inline code, links, and M
   assert.ok(out.includes("bold") && out.includes("italic"), "emphasized words survive");
   assert.ok(out.includes("Heading") && !out.includes("## Heading"), "heading marks removed");
   assert.ok(!out.includes("> a blockquote") && out.includes("a blockquote"), "blockquote mark removed");
+});
+
+test("stripGuideForTutor: inline-code identifiers survive the emphasis pass intact", () => {
+  // The prompt's strongest guardrail forbids the model from guessing Braket or
+  // PennyLane method names. A blanket `[*_]{1,3}` delete used to run AFTER the
+  // inline-code unwrap, so the corpus taught the model `circuit.statevector()`,
+  // `AwsDevice.getdevices()` and `logmetric` — names that do not exist.
+  const md =
+    "Call `circuit.state_vector()` and `AwsDevice.get_devices()`, log with `log_metric`, " +
+    "set `n_qubits` and `stopping_condition`, step via `optimizer.step_and_cost`. " +
+    "Some **bold** and _italic_ text.";
+  const out = stripGuideForTutor(md);
+  for (const ident of [
+    "circuit.state_vector()",
+    "AwsDevice.get_devices()",
+    "log_metric",
+    "n_qubits",
+    "stopping_condition",
+    "optimizer.step_and_cost",
+  ]) {
+    assert.ok(out.includes(ident), `identifier mangled: ${ident} missing from ${JSON.stringify(out)}`);
+  }
+  // ...while the emphasis marks around real emphasis are still gone.
+  assert.ok(!out.includes("**") && !out.includes("_italic_"), "emphasis marks removed");
+  assert.ok(out.includes("bold") && out.includes("italic"), "emphasized words survive");
+  assert.ok(!out.includes("`"), "backticks removed");
+});
+
+test("stripGuideForTutor: intra-word operators are not read as emphasis delimiters", () => {
+  // Bare-prose math: `2*n` and `e^(-i*gamma*C)` have asterisks that pair up if the
+  // emphasis rule ignores word boundaries, silently rewriting the expression.
+  const out = stripGuideForTutor("The cost is 2*n gates and the phase is e^(-i*gamma*C) per layer.");
+  assert.ok(out.includes("2*n"), `2*n mangled: ${out}`);
+  assert.ok(out.includes("e^(-i*gamma*C)"), `exponent mangled: ${out}`);
+});
+
+test("stripGuideForTutor: prose currency keeps its dollar sign, math still unwraps", () => {
+  // `$…$` is ambiguous with two prices on one line. The prompt orders the model to
+  // never invent prices, so de-denominating them in the grounding text is worse
+  // than leaving the delimiters in.
+  const md =
+    "QPUs charge per task ($0.30) plus per shot (e.g. $0.08 on IonQ).\n\n" +
+    "1,000 shots is \\$0.30 + 1,000 x \\$0.08 = \\$80.30 per task.\n\n" +
+    "The instance runs \\$0.10-\\$3.85/hour.\n\n" +
+    "The amplitude is $\\alpha$, the probability $|\\alpha|^2$, the space $2^n$ and the gate $H$.";
+  const out = stripGuideForTutor(md);
+  for (const price of ["$0.30", "$0.08", "$80.30", "$0.10", "$3.85"]) {
+    assert.ok(out.includes(price), `currency de-denominated: ${price} missing from ${JSON.stringify(out)}`);
+  }
+  assert.doesNotMatch(out, /\\\d/, "no stray backslash left where an escaped $ used to be");
+  // Real inline math still loses its delimiters and keeps its contents.
+  assert.ok(out.includes("|\\alpha|^2"), "inline math contents kept");
+  assert.ok(out.includes("2^n"), "digit-leading math still unwrapped");
+  assert.ok(!out.includes("$\\alpha$") && !out.includes("$H$"), "math delimiters removed");
 });
 
 test("stripGuideForTutor: truncates on a paragraph boundary within the cap, never mid-sentence", () => {
@@ -86,6 +151,12 @@ test("buildSystemPrompt: embeds title, headings, the guardrail clauses, and the 
   assert.ok(/Answer ONLY using the lesson text/i.test(p), "grounding guardrail present");
   assert.ok(/NEVER invent or guess Amazon Braket, PennyLane, or Qiskit/i.test(p), "no-invention guardrail present");
   assert.ok(/ONE short guiding question/i.test(p), "Socratic guardrail present");
+  // The panel renders the stream into a plain <p>, so any Markdown or LaTeX the
+  // model emits reaches the learner as literal marker characters.
+  assert.ok(/plain prose/i.test(p), "plain-prose output rule present");
+  assert.ok(/no markdown formatting/i.test(p), "Markdown explicitly forbidden");
+  // Mirrored from the web suite so the guardrail survives if that copy is retired.
+  assert.ok(/do not use emojis/i.test(p), "no-emoji rule present");
   assert.ok(p.includes("LESSON TEXT:"), "lesson-text label present");
   // The whole point of grounding — the section's own text must reach the model.
   assert.ok(p.includes("the lesson body here"), "grounding text included");
@@ -112,18 +183,17 @@ test("buildCorpusEntry: falls back to fallbackTitle when there is no H1", () => 
 });
 
 test("buildCorpusEntry: drops headings whose content was truncated away (no false grounding claim)", () => {
-  // Force truncation: a long first section, then a trailing heading whose body falls past the cap.
-  const md = ["# T", "## Kept", "K".repeat(60), "## Dropped", "D".repeat(60)].join("\n");
-  // tutor-core's SECTION_CHAR_CAP is large; pass a small cap via stripGuideForTutor is internal,
-  // so instead assert the invariant on the real cap by making the input exceed it.
-  void SECTION_CHAR_CAP;
+  // buildCorpusEntry always strips at the production SECTION_CHAR_CAP (there is no
+  // cap parameter), so truncation is forced by making the input exceed the real
+  // cap — which asserts the invariant against the cap that actually ships.
   const big = "# T\n## Kept\n" + "word ".repeat(SECTION_CHAR_CAP) + "\n## Dropped\ntail";
   const { entry, truncated, droppedHeadings } = buildCorpusEntry(big);
   assert.equal(truncated, true);
   assert.ok(entry.headings.includes("Kept"));
   assert.ok(!entry.headings.includes("Dropped"), "a heading past the cap is not advertised");
   assert.ok(droppedHeadings >= 1);
-  // sanity: the small-input case isn't accidentally truncated
-  const small = buildCorpusEntry(md);
+
+  // Sanity: a short input is not accidentally reported as truncated.
+  const small = buildCorpusEntry(["# T", "## Kept", "K".repeat(60), "## Dropped", "D".repeat(60)].join("\n"));
   assert.equal(small.truncated, false);
 });

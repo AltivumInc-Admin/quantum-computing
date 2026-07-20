@@ -125,6 +125,11 @@ Resources:
           AllowHeaders:
             - content-type
             - x-amz-content-sha256
+          # Without MaxAge the browser falls back to a 5s preflight cache, so
+          # nearly every question pays an extra cross-region OPTIONS round trip
+          # before the POST. One hour is safe: this allowlist changes only on a
+          # stack deploy, which is exactly when a stale cache should expire.
+          MaxAge: 3600
 
   # Stack-managed log group with a finite retention. Lambda otherwise auto-creates
   # /aws/lambda/<fn> with never-expire retention; declaring it here (the conventional
@@ -197,6 +202,41 @@ Resources:
         reflects this. Check the function's log group for the error detail.
       Namespace: QuantumTutor
       MetricName: TutorError
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # index.mjs logs {"tutorCorpusMissing":true} when the corpus import fails. That
+  # path is invisible to every other signal: the handler still returns HTTP 200
+  # and streams OUT_OF_SCOPE_MESSAGE, so Lambda Errors stays flat and the tutor
+  # is silently dead for EVERY learner on EVERY lesson. This is the only alarm
+  # that can catch it.
+  TutorCorpusMissingMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorCorpusMissing"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorCorpusMissing
+          MetricValue: "1"
+          Unit: Count
+
+  TutorCorpusMissingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-corpus-missing
+      AlarmDescription: >-
+        The tutor could not load its grounding corpus, so it answers
+        OUT_OF_SCOPE to every question on every lesson while still returning
+        HTTP 200. Neither the Errors metric nor the status code reflects this.
+        Redeploy: predeploy rebuilds the corpus and gates on its freshness.
+      Namespace: QuantumTutor
+      MetricName: TutorCorpusMissing
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1

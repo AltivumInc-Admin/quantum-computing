@@ -3,7 +3,7 @@
  * Pre-deploy preflight gate for the "Ask the margin" tutor Lambda. Run it AFTER
  * building the corpus and BEFORE `sam deploy`:
  *
- *   npm --prefix web run build:tutor-corpus
+ *   npm --prefix lambda/tutor run build:corpus
  *   TUTOR_MODEL_ID=<inference-profile-arn> node lambda/tutor/deploy-check.mjs
  *   # or: node lambda/tutor/deploy-check.mjs <inference-profile-arn>
  *
@@ -76,7 +76,7 @@ export function corpusFreshnessProblems(corpus, sections, root = REPO_ROOT) {
   for (const slug of sections) {
     const have = Object.prototype.hasOwnProperty.call(corpus, slug) ? corpus[slug] : undefined;
     if (!have) {
-      problems.push(`missing: no corpus entry for "${slug}" (run build:tutor-corpus)`);
+      problems.push(`missing: no corpus entry for "${slug}" (run build:corpus)`);
       continue;
     }
     if (!have.text || !have.text.trim()) {
@@ -106,7 +106,7 @@ export function runPreflight({ modelId, corpusPath = CORPUS_PATH, root = REPO_RO
   try {
     corpus = JSON.parse(fs.readFileSync(corpusPath, "utf8"));
   } catch (err) {
-    errors.push(`cannot read ${corpusPath}: ${err.message} — run: npm --prefix web run build:tutor-corpus`);
+    errors.push(`cannot read ${corpusPath}: ${err.message} — run: npm --prefix lambda/tutor run build:corpus`);
   }
   if (corpus) {
     for (const p of corpusFreshnessProblems(corpus, listGuideSections(root), root)) errors.push(p);

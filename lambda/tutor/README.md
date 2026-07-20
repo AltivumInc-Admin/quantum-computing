@@ -12,7 +12,8 @@ the site stays a static export; this is the only server-side surface.
   (default Node builder, `CodeUri: ./`) bundles it. The web app consumes a gitignored
   prebuild copy, `web/src/lib/tutor-core.generated.ts` (see Notes).
 - `corpus.json` — generated grounding text, **not committed** (gitignored). Build it
-  before packaging: `npm --prefix web run build:tutor-corpus`.
+  before packaging: `npm --prefix lambda/tutor run build:corpus`. `npm run deploy`
+  chains it for you (see below), so you should rarely need it on its own.
 - `template.yaml` — AWS SAM (recommended). `trust.json` / `policy.json` — for the
   raw AWS CLI path.
 
@@ -28,19 +29,27 @@ the site stays a static export; this is the only server-side surface.
 ## Deploy (SAM, recommended)
 
 ```bash
-npm --prefix web run build:tutor-corpus          # writes lambda/tutor/corpus.json
-# Preflight gate: fails early if the corpus is missing/stale or the model id is
-# malformed (so you never ship an empty corpus that answers OUT_OF_SCOPE to everyone).
-TUTOR_MODEL_ID=<inference-profile-arn> node lambda/tutor/deploy-check.mjs
 cd lambda/tutor
 npm install
-sam build
-sam deploy --guided \
-  --parameter-overrides \
-    ModelId=<inference-profile-arn> \
-    FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0 \
-    MaxConcurrency=5 \
-    LogRetentionInDays=30
+TUTOR_MODEL_ID=<inference-profile-arn> npm run deploy
+```
+
+`npm run deploy` is the whole recipe. npm runs `predeploy` first, which rebuilds
+`corpus.json` from the current GUIDEs and then runs the preflight gate; a non-zero
+exit from either aborts before `sam build`, so you cannot ship a missing, stale or
+truncated corpus (the failure mode that answers OUT_OF_SCOPE to every learner) or a
+malformed model id. Add `-- --guided` on a first deploy to set the parameters:
+
+```bash
+TUTOR_MODEL_ID=<inference-profile-arn> npm run build:corpus \
+  && node deploy-check.mjs \
+  && sam build \
+  && sam deploy --guided \
+    --parameter-overrides \
+      ModelId=<inference-profile-arn> \
+      FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0 \
+      MaxConcurrency=5 \
+      LogRetentionInDays=30
 # note the TutorUrl output. MaxConcurrency is the hard cost ceiling (reserved
 # concurrency). FoundationModelId scopes the Bedrock IAM to the model the profile
 # routes to. LogRetentionInDays sets the (now stack-managed) log group's retention.
@@ -54,7 +63,7 @@ sam deploy --guided \
 ## Deploy (raw CLI, fallback)
 
 ```bash
-npm --prefix web run build:tutor-corpus
+npm --prefix lambda/tutor run build:corpus
 cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . -x '*.test.mjs' 'deploy-check.mjs' && cd ../..
 
 aws iam create-role --role-name quantum-tutor-role \
@@ -69,9 +78,12 @@ aws lambda create-function --function-name quantum-tutor \
   --environment "Variables={TUTOR_MODEL_ID=<inference-profile-id>}"
 
 aws lambda create-function-url-config --function-name quantum-tutor \
-  --auth-type NONE --invoke-mode RESPONSE_STREAM \
-  --cors '{"AllowOrigins":["https://quantum.altivum.ai"],"AllowMethods":["POST"],"AllowHeaders":["content-type"]}'
-# the returned FunctionUrl is your endpoint
+  --auth-type AWS_IAM --invoke-mode RESPONSE_STREAM \
+  --cors '{"AllowOrigins":["https://quantum.altivum.ai"],"AllowMethods":["POST"],"AllowHeaders":["content-type","x-amz-content-sha256"],"MaxAge":3600}'
+# the returned FunctionUrl is your ORIGIN, not your endpoint: the browser talks
+# to the CloudFront distribution in edge.yaml, which signs with OAC. AuthType
+# must be AWS_IAM to match the shipped stack -- NONE would leave the raw
+# Function URL callable by anyone, bypassing the WAF and its rate limit.
 ```
 
 ## Wire up the frontend
@@ -90,7 +102,11 @@ import-time corpus read is guarded). `npm install` is required first because
 cd lambda/tutor && npm install && npm test
 # node --test discovers all *.test.mjs:
 #  - index.test.mjs       streaming deltas, the <<TUTOR-STREAM-ERROR>> sentinel,
-#                         the out-of-scope / oversized-body gate (no model call)
+#                         the out-of-scope / too-long gates (no model call), the
+#                         shared question cap, and the 45s stream deadline
+#  - handler-wiring.test.mjs the PRODUCTION wiring behind a fake `awslambda`:
+#                         statusCode 200 + text/plain, and the TUTOR_MODEL_ID
+#                         env contract against template.yaml
 #  - tutor-core.test.mjs  strip/heading/system-prompt + corpus-entry logic
 #  - deploy-check.test.mjs the deploy preflight (model-id + corpus-freshness) validators
 ```
@@ -98,9 +114,15 @@ cd lambda/tutor && npm install && npm test
 Live end-to-end (deployed Function URL):
 
 ```bash
-curl -N -X POST "<FunctionUrl>" \
+# The shipped stack is AuthType AWS_IAM behind CloudFront+OAC, so an unsigned
+# POST to the raw Function URL returns 403 -- that is the hardening working, not
+# a broken deploy. Verify through the distribution the browser actually uses,
+# and send the body hash OAC requires on POST:
+BODY='{"slug":"05-quantum-chemistry","question":"why does the Z-string only act on the lower modes?"}'
+curl -N -X POST "https://<distribution-domain>" \
   -H 'content-type: application/json' \
-  -d '{"slug":"05-quantum-chemistry","question":"why does the Z-string only act on the lower modes?"}'
+  -H "x-amz-content-sha256: $(printf %s "$BODY" | shasum -a 256 | cut -d' ' -f1)" \
+  -d "$BODY"
 # expect a streamed, grounded answer; an out-of-scope question should be declined
 ```
 
@@ -129,10 +151,13 @@ curl -N -X POST "<FunctionUrl>" \
      limiting requires fronting the Function URL with **CloudFront + a WAFv2
      rate-based rule**. `edge.yaml` (a separate **us-east-1** stack — CloudFront-scope
      WAF must live there) deploys that: a per-IP rate rule (default 300 req/60s →
-     429) plus an **Origin Access Control** that signs every CloudFront→origin
-     request with SigV4. OAC **requires** the Function URL `AuthType: AWS_IAM`
-     (`FunctionUrlAuthType` param), which also closes the public bypass — direct
-     unsigned hits to the raw Function URL then return 403. **POST through OAC
+     **429**, via an explicit `CustomResponse` on the rule's Block action — WAF's
+     *default* block response is 403, so without it a throttled learner would be
+     indistinguishable from a signing failure) plus an **Origin Access Control**
+     that signs every CloudFront→origin request with SigV4. OAC **requires** the
+     Function URL `AuthType: AWS_IAM` (`FunctionUrlAuthType` param), which also
+     closes the public bypass — direct unsigned hits to the raw Function URL then
+     return 403. So at the edge: **429 = too fast, 403 = a signing/auth problem.** **POST through OAC
      requires the client to send `x-amz-content-sha256` (SHA-256 of the body)** —
      "Lambda doesn't support unsigned payloads"; `web/src/components/ask-tutor.tsx`
      computes it via `web/src/lib/sha256.ts`, and the Function URL CORS allows the
