@@ -276,7 +276,7 @@ export function VqeExplorer({ source }: { source: string }) {
                   y={SVG.h - 3}
                   textAnchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
                   fontSize={7}
-                  className="fill-gray-400 dark:fill-gray-500 font-mono"
+                  className="fill-gray-500 dark:fill-gray-400 font-mono"
                   aria-hidden="true"
                 >
                   {i === 0 ? "-π" : i === 2 ? "π" : "0"}

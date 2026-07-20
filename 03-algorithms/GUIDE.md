@@ -246,7 +246,7 @@ produces sharp spikes at multiples of $N/r$. The period falls right out. Watch a
 become a frequency comb:
 
 ```qft
-{"qubits": 4, "input": "period:4"}
+{"qubits": 4, "input": "period:2"}
 ```
 
 ## Quantum Phase Estimation: reading an eigenphase
