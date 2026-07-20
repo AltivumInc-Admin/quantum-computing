@@ -2,10 +2,8 @@
 """Estimate costs for running quantum tasks on Amazon Braket devices."""
 
 import argparse
-import sys
 
-sys.path.insert(0, "../..")
-from lib.utils.cost import estimate_cost, format_cost_warning, PRICING
+from lib.utils.cost import PRICING, estimate_cost, format_cost_warning, is_per_shot
 
 
 def main():
@@ -26,7 +24,7 @@ def main():
     print(f"\n=== Cost Estimate: {args.device} ===")
     print(f"Shots per task: {args.shots}")
     print(f"Number of tasks: {args.tasks}")
-    if "per_minute" in PRICING[args.device]:
+    if not is_per_shot(args.device):
         print(f"Estimated runtime: {args.minutes} min/task")
     print(f"\nCost per task: ${single_cost:.4f}")
     print(f"Total estimate: ${total_cost:.4f}")

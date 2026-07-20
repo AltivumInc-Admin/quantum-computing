@@ -581,9 +581,14 @@ function BudgetSpent({ budget }: { budget: Budget }) {
         The hardware track continues on your own AWS account, against the same device. The
         repository submits through the Braket Python SDK, not the OpenQASM above — you rebuild the
         circuit as a <span className="font-mono text-xs">braket.circuits.Circuit</span> and run{" "}
-        <span className="font-mono text-xs">run_circuit(circuit, device_name=&quot;iqm_garnet&quot;)</span>{" "}
+        <span className="font-mono text-xs">
+          run_circuit(circuit, device_name=&quot;iqm_garnet&quot;, shots=1000,
+          s3_location=(&quot;amazon-braket-&lt;your-bucket&gt;&quot;, &quot;quantum&quot;))
+        </span>{" "}
         from <span className="font-mono text-xs">lib/hardware</span>, which prints a cost estimate
-        before it submits. Amazon Braket then bills your account at list price —{" "}
+        before it submits. The <span className="font-mono text-xs">s3_location</span> is required —
+        the call fails fast without it, before any cost is incurred. Amazon Braket then bills your
+        account at list price —{" "}
         <span className="tabular-nums">
           {PER_TASK_USD} per task + {PER_SHOT_USD} per shot
         </span>

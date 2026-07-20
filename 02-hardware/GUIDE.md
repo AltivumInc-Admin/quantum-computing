@@ -379,7 +379,7 @@ Check yourself:
 
 **Scripts:**
 - `scripts/device_status.py` — Run from terminal: `python 02-hardware/scripts/device_status.py` to check current device availability without opening a notebook
-- `scripts/cost_estimator.py` — Estimate costs: `python 02-hardware/scripts/cost_estimator.py --device ionq --shots 1000`
+- `scripts/cost_estimator.py` — Estimate costs: `python 02-hardware/scripts/cost_estimator.py --device IonQ --shots 1000`. `--device` takes a **provider** name from the pricing table (`IonQ`, `IQM`, `QuEra`, `Rigetti`, `SV1`, `DM1`, `TN1`, `LocalSimulator`) — these are capitalized, unlike the lowercase device short-names (`ionq_forte`, `iqm_garnet`) that `run_circuit` takes. Run it with `--help` to see the accepted values.
 
 ## Where this goes next
 

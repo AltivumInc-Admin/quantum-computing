@@ -15,6 +15,17 @@ def main():
     maxiter = int(hp.get("maxiter", "100"))
     shots = int(hp.get("n_shots", "4000"))
 
+    # Validate the hyperparameters that reach circuit construction and device.run.
+    # bond_length is already guarded fail-loud in lib; these two were not, and a bad
+    # value surfaced as a Braket-internal error only AFTER the job instance started
+    # billing. n_layers=0 builds an empty circuit whose measurement bitstrings are
+    # narrower than the Pauli terms being indexed; n_shots=0 trips a shots/result-type
+    # error deep inside the SDK. Fail at submission with an actionable message.
+    if n_layers < 1:
+        raise ValueError(f"hyperparameter n_layers must be >= 1, got {n_layers}")
+    if shots < 1:
+        raise ValueError(f"hyperparameter n_shots must be >= 1, got {shots}")
+
     from lib.chemistry.hamiltonians import build_h2_hamiltonian, build_lih_hamiltonian
 
     if molecule == "H2":
@@ -25,6 +36,7 @@ def main():
         raise ValueError(f"Unsupported molecule: {molecule}")
 
     from lib.chemistry.ansatz import hardware_efficient_ansatz
+    from lib.utils.results import expectation_from_counts, parse_counts
 
     initial_params = np.random.uniform(-0.1, 0.1, size=(n_layers, n_qubits, 2))
 
@@ -55,12 +67,15 @@ def main():
                     meas_circuit.rx(qubit_idx, np.pi / 2)
 
             result = device.run(meas_circuit, shots=shots).result()
-            counts = result.measurement_counts
-            total = sum(counts.values())
+            # parse_counts owns the bitstring-column contract this loop depends on:
+            # indexing a key by absolute qubit index is valid only when the measured
+            # qubits are exactly 0..n-1 in order, and parse_counts raises when they
+            # are not instead of silently mislabelling every outcome.
+            counts = parse_counts(result)
             relevant_qubits = [q for q, _ in term]
-            exp_val = sum(
-                ((-1) ** sum(int(bs[q]) for q in relevant_qubits)) * c / total
-                for bs, c in counts.items()
+            exp_val = expectation_from_counts(
+                counts,
+                lambda bs, qubits=relevant_qubits: (-1) ** sum(int(bs[q]) for q in qubits),
             )
             total_energy += np.real(coeff) * exp_val
 

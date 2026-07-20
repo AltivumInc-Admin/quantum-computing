@@ -5,8 +5,8 @@ from collections import Counter
 import numpy as np
 import pytest
 from braket.circuits import Circuit
-from braket.devices import LocalSimulator
 from lib.circuits.common import bell_pair, ghz_state, qft_circuit
+from lib.utils.statevector import statevector
 
 
 def test_bell_pair_produces_entangled_state(run_local):
@@ -48,6 +48,15 @@ def test_ghz_state_qubit_count():
     assert circuit.qubit_count == 5
 
 
+def test_ghz_state_single_qubit_degenerates_to_plus():
+    # n_qubits=1 is documented-legal, and the docstring scopes the "maximally entangled"
+    # claim to n >= 2 precisely because of this case: with no CNOT to emit the circuit is a
+    # bare Hadamard, i.e. the single-qubit product state |+> with no entanglement at all.
+    circuit = ghz_state(1)
+    assert circuit.qubit_count == 1
+    assert np.allclose(statevector(circuit), np.ones(2) / np.sqrt(2), atol=1e-9)
+
+
 def test_ghz_state_rejects_non_positive_qubits():
     with pytest.raises(ValueError, match="n_qubits must be >= 1"):
         ghz_state(0)
@@ -75,12 +84,6 @@ def test_qft_circuit_on_known_state(run_local):
         assert count > 150, "QFT of |000> should give roughly uniform distribution"
 
 
-def _statevector(circuit):
-    """Exact statevector of a Braket circuit (shots=0 result type on the LocalSimulator)."""
-    circuit = circuit.state_vector()
-    return LocalSimulator().run(circuit, shots=0).result().values[0]
-
-
 def test_qft_circuit_matches_analytic_dft():
     # A uniform-on-|000> check cannot detect a wrong QFT (the QFT of ANY basis state is
     # uniform). Feed a non-trivial |k> and compare the full statevector to the analytic DFT.
@@ -92,15 +95,17 @@ def test_qft_circuit_matches_analytic_dft():
         if (k >> (n - 1 - q)) & 1:
             circuit.x(q)
     circuit.add_circuit(qft_circuit(n))
-    sv = _statevector(circuit)
+    sv = statevector(circuit)  # lib.utils' non-mutating, engine-portable reader
 
     j = np.arange(N)
     dft = np.exp(2j * np.pi * j * k / N) / np.sqrt(N)
-    # Robust to a global phase (fidelity) and to the omega = e^{+/-2pi i/N} convention (max over
-    # conj). A Hadamard-only circuit is a REAL +/-1/sqrt(N) vector and scores far below 1 vs both.
-    fidelity = max(abs(np.vdot(dft, sv)) ** 2, abs(np.vdot(np.conj(dft), sv)) ** 2)
-    assert fidelity > 0.999, (
-        f"QFT statevector does not match the analytic DFT (fidelity={fidelity:.4f})"
+    # Compare amplitude-by-amplitude against the PLUS-sign convention, with no fidelity and no
+    # max-over-conjugate: those make the test blind to a sign flip, which is the one property the
+    # QFT lesson is about. qft_circuit emits e^{+2 pi i j k / N} / sqrt(N) with no global phase,
+    # and web/src/components/quantum/qft.ts mirrors that same plus sign — so a flipped exponent
+    # here is a real divergence from the web twin, not a harmless convention choice.
+    assert np.allclose(sv, dft, atol=1e-9), (
+        "QFT statevector does not match the analytic plus-sign DFT "
+        f"(max |deviation| = {np.abs(sv - dft).max():.4f}; "
+        f"vs the conjugate convention: {np.abs(sv - np.conj(dft)).max():.4f})"
     )
-    # The Fourier phases must actually be present (a Hadamard-only circuit is purely real).
-    assert np.abs(np.asarray(sv).imag).max() > 0.1

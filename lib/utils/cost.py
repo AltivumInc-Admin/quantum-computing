@@ -20,6 +20,19 @@ PRICING = {
 }
 
 
+def is_per_shot(provider: str) -> bool:
+    """True when ``provider`` bills per shot + per task (a QPU), False when it bills per
+    minute of runtime (a managed simulator).
+
+    PRICING is a two-shaped table and every consumer has to discriminate the two shapes.
+    This is the single place that test lives on the Python side, mirroring ``isPerShot``
+    in web/src/components/quantum/cost.ts (which this module is kept in lockstep with).
+    """
+    if provider not in PRICING:
+        raise ValueError(f"Unknown provider: {provider}. Known: {list(PRICING.keys())}")
+    return "per_shot" in PRICING[provider]
+
+
 def estimate_cost(provider: str, shots: int = 1000, estimated_minutes: float = 1.0) -> float:
     """Estimate the cost of running a quantum task."""
     if provider not in PRICING:
@@ -36,7 +49,7 @@ def estimate_cost(provider: str, shots: int = 1000, estimated_minutes: float = 1
     if estimated_minutes < 0:
         raise ValueError(f"estimated_minutes must be non-negative (got {estimated_minutes})")
     pricing = PRICING[provider]
-    if "per_shot" in pricing:
+    if is_per_shot(provider):
         return pricing["per_task"] + pricing["per_shot"] * shots
     return pricing["per_minute"] * estimated_minutes
 
@@ -45,9 +58,12 @@ def format_cost_warning(provider: str, shots: int = 1000, estimated_minutes: flo
     """Generate a human-readable cost warning, honest to each cost model."""
     cost = estimate_cost(provider, shots, estimated_minutes)  # validates provider + inputs
     pricing = PRICING[provider]
-    if pricing.get("per_minute") == 0.0:  # the local simulator (free)
+    # Any zero-rate per-minute provider — today that is only LocalSimulator. (SV1 at 0
+    # estimated minutes also costs $0, but its rate is non-zero, so it is not mislabeled
+    # as local execution; see test_zero_minute_simulator_not_labeled_local.)
+    if pricing.get("per_minute") == 0.0:
         return f"[{provider}] No cost (local execution)"
-    if "per_shot" in pricing:  # per-shot QPUs — shots drive the cost
+    if is_per_shot(provider):  # per-shot QPUs — shots drive the cost
         return f"[{provider}] Estimated cost: ${cost:.4f} ({shots} shots + 1 task)"
     # per-minute managed simulators (SV1/DM1/TN1) — runtime drives the cost, shots do not
     return (

@@ -90,10 +90,28 @@ INLINE_MATH = re.compile(r"\$[^$\n]{1,200}\$")
 # the math is $..."), not LaTeX — real inline math here never reads like a
 # sentence.
 PROSE_LIKE = re.compile(r"[A-Za-z]{3,}\s+[A-Za-z]{2,}")
+# ...but a two-rate table row is currency that does NOT read like a sentence:
+# "| IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |" yields the candidate span
+# "$0.30 / task + $", which has only one word and used to be stripped as math —
+# deleting the per-task rate AND eating the per-shot rate's opening $, so every
+# per-shot row in README's headline table was invisible to this guard. Such a
+# span OPENS with a currency amount followed by whitespace and carries no LaTeX
+# markup. Both halves are required: "$0.74$" closes immediately after its digits
+# (no space), while "$2 \times 2$" and "$2^n$" do open with digits but are math.
+CURRENCY_OPENER = re.compile(r"^\$\d{1,3}(?:,\d{3})*(?:\.\d+)?(?![\dkKmM])\s")
+LATEX_MARKUP = re.compile(r"[\\^_{}]")
+
+
+def _is_currency_run(span: str) -> bool:
+    return bool(CURRENCY_OPENER.match(span)) and not LATEX_MARKUP.search(span)
+
+
+def _is_math(span: str) -> bool:
+    return not PROSE_LIKE.search(span) and not _is_currency_run(span)
 
 
 def _strip_inline_math(text: str) -> str:
-    return INLINE_MATH.sub(lambda m: " " if not PROSE_LIKE.search(m.group(0)) else m.group(0), text)
+    return INLINE_MATH.sub(lambda m: " " if _is_math(m.group(0)) else m.group(0), text)
 
 
 def valid_amounts() -> set[float]:
@@ -146,6 +164,18 @@ def test_corpus_is_nonempty_and_extraction_sees_known_figures():
     assert all_hits.count(0.08) >= 4
 
 
+def test_readme_two_rate_table_rows_are_actually_scanned():
+    """README's headline cost table writes two rates per QPU row. Those rows were
+    invisible to this guard for its whole life (the span "$0.30 / task + $" parsed as
+    inline math), which is how a stale Rigetti rate sat green in CI. Pin that every
+    per-shot rate in that table is reached."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    hits = {a for a, _ in extract_amounts(readme)}
+    for provider in ("IonQ", "IQM", "QuEra", "Rigetti"):
+        rate = PRICING[provider]["per_shot"]
+        assert rate in hits, f"README's {provider} per-shot rate (${rate:g}) is not being scanned"
+
+
 def test_extractor_separates_currency_from_latex_math():
     text = (
         "memory doubles: $2^n$ amplitudes. The minimum sits near $0.74$ Angstrom.\n"
@@ -155,6 +185,23 @@ def test_extractor_separates_currency_from_latex_math():
     # Both prose $0.30s survive (the "per task" span is prose, not math);
     # the escaped in-math currency is harvested; $2^n$ and $0.74$ are not.
     assert amounts == [0.01, 0.30, 0.30, 10.30]
+
+
+def test_extractor_reads_both_rates_in_a_two_rate_table_row():
+    """A real README row: the span between the two dollar signs ("$0.30 / task + $")
+    has only one word, so PROSE_LIKE alone classified it as math and erased both rates."""
+    text = "| IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |\n"
+    assert sorted(a for a, _ in extract_amounts(text)) == [0.08, 0.30]
+
+
+def test_currency_opener_does_not_swallow_real_inline_math():
+    # "$2^n$" opens with a digit but no space follows it; "$0.74$" closes immediately
+    # after the number. Neither is currency, and both must stay stripped.
+    assert extract_amounts("memory doubles: $2^n$ amplitudes") == []
+    assert extract_amounts("the minimum sits near $0.74$ Angstrom") == []
+    # A digit-then-space LaTeX span is still math: "$2 \times 2$ projector".
+    assert extract_amounts("the $2 \\times 2$ projector matrix") == []
+    assert extract_amounts("the matrix is only $16 \\times 16$, so") == []
 
 
 def test_every_prose_dollar_figure_matches_live_pricing():

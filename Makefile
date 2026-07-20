@@ -17,12 +17,7 @@ test:
 	pytest tests/ -v
 
 devices:
-	python -c "\
-	from braket.aws import AwsDevice; \
-	devices = AwsDevice.get_devices(); \
-	print(f'{'Device':<40} {'Status':<12} {'Provider':<15} {'Qubits'}'); \
-	print('-' * 80); \
-	[print(f'{d.name:<40} {d.status:<12} {d.provider_name:<15} {getattr(d.properties, \"qubitCount\", \"N/A\")}') for d in devices]"
+	python 02-hardware/scripts/device_status.py
 
 cost:
 	python infra/scripts/cost-report.py

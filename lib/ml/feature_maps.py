@@ -4,6 +4,19 @@ import numpy as np
 from braket.circuits import Circuit
 
 
+def _require_1d_features(features: np.ndarray, dtype=None) -> np.ndarray:
+    """Coerce ``features`` to an ndarray and reject anything but a non-empty 1D vector.
+
+    Single-sourced so every encoder in this module enforces the identical contract. The 2D case is
+    the one that matters: ``X_train`` is naturally ``(n_samples, n_features)``, and an encoder that
+    silently accepts it prepares a state for the wrong data rather than failing.
+    """
+    features = np.asarray(features, dtype=dtype)
+    if features.ndim != 1 or features.size == 0:
+        raise ValueError(f"features must be a non-empty 1D array (got shape {features.shape})")
+    return features
+
+
 def angle_encoding(features: np.ndarray) -> Circuit:
     """Encode features as rotation angles (one qubit per feature).
 
@@ -16,9 +29,7 @@ def angle_encoding(features: np.ndarray) -> Circuit:
     Raises:
         ValueError: if ``features`` is not a non-empty 1D array.
     """
-    features = np.asarray(features)
-    if features.ndim != 1 or features.size == 0:
-        raise ValueError(f"features must be a non-empty 1D array (got shape {features.shape})")
+    features = _require_1d_features(features)
     circuit = Circuit()
     for i, x in enumerate(features):
         circuit.ry(i, x)
@@ -30,19 +41,31 @@ def iqp_encoding(features: np.ndarray, reps: int = 2) -> Circuit:
 
     Creates an exponentially large feature space via ZZ interactions.
 
+    Each repetition applies a Hadamard layer, then a single-qubit phase
+    ``phi_i = x_i`` on every qubit, then a ZZ phase ``phi_ij = x_i * x_j`` on
+    every pair — the feature PRODUCT is what makes this a nonlinear map.
+
+    Note that this is a simplified variant of the Havlicek et al. ZZFeatureMap
+    convention (arXiv:1804.11326), which uses ``phi_i = 2*x_i`` and
+    ``phi_ij = 2*(pi - x_i)*(pi - x_j)``. The lesson explorer
+    (``web/src/components/quantum/encoding.ts``) implements the Havlicek form,
+    so the two prepare different states for the same input; this docstring is
+    the authority for what the Python does.
+
     Args:
         features: 1D array of feature values.
-        reps: Number of encoding repetitions.
+        reps: Number of encoding repetitions. Must be >= 1.
 
     Returns:
         Circuit implementing IQP encoding.
 
     Raises:
-        ValueError: if ``features`` is not a non-empty 1D array.
+        ValueError: if ``features`` is not a non-empty 1D array, or ``reps``
+            is less than 1 (which would silently return an empty circuit).
     """
-    features = np.asarray(features)
-    if features.ndim != 1 or features.size == 0:
-        raise ValueError(f"features must be a non-empty 1D array (got shape {features.shape})")
+    features = _require_1d_features(features)
+    if reps < 1:
+        raise ValueError(f"reps must be >= 1 (got {reps})")
     n_qubits = len(features)
     circuit = Circuit()
 
@@ -84,12 +107,13 @@ def amplitude_encoding(features: np.ndarray) -> Circuit:
         Circuit on ``log2(N)`` qubits that prepares the amplitude-encoded state.
 
     Raises:
-        ValueError: if ``features`` is the zero vector, the length is not a
-            power of 2 (or less than 2), or any feature is negative. Sign
-            handling requires additional Rz corrections that this routine does
-            not perform; use :func:`angle_encoding` for signed data.
+        ValueError: if ``features`` is not a non-empty 1D array, is the zero
+            vector, the length is not a power of 2 (or less than 2), or any
+            feature is negative. Sign handling requires additional Rz
+            corrections that this routine does not perform; use
+            :func:`angle_encoding` for signed data.
     """
-    features = np.asarray(features, dtype=float)
+    features = _require_1d_features(features, dtype=float)
     norm = float(np.linalg.norm(features))
     if norm == 0:
         raise ValueError("Cannot encode zero vector")

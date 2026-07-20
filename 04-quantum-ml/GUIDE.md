@@ -29,7 +29,11 @@ it fixes the feature space the model ever gets to see.** The main strategies:
 - **Angle encoding** — map each feature to a rotation: `|φ(x)⟩ = ⊗ᵢ RY(xᵢ)|0⟩`. One qubit per
   feature, hardware-efficient; the feature space is the surface of `n` Bloch spheres.
 - **Amplitude encoding** — pack `N` features into the `log₂N` amplitudes of `⌈log₂N⌉` qubits.
-  Exponentially compact, but `O(N)` gates to prepare.
+  Exponentially compact, but `O(N)` gates to prepare. Note the workspace's Möttönen routine
+  (`lib.ml.feature_maps.amplitude_encoding`) is the Ry-only case: it needs **non-negative**
+  features and an **exact power-of-2** length, and raises otherwise. The explorer below shows the
+  general signed construction, so it will happily render inputs the Python rejects — for signed
+  data in a notebook, reach for angle encoding.
 - **IQP / ZZ encoding** — Hadamards, then single-qubit and ZZ rotations driven by feature
   *products*. Builds an exponentially large, structured feature space — the basis of quantum
   kernels with potential advantage.
@@ -344,17 +348,17 @@ yourself:
     {
       "q": "What is the trade-off between quantum kernels and variational training?",
       "hint": "One uses a fixed feature map + a classical convex solver; the other trains the circuit itself.",
-      "a": "Quantum kernels compute a fixed feature-map similarity K and hand it to a classical SVM — convex, no barren plateaus, but O(n^2) kernel evaluations in the dataset size. Variational training tunes the circuit end-to-end — flexible and compact, but the optimization is non-convex and can hit barren plateaus."
+      "a": "Quantum kernels compute a fixed feature-map similarity K and hand it to a classical SVM — convex, no barren plateaus, but `O(n^2)` kernel evaluations in the dataset size. Variational training tunes the circuit end-to-end — flexible and compact, but the optimization is non-convex and can hit barren plateaus."
     },
     {
       "q": "What is a barren plateau, and name one mitigation?",
       "hint": "It is about how the gradient behaves as you add qubits.",
-      "a": "For random/expressive PQCs the variance of the cost gradient vanishes exponentially in qubit count (~2^-n), so the landscape is flat and the optimizer can't progress. Mitigations: use a LOCAL cost, keep the ansatz shallow/structured/problem-inspired, initialize near the identity, or train layer-by-layer."
+      "a": "For random/expressive PQCs the variance of the cost gradient vanishes exponentially in qubit count (about `2^-n`), so the landscape is flat and the optimizer can't progress. Mitigations: use a LOCAL cost, keep the ansatz shallow/structured/problem-inspired, initialize near the identity, or train layer-by-layer."
     },
     {
       "q": "What does the parameter-shift rule compute, and how many circuit runs does it need?",
       "hint": "It is an exact gradient, not an approximation.",
-      "a": "The exact gradient of an expectation value with respect to a gate angle: df/dtheta = (1/2)[f(theta+pi/2) - f(theta-pi/2)] — just two circuit evaluations, with no finite-difference error."
+      "a": "The exact gradient of an expectation value with respect to a gate angle: `df/dtheta = (1/2)[f(theta + pi/2) - f(theta - pi/2)]` — just two circuit evaluations, with no finite-difference error."
     }
   ]
 }
@@ -379,9 +383,11 @@ yourself:
 7. **`notebooks/07-hybrid-ml-job.ipynb`** — Package a QML training loop as a Braket Hybrid Job. Track training loss via CloudWatch metrics. Use checkpointing for long training runs. Demonstrate production QML workflow.
 
 **Scripts:**
-- `scripts/feature_maps.py` — Reusable data encoding circuits (angle, amplitude, IQP, re-uploading)
+- `scripts/feature_maps.py` — Reusable data encoding circuits (angle, amplitude, IQP). Re-uploading
+  is not shipped as an encoder — you build it yourself in `04-pennylane-braket.ipynb` Exercise 1.
 - `scripts/classifiers.py` — VQC and quantum kernel classifier implementations
-- `scripts/training.py` — Training loop with logging, early stopping, and checkpoint support
+- `scripts/training.py` — `train_vqc`: PennyLane analytic-gradient descent returning the optimal
+  params plus per-epoch loss and accuracy history, with a progress line every ten epochs
 
 ## Where this goes next
 

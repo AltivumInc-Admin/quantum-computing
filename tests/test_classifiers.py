@@ -36,6 +36,23 @@ def test_quantum_kernel_self_overlap_is_near_one():
     assert k >= 0.95, f"self-overlap was {k:.3f}, expected ≥ 0.95"
 
 
+def test_quantum_kernel_rejects_mismatched_point_shapes():
+    # An unpaired qubit merely folds cos^2(x/2) into the all-zeros frequency, so before the guard
+    # this returned a confident number that is not a fidelity kernel at all.
+    with pytest.raises(ValueError, match="same shape"):
+        quantum_kernel(np.array([0.4, 0.7, 1.2]), np.array([0.4, 0.7]), angle_encoding, shots=100)
+
+
+@pytest.mark.parametrize("shots", [0, -5])
+def test_quantum_kernel_rejects_non_positive_shots(shots):
+    # run_circuit's shots gate sits inside its `device_name != "local"` branch, so the local path
+    # used here is ungated; without this guard shots=0 leaked a Braket "No result types specified"
+    # ValueError and shots=-5 a pydantic TaskMetadata ValidationError.
+    x = np.array([0.4, 0.7])
+    with pytest.raises(ValueError, match="shots must be >= 1"):
+        quantum_kernel(x, x, angle_encoding, shots=shots)
+
+
 def test_quantum_kernel_orthogonal_features_low_overlap():
     # Ry(0) ≈ I and Ry(π) flips |0>→|1>, so phi(x1) and phi(x2) are orthogonal.
     x1 = np.array([0.0, 0.0])
@@ -82,6 +99,17 @@ def test_vqc_qnode_broadcasts_over_a_batch():
     assert batched.shape == (5,)
     per_sample = np.array([float(qnode(x, params)) for x in X])
     assert np.allclose(batched, per_sample, atol=1e-10)
+
+
+def test_vqc_qnode_accepts_a_plain_list():
+    # The broadcast rewrite changed the encoding line to features[..., i], and Ellipsis indexing
+    # is numpy-only — a plain list raised "list indices must be integers or slices, not tuple",
+    # naming neither features nor the QNode. Every sibling in lib/ml coerces with asarray first.
+    qnode = vqc_qnode(2, 1)
+    params = np.zeros((1, 2))
+    from_list = float(qnode([np.pi, 0.0], params))
+    from_array = float(qnode(np.array([np.pi, 0.0]), params))
+    assert abs(from_list - from_array) < 1e-12
 
 
 def test_quantum_kernel_self_overlap_with_amplitude_encoding():

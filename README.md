@@ -165,6 +165,26 @@ make cost             # current month's Braket spend (Cost Explorer)
 
 Configure AWS via `~/.aws` and the variables in [`.env.example`](.env.example) (region, S3 bucket/prefix, monthly budget). `make setup` runs [`infra/scripts/validate-setup.sh`](infra/scripts/validate-setup.sh), which checks the AWS CLI, credentials, Braket-supported region, and the Braket SDK.
 
+Submitting to real hardware from your own account — this is the exact call the platform's QPU panel hands you:
+
+```python
+from braket.circuits import Circuit
+from lib.hardware import run_circuit
+
+circuit = Circuit().h(0).cnot(0, 1)
+
+# Prints an estimated-cost warning, then submits and BLOCKS until the task finishes.
+# s3_location is required for every non-local device — the call fails fast without it,
+# before any cost is incurred.
+result = run_circuit(
+    circuit,
+    device_name="iqm_garnet",
+    shots=1000,
+    s3_location=("amazon-braket-<your-bucket>", "quantum"),
+)
+print(result.measurement_counts)
+```
+
 ---
 
 ## 🌐 Run notebooks in your browser (JupyterLite + qcsim)
@@ -347,8 +367,10 @@ quantum-computing/
 | Symbol | Description |
 |---|---|
 | `get_device(name="local")` | `LocalSimulator` for `"local"`, else `AwsDevice`; raises on unknown names |
-| `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results; **fails fast** if a non-local device is missing `s3_location` (so CI needs no credentials) |
-| `list_available_devices()` | Live device list with status (needs AWS) |
+| `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results. **Fails fast** on an unknown device, an analog-only device, out-of-range `shots`, or a missing `s3_location` (so CI needs no credentials). On a billable device it **blocks** until the task leaves the queue (the SDK's 5-day `poll_timeout_seconds` default) and raises `RuntimeError` if the task produced no result — use `get_device(name).run(...)` for the un-awaited `AwsQuantumTask` |
+| `shot_bounds(device_name)` | `(min, max)` shots per task Braket accepts for that device (e.g. Garnet `(1, 20000)`, IonQ `(100, 100000)`) |
+| `list_available_devices()` | The **full** device fleet with each row's `ONLINE`/`OFFLINE`/`RETIRED` status — no status filter is applied, so check it before dispatching (needs AWS) |
+| `allowlisted_gate_devices()` · `cheapest_allowlisted_device(shots)` | The gate QPUs approved for the sponsored QPU-submit path, and the cheapest of them (derived from `PRICING`) |
 | `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_forte, iqm_garnet, quera_aquila` |
 </details>
 
@@ -381,10 +403,11 @@ quantum-computing/
 | Symbol | Description |
 |---|---|
 | `parse_counts(result)` · `top_results(counts, n=5)` · `expectation_from_counts(counts, fn)` | Result parsing & expectation values |
-| `lib.utils.cost`: `estimate_cost(...)`, `format_cost_warning(...)`, `PRICING` | Per-provider cost math (imported by full module path) |
-| `lib.utils.visualization`: `plot_histogram(...)`, `plot_bloch_angles(...)` | Matplotlib figures (imported by full module path) |
+| `statevector(circuit)` | The **portable state-vector read** — the exact final amplitudes as a complex `ndarray`, identical under qcsim and the real SDK (the curriculum's most-used helper; `Circuit.state_vector()` diverges between the two engines) |
+| `lib.utils.cost`: `estimate_cost(...)`, `format_cost_warning(...)`, `is_per_shot(...)`, `PRICING` | Per-provider cost math (imported by full module path) |
+| `lib.utils.visualization`: `plot_histogram(...)`, `plot_bloch_angles(...)` | Matplotlib figures; pass `ax=` to draw onto an existing axes (imported by full module path) |
 
-> Note: `lib.utils.__init__` re-exports only the `results` helpers; `cost` and `visualization` are reached via their full module paths.
+> Note: `lib.utils.__init__` re-exports the `results` helpers **and `statevector`**; `cost` and `visualization` are reached via their full module paths.
 </details>
 
 ---
@@ -473,7 +496,7 @@ The portal treats these as optional: front-end features gate on their configurat
 | `make setup` | `pip install -e .[dev]` + `pip install -e ./qcsim`, validate AWS creds, install the `nbstripout` git filter |
 | `make lab` | Launch JupyterLab at the repo root (`jupyter lab --notebook-dir=.`) |
 | `make test` | Run the pytest suite (`pytest tests/ -v`) |
-| `make devices` | Print available Braket devices + status, provider, qubit count |
+| `make devices` | Print the Braket device fleet + provider, status (`ONLINE`/`OFFLINE`/`RETIRED`) and type |
 | `make cost` | Current month's Braket spend via Cost Explorer (`infra/scripts/cost-report.py`) |
 | `make lint` | `ruff check .` **and** `ruff format --check .` |
 | `make deploy-infra` | Interactive CloudFormation deploy (budget, email, optional notebook) |
@@ -554,7 +577,7 @@ flowchart TB
 
 **Always prototype on the free local simulator, then escalate only when validated.** Helper utilities (`lib.utils.cost`, the per-section `cost_estimator.py`, and `make cost`) estimate spend before you submit.
 
-| Backend | Price (approx., 2025) |
+| Backend | Price (on-demand, verified 2026-07-06) |
 |---|---|
 | **Local simulator** (`LocalSimulator`) | **Free** |
 | SV1 / DM1 (managed) | $0.075 / minute |
@@ -562,7 +585,7 @@ flowchart TB
 | IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |
 | IQM (Garnet 20q) | $0.30 / task + $0.00145 / shot |
 | QuEra (Aquila 256q) | $0.30 / task + $0.01 / shot |
-| Rigetti | $0.30 / task + $0.00035 / shot |
+| Rigetti *(reference only — not dispatchable via `lib.hardware`)* | $0.30 / task + $0.000425 / shot |
 
 Recommended workflow: **local sim → SV1 for larger circuits → DM1/TN1 → QPU only once the algorithm is validated.** Check `make cost` regularly.
 

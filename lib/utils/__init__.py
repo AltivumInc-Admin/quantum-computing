@@ -1,4 +1,10 @@
-"""Utility functions for result parsing, visualization, and cost tracking."""
+"""Package-level utilities: result parsing and the portable state-vector read.
+
+These are the names re-exported here. The package also ships ``lib.utils.cost`` (cost
+estimation) and ``lib.utils.visualization`` (matplotlib figures), which are deliberately
+NOT re-exported — import those by their full module path so this module stays free of a
+matplotlib dependency.
+"""
 
 from lib.utils.results import (
     expectation_from_counts as expectation_from_counts,

@@ -2,7 +2,8 @@
 
 Executed by tests/test_exercise_checks.py inside the notebook's namespace,
 directly before each exercise's check cell. Each snippet may lean on names the
-notebook defines earlier (forward_qft, qpe_phase, statevector, Circuit, np).
+notebook defines or imports earlier (qft_circuit, qpe_phase, statevector,
+Circuit, np).
 """
 
 SOLUTIONS = {
@@ -14,7 +15,7 @@ def _qpe_s_gate(t):
         circ.h(k)
     for k in range(t):
         circ.cphaseshift(k, eig, (np.pi / 2) * (2 ** (t - 1 - k)))
-    circ.add_circuit(forward_qft(t).adjoint())
+    circ.add_circuit(qft_circuit(t).adjoint())
     return circ
 
 
@@ -33,7 +34,7 @@ def _qpe_t_zero_state(t):
         circ.h(k)
     for k in range(t):
         circ.cphaseshift(k, eig, (np.pi / 4) * (2 ** (t - 1 - k)))
-    circ.add_circuit(forward_qft(t).adjoint())
+    circ.add_circuit(qft_circuit(t).adjoint())
     return circ
 
 
