@@ -25,8 +25,9 @@ Parameters:
     Default: 300
     MinValue: 10
     Description: >
-      Max requests per source IP per 60s before WAF blocks (429). 300/min is
-      orders of magnitude above a real learner yet well below scripted abuse.
+      Max requests per source IP per 60s before WAF blocks with HTTP 429 (see
+      TutorWebAcl's CustomResponse). 300/min is orders of magnitude above a real
+      learner yet well below scripted abuse.
 
 Resources:
   # CloudFront-scope WAF web ACL: one per-IP rate-based rule, default Allow.
@@ -38,11 +39,24 @@ Resources:
       Description: Per-IP rate limit for the public tutor endpoint.
       DefaultAction:
         Allow: {}
+      # A bare `Block: {}` returns WAF's default 403, which this stack's own prose
+      # documented as 429 — and 403 is ALSO what an unsigned direct hit to the
+      # AWS_IAM Function URL and a POST missing x-amz-content-sha256 return. That
+      # made a throttled learner indistinguishable from a broken OAC signature in
+      # both the client and the CloudFront logs. 429 restores the distinction:
+      # 429 = you are going too fast, 403 = a signing/auth problem.
+      CustomResponseBodies:
+        RateLimited:
+          ContentType: APPLICATION_JSON
+          Content: '{"error":"rate_limited","message":"Too many requests. Wait a minute and try again."}'
       Rules:
         - Name: PerIpRateLimit
           Priority: 0
           Action:
-            Block: {}
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+                CustomResponseBodyKey: RateLimited
           Statement:
             RateBasedStatement:
               Limit: !Ref RateLimitPerMinute

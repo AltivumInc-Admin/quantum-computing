@@ -13,8 +13,7 @@
     "lint": "eslint",
     "pretest": "npm run gen:tutor-core",
     "test": "jest",
-    "test:e2e": "playwright test",
-    "build:tutor-corpus": "node ../scripts/build_tutor_corpus.mjs"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

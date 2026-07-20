@@ -9,48 +9,15 @@
  *
  * The template uses CloudFormation intrinsics (!Ref, !Sub), which no plain YAML
  * parser loads without custom tags, so these tests slice the file structurally
- * (top-level section, then 2-space-indented resource blocks) instead of adding
- * a YAML dependency. Run: `cd lambda/tutor && npm ci && npm test` (node --test).
+ * (see cfn-slice.mjs) instead of adding a YAML dependency.
+ * Run: `cd lambda/tutor && npm ci && npm test` (node --test).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { loadTemplate, section, blocks } from "./cfn-slice.mjs";
 
-const template = readFileSync(new URL("./template.yaml", import.meta.url), "utf8");
-
-/** Lines of one top-level section (e.g. Resources), up to the next top-level key. */
-function section(src, name) {
-  const lines = src.split(/\r?\n/);
-  const start = lines.indexOf(`${name}:`);
-  assert.notEqual(start, -1, `template has no top-level ${name}: section`);
-  const out = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    if (/^\S/.test(lines[i])) break;
-    out.push(lines[i]);
-  }
-  return out;
-}
-
-/** Map of logicalId -> body lines for every 2-space-indented block in a section. */
-function blocks(sectionLines) {
-  const byId = {};
-  let id = null;
-  for (const line of sectionLines) {
-    const m = line.match(/^  ([A-Za-z0-9]+):\s*$/);
-    if (m) {
-      id = m[1];
-      byId[id] = [];
-    } else if (id) {
-      byId[id].push(line);
-    }
-  }
-  return byId;
-}
-
-const resources = blocks(section(template, "Resources"));
-const body = (id) => (resources[id] ?? []).join("\n");
-const typeOf = (id) => body(id).match(/^\s+Type:\s+(\S+)/m)?.[1];
-const ofType = (t) => Object.keys(resources).filter((id) => typeOf(id) === t);
+const { text: template, body, typeOf, ofType } = loadTemplate("template.yaml", import.meta.url);
 
 test("the tutorError metric filter exists and matches index.mjs's exact emission", () => {
   const filter = ofType("AWS::Logs::MetricFilter").find((id) => body(id).includes("TutorError"));
@@ -118,6 +85,34 @@ test("the alerts topic reaches a human by email and avoids the console topic's n
   const name = b.match(/^\s+TopicName:\s+(\S+)/m)?.[1];
   assert.ok(name, "AlertsTopic must pin an explicit TopicName");
   assert.notEqual(name, "quantum-tutor-alerts", "must not collide with the console-created topic");
+});
+
+test("the Function URL defaults to AWS_IAM, so a cutover cannot leave it public", () => {
+  // README step 1 of the blue-green cutover deploys with FunctionUrlAuthType=NONE
+  // and relies on a human remembering step 5 to flip it back. If the DEFAULT ever
+  // becomes NONE, a later plain `sam deploy` silently re-opens the raw Function
+  // URL to unsigned public POSTs, bypassing CloudFront, the WAF rate limit and
+  // every edge control — while still returning 200 to everyone.
+  const params = blocks(section(template, "Parameters"));
+  const p = (params.FunctionUrlAuthType ?? []).join("\n");
+  assert.ok(p, "FunctionUrlAuthType parameter missing");
+  assert.match(p, /Default:\s*AWS_IAM/, "FunctionUrlAuthType must DEFAULT to AWS_IAM");
+});
+
+test("CORS allows the body-hash header the client actually sends", () => {
+  // POST through OAC requires x-amz-content-sha256 on every request. Dropping it
+  // from AllowHeaders breaks the browser preflight and 403s every live request,
+  // with nothing else in the stack to signal why.
+  const fn = ofType("AWS::Serverless::Function").map((id) => body(id)).join("\n");
+  assert.match(fn, /x-amz-content-sha256/, "AllowHeaders must permit the body-hash header");
+  // Pinned against the header the client sends, the same drift-proofing the
+  // tutorError filter does against index.mjs.
+  const clientPath = new URL("../../web/src/components/ask-tutor.tsx", import.meta.url);
+  assert.ok(existsSync(clientPath), `tutor client moved from ${clientPath.pathname} — repoint this assertion`);
+  assert.ok(
+    readFileSync(clientPath, "utf8").includes("x-amz-content-sha256"),
+    "ask-tutor.tsx no longer sends x-amz-content-sha256 — the CORS allowance is now dead config",
+  );
 });
 
 test("every alarm in the template notifies the alerts topic", () => {

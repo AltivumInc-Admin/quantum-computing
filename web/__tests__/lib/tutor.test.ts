@@ -1,87 +1,81 @@
+/**
+ * Codegen-contract test for the tutor's "third runtime".
+ *
+ * web/src/lib/tutor.ts does not implement anything: a prebuild step copies
+ * lambda/tutor/tutor-core.mjs verbatim into the gitignored
+ * web/src/lib/tutor-core.generated.ts. The behaviour of that module is pinned
+ * where it actually runs — lambda/tutor/tutor-core.test.mjs (a required CI job)
+ * covers the strip, the heading extraction, the corpus entry and every system
+ * prompt guardrail, over synthetic fixtures AND, via
+ * web/__tests__/content/tutor-corpus.test.ts, over the real curriculum GUIDEs.
+ *
+ * What only THIS boundary can check is that the copy is faithful and that the
+ * three values crossing the wire to the browser are byte-identical to the ones
+ * the Lambda uses. A drifted sentinel means the client renders the endpoint's
+ * apology as part of the answer; a drifted cap means the server silently slices
+ * a question the textarea let the learner finish typing.
+ */
+import { readFileSync } from "fs";
+import path from "path";
 import {
+  TUTOR_ERROR_SENTINEL,
+  OUT_OF_SCOPE_MESSAGE,
+  MAX_QUESTION_CHARS,
   stripGuideForTutor,
-  extractSectionHeadings,
-  buildSystemPrompt,
-  SECTION_CHAR_CAP,
-  type TutorSection,
 } from "@/lib/tutor";
 
-const SAMPLE = `# Foundations
+const CORE_SOURCE = readFileSync(
+  path.join(__dirname, "../../../lambda/tutor/tutor-core.mjs"),
+  "utf-8"
+);
 
-A qubit is a unit vector. The amplitude is $\\alpha$ and the probability is $|\\alpha|^2$.
+/** The initializer of a top-level `export const NAME = …;` in the source module. */
+function exportedLiteral(name: string): string {
+  const m = new RegExp(`export const ${name} =\\s*([\\s\\S]*?);\\n`).exec(CORE_SOURCE);
+  if (!m) throw new Error(`tutor-core.mjs has no exported const ${name}`);
+  return m[1].trim();
+}
 
-## Gates as rotations
-
-Every gate is a **rotation** of the Bloch sphere. See \`RY(theta)\`.
-
-\`\`\`qbloch
-\`\`\`
-
-\`\`\`python
-print("hello")
-\`\`\`
-
-Read more at [the docs](https://example.com/x).
-`;
-
-describe("stripGuideForTutor", () => {
-  it("removes widget and code fences entirely", () => {
-    const out = stripGuideForTutor(SAMPLE);
-    expect(out).not.toContain("qbloch");
-    expect(out).not.toContain('print("hello")');
-    expect(out).not.toContain("```");
+describe("generated tutor-core copy", () => {
+  it("is generated from lambda/tutor/tutor-core.mjs, not hand-written", () => {
+    const generated = readFileSync(
+      path.join(__dirname, "../../src/lib/tutor-core.generated.ts"),
+      "utf-8"
+    );
+    expect(generated).toContain("lambda/tutor/tutor-core.mjs");
+    // The banner is the only addition; every export below must be the same code.
+    expect(generated).toContain("export const TUTOR_ERROR_SENTINEL");
+    expect(generated).toContain("export function stripGuideForTutor");
   });
 
-  it("unwraps inline code, math, links, and Markdown marks", () => {
-    const out = stripGuideForTutor(SAMPLE);
-    expect(out).toContain("RY(theta)"); // inline code unwrapped
-    expect(out).toContain("|\\alpha|^2"); // inline math contents kept
-    expect(out).toContain("the docs"); // link label kept
-    expect(out).not.toContain("**"); // emphasis stripped
-    expect(out).not.toContain("](http"); // link syntax gone
+  it("carries the error sentinel byte-identically", () => {
+    expect(exportedLiteral("TUTOR_ERROR_SENTINEL")).toBe(JSON.stringify(TUTOR_ERROR_SENTINEL));
+    // Delimited so it can never occur in tutor prose.
+    expect(TUTOR_ERROR_SENTINEL).toBe("<<TUTOR-STREAM-ERROR>>");
   });
 
-  it("caps the output length", () => {
-    const long = "word ".repeat(10_000);
-    expect(stripGuideForTutor(long, 500).length).toBeLessThanOrEqual(500);
-    expect(stripGuideForTutor(long).length).toBeLessThanOrEqual(SECTION_CHAR_CAP);
+  it("carries the out-of-scope refusal byte-identically", () => {
+    // The panel compares the streamed text against this string to render the
+    // refusal in the muted register — an edit on either side breaks that match.
+    expect(exportedLiteral("OUT_OF_SCOPE_MESSAGE")).toBe(JSON.stringify(OUT_OF_SCOPE_MESSAGE));
+    // The panel only renders inside /learn/<slug>, so the copy must not tell the
+    // learner to go open a lesson they are already reading.
+    expect(OUT_OF_SCOPE_MESSAGE).not.toMatch(/open a lesson/i);
   });
 
-  it("truncates over-cap text on a paragraph boundary rather than mid-sentence", () => {
-    const p1 = "First paragraph. " + "x".repeat(400);
-    const p2 = "Second paragraph that should be dropped whole.";
-    const md = `${p1}\n\n${p2}`;
-    // The cap lands a few chars into p2, so a naive slice would cut mid-paragraph.
-    const out = stripGuideForTutor(md, p1.length + 5);
-    expect(out).toBe(p1); // cut exactly at the paragraph boundary, p2 dropped whole
-  });
-});
-
-describe("extractSectionHeadings", () => {
-  it("returns H2/H3 headings in order, without the # marks", () => {
-    expect(extractSectionHeadings(SAMPLE)).toEqual(["Gates as rotations"]);
-  });
-});
-
-describe("buildSystemPrompt", () => {
-  const section: TutorSection = {
-    title: "Foundations",
-    headings: ["Gates as rotations"],
-    text: "A qubit is a unit vector.",
-  };
-
-  it("embeds the lesson title and text", () => {
-    const p = buildSystemPrompt(section);
-    expect(p).toContain('"Foundations"');
-    expect(p).toContain("A qubit is a unit vector.");
-    expect(p).toContain("Gates as rotations");
+  it("carries the question cap byte-identically, under the handler's body gate", () => {
+    expect(exportedLiteral("MAX_QUESTION_CHARS")).toBe(String(MAX_QUESTION_CHARS));
+    expect(MAX_QUESTION_CHARS).toBe(2000);
+    // A question at the cap must still clear the 16 KiB body limit, whose
+    // overflow path is a different (and much more confusing) response.
+    expect(MAX_QUESTION_CHARS * 4).toBeLessThan(16 * 1024);
   });
 
-  it("contains the guardrail clauses that make grounding trustworthy", () => {
-    const p = buildSystemPrompt(section).toLowerCase();
-    expect(p).toContain("answer only using the lesson text");
-    expect(p).toContain("never invent");
-    expect(p).toMatch(/socratic|guiding question/);
-    expect(p).toContain("do not use emojis");
+  it("re-exports a working strip, not a stub", () => {
+    // A smoke check that the copy is executable through the TS boundary; the
+    // transform's real invariants live in the lambda and content suites.
+    expect(stripGuideForTutor("# T\n\nUse `n_qubits` and **bold** text.")).toBe(
+      "T\n\nUse n_qubits and bold text."
+    );
   });
 });
