@@ -157,6 +157,107 @@ describe("Challenge", () => {
     expect(JSON.parse(localStorage.getItem(key!)!)).toEqual({ gates: 2 }); // unchanged
   });
 
+  // Every readout below the editor describes the code that was GRADED. The
+  // moment the learner types, that code no longer exists, so a surviving
+  // verdict/caption is a false claim about a circuit the grader never saw.
+  // (The convention debug-circuit and bloch-target already document.)
+  it("clears the stale verdict and gate-count caption when the learner edits", () => {
+    render(<Challenge source={bell} />);
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "H 0\nCNOT 0 1" } });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(screen.getByText(/correct/i)).toBeInTheDocument();
+    expect(screen.getByText(/solved in 2 gates/i)).toBeInTheDocument();
+
+    fireEvent.change(textbox, { target: { value: "H 0\nCNOT 0 1\nX 1" } });
+    expect(screen.queryByText(/correct/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/solved in 2 gates/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/added to your review/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the solved-once-ever badge across an edit (it is set-once by design)", () => {
+    render(<Challenge source={bell} />);
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "H 0\nCNOT 0 1" } });
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    fireEvent.change(textbox, { target: { value: "H 0" } });
+    expect(screen.getByText("Solved")).toBeInTheDocument();
+  });
+
+  // The card must show exactly ONE coherent verdict per Check. Neither banner
+  // depended on the current status, so a follow-up miss rendered "Not quite"
+  // directly above "Added to your review" and "Solved in 2 gates" — the widget's
+  // own copy ("Can you match it?") invites exactly that follow-up attempt.
+  it("retires the solve banners when a later attempt is wrong", () => {
+    render(<Challenge source={bell} />);
+    const textbox = screen.getByRole("textbox");
+    const check = screen.getByRole("button", { name: /check/i });
+    fireEvent.change(textbox, { target: { value: "H 0\nCNOT 0 1" } });
+    fireEvent.click(check);
+    expect(screen.getByText(/added to your review/i)).toBeInTheDocument();
+    expect(screen.getByText(/solved in 2 gates/i)).toBeInTheDocument();
+
+    // Re-Check a wrong circuit. fireEvent.change already clears on edit, so
+    // drive apply() directly by clicking Check on the changed value.
+    fireEvent.change(textbox, { target: { value: "H 0" } });
+    fireEvent.click(check);
+    expect(screen.getByText(/entangle after a hadamard/i)).toBeInTheDocument();
+    expect(screen.queryByText(/added to your review/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/solved in/i)).not.toBeInTheDocument();
+  });
+
+  // spellCheck alone does not disable iOS/Android auto-capitalization,
+  // autocorrect, or smart quotes — and this same textarea takes free-form
+  // Braket Python on the py tier, where `From braket...` or a curly quote comes
+  // back as "Your code raised: invalid syntax", blaming the learner's keyboard.
+  // Monaco (the repo's other Python input) sets all four explicitly.
+  it("suppresses mobile input assists on the editor (all four attributes)", () => {
+    render(<Challenge source={bell} />);
+    const textbox = screen.getByRole("textbox");
+    expect(textbox).toHaveAttribute("spellcheck", "false");
+    expect(textbox).toHaveAttribute("autocapitalize", "off");
+    expect(textbox).toHaveAttribute("autocorrect", "off");
+    expect(textbox).toHaveAttribute("autocomplete", "off");
+  });
+
+  // The gate whitelist is a HARD submission constraint (gradeTs returns an
+  // error verdict, not a wrong answer), so a screen-reader user must not have to
+  // discover it by submitting and failing.
+  it("describes the editor with the prompt and the enforced gate restriction", () => {
+    render(<Challenge source={bell} />);
+    const textbox = screen.getByRole("textbox");
+    const ids = textbox.getAttribute("aria-describedby")!.split(" ");
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    const described = ids.map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+    expect(described).toMatch(/Prepare the Bell state/);
+    expect(described).toMatch(/Allowed gates/);
+    // No dangling ids — an unresolvable target reads as an empty description.
+    for (const id of ids) expect(document.getElementById(id)).not.toBeNull();
+  });
+
+  it("omits the gate-restriction description when the challenge has no whitelist", () => {
+    const noGates = JSON.stringify({
+      id: "no-gates-1",
+      prompt: "Prepare anything.",
+      qubits: 1,
+      target: { program: "H 0" },
+      starter: "",
+    });
+    render(<Challenge source={noGates} />);
+    const ids = screen.getByRole("textbox").getAttribute("aria-describedby")!.split(" ");
+    for (const id of ids) expect(document.getElementById(id)).not.toBeNull();
+  });
+
+  // A disabled control is not focusable, so the browser blurs it and focus falls
+  // to <body> for the whole multi-second Pyodide boot with nothing to restore
+  // it. aria-busy carries the state without destroying the keyboard position.
+  it("keeps Check focusable rather than disabling it", () => {
+    render(<Challenge source={bell} />);
+    const check = screen.getByRole("button", { name: /check/i });
+    expect(check).not.toBeDisabled();
+    expect(check).toHaveAttribute("aria-busy", "false");
+  });
+
   // persist={false} is the /e2e-fixtures contract: grading works end to end,
   // but NOTHING touches localStorage — no card content on mount, no FSRS card
   // or solved flag on solve. Without it, anyone visiting or solving a fixture

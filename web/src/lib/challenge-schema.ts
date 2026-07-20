@@ -45,10 +45,36 @@ export function parseChallenge(source: string): ParsedChallenge {
   if (!target || typeof target.program !== "string" || !target.program.trim()) {
     return { error: 'challenge needs a "target": { "program": "..." }' };
   }
+  // A tier typo must not be absorbed. `data.tier === "py" ? "py" : "ts"` silently
+  // coerced "Py"/"python"/"pyodide" to the DSL tier, and no CI gate could see it:
+  // the key check only asks whether `tier` is a KNOWN key, the py-vs-manifest 1:1
+  // test filters on `tier === "py"` (so a typo'd fence drops out of the py set
+  // and the equality still holds), and the ts branch's degenerate-content guard
+  // asserts the starter does NOT solve — which Braket Python satisfies by
+  // failing to parse as DSL. The fence shipped and the first learner to click
+  // Check got `Your circuit: unknown gate "from"`. Same reasoning as the
+  // explicit-id rejection above: refuse it, don't absorb it.
+  if (data.tier !== undefined && data.tier !== "ts" && data.tier !== "py") {
+    return { error: 'challenge "tier" must be "ts" or "py"' };
+  }
   const tier = data.tier === "py" ? "py" : "ts";
   const allowedGates = Array.isArray(data.allowedGates)
     ? (data.allowedGates as unknown[]).filter((g): g is string => typeof g === "string")
     : undefined;
+  // allowedGates is ENFORCED by gradeTs only — gradePy grades free-form Python on
+  // state-vector equality alone and never sees the whitelist. The widget renders
+  // the "Allowed gates: …" caption on every tier, so the combination would show a
+  // learner a rule nothing applies to them (and rep-schema would "validate" it by
+  // running gradeTs against the AUTHOR's own reference circuit). The grader cannot
+  // inspect arbitrary Python for gate use, so close it at the authoring gate.
+  if (tier === "py" && allowedGates && allowedGates.length > 0) {
+    return {
+      error:
+        'challenge cannot combine tier:"py" with "allowedGates" — the Python grader ' +
+        "compares state vectors and cannot enforce a gate whitelist, so the rule would " +
+        "be shown to the learner but never applied",
+    };
+  }
 
   const spec: ChallengeSpec = {
     id: data.id,

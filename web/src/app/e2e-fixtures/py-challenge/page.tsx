@@ -3,8 +3,12 @@ import { Challenge } from "@/components/quantum/challenge";
 import { TimeoutOverride } from "./timeout-override";
 
 /**
- * E2E fixture for the Tier-B (Pyodide) grader path — the ONLY page that mounts a
- * tier:"py" challenge. It exists so `web/e2e/challenge-py-grader.e2e.ts` (the
+ * E2E fixture for the Tier-B (Pyodide) grader path — specifically its VERDICT
+ * and WATCHDOG SEMANTICS, on a synthetic spec that no lesson ships. (The sibling
+ * fixture ../py-reps covers the other half: every shipped tier:"py" Rep, mounted
+ * from its real GUIDE fence. This page is no longer the only tier:"py" mount —
+ * four py Reps have shipped since PR #167.) It exists so
+ * `web/e2e/challenge-py-grader.e2e.ts` (the
  * three-verdict grading proof) and `web/e2e/py-grader-timeout.e2e.ts` (the
  * watchdog kill-and-reboot proof, which shortens the run timeout via
  * `?timeoutMs=` — see TimeoutOverride) can drive Challenge → runPy → gradePy

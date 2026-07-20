@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parsePredict } from "@/lib/predict-schema";
 import { predictionTruth, gradePrediction, predictReviewAnswer } from "@/lib/predict-grade";
-import { predictCardId, ratingForPrediction } from "@/lib/challenge-review";
+import { cardIdFor, ratingForPrediction } from "@/lib/challenge-review";
 import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { basisLabel } from "./math";
@@ -18,6 +18,8 @@ import {
   OPTION_BASE,
   OPTION_TONE,
   ProbBars,
+  REVEAL_PANEL,
+  ScheduleNote,
   StateReadout,
   VerdictBadge,
 } from "./widget-ui";
@@ -60,7 +62,7 @@ export function PredictWidget({
   const truth = truthResult.truth;
   const program = useMemo(() => (spec ? parseProgram(spec.program) : null), [spec]);
 
-  const cardId = predictCardId(spec?.id ?? "invalid");
+  const cardId = cardIdFor("predict", spec?.id ?? "invalid");
   // The uniform solved-once-ever flag (qc:predict:<id>). Only a correct commit
   // marks it; the header chip stays a verdict of THIS commit (a pre-commit
   // "Correct" would misdescribe the fresh attempt), so the read is unused.
@@ -205,7 +207,7 @@ export function PredictWidget({
             <div
               role="region"
               aria-label="Simulated outcome"
-              className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
+              className={`mt-4 rounded-control ${REVEAL_PANEL.accent} px-3.5 py-3 animate-fade-up`}
             >
               <EyebrowLabel strong className="mb-2 block">
                 Simulated outcome
@@ -237,15 +239,7 @@ export function PredictWidget({
             </p>
           )}
           {committed && scheduled !== null && (
-            <p className="mt-1 text-xs text-caption animate-fade-up">
-              {surface === "review"
-                ? scheduled <= 1
-                  ? "Reviewed — next review tomorrow."
-                  : `Reviewed — next review in ${scheduled} days.`
-                : scheduled <= 1
-                  ? "Added to your review — back tomorrow."
-                  : `Added to your review — back in ${scheduled} days.`}
-            </p>
+            <ScheduleNote days={scheduled} surface={surface} />
           )}
         </div>
       </div>

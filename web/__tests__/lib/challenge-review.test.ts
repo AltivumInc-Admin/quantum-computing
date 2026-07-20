@@ -1,23 +1,47 @@
 import {
+  cardIdFor,
   challengeCardId,
   ratingForSolve,
   challengeReviewAnswer,
-  predictCardId,
   ratingForPrediction,
-  blochCardId,
-  costCardId,
 } from "@/lib/challenge-review";
+import { KIND_LABELS, type CardKind } from "@/lib/review-store";
 
 describe("challenge-review adapter", () => {
-  describe("challengeCardId", () => {
-    it("namespaces the challenge id under challenge:", () => {
-      expect(challengeCardId("cabc")).toBe("challenge:cabc");
+  describe("cardIdFor", () => {
+    it("namespaces every kind under its own prefix", () => {
+      expect(cardIdFor("challenge", "cabc")).toBe("challenge:cabc");
+      expect(cardIdFor("predict", "x")).toBe("predict:x");
+      expect(cardIdFor("bloch", "x")).toBe("bloch:x");
+      expect(cardIdFor("cost", "x")).toBe("cost:x");
+      expect(cardIdFor("debug", "x")).toBe("debug:x");
+      expect(cardIdFor("expect", "x")).toBe("expect:x");
     });
 
     it("cannot collide with a bare qcard id of the same name", () => {
-      expect(challengeCardId("found-superposition-1")).not.toBe(
+      expect(cardIdFor("challenge", "found-superposition-1")).not.toBe(
         "found-superposition-1"
       );
+    });
+
+    it("gives every kind a distinct id for one shared source id", () => {
+      const kinds = Object.keys(KIND_LABELS) as CardKind[];
+      const ids = kinds.map((k) => cardIdFor(k, "x"));
+      expect(new Set(ids).size).toBe(kinds.length);
+    });
+
+    it("covers the whole CardKind vocabulary — a new kind cannot half-land", () => {
+      // The prefix vocabulary IS CardKind, so adding a kind to KIND_LABELS
+      // without a card id is now impossible rather than silently unnoticed.
+      for (const kind of Object.keys(KIND_LABELS) as CardKind[]) {
+        expect(cardIdFor(kind, "x")).toBe(`${kind}:x`);
+      }
+    });
+  });
+
+  describe("challengeCardId (alias pending challenge.tsx migration)", () => {
+    it("is exactly cardIdFor(\"challenge\", id)", () => {
+      expect(challengeCardId("cabc")).toBe(cardIdFor("challenge", "cabc"));
     });
   });
 
@@ -56,13 +80,6 @@ describe("challenge-review adapter", () => {
     });
   });
 
-  describe("predictCardId", () => {
-    it("namespaces under predict: and never collides with a challenge card", () => {
-      expect(predictCardId("x")).toBe("predict:x");
-      expect(predictCardId("x")).not.toBe(challengeCardId("x"));
-    });
-  });
-
   describe("ratingForPrediction", () => {
     it("maps a correct commit to good and a miss to an again lapse", () => {
       expect(ratingForPrediction(true)).toBe("good");
@@ -70,20 +87,4 @@ describe("challenge-review adapter", () => {
     });
   });
 
-  describe("blochCardId", () => {
-    it("namespaces under bloch: and never collides with the other Rep namespaces", () => {
-      expect(blochCardId("x")).toBe("bloch:x");
-      expect(blochCardId("x")).not.toBe(challengeCardId("x"));
-      expect(blochCardId("x")).not.toBe(predictCardId("x"));
-    });
-  });
-
-  describe("costCardId", () => {
-    it("namespaces under cost: and never collides with the other Rep namespaces", () => {
-      expect(costCardId("x")).toBe("cost:x");
-      for (const other of [challengeCardId("x"), predictCardId("x"), blochCardId("x")]) {
-        expect(costCardId("x")).not.toBe(other);
-      }
-    });
-  });
 });

@@ -49,7 +49,14 @@ def inject_bootstrap(notebook_path: Path) -> bool:
     cell = {
         "cell_type": "code",
         "execution_count": None,
-        "metadata": {"tags": ["pyodide-bootstrap"]},
+        # source_hidden collapses the INPUT only: the cell still runs first and
+        # "Run All Cells" is unchanged, but the notebook now opens on its own H1
+        # instead of on build-tooling boilerplate about a package the learner has
+        # never heard of. JupyterLab's own collapse mechanism, already in the
+        # shipped lab bundle — no new dependency. The tag stays as the machine-
+        # readable marker; the source text is untouched so the BOOTSTRAP_MARKER
+        # idempotency check above still recognises an already-injected cell.
+        "metadata": {"tags": ["pyodide-bootstrap"], "jupyter": {"source_hidden": True}},
         "outputs": [],
         "source": BOOTSTRAP_SOURCE.splitlines(keepends=True),
     }

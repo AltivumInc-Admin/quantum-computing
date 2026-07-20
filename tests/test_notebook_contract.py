@@ -52,10 +52,22 @@ def test_runnable_notebook_static_contract(nb_path: Path):
 
 
 def test_manifest_in_sync():
-    """The committed manifest must match a fresh scan (no drift)."""
-    committed = json.loads(vr.MANIFEST_PATH.read_text(encoding="utf-8"))
-    assert committed == vr.build_manifest(), (
-        "runnable-manifest.json is stale; regenerate with "
+    """The committed manifest must match a fresh scan (no drift).
+
+    Derived from content-manifest.json's per-notebook ``runnable`` booleans —
+    the manifest the web app actually reads. This used to assert against a
+    second generated file, runnable-manifest.json, whose flat list was exactly
+    this one-line derivation and which no TypeScript ever imported.
+    """
+    committed = json.loads(vr.CONTENT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    runnable_in_manifest = sorted(
+        f"{s['dirName']}/notebooks/{nb['filename']}"
+        for s in committed["sections"]
+        for nb in s["notebooks"]
+        if nb["runnable"]
+    )
+    assert runnable_in_manifest == vr.runnable_notebook_paths(), (
+        "content-manifest.json is stale; regenerate with "
         "`python scripts/validate_runnable.py --write-manifest`"
     )
 

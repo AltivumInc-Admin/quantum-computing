@@ -27,8 +27,10 @@
 //
 // Browser-only: requires WebAssembly + Worker + same-origin (or CDN) assets, so
 // it cannot run under jsdom. Callers mock this module in unit tests; the module
-// itself is unit-tested against a fake Worker, and proven end-to-end on real
-// Pyodide by web/e2e/challenge-py-grader.e2e.ts + web/e2e/py-grader-timeout.e2e.ts.
+// itself is unit-tested against a fake Worker (including the boot watchdog, the
+// same-origin -> CDN failover and the both-origins-failed message), and proven
+// end-to-end on real Pyodide by web/e2e/challenge-py-grader.e2e.ts,
+// web/e2e/py-grader-timeout.e2e.ts and web/e2e/runnable-editor.e2e.ts.
 
 import { getWheelName } from "./manifest";
 
@@ -82,11 +84,47 @@ export function __setRunTimeoutMsForTests(ms: number): void {
 
 /**
  * Test-only override for the boot timeout, mirroring the run-timeout override
- * above. Production code must never call this.
+ * above. Production code must never call this; the callers are the boot-failover
+ * cases in __tests__/lib/pyodide-runtime.test.ts, which would otherwise have to
+ * wait out two full 75s watchdogs to reach the CDN fallback and the
+ * both-origins-failed message.
  */
 export function __setBootTimeoutMsForTests(ms: number): void {
   bootTimeoutMs = ms;
 }
+
+// ---------------------------------------------------------------------------
+// Learner-facing status copy, single-sourced.
+//
+// Both Python surfaces a learner meets in one lesson -- the runnable editor and
+// the Tier-B challenge grader -- render the same waiting state, and the strings
+// had been copy-pasted between them. They live here, next to the timeouts they
+// describe, so the two cannot drift.
+//
+// The waiting window this copy covers ranges from ~200ms (a warm interpreter
+// running trivial code) to 150s (both origins stalled: two sequential 75s boot
+// watchdogs), so ONE string cannot be honest for all of it. Callers pick the
+// boot vs execute line from isPyodideBooted(), and escalate to the "still"
+// variant once the wait passes PY_SLOW_NOTICE_MS.
+
+/** Shown while the interpreter boots -- the FIRST run of a session only. */
+export const PY_BOOT_NOTICE = "Booting Python (first run takes a few seconds)…";
+/** Replaces PY_BOOT_NOTICE once the boot has run long (several MB, still downloading). */
+export const PY_BOOT_SLOW_NOTICE =
+  "Still starting Python — the runtime is a few megabytes and still downloading…";
+/**
+ * Shown while code executes on an already-booted interpreter (runs 2..N).
+ * Deliberately not the bare "Running…" the Run button itself shows -- the panel
+ * and the button would otherwise render the same word twice.
+ */
+export const PY_RUNNING_NOTICE = "Running your code…";
+/** Replaces PY_RUNNING_NOTICE for a run that is taking unusually long. */
+export const PY_RUNNING_SLOW_NOTICE =
+  "Still working — check your code for a loop that never ends…";
+/** How long a wait may sit on the first-line copy before it escalates. */
+export const PY_SLOW_NOTICE_MS = 10_000;
+/** Prefix for the "the interpreter never came up" failure, shared by both consumers. */
+export const PY_BOOT_FAILURE_PREFIX = "Couldn't start Python: ";
 
 /**
  * The rejection type for a run that exceeded the timeout and forced a runtime
@@ -98,6 +136,21 @@ export class PythonTimeoutError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "PythonTimeoutError";
+  }
+}
+
+/**
+ * A runtime-lifecycle failure that is NOT the learner's code: the worker died,
+ * or the environment was already dead from an earlier timeout. Distinct from
+ * PythonTimeoutError (which has its own learner-facing copy) and from a plain
+ * Error carrying a Python traceback. Callers must branch on this before
+ * prefixing a message with "Your code raised:" -- attributing an environment
+ * failure to the learner's code is a false accusation they cannot act on.
+ */
+export class PythonRuntimeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PythonRuntimeError";
   }
 }
 
@@ -154,13 +207,13 @@ export class Pyodide {
     // arrive as "error" replies) poisons the runtime: kill it so in-flight runs
     // reject and the next run boots fresh.
     worker.onerror = () => {
-      this.kill(new Error("The Python runtime crashed. Run again to restart it."));
+      this.kill(new PythonRuntimeError("The Python runtime crashed. Run again to restart it."));
     };
   }
 
   /** Execute one (already-serialized) run; resolves with the last expression's value. */
   run(code: string, onOutput?: (text: string) => void): Promise<unknown> {
-    if (this.dead) return Promise.reject(new Error(RESET_MESSAGE));
+    if (this.dead) return Promise.reject(new PythonRuntimeError(RESET_MESSAGE));
     return new Promise<unknown>((resolve, reject) => {
       const id = this.nextRunId++;
       // The client serializes runs (see runSerialized), so this run starts
@@ -195,7 +248,9 @@ export class Pyodide {
    * Terminate the worker (the only way to interrupt Python without
    * SharedArrayBuffer) and discard the module-level cache so the NEXT run
    * boots a fresh interpreter. Every in-flight/queued run rejects with
-   * `reason` -- for a timeout that is the learner-facing PythonTimeoutError.
+   * `reason` -- PythonTimeoutError for a watchdog kill, PythonRuntimeError for
+   * a worker crash. Neither is the learner's exception, so neither may be
+   * prefixed as one downstream.
    */
   private kill(reason: Error): void {
     if (this.dead) return;
@@ -215,6 +270,18 @@ export class Pyodide {
 
 let pyodidePromise: Promise<Pyodide> | null = null;
 let currentHandle: Pyodide | null = null;
+
+/**
+ * Whether an interpreter is booted and cached RIGHT NOW, i.e. whether the next
+ * run will boot (seconds, several MB) or just execute (milliseconds). The UI
+ * uses it to choose between PY_BOOT_NOTICE and PY_RUNNING_NOTICE, so the answer
+ * has to be structural rather than "has this component run before": a watchdog
+ * kill or a worker crash calls invalidate() and the following run really does
+ * boot again.
+ */
+export function isPyodideBooted(): boolean {
+  return currentHandle !== null;
+}
 
 /** Drop the cached runtime iff `handle` is still the cached one. */
 function invalidate(handle: Pyodide): void {

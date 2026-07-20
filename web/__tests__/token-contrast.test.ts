@@ -195,6 +195,91 @@ describe("chip AAA claim on the dark theme", () => {
   });
 });
 
+describe("inline-code chip across every section hue (WCAG 1.4.3, >= 4.5:1)", () => {
+  // The one pair in the system generated from a hue ANGLE rather than a named
+  // token, so its ratio varies per section and none of the three guards could
+  // see it: contrast-guard and caption-contrast are class-string greps that
+  // never evaluate a color, and themeBlock() above only parses the :root/.dark
+  // blocks — a color declared from var(--hue) outside them is invisible to it.
+  // At the old oklch(0.5 ...) lightness, hue 192 measured 4.35:1, a FAIL; and
+  // hue 192 is sectionHue[0], which index 6 wraps back to, so it hit both
+  // /learn/00-prereqs and /learn/06-hybrid-jobs. Inline code is 14px/600 —
+  // normal-size text, so 4.5:1 applies, not the 3:1 large-text allowance.
+  const sections = readFileSync(join(__dirname, "../src/lib/sections.ts"), "utf8");
+  const hueList = sections.match(/sectionHue\s*=\s*\[([^\]]+)\]/);
+  const hues = hueList![1].split(",").map((h) => parseFloat(h.trim()));
+
+  // The unlayered rules at the bottom of globals.css, read rather than retyped.
+  // There are several `.prose :not(pre) > code` blocks (the @layer components
+  // one sets only padding/weight), so the pair is located by CONTENT: the light
+  // rule is the one declaring both halves, the dark override restates color only.
+  const CHIP_COLOR = /(?:^|[;{\s])color:\s*oklch\(([\d.]+) ([\d.]+) var\(--hue/;
+  const CHIP_BG =
+    /background-color:\s*oklch\(([\d.]+) ([\d.]+) var\(--hue[^)]*\)\s*\/\s*([\d.]+)\)/;
+
+  function bodies(prefix: string): string[] {
+    const re = new RegExp(
+      prefix.replace(/\./g, "\\.") + String.raw`\.prose :not\(pre\) > code\s*\{([^}]*)\}`,
+      "g"
+    );
+    return [...css.matchAll(re)].map((m) => m[1]);
+  }
+
+  const lightBody = bodies("").find((b) => CHIP_COLOR.test(b) && CHIP_BG.test(b))!;
+  const darkBody = bodies(".dark ").find((b) => CHIP_COLOR.test(b))!;
+
+  function parseChip(body: string) {
+    const c = body.match(CHIP_COLOR)!;
+    const bg = body.match(CHIP_BG);
+    return {
+      color: [parseFloat(c[1]), parseFloat(c[2]), 0] as Oklch,
+      bg: (bg ? [parseFloat(bg[1]), parseFloat(bg[2]), 0] : [0, 0, 0]) as Oklch,
+      alpha: bg ? parseFloat(bg[3]) : 0,
+    };
+  }
+
+  const lightChip = parseChip(lightBody);
+  const darkChip = parseChip(darkBody);
+  // The dark override restates only `color`; the tinted background is inherited
+  // from the unprefixed rule.
+  darkChip.bg = lightChip.bg;
+  darkChip.alpha = lightChip.alpha;
+
+  function composite(fg: Oklch, bgAlpha: number, tint: Oklch, base: Oklch): number {
+    const t = toLinearSrgb(tint);
+    const b = toLinearSrgb(base);
+    const mixed = t.map((v, i) => v * bgAlpha + b[i] * (1 - bgAlpha));
+    const bgLum = 0.2126 * mixed[0] + 0.7152 * mixed[1] + 0.0722 * mixed[2];
+    const fgLum = luminance(fg);
+    const [hi, lo] = [fgLum, bgLum].sort((a, b) => b - a);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  it("found the hue table and both chip rules", () => {
+    expect(hues.length).toBeGreaterThan(0);
+    expect(lightChip.alpha).toBeGreaterThan(0);
+    expect(darkChip.color[0]).toBeGreaterThan(0);
+  });
+
+  it.each(
+    hues.flatMap((h) => [
+      ["light", h] as const,
+      ["dark", h] as const,
+    ])
+  )("%s theme, hue %s is AA (>= 4.5:1)", (theme, hue) => {
+    const chip = theme === "light" ? lightChip : darkChip;
+    const vars = theme === "light" ? light : dark;
+    const base = parseOklch(vars["surface-base"], vars);
+    const ratio = composite(
+      [chip.color[0], chip.color[1], hue],
+      chip.alpha,
+      [chip.bg[0], chip.bg[1], hue],
+      base
+    );
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
 describe("parser sanity", () => {
   it("resolved the per-theme focus token through var() indirection", () => {
     expect(resolve(light.focus, light)).toBe(light["accent-dark"]);

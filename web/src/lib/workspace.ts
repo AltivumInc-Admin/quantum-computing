@@ -15,15 +15,18 @@ import {
   getAllCardIds,
   getCardState,
   getCardContent,
-  dueCardIds,
-  dueByKind,
   KIND_LABELS,
   type CardKind,
 } from "./review-store";
-import type { CardState } from "./review-schedule";
+import { isDue, type CardState } from "./review-schedule";
 import { activeDays } from "./activity-log";
 import { isSectionComplete } from "./progress-store";
-import { getManifestSections } from "./manifest";
+import {
+  getManifestSections,
+  humanizeNotebook,
+  notebookHref,
+  LAB_INDEX_HREF,
+} from "./manifest";
 import { hueFor } from "./sections";
 import {
   streak,
@@ -43,9 +46,10 @@ import { getAllMeasurements } from "./skill-measure";
  *  as data accrues). */
 export const SPARSE_THRESHOLD = 5;
 
-/** "Open the lab" with no specific notebook opens the JupyterLite lab landing. Same
- *  route family NotebookLink uses (public/lab/lab/index.html), verified in-repo. */
-export const LAB_HREF = "/lab/lab/index.html";
+/** "Open the lab" with no specific notebook opens the JupyterLite lab landing —
+ *  the same route NotebookLink deep-links into, now single-sourced in manifest.ts
+ *  (which owns the manifest-derived link helpers) rather than spelled out twice. */
+export const LAB_HREF = LAB_INDEX_HREF;
 
 export interface WorkspaceNotebook {
   filename: string;
@@ -129,18 +133,6 @@ export interface WorkspaceModel {
   reachConsistency: ReachRung | null;
 }
 
-/** Humanise a notebook filename the way NotebookLink does — one source for the label. */
-export function humanizeNotebook(filename: string): { index: string; label: string } {
-  const stem = filename.replace(/\.ipynb$/, "");
-  const index = stem.match(/^(\d+)-/)?.[1] ?? "";
-  const label = stem.replace(/^\d+-/, "").replace(/-/g, " ");
-  return { index, label };
-}
-
-function notebookHref(dirName: string, filename: string): string {
-  return `/lab/lab/index.html?path=${encodeURIComponent(`${dirName}/notebooks/${filename}`)}`;
-}
-
 /**
  * THE VALVE PRECEDENCE — the page's thesis as a pure function. The slot is NEVER
  * blank and NEVER congratulates; there is always exactly one action.
@@ -212,10 +204,26 @@ export function readWorkspace(today: number): WorkspaceModel {
   const days = activeDays().filter((d) => d <= today);
   const longestWeeks = streak(days, today, freezesEarned(mastery)).longestWeeks;
 
-  const nowMs = today * 86_400_000; // isDue reads epochDay(nowMs) === today
-  const dueIds = dueCardIds(nowMs);
+  // Both the due set and its kind breakdown come from the `cards` array built
+  // above, so the "one scan" comment is true: dueCardIds() would re-walk every
+  // localStorage key and re-parse every CardState, and dueByKind() would then
+  // call dueCardIds() a THIRD time and re-read content per due id. Those two
+  // stay exported for the callers that genuinely have no scan in hand (the nav
+  // badge, review-dashboard).
+  const dueCards = cards.filter((c) => isDue(c.state, today));
+  const dueIds = dueCards.map((c) => c.id);
   const due = dueIds.length;
-  const kindCounts = dueByKind(nowMs);
+  const kindCounts = {} as Record<CardKind | "unknown", number>;
+  for (const c of dueCards) {
+    // Own-property membership, mirroring review-store's kindBucket: `kind` is an
+    // unchecked cast out of storage, so an unrecognized string (or a prototype
+    // key) must collapse into "unknown" or it vanishes from the fixed row list
+    // below while still counting toward `due`.
+    const raw = c.content?.kind;
+    const k: CardKind | "unknown" =
+      raw && Object.hasOwn(KIND_LABELS, raw) ? (raw as CardKind) : "unknown";
+    kindCounts[k] = (kindCounts[k] ?? 0) + 1;
+  }
   const dueKinds: DueKindRow[] = ([...Object.keys(KIND_LABELS), "unknown"] as (CardKind | "unknown")[])
     .filter((k) => (kindCounts[k] ?? 0) > 0)
     .map((k) => ({

@@ -3,15 +3,10 @@
  */
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
-import { makeComponents } from "@/components/markdown-renderer";
-
-// markdown-renderer imports react-markdown (ESM); mock it so the module imports
-// under ts-jest's CJS. makeComponents itself is real code under test.
-jest.mock("react-markdown", () => ({ __esModule: true, default: () => null }));
-jest.mock("remark-gfm", () => () => {});
-jest.mock("remark-math", () => () => {});
-jest.mock("rehype-katex", () => () => {});
-jest.mock("rehype-highlight", () => () => {});
+// makeComponents lives in markdown-components.tsx, apart from the pipeline
+// configuration, so this suite needs no jest.mock preamble for the ESM-only
+// react-markdown/remark/rehype chain: it imports none of it.
+import { makeComponents } from "@/components/markdown-components";
 
 function node(line: number) {
   return { position: { start: { line } } };

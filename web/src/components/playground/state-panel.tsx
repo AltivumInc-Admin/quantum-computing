@@ -5,7 +5,7 @@ import BlochSphere3D, { SPHERE_PX } from "@/components/quantum/bloch-sphere-3d-l
 import { simulateSteps, probabilities, zeroState } from "@/components/quantum/math";
 import { opsFor, type ParsedGate, type Program } from "@/components/quantum/qsim-dsl";
 import { BlochDial, BlochVectorSR } from "@/components/quantum/bloch-dial";
-import { GateChips, LabeledSlider, ProbBars, StateReadout } from "@/components/quantum/widget-ui";
+import { GateChips, LabeledSlider, PlayIcon, ProbBars, StateReadout } from "@/components/quantum/widget-ui";
 import { usePrefersReducedMotion, useWebGL } from "@/components/quantum/use-display-caps";
 import { Panel } from "@/components/workspace/panel";
 
@@ -19,14 +19,6 @@ import { Panel } from "@/components/workspace/panel";
  */
 
 const STEP_MS = 750;
-
-function PlayIcon({ playing }: { playing: boolean }) {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      {playing ? <path d="M8 5h3v14H8zM13 5h3v14h-3z" /> : <path d="M8 5v14l11-7z" />}
-    </svg>
-  );
-}
 
 /** The instruction as the learner wrote it, for the slider's aria-valuetext. */
 function instructionText(g: ParsedGate): string {

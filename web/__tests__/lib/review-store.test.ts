@@ -141,5 +141,35 @@ describe("review-store", () => {
       const counts = dueByKind(2 * DAY);
       expect(counts.unknown).toBe(1);
     });
+
+    // `kind` is an unchecked cast at a localStorage/sync trust boundary, so it
+    // can be any string. The docstring promises the parts sum to dueCount();
+    // that only holds if every unrecognized value lands in a bucket workspace.ts
+    // actually renders, and it renders a FIXED key list.
+    it.each(["not-a-kind", "constructor", "__proto__", "toString", "hasOwnProperty"])(
+      "buckets the unrecognized kind %p under 'unknown', keeping the sum invariant",
+      (kind) => {
+        gradeCard("weird:1", "good", 0);
+        setCardContent("weird:1", { prompt: "p", answer: "a", kind: kind as never });
+        gradeCard("predict:c", "good", 0);
+        setCardContent("predict:c", { prompt: "p", answer: "a", kind: "predict" });
+
+        const at = 2 * DAY;
+        const counts = dueByKind(at);
+        expect(counts.unknown).toBe(1);
+        expect(counts.predict).toBe(1);
+        // Every bucket key must be one the breakdown can render...
+        for (const k of Object.keys(counts)) {
+          expect(k === "unknown" || Object.hasOwn(KIND_LABELS, k)).toBe(true);
+        }
+        // ...and every value a number ("constructor" used to make this the
+        // string "function Object() { [native code] }1").
+        for (const v of Object.values(counts)) {
+          expect(typeof v).toBe("number");
+        }
+        const total = Object.values(counts).reduce((n, c) => n + c, 0);
+        expect(total).toBe(dueCount(at));
+      }
+    );
   });
 });

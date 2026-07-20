@@ -58,24 +58,60 @@ customHeaders:
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=31536000, s-maxage=31536000, immutable'
-  # Next.js static chunks are content-hashed (/_next/static/<hash>/…), and the
-  # self-hosted Pyodide lesson runtime under /pyodide/ and the Monaco editor
-  # core under /monaco/ are version-pinned trees restaged wholesale on
-  # upgrade — the same immutable contract as the lab assets above. Without
-  # these rules the 8.6 MB pyodide.asm.wasm re-downloads with max-age=0 on
-  # every revisit (live prod headers verified 2026-07-17).
+  # Next.js static chunks are content-hashed (/_next/static/<hash>/…).
   - pattern: '/_next/static/**'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=31536000, s-maxage=31536000, immutable'
-  - pattern: '/pyodide/**'
-    headers:
-      - key: 'Cache-Control'
-        value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  # The Monaco editor core is staged into a VERSION-STAMPED directory
+  # (/monaco/<version>/vs, scripts/stage-monaco.mjs — the loader path constant
+  # web/src/lib/monaco-path.ts must agree or the build fails), so every URL in
+  # the tree changes on an upgrade and `immutable` is correct by construction.
+  # It has to be: Monaco's entry files (loader.js, editor/editor.main.js,
+  # basic-languages/monaco.contribution.js) are UNHASHED names that reference
+  # content-hashed siblings, so a cached-entry/new-chunks mismatch would break
+  # every runnable cell — and `immutable` suppresses the revalidation that the
+  # component's own "Reload page" retry depends on.
   - pattern: '/monaco/**'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=31536000, s-maxage=31536000, immutable'
+  # The self-hosted Pyodide LESSON runtime is NOT version-stamped: build.sh
+  # stages pyodide.js, pyodide.asm.js, the 8.6 MB pyodide.asm.wasm and
+  # pyodide-lock.json under stable, unhashed names, so a version bump reuses the
+  # same URLs. Under a year-long `immutable` grant those entries are also
+  # independently evictable, so a partially-evicted cache after a bump yields an
+  # Emscripten JS/wasm mismatch — which the runtime answers by falling back to
+  # the jsdelivr CDN, reintroducing the third-party request the self-hosting
+  # exists to remove. A bounded cache (same 1-day grant the unhashed /welcome/
+  # tree gets) keeps repeat visits free of a re-download while capping that
+  # window at a day, and revalidation is a cheap 304. Restore `immutable` here
+  # once build.sh stages /pyodide/<version>/ (and PYODIDE_LOCAL_BASE in
+  # web/src/lib/pyodide-runtime.ts points at it), the way Monaco now does.
+  - pattern: '/pyodide/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  # The LAB kernel's Pyodide distribution — a SECOND, separately-pinned copy
+  # (web/jupyterlite-build/build.sh stages it at static/pyodide/, so
+  # `jupyter lite build` emits it at /lab/static/pyodide/). Before this rule it
+  # matched no pattern at all and fell through to Amplify's defaults, so all
+  # 31 MB of it — an 8.6 MB pyodide.asm.wasm, a 2.4 MB python_stdlib.zip and the
+  # staged wheel closure, every byte fetched on kernel boot — was revalidated
+  # (and at max-age=0 re-downloaded) on EVERY "Run in browser".
+  #
+  # Bounded, not immutable, for exactly the reason /pyodide/** above is: this
+  # tree carries the identical set of stable unhashed core names (pyodide.js,
+  # pyodide.asm.js, pyodide.asm.wasm, python_stdlib.zip, pyodide-lock.json) that
+  # a version bump reuses. Only the wheels beside them are version-stamped. Here
+  # the stakes are higher than for the lesson runtime: a partially-evicted cache
+  # after a bump yields an Emscripten JS/wasm mismatch and the lab kernel has NO
+  # CDN fallback to fail over to — it simply never boots. Promote to immutable
+  # once build.sh stages the core under a version-stamped path.
+  - pattern: '/lab/static/pyodide/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
   # Welcome-page imagery keeps its filenames across deploys (unhashed), so it
   # gets a bounded 1-day cache instead of immutable.
   - pattern: '/welcome/**'

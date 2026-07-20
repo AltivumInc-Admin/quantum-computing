@@ -10,7 +10,11 @@ import { join } from "path";
  * contract loud when someone reorders, renames, or deletes a block.
  *
  * The contract:
- *  1. every content-hashed / version-pinned tree is cached immutably,
+ *  1. every content-hashed / version-stamped tree is cached immutably — and
+ *     ONLY those: `immutable` suppresses revalidation for a year, so granting
+ *     it to a tree with stable, unhashed entry filenames (the lesson Pyodide
+ *     runtime, /welcome imagery) would strand returning learners on a stale
+ *     entry file after a version bump,
  *  2. the '/**' security block exists with the baseline headers and carries
  *     NO Cache-Control (header keys stay disjoint across overlapping
  *     patterns — Amplify defines no same-key precedence),
@@ -71,7 +75,6 @@ describe("customHttp.yml header contract", () => {
     "/lab/build/**",
     "/lab/files/wheels/**",
     "/_next/static/**",
-    "/pyodide/**",
     "/monaco/**",
   ])("caches the hashed/version-pinned tree %s immutably", (pattern) => {
     const block = byPattern.get(pattern);
@@ -85,10 +88,66 @@ describe("customHttp.yml header contract", () => {
     expect(byPattern.get("/lab/files/wheels/**")?.headers["Cache-Control"]).toBe(IMMUTABLE);
   });
 
-  it("gives the unhashed /welcome/** tree a bounded (non-immutable) cache", () => {
-    const cc = byPattern.get("/welcome/**")?.headers["Cache-Control"];
-    expect(cc).toBe("public, max-age=86400");
-    expect(cc).not.toContain("immutable");
+  it.each(["/welcome/**", "/pyodide/**", "/lab/static/pyodide/**"])(
+    "gives the unhashed tree %s a bounded (non-immutable) cache",
+    (pattern) => {
+      // `immutable` tells the browser to skip revalidation for the whole
+      // max-age, so it is only honest for a tree whose URLs change when its
+      // bytes do. /welcome/ keeps its filenames across deploys, and BOTH
+      // self-hosted Pyodide trees — the lesson runtime at /pyodide/ and the lab
+      // kernel's separately-pinned copy at /lab/static/pyodide/ — ship the same
+      // stable unhashed names (pyodide.js, pyodide.asm.js, pyodide.asm.wasm,
+      // python_stdlib.zip) that a version bump reuses. A partially-evicted cache
+      // would then serve a JS/wasm mismatch: the lesson runtime silently fails
+      // over to the CDN, and the lab kernel — which has no fallback — never boots.
+      const cc = byPattern.get(pattern)?.headers["Cache-Control"];
+      expect(cc).toBe("public, max-age=86400");
+      expect(cc).not.toContain("immutable");
+    },
+  );
+
+  it("caches the lab kernel's Pyodide tree at all (it fell through to Amplify defaults)", () => {
+    // The gap this block closed: /lab/build/** and /lab/files/wheels/** were
+    // covered, but the 31 MB distribution the kernel actually boots from lives
+    // at /lab/static/pyodide/ and matched no pattern, so every "Run in browser"
+    // re-fetched it. Asserting the block EXISTS is the regression guard; the
+    // bounded-value case above pins what it says.
+    expect(byPattern.get("/lab/static/pyodide/**")).toBeDefined();
+  });
+
+  it("grants immutable only to trees whose URLs change when their bytes do", () => {
+    // The appropriateness check the per-pattern cases above cannot make on their
+    // own: any NEW immutable pattern must name a content-hashed tree
+    // (/_next/static, /lab/build, /lab/files/wheels) or a version-stamped one
+    // (/monaco/<version>/…). A future unhashed tree added to the immutable list
+    // fails here instead of failing in a returning learner's browser a release
+    // later — which is exactly how the two Pyodide trees came to be bounded.
+    const KNOWN_HASHED = new Set([
+      "/lab/build/**",
+      "/lab/files/wheels/**",
+      "/_next/static/**",
+    ]);
+    const VERSION_STAMPED = new Set(["/monaco/**"]);
+    const unjustified = blocks
+      .filter((b) => b.headers["Cache-Control"] === IMMUTABLE)
+      .map((b) => b.pattern)
+      .filter((p) => !KNOWN_HASHED.has(p) && !VERSION_STAMPED.has(p));
+    // Any pattern listed here is cached immutably without hashed or
+    // version-stamped URLs — see the comments in customHttp.yml.
+    expect(unjustified).toEqual([]);
+  });
+
+  it("keeps the Monaco loader path version-stamped (the premise of its immutable grant)", () => {
+    // /monaco/** is only safe to cache immutably because scripts/stage-monaco.mjs
+    // stages into /monaco/<version>/vs and the loader points there; if that
+    // constant ever loses its version segment the grant becomes a trap.
+    const monacoPath = readFileSync(
+      join(__dirname, "..", "..", "src", "lib", "monaco-path.ts"),
+      "utf8",
+    );
+    const version = monacoPath.match(/export const MONACO_VERSION = "([^"]+)";/)?.[1];
+    expect(version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(monacoPath).toContain("`/monaco/${MONACO_VERSION}/vs`");
   });
 
   it("carries the '/**' security block with the baseline headers", () => {

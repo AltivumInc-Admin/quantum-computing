@@ -5,7 +5,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CostEstimateWidget } from "@/components/quantum/cost-estimate-widget";
 import { getCardState, gradeCard } from "@/lib/review-store";
-import { costCardId } from "@/lib/challenge-review";
+import { cardIdFor } from "@/lib/challenge-review";
 import { parseCostEstimate } from "@/lib/cost-estimate-schema";
 import { costEstimateTruth, fmtUsd } from "@/lib/cost-estimate-grade";
 
@@ -34,7 +34,7 @@ describe("CostEstimateWidget", () => {
     expect(screen.getByText("Correct")).toBeInTheDocument();
     expect(screen.getByLabelText(/itemized cost/i)).toBeInTheDocument();
     expect(screen.getByText(/statistical precision, not hardware fidelity/i)).toBeInTheDocument();
-    const card = getCardState(costCardId("t-cost"))!;
+    const card = getCardState(cardIdFor("cost", "t-cost"))!;
     expect(card.reps).toBe(1);
     expect(card.lapses).toBe(0);
   });
@@ -58,7 +58,7 @@ describe("CostEstimateWidget", () => {
     // The {perTask}/{perShot} placeholders resolve from the live PRICING table.
     expect(screen.getByText(/flat \$0\.30 task fee/i)).toBeInTheDocument();
     expect(screen.getByText(/\$0\.08 for each/i)).toBeInTheDocument();
-    const card = getCardState(costCardId("t-cost"))!;
+    const card = getCardState(cardIdFor("cost", "t-cost"))!;
     expect(card.reps).toBe(0);
     expect(card.lapses).toBe(1);
   });
@@ -123,7 +123,7 @@ describe("CostEstimateWidget", () => {
 
     // Review mount after one rep: the order is drawn from the reps-salted
     // shuffle (same contract as the expectation Rep).
-    gradeCard(costCardId("t-cost"), "good"); // reps -> 1
+    gradeCard(cardIdFor("cost", "t-cost"), "good"); // reps -> 1
     render(<CostEstimateWidget source={ionq2000} surface="review" />);
     expect(optionNames()).toEqual(costEstimateTruth(spec, 1).truth!.options.map(fmtUsd));
   });

@@ -4,6 +4,10 @@ import { getPyodide, runSerialized } from "@/lib/pyodide-runtime";
 jest.mock("@/lib/pyodide-runtime", () => ({
   getPyodide: jest.fn(),
   runSerialized: jest.fn(),
+  // The learner-facing prefix is single-sourced from the runtime module (the
+  // grader shows the same sentence), so the mock has to carry it too.
+  PY_BOOT_FAILURE_PREFIX: jest.requireActual("@/lib/pyodide-runtime")
+    .PY_BOOT_FAILURE_PREFIX,
 }));
 const mockGetPyodide = getPyodide as jest.Mock;
 const mockRunSerialized = runSerialized as jest.Mock;
@@ -19,15 +23,17 @@ describe("runPython", () => {
       onOutput("hello world\n");
     });
     const result = await runPython("print('hello world')");
-    expect(result).toEqual({ ok: true, output: "hello world\n" });
+    // `error` is the ONLY success discriminant — absent means the run succeeded.
+    // There used to be a sibling `ok: boolean` no consumer ever read.
+    expect(result).toEqual({ output: "hello world\n" });
+    expect(result.error).toBeUndefined();
   });
 
-  it("reports the raised error and is not ok when the code throws", async () => {
+  it("reports the raised error when the code throws", async () => {
     mockRunSerialized.mockRejectedValue(
       new Error("NameError: name 'x' is not defined")
     );
     const result = await runPython("print(x)");
-    expect(result.ok).toBe(false);
     expect(result.error).toMatch(/NameError/);
   });
 
@@ -37,14 +43,14 @@ describe("runPython", () => {
       throw new Error("boom");
     });
     const result = await runPython("print('partial'); raise Exception('boom')");
-    expect(result.ok).toBe(false);
+    expect(result.error).toBe("boom");
     expect(result.output).toBe("partial\n");
   });
 
   it("returns a friendly error when Python can't boot", async () => {
     mockGetPyodide.mockRejectedValue(new Error("network down"));
     const result = await runPython("print(1)");
-    expect(result.ok).toBe(false);
     expect(result.error).toMatch(/couldn't start python/i);
+    expect(result.error).toContain("network down");
   });
 });

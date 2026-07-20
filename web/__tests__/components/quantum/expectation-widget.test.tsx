@@ -5,7 +5,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ExpectationWidget } from "@/components/quantum/expectation-widget";
 import { getCardState } from "@/lib/review-store";
-import { expectCardId } from "@/lib/challenge-review";
+import { cardIdFor } from "@/lib/challenge-review";
 
 // ⟨Z⟩ on |+⟩ = 0 — the canonical basis-matters case; options are 0.00 (truth),
 // 0.50 (P(+1) confusion), −1.00 and 1.00 (determinism).
@@ -40,7 +40,7 @@ describe("ExpectationWidget", () => {
     expect(screen.getByText("Correct")).toBeInTheDocument();
     expect(screen.getByLabelText(/what a measurement returns/i)).toBeInTheDocument();
     expect(screen.getByText(/returns an eigenvalue, \+1 or −1/i)).toBeInTheDocument();
-    const card = getCardState(expectCardId("t-expect"))!;
+    const card = getCardState(cardIdFor("expect", "t-expect"))!;
     expect(card.reps).toBe(1);
     expect(card.lapses).toBe(0);
   });
@@ -62,7 +62,7 @@ describe("ExpectationWidget", () => {
 
     expect(screen.getByText("Not quite")).toBeInTheDocument();
     expect(screen.getByText(/equally likely/i)).toBeInTheDocument();
-    const card = getCardState(expectCardId("t-expect"))!;
+    const card = getCardState(cardIdFor("expect", "t-expect"))!;
     expect(card.reps).toBe(0);
     expect(card.lapses).toBe(1);
   });

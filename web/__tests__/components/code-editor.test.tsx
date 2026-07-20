@@ -5,7 +5,9 @@ import "@testing-library/jest-dom";
 import { render, screen, act } from "@testing-library/react";
 
 // Capture loader.config (self-host path) and the onMount wiring without booting
-// real Monaco (it needs a browser + the staged /monaco/vs assets).
+// real Monaco (it needs a browser + the staged /monaco/<version>/vs assets).
+// That mocking is exactly why web/e2e/runnable-editor.e2e.ts exists: these
+// assertions pass whether or not the staged tree is present or complete.
 const mockLoaderConfig = jest.fn();
 type FakeEditor = {
   addCommand: jest.Mock;
@@ -28,6 +30,7 @@ jest.mock("@monaco-editor/react", () => {
 jest.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
 
 import { CodeEditor } from "@/components/code-editor";
+import { MONACO_VERSION, MONACO_VS_PATH } from "@/lib/monaco-path";
 
 const KeyCode = { Escape: 9 };
 function fakeEditor(): FakeEditor {
@@ -44,9 +47,19 @@ afterEach(() => {
 });
 
 describe("CodeEditor", () => {
-  it("points the AMD loader at the self-hosted /monaco/vs path (no CDN)", () => {
+  it("points the AMD loader at the self-hosted, version-stamped monaco path (no CDN)", () => {
     // loader.config runs at module scope, before any editor mounts.
-    expect(mockLoaderConfig).toHaveBeenCalledWith({ paths: { vs: "/monaco/vs" } });
+    expect(mockLoaderConfig).toHaveBeenCalledWith({ paths: { vs: MONACO_VS_PATH } });
+    expect(MONACO_VS_PATH).toBe(`/monaco/${MONACO_VERSION}/vs`);
+    expect(MONACO_VS_PATH).not.toMatch(/^https?:/);
+  });
+
+  it("declares the monaco version actually installed (the staged tree's directory)", () => {
+    // scripts/stage-monaco.mjs stages into public/monaco/<installed version>/vs
+    // and fails the build on a mismatch; this is the same guard at test time, so
+    // a dependency bump without a constant bump cannot reach a deploy.
+    const installed = require("monaco-editor/package.json").version as string;
+    expect(MONACO_VERSION).toBe(installed);
   });
 
   it("renders the keyboard-exit hint adjacent to the editor", () => {
@@ -79,12 +92,21 @@ describe("CodeEditor", () => {
     expect(editor.updateOptions).toHaveBeenLastCalledWith({ tabFocusMode: false });
   });
 
+  it("gives a slow link the full load budget before declaring failure", () => {
+    // The critical path is ~1.08 MB gzipped (see LOAD_TIMEOUT_MS's comment), so
+    // an ordinary slow connection must not be failed at the old 15s mark.
+    jest.useFakeTimers();
+    render(<CodeEditor value="x = 1" onChange={() => {}} />);
+    act(() => jest.advanceTimersByTime(20_000));
+    expect(screen.queryByText(/couldn't load the editor/i)).not.toBeInTheDocument();
+  });
+
   it("replaces a never-mounting editor with an explicit error state + reload retry", () => {
     jest.useFakeTimers();
     render(<CodeEditor value="x = 1" onChange={() => {}} />);
     expect(screen.queryByText(/couldn't load the editor/i)).not.toBeInTheDocument();
 
-    act(() => jest.advanceTimersByTime(15_000));
+    act(() => jest.advanceTimersByTime(45_000));
     expect(
       screen.getByText(/couldn't load the editor\. reload the page to retry\./i)
     ).toBeInTheDocument();
@@ -102,7 +124,7 @@ describe("CodeEditor", () => {
     });
     expect(capturedOnMount).not.toBeNull();
     act(() => capturedOnMount!(fakeEditor(), { KeyCode }));
-    act(() => jest.advanceTimersByTime(20_000));
+    act(() => jest.advanceTimersByTime(60_000));
     expect(screen.queryByText(/couldn't load the editor/i)).not.toBeInTheDocument();
   });
 });

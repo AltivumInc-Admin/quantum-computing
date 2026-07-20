@@ -5,7 +5,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { BlochTargetWidget } from "@/components/quantum/bloch-target-widget";
 import { getCardState } from "@/lib/review-store";
-import { blochCardId } from "@/lib/challenge-review";
+import { cardIdFor } from "@/lib/challenge-review";
 
 // jsdom has no WebGL, so the widget always renders the 2D BlochDial fallback;
 // matchMedia still needs the standard mock (usePrefersReducedMotion probes it).
@@ -58,7 +58,7 @@ describe("BlochTargetWidget", () => {
     render(<BlochTargetWidget source={plusTarget} />);
     check();
     expect(screen.getByText(/off by 90\.0°/i)).toBeInTheDocument();
-    expect(getCardState(blochCardId("t-bloch-plus"))).toBeNull();
+    expect(getCardState(cardIdFor("bloch", "t-bloch-plus"))).toBeNull();
   });
 
   it("a clean solve schedules the card as good", () => {
@@ -66,7 +66,7 @@ describe("BlochTargetWidget", () => {
     setTheta(Math.PI / 2);
     check();
     expect(screen.getByText(/added to your review/i)).toBeInTheDocument();
-    const card = getCardState(blochCardId("t-bloch-plus"))!;
+    const card = getCardState(cardIdFor("bloch", "t-bloch-plus"))!;
     expect(card.reps).toBe(1);
     expect(card.lapses).toBe(0);
     expect(card.difficulty).toBe(5); // "good" leaves the default difficulty
@@ -78,7 +78,7 @@ describe("BlochTargetWidget", () => {
     expect(screen.getByText(/it sits on the equator/i)).toBeInTheDocument();
     setTheta(Math.PI / 2);
     check();
-    const card = getCardState(blochCardId("t-bloch-plus"))!;
+    const card = getCardState(cardIdFor("bloch", "t-bloch-plus"))!;
     expect(card.reps).toBe(1);
     expect(card.difficulty).toBeCloseTo(5.3, 10); // "hard" nudges difficulty up
   });
@@ -115,7 +115,7 @@ describe("BlochTargetWidget", () => {
     render(<BlochTargetWidget source={plusTarget} />);
     setTheta(Math.PI / 2 + Math.PI / 60); // 3 degrees of arc, inside the 5-degree tolerance
     check();
-    expect(getCardState(blochCardId("t-bloch-plus"))).not.toBeNull();
+    expect(getCardState(cardIdFor("bloch", "t-bloch-plus"))).not.toBeNull();
   });
 
   it("blind mode hides the ghost AND the target ket (the amplitudes are the answer) until solved", () => {

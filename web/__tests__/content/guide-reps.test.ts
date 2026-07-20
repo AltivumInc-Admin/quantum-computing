@@ -26,6 +26,10 @@
  *     ships, and no manifest id lacks a shipped fence.
  *   - Rep ids must be unique ACROSS all GUIDEs (reps-corpus.test.ts already
  *     guards corpus-vs-GUIDE collisions; this closes GUIDE-vs-GUIDE).
+ *
+ * ```quiz fences are gated too, in their own table further down: same JSON-spec
+ * + parser + ErrorCard shape, but no kind envelope, no id and no truth kernel
+ * (a quiz grades nothing), so the Rep rules above do not apply to them.
  */
 import { readFileSync, readdirSync, existsSync } from "fs";
 import path from "path";
@@ -42,6 +46,7 @@ import { costEstimateTruth } from "@/lib/cost-estimate-grade";
 import { parseDebugCircuit } from "@/lib/debug-circuit-schema";
 import { debugTruth } from "@/lib/debug-circuit-grade";
 import { parseExpectation } from "@/lib/expectation-schema";
+import { parseQuiz } from "@/lib/quiz-schema";
 import { expectationTruth } from "@/lib/expectation-grade";
 
 const REPO_ROOT = path.join(__dirname, "../../..");
@@ -157,6 +162,59 @@ describe.each(fences.map((f, i) => [`${f.guide} ${f.token} #${i}`, f] as const))
           break;
         }
       }
+    });
+  }
+);
+
+/**
+ * ```quiz fences. Structurally the same shape as the six gated kinds — a JSON
+ * spec, a dedicated parser, an ErrorCard degrade on any failure — but with no
+ * `kind` envelope, no id, and no truth kernel, because a quiz is a
+ * reveal-answer self-check that grades nothing. It therefore gets its own
+ * collector rather than being folded into the Rep table above, but the same
+ * guarantee: a typo'd fence fails CI instead of shipping as a parse-error card
+ * where a 4-to-10 question self-check should be.
+ */
+function collectQuizFences(): { guide: string; body: string }[] {
+  const out: { guide: string; body: string }[] = [];
+  for (const entry of readdirSync(REPO_ROOT)) {
+    if (!/^\d\d-/.test(entry)) continue;
+    const guidePath = path.join(REPO_ROOT, entry, "GUIDE.md");
+    if (!existsSync(guidePath)) continue;
+    const text = readFileSync(guidePath, "utf8");
+    const re = /^```quiz\n([\s\S]*?)\n```/gm;
+    for (let m = re.exec(text); m; m = re.exec(text)) {
+      out.push({ guide: entry, body: m[1] });
+    }
+  }
+  return out;
+}
+
+const quizFences = collectQuizFences();
+
+it("finds a non-empty GUIDE quiz corpus (the extractor must not silently go blind)", () => {
+  expect(quizFences.length).toBeGreaterThan(0);
+});
+
+describe.each(quizFences.map((f, i) => [`${f.guide} quiz #${i}`, f] as const))(
+  "%s",
+  (_name, f) => {
+    it("parses through the real parser the widget uses", () => {
+      expect(parseQuiz(f.body).error).toBeUndefined();
+    });
+
+    it("gives every question a non-empty prompt and answer", () => {
+      const { questions } = parseQuiz(f.body);
+      expect(questions.length).toBeGreaterThan(0);
+      questions.forEach((q, i) => {
+        expect(q.q.trim() ? "" : `question ${i + 1} has an empty "q"`).toBe("");
+        expect(q.a.trim() ? "" : `question ${i + 1} has an empty "a"`).toBe("");
+        // `hint` is documented optional, but an empty string is authoring
+        // debris: it renders a Hint button that reveals nothing.
+        if (q.hint !== undefined) {
+          expect(q.hint.trim() ? "" : `question ${i + 1} has an empty "hint"`).toBe("");
+        }
+      });
     });
   }
 );

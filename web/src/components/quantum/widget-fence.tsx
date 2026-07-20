@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import React, { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { cardShell, ErrorCard } from "./error-card";
+import { CodeBlock } from "../code-block";
 
 /**
  * Client boundary that lazily resolves a GUIDE fenced block (```q*) to its
@@ -32,21 +33,29 @@ import { cardShell, ErrorCard } from "./error-card";
  * pre-Instrument flat-gray recipe, which made the gray-slab -> luminous-glass
  * swap a visible pop on every lesson scroll.
  */
-function WidgetSkeleton({ minH }: { minH: string }) {
+function WidgetSkeleton({ minH, my }: { minH: string; my: string }) {
   return (
     <div
       aria-hidden="true"
-      className={`not-prose my-6 ${minH} animate-pulse ${cardShell} motion-reduce:animate-none`}
+      className={`not-prose ${my} ${minH} animate-pulse ${cardShell} motion-reduce:animate-none`}
     />
   );
 }
 
-const loadingFor = (minH: string) => function Loading() { return <WidgetSkeleton minH={minH} />; };
+const loadingFor = (minH: string, my: string) =>
+  function Loading() { return <WidgetSkeleton minH={minH} my={my} />; };
 
 const compact = "min-h-[240px]";
 const medium = "min-h-[360px]";
 const tall = "min-h-[460px]";
 const vqe = "min-h-[520px]";
+
+// Vertical margin, which is part of the space the skeleton reserves. Explorables
+// render through WidgetCard (default `my-6`); the Rep/activity family hand-rolls
+// `not-prose my-8`, so a shared skeleton margin would shift the page by 16px on
+// every one of them. Each entry declares the margin its widget actually uses.
+const ACTIVITY_MY = "my-8";
+const DEFAULT_MY = "my-6";
 
 type SourceWidget = ComponentType<{ source: string }>;
 
@@ -54,26 +63,29 @@ interface WidgetEntry {
   Widget: SourceWidget;
   /** Skeleton height, shared by the approach gate and the chunk-loading state. */
   minH: string;
+  /** Skeleton margin; must match the mounted widget's own vertical margin. */
+  my: string;
 }
 
 function lazyWidget(
   factory: () => Promise<{ default: ComponentType<{ source: string }> }>,
   minH: string,
+  my: string = DEFAULT_MY,
 ): WidgetEntry {
-  return { Widget: dynamic(factory, { ssr: false, loading: loadingFor(minH) }), minH };
+  return { Widget: dynamic(factory, { ssr: false, loading: loadingFor(minH, my) }), minH, my };
 }
 
 const WIDGETS: Record<string, WidgetEntry> = {
   qsim: lazyWidget(() => import("./circuit-lab").then((m) => ({ default: m.CircuitLab })), tall),
   qscrub: lazyWidget(() => import("./wavefunction-scrubber").then((m) => ({ default: m.WavefunctionScrubber })), tall),
-  qchallenge: lazyWidget(() => import("./challenge").then((m) => ({ default: m.Challenge })), tall),
-  qpredict: lazyWidget(() => import("./predict-widget").then((m) => ({ default: m.PredictWidget })), tall),
+  qchallenge: lazyWidget(() => import("./challenge").then((m) => ({ default: m.Challenge })), tall, ACTIVITY_MY),
+  qpredict: lazyWidget(() => import("./predict-widget").then((m) => ({ default: m.PredictWidget })), tall, ACTIVITY_MY),
   qblochtarget: lazyWidget(() => import("./bloch-target-widget").then((m) => ({ default: m.BlochTargetWidget })), tall),
   qcostestimate: lazyWidget(() => import("./cost-estimate-widget").then((m) => ({ default: m.CostEstimateWidget })), compact),
-  qdebug: lazyWidget(() => import("./debug-circuit-widget").then((m) => ({ default: m.DebugCircuitWidget })), tall),
+  qdebug: lazyWidget(() => import("./debug-circuit-widget").then((m) => ({ default: m.DebugCircuitWidget })), tall, ACTIVITY_MY),
   qexpect: lazyWidget(() => import("./expectation-widget").then((m) => ({ default: m.ExpectationWidget })), medium),
-  quiz: lazyWidget(() => import("./quiz").then((m) => ({ default: m.Quiz })), tall),
-  runnable: lazyWidget(() => import("./runnable-editor").then((m) => ({ default: m.RunnableEditor })), tall),
+  quiz: lazyWidget(() => import("./quiz").then((m) => ({ default: m.Quiz })), tall, ACTIVITY_MY),
+  runnable: lazyWidget(() => import("./runnable-editor").then((m) => ({ default: m.RunnableEditor })), medium, ACTIVITY_MY),
   // No-source widgets: a props-less function component is assignable to
   // ComponentType<{ source: string }>, so the adapter lives inside the dynamic
   // factory and the entry keeps the uniform lazyWidget shape.
@@ -100,7 +112,7 @@ const WIDGETS: Record<string, WidgetEntry> = {
   qparam: lazyWidget(() => import("./param-compile-explorer").then((m) => ({ default: m.ParamCompileExplorer })), medium),
   qcheckpoint: lazyWidget(() => import("./checkpoint-explorer").then((m) => ({ default: m.CheckpointExplorer })), tall),
   qmetrics: lazyWidget(() => import("./metrics-explorer").then((m) => ({ default: m.MetricsExplorer })), medium),
-  qcard: lazyWidget(() => import("./review-card").then((m) => ({ default: m.ReviewCard })), compact),
+  qcard: lazyWidget(() => import("./review-card").then((m) => ({ default: m.ReviewCard })), compact, ACTIVITY_MY),
   qscrolly: lazyWidget(() => import("./scrolly-section").then((m) => ({ default: m.ScrollySection })), tall),
 };
 
@@ -170,10 +182,14 @@ export function WidgetFence({ language, source }: { language: string; source: st
   }, [entry, near]);
 
   if (!entry) {
+    // An unregistered q* token falls back to an ordinary fence. Routed through
+    // CodeBlock rather than a hand-written <pre>: that string was a third copy
+    // of the dark-slab recipe, and the copy button, language chip and keyboard
+    // scroll-region exposure every other fence gets were missing from it.
     return (
-      <pre className="not-prose my-5 overflow-x-auto rounded-xl border border-gray-800 bg-gray-900 px-4 py-3.5 text-sm text-gray-200">
-        {source}
-      </pre>
+      <CodeBlock rawText={source} language={language}>
+        <code>{source}</code>
+      </CodeBlock>
     );
   }
   if (!near) {
@@ -181,7 +197,7 @@ export function WidgetFence({ language, source }: { language: string; source: st
     // invisible in the layout: gate skeleton -> loading skeleton -> widget.
     return (
       <div ref={gateRef} data-widget-gate={language}>
-        <WidgetSkeleton minH={entry.minH} />
+        <WidgetSkeleton minH={entry.minH} my={entry.my} />
       </div>
     );
   }

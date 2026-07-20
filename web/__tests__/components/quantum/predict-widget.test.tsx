@@ -5,7 +5,7 @@ import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PredictWidget } from "@/components/quantum/predict-widget";
 import { getCardState } from "@/lib/review-store";
-import { predictCardId } from "@/lib/challenge-review";
+import { cardIdFor } from "@/lib/challenge-review";
 
 const bellNonzero = JSON.stringify({
   id: "t-bell",
@@ -32,7 +32,7 @@ describe("PredictWidget", () => {
 
     expect(screen.getByLabelText(/simulated outcome/i)).toBeInTheDocument();
     expect(screen.getByText("Correct")).toBeInTheDocument(); // the header chip
-    const card = getCardState(predictCardId("t-bell"));
+    const card = getCardState(cardIdFor("predict", "t-bell"));
     expect(card).not.toBeNull();
     expect(card!.reps).toBe(1);
     expect(card!.lapses).toBe(0);
@@ -43,7 +43,7 @@ describe("PredictWidget", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "|00⟩" })); // incomplete set
     fireEvent.click(screen.getByRole("button", { name: /lock in prediction/i }));
 
-    const card = getCardState(predictCardId("t-bell"))!;
+    const card = getCardState(cardIdFor("predict", "t-bell"))!;
     expect(card.reps).toBe(0);
     expect(card.lapses).toBe(1);
     expect(screen.getByText("Not quite")).toBeInTheDocument(); // the header chip

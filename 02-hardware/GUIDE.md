@@ -223,7 +223,7 @@ simulators charge **per minute** of compute. The local simulator is free.
 {"id":"hw-cost-model-1","prompt":"How do QPUs charge for running a circuit on Amazon Braket, versus managed simulators?","answer":"QPUs charge per task (a flat fee each time you submit a circuit, e.g. $0.30) plus per shot (each repetition, e.g. $0.08 on IonQ). Managed simulators instead charge per minute of compute."}
 ```
 
-The arithmetic matters: 1,000 shots on IonQ (Forte) is $0.30 + 1{,}000 \times \$0.08 = \$80.30$ — per
+The arithmetic matters: 1,000 shots on IonQ (Forte) is \$0.30 + 1,000 × \$0.08 = \$80.30 — per
 task. Submit a 100-point parameter sweep and that's over eight thousand dollars. Estimate before you
 run:
 
@@ -339,8 +339,8 @@ Check yourself:
   "questions": [
     {
       "q": "Your algorithm is QAOA on a dense graph where almost every qubit must interact with every other. Which hardware family fits best, and why?",
-      "hint": "Dense interaction means many two-qubit gates between arbitrary pairs. Which connectivity avoids inserting SWAP chains for distant pairs?",
-      "a": "A trapped-ion machine (IonQ Forte). Its all-to-all connectivity means any pair entangles directly — no SWAP overhead — which a dense interaction graph would otherwise incur heavily on a lattice device."
+      "hint": "Dense interaction means many two-qubit gates between arbitrary pairs. Which connectivity avoids inserting `SWAP` chains for distant pairs?",
+      "a": "A trapped-ion machine (IonQ Forte). Its all-to-all connectivity means any pair entangles directly — no `SWAP` overhead — which a dense interaction graph would otherwise incur heavily on a lattice device."
     },
     {
       "q": "Why develop and debug on the Local simulator before anything else?",
@@ -353,9 +353,9 @@ Check yourself:
       "a": "Noise modeling. DM1 is a density-matrix simulator, so it can apply noise channels (depolarizing, amplitude damping, etc.) and show how they degrade results. SV1 is an exact, noiseless state-vector simulator."
     },
     {
-      "q": "You want a CNOT between two qubits at opposite corners of a square-lattice device. What does that cost compared to the same gate on an all-to-all machine?",
+      "q": "You want a `CNOT` between two qubits at opposite corners of a square-lattice device. What does that cost compared to the same gate on an all-to-all machine?",
       "hint": "On a lattice the two qubits aren't adjacent, so the router must bring them together first. What operation does that, and what is its overhead?",
-      "a": "On the lattice the compiler inserts a chain of SWAP gates (each ~3 two-qubit gates) along the shortest path to make the qubits adjacent, adding depth and error. On an all-to-all machine the cost is zero — they are already connected."
+      "a": "On the lattice the compiler inserts a chain of `SWAP` gates (each ~3 two-qubit gates) along the shortest path to make the qubits adjacent, adding depth and error. On an all-to-all machine the cost is zero — they are already connected."
     }
   ]
 }

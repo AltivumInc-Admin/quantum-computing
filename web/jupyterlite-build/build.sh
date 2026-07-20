@@ -77,6 +77,19 @@ fetch_pyodide_core() {
   rm -rf "$tmp"
 }
 
+# Fetch a computed wheel closure into a staged distribution. Both the lesson
+# runtime and the lab kernel need this (the "core" tarball ships no wheels), so
+# it is a helper for the same reason fetch_pyodide_core above is one.
+# Usage: fetch_closure_wheels <cdn-base> <dest> <label> <newline-separated wheels>
+fetch_closure_wheels() {
+  local cdn="$1" dest="$2" label="$3" wheels="$4" whl
+  for whl in $wheels; do
+    echo "    fetching ${label}closure wheel $whl"
+    curl -fsSL --retry 3 "${cdn}/${whl}" -o "$dest/$whl"
+    test -s "$dest/$whl" || { echo "${label}closure wheel $whl missing/empty after fetch"; exit 1; }
+  done
+}
+
 # 1b) Self-host the pinned Pyodide LESSON runtime under ../public/pyodide so
 #     src/lib/pyodide-runtime.ts boots from SAME-ORIGIN instead of a third-party
 #     CDN, removing the runtime single point of failure. The version is parsed
@@ -102,28 +115,9 @@ fetch_pyodide_core "$PYODIDE_VERSION" "$PYODIDE_DEST"
 test -f "$PYODIDE_DEST/pyodide.js" || { echo "pyodide.js missing after self-host"; exit 1; }
 # Fetch the {micropip, numpy} closure (the wheels 'core' omits) so the runtime's
 # loadPackage('micropip') + micropip.install(qcsim -> numpy) all resolve same-origin.
-CLOSURE_WHEELS=$(python - "$PYODIDE_DEST/pyodide-lock.json" <<'PYCLOSURE'
-import json, sys
-lock = json.load(open(sys.argv[1]))
-pkgs = lock["packages"]
-norm = lambda s: s.lower().replace("_", "-")
-by_norm = {norm(k): v for k, v in pkgs.items()}
-seen, stack = set(), ["micropip", "numpy"]
-while stack:
-    name = norm(stack.pop())
-    if name in seen or name not in by_norm:
-        continue
-    seen.add(name)
-    stack.extend(by_norm[name].get("depends", []))
-print("\n".join(sorted(by_norm[n]["file_name"] for n in seen)))
-PYCLOSURE
-)
+CLOSURE_WHEELS=$(python pyodide_closure.py "$PYODIDE_DEST/pyodide-lock.json" micropip numpy)
 test -n "$CLOSURE_WHEELS" || { echo "could not compute Pyodide dependency closure from lock"; exit 1; }
-for whl in $CLOSURE_WHEELS; do
-  echo "    fetching closure wheel $whl"
-  curl -fsSL --retry 3 "${PYODIDE_CDN}/${whl}" -o "$PYODIDE_DEST/$whl"
-  test -s "$PYODIDE_DEST/$whl" || { echo "closure wheel $whl missing/empty after fetch"; exit 1; }
-done
+fetch_closure_wheels "$PYODIDE_CDN" "$PYODIDE_DEST" "" "$CLOSURE_WHEELS"
 
 # 1c) Self-host the in-browser LAB kernel's Pyodide distribution under
 #     jupyterlite-build/static/pyodide/ — PyodideAddon's "well-known" path, which
@@ -157,40 +151,30 @@ test -f "$LAB_PYO_DEST/pyodide.js" || { echo "lab pyodide.js missing after self-
 #     piplite index, comm is bundled in step 2a below);
 #   - micropip (always loadPackage'd to bootstrap piplite);
 #   - the curriculum notebooks' non-stdlib imports: numpy + matplotlib.
-# Closure is depends-transitive AND augmented with any lock package that shares an
-# import name with a closure package — Pyodide's loadPackagesFromImports loads ALL
-# packages providing an imported name, which is how `import numpy` also pulls
-# numpy-tests (it declares imports: ['numpy']). A build-time coverage check below
-# fails the build if a runnable notebook imports a lock package these roots miss —
-# the e2e's third-party-request assertion can't see that (such a wheel would 404
-# SAME-ORIGIN, since the kernel loads it via loadPackage from ./static/pyodide/).
-LAB_CLOSURE_WHEELS=$(python - "$LAB_PYO_DEST/pyodide-lock.json" <<'PYLAB'
-import json, sys
-lock = json.load(open(sys.argv[1]))
-pkgs = lock["packages"]
-norm = lambda s: s.lower().replace("_", "-")
-by = {norm(k): v for k, v in pkgs.items()}
-roots = ["micropip", "sqlite3", "jedi", "ipython", "numpy", "matplotlib"]
-seen, stack = set(), list(roots)
-while stack:
-    n = norm(stack.pop())
-    if n in seen or n not in by:
-        continue
-    seen.add(n)
-    stack.extend(by[n].get("depends", []))
-imports_in_closure = {imp for n in seen for imp in by[n].get("imports", [])}
-for n, v in by.items():
-    if n not in seen and any(imp in imports_in_closure for imp in v.get("imports", [])):
-        seen.add(n)
-print("\n".join(sorted(by[n]["file_name"] for n in seen)))
-PYLAB
-)
+# The closure is exactly depends-transitive. It used to ALSO pull in any lock
+# package sharing an import name with a closure package, on the belief that
+# loadPackagesFromImports loads every provider of an imported name — it does not.
+# Pyodide indexes imports into a Map, one package per name, last writer wins, so
+# that pass only ever added `numpy-tests` (a 1.6 MB wheel of numpy's test suite,
+# which also SHADOWED the real numpy for `import numpy`). prune_lock.py below
+# removes such shadowing entries from the staged lock and asserts the invariant.
+# A build-time coverage check (step 1d) fails the build if a runnable notebook
+# imports a lock package these roots miss — the e2e's third-party-request
+# assertion can't see that (such a wheel would 404 SAME-ORIGIN, since the kernel
+# loads it via loadPackage from ./static/pyodide/).
+LAB_CLOSURE_ROOTS="micropip sqlite3 jedi ipython numpy matplotlib"
+# shellcheck disable=SC2086  # deliberate word-splitting: roots are one arg each
+LAB_CLOSURE_WHEELS=$(python pyodide_closure.py "$LAB_PYO_DEST/pyodide-lock.json" $LAB_CLOSURE_ROOTS)
 test -n "$LAB_CLOSURE_WHEELS" || { echo "could not compute lab Pyodide closure from lock"; exit 1; }
-for whl in $LAB_CLOSURE_WHEELS; do
-  echo "    fetching lab closure wheel $whl"
-  curl -fsSL --retry 3 "${LAB_PYO_CDN}/${whl}" -o "$LAB_PYO_DEST/$whl"
-  test -s "$LAB_PYO_DEST/$whl" || { echo "lab closure wheel $whl missing/empty after fetch"; exit 1; }
-done
+fetch_closure_wheels "$LAB_PYO_CDN" "$LAB_PYO_DEST" "lab " "$LAB_CLOSURE_WHEELS"
+
+# Drop upstream's test-suite sibling packages from the STAGED lock. They ship no
+# importable module, weigh megabytes, and — because they declare the SAME imports
+# as the real package while sitting after it in the lock — win the import name
+# outright. See prune_lock.py for the full mechanism; it also asserts that no
+# import name a staged package provides resolves to a package we did not stage.
+echo "==> Pruning shadowing test-suite packages from the staged lab lock"
+python prune_lock.py "$LAB_PYO_DEST"
 
 # 1d) Coverage check: assert every Pyodide-lock package imported by ANY browser-
 #     runnable notebook (per the content manifest) is in the closure we just staged.
@@ -200,47 +184,10 @@ done
 #     can't see it). Failing here, loudly, is the real guard against a future notebook
 #     adding e.g. `import scipy` without extending the closure roots above. Imports
 #     not in the lock (stdlib, braket->qcsim, lib, the optional ipywidgets) are skipped.
+#     Lives in check_notebook_coverage.py so ruff lints it and tests/ can exercise it
+#     (tests/test_lab_build_guards.py) — a guard nothing verified is no guard.
 echo "==> Verifying the lab closure covers every runnable notebook's imports"
-python - "$LAB_PYO_DEST" <<'PYCOVER'
-import json, sys, re, glob, os
-dest = sys.argv[1]
-pkgs = json.load(open(os.path.join(dest, "pyodide-lock.json")))["packages"]
-norm = lambda s: s.lower().replace("_", "-")
-provider = {}                       # import name -> lock package(s) providing it
-for k, v in pkgs.items():
-    for imp in v.get("imports", []):
-        provider.setdefault(imp, []).append(norm(k))
-present_files = {os.path.basename(p) for p in glob.glob(os.path.join(dest, "*.whl"))}
-present = {norm(k) for k, v in pkgs.items() if v["file_name"] in present_files}
-manifest = json.load(open("../src/lib/content-manifest.json"))
-imp_re = re.compile(r"^\s*(?:import\s+([a-zA-Z0-9_]+)|from\s+([a-zA-Z0-9_]+)\s+import)")
-missing, checked = set(), 0
-for s in manifest["sections"]:
-    for nb in s.get("notebooks", []):
-        if not nb.get("runnable"):
-            continue
-        path = os.path.join("..", "..", s["dirName"], "notebooks", nb["filename"])
-        if not os.path.exists(path):
-            continue
-        checked += 1
-        for cell in json.load(open(path)).get("cells", []):
-            if cell.get("cell_type") != "code":
-                continue
-            src = cell.get("source", "")
-            src = "".join(src) if isinstance(src, list) else src
-            for line in src.splitlines():
-                m = imp_re.match(line)
-                name = m and (m.group(1) or m.group(2))
-                if name in provider and not any(p in present for p in provider[name]):
-                    missing.add((s["dirName"] + "/" + nb["filename"], name, tuple(provider[name])))
-if missing:
-    print("  ERROR: runnable notebooks import Pyodide-lock packages NOT in the closure:", file=sys.stderr)
-    for nb, name, provs in sorted(missing):
-        print(f"    {nb}: import {name} -> needs {list(provs)}", file=sys.stderr)
-    print("  Add the package to the closure roots (the PYLAB block above).", file=sys.stderr)
-    sys.exit(1)
-print(f"  OK: {checked} runnable notebooks; every lock-resolved import is in the closure")
-PYCOVER
+python check_notebook_coverage.py "$LAB_PYO_DEST"
 
 # 2) Build the qcsim wheel and stash it under files/wheels/.
 QCSIM_DIR="../../qcsim"
@@ -287,47 +234,31 @@ ls files/wheels/comm-"${COMM_VERSION}"-*.whl >/dev/null 2>&1 \
 #       with a curated subset of that default — "/lib/" REMOVED (so lib is indexed
 #       and importable) and "/__pycache__/" added — omitting the dynamic output_dir
 #       and jupyter-lite config-filename entries, which never appear under files/.
-#     Generated via python (not a heredoc) so the regex escaping is correct and the
-#     output is deterministic; the committed jupyter_lite_config.json carries this
-#     verbatim and build-smoke asserts they match (self-heals on a version bump).
+#     Generated by write_lite_config.py (not hand-maintained) so the regex escaping
+#     is correct and the output is deterministic; the committed
+#     jupyter_lite_config.json carries this verbatim and build-smoke asserts they
+#     match (self-heals on a version bump).
 WHEEL_NAME=$(basename "$QCSIM_DIR"/dist/qcsim-*.whl)
 COMM_WHEEL_NAME=$(basename files/wheels/comm-*.whl)
 echo "==> Pinning lab kernel (PipliteAddon) to $WHEEL_NAME + $COMM_WHEEL_NAME; un-ignoring lib/"
-python - "$WHEEL_NAME" "$COMM_WHEEL_NAME" > jupyter_lite_config.json <<'PY'
-import json, sys
-config = {
-    "LiteBuildConfig": {
-        "output_dir": "../public/lab",
-        "contents": ["files"],
-        # Curated subset of jupyterlite-core's default ignore_contents (see
-        # config.py _default_ignore_files): "/lib/" removed so the curriculum lib/
-        # package is served to the kernel, "/__pycache__/" added; the dynamic
-        # output_dir + jupyter-lite config-filename entries are omitted (none appear
-        # under files/). Re-check _default_ignore_files on a jupyterlite-core bump.
-        "ignore_contents": [
-            r"/_build/", r"/\.cache/", r"/\.env", r"/\.git", r"/\.ipynb_checkpoints",
-            r"/build/", r"/dist/", r"/envs/", r"/node_modules/", r"/__pycache__/",
-            r"/overrides\.json", r"/untitled\..*", r"/Untitled\..*",
-            r"/workspaces/", r"/venvs/", r"\.*doit\.db$", r"\.pyc$",
-        ],
-    },
-    # qcsim (braket.* shim) + comm (the lab kernel's hard boot dependency, otherwise
-    # fetched from pypi.org) bundled same-origin into the generated piplite index.
-    "PipliteAddon": {
-        "piplite_urls": [f"files/wheels/{sys.argv[1]}", f"files/wheels/{sys.argv[2]}"]
-    },
-}
-print(json.dumps(config, indent=2))
-PY
+python write_lite_config.py "$WHEEL_NAME" "$COMM_WHEEL_NAME" > jupyter_lite_config.json
 
 # 3) Stage curriculum notebooks into files/<section>/notebooks/.
 #    Section list is read from the content manifest (the single source of truth)
 #    so this loop can never drift from sections.ts / the curriculum on disk.
+#    Clear-then-copy, like every other staging step in this file: files/<section>/
+#    is a gitignored local artifact, so without the rm a renamed or deleted
+#    notebook keeps its stale staged copy, gets a bootstrap injected by
+#    prepare_notebooks.py (which rglobs whatever is present) and ships into the
+#    lab a developer is verifying against. Copy failures are NOT suppressed —
+#    every section has notebooks, so a failing glob is a real error, and hiding it
+#    would just produce a quieter, emptier lab.
 echo "==> Staging notebooks"
 SECTIONS=$(python3 -c "import json; print('\n'.join(s['dirName'] for s in json.load(open('../src/lib/content-manifest.json'))['sections']))")
 for section in $SECTIONS; do
+  rm -rf "files/$section/notebooks"
   mkdir -p "files/$section/notebooks"
-  cp ../../$section/notebooks/*.ipynb "files/$section/notebooks/" 2>/dev/null || true
+  cp ../../"$section"/notebooks/*.ipynb "files/$section/notebooks/"
 done
 
 # 4) Stage the curriculum's shared lib/ verbatim.
@@ -353,49 +284,22 @@ jupyter lite build
 #     package now resolve from the same-origin index/distribution. Patch every emitted
 #     jupyter-lite.json that carries the kernel plugin settings. Fails the build if no
 #     config carries those settings (would mean the self-host silently didn't apply).
-echo "==> Locking LAB kernel to same-origin (verify pyodideUrl + set disablePyPIFallback)"
-python - <<'PYLOCK'
-import json, sys
-from pathlib import Path
+#     Also brands the output: the lab shipped as an unidentifiable "JupyterLite"
+#     tab painting white before boot, while the site's own default theme is dark.
+#     finalize_lab.py sets appName/faviconUrl on every emitted config, stages the
+#     site favicon, rewrites the pre-boot <title> + body ground in the emitted app
+#     HTML, and ASSERTS all of it (plus the overrides.json theme override) so a
+#     jupyterlite bump cannot silently revert any of it.
+echo "==> Locking LAB kernel to same-origin + branding the lab output"
+python finalize_lab.py
 
-PLUGIN = "@jupyterlite/pyodide-kernel-extension:kernel"
-out = Path("../public/lab")
-found = 0
-for cfg in sorted(out.rglob("jupyter-lite.json")):
-    data = json.loads(cfg.read_text())
-    settings = data.get("jupyter-config-data", data)
-    ks = settings.get("litePluginSettings", {}).get(PLUGIN)
-    if not isinstance(ks, dict):
-        continue
-    url = ks.get("pyodideUrl", "")
-    if "jsdelivr" not in url and url.startswith("./") and "pyodide.js" in url:
-        found += 1
-    else:
-        sys.exit(f"  ERROR: {cfg} pyodideUrl is not same-origin: {url!r}")
-    if ks.get("disablePyPIFallback") is not True:
-        ks["disablePyPIFallback"] = True
-        cfg.write_text(json.dumps(data, indent=1) + "\n")
-    print(f"  {cfg.relative_to(out)}: pyodideUrl={url} disablePyPIFallback=True")
-if not found:
-    sys.exit("  ERROR: no emitted jupyter-lite.json carried the pyodide kernel "
-             "settings — the self-hosted Pyodide was not wired in")
-print(f"  locked {found} lab config(s) to same-origin")
-PYLOCK
-
-# 7) Copy items JupyterLite's content service does not auto-serve:
-#    - lib/ (Python module tree the notebooks import)
-# wheels/ and startup.py are picked up automatically; the qcsim wheel is bundled
-# into the piplite index by PipliteAddon (step 2b), so no overrides.json copy.
-echo "==> Copying auxiliary files into lab output"
-cp -R files/lib ../public/lab/files/lib
-
-# 8) Strip JupyterLite source maps from the production payload. They are ~45MB
+# 7) Strip JupyterLite source maps from the production payload. They are ~45MB
 #    of the ~65MB output and are only fetched when devtools is open, so deleting
 #    them cuts the deployed lab to ~20MB with zero functional impact.
 echo "==> Stripping source maps from lab output (production payload)"
 find ../public/lab -name '*.map' -type f -delete
 
-# 9) Hard gate: every wasm staged by this build -- the lesson runtime under
+# 8) Hard gate: every wasm staged by this build -- the lesson runtime under
 #    ../public/pyodide AND the lab kernel's copy inside ../public/lab -- must
 #    stay under CloudFront's compression ceiling (see assert_wasm_under_ceiling).
 echo "==> Asserting every staged wasm is under CloudFront's compression ceiling"

@@ -10,7 +10,7 @@ import {
   pauliString,
   fmtExpectation,
 } from "@/lib/expectation-grade";
-import { expectCardId, ratingForPrediction } from "@/lib/challenge-review";
+import { cardIdFor, ratingForPrediction } from "@/lib/challenge-review";
 import { gradeCardIfDue, getCardState, setCardContent } from "@/lib/review-store";
 import { nextIntervalDays } from "@/lib/review-schedule";
 import { usePersistentSolved } from "./use-persistent-solved";
@@ -22,6 +22,8 @@ import {
   OPTION_BASE,
   OPTION_TONE,
   primaryActionClass,
+  REVEAL_PANEL,
+  ScheduleNote,
   VerdictBadge,
   WidgetCard,
 } from "./widget-ui";
@@ -69,7 +71,7 @@ export function ExpectationWidget({
   }, [spec, surface]);
   const truth = truthResult.truth;
 
-  const cardId = expectCardId(spec?.id ?? "invalid");
+  const cardId = cardIdFor("expect", spec?.id ?? "invalid");
   // The uniform solved-once-ever flag (qc:expect:<id>). Only a correct commit
   // marks it; the header chip stays a verdict of THIS commit (a pre-commit
   // "Correct" would misdescribe the fresh attempt), so the read is unused.
@@ -190,7 +192,7 @@ export function ExpectationWidget({
             <div
               role="region"
               aria-label="What a measurement returns"
-              className="mt-4 rounded-control border-l-2 border-accent/60 bg-accent/5 dark:bg-accent/10 px-3.5 py-3 animate-fade-up"
+              className={`mt-4 rounded-control ${REVEAL_PANEL.accent} px-3.5 py-3 animate-fade-up`}
             >
               <EyebrowLabel strong className="mb-2 block">
                 The single-shot story
@@ -230,15 +232,7 @@ export function ExpectationWidget({
             </p>
           )}
           {committed && scheduled !== null && (
-            <p className="mt-1 text-xs text-caption animate-fade-up">
-              {surface === "review"
-                ? scheduled <= 1
-                  ? "Reviewed — next review tomorrow."
-                  : `Reviewed — next review in ${scheduled} days.`
-                : scheduled <= 1
-                  ? "Added to your review — back tomorrow."
-                  : `Added to your review — back in ${scheduled} days.`}
-            </p>
+            <ScheduleNote days={scheduled} surface={surface} />
           )}
         </div>
       </div>

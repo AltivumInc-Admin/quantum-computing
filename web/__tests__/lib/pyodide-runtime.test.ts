@@ -137,6 +137,24 @@ describe("runSerialized (worker-hosted)", () => {
     await expect(rt.runSerialized(py2, "2 + 2")).resolves.toBe("alive");
   });
 
+  it("reports whether an interpreter is cached, so the UI can pick boot-vs-run copy", async () => {
+    const rt = loadRuntime();
+    expect(rt.isPyodideBooted()).toBe(false);
+    await rt.getPyodide();
+    expect(rt.isPyodideBooted()).toBe(true);
+
+    // A watchdog kill discards the interpreter, so the NEXT run really does boot
+    // again — which is why the UI asks structurally rather than remembering
+    // whether this component has run before.
+    rt.__setRunTimeoutMsForTests(20);
+    FakeWorker.onRun = () => {};
+    const py = await rt.getPyodide();
+    await expect(rt.runSerialized(py, "while True: pass")).rejects.toThrow(
+      rt.PythonTimeoutError
+    );
+    expect(rt.isPyodideBooted()).toBe(false);
+  });
+
   it("rejects runs queued behind a timed-out run instead of posting them to the dead worker", async () => {
     FakeWorker.onRun = () => {};
     const rt = loadRuntime();
@@ -150,5 +168,76 @@ describe("runSerialized (worker-hosted)", () => {
     await expect(p2).rejects.toThrow(/reset because an earlier run timed out/);
     // The queued run was never posted to the terminated worker.
     expect(w.runs()).toHaveLength(1);
+  });
+});
+
+/**
+ * The BOOT phase, which nothing exercised before: every case above scripts
+ * `onBoot` to reply `ready` immediately, so the boot watchdog, the same-origin →
+ * CDN failover and the both-origins-failed message were all unproven — and
+ * `__setBootTimeoutMsForTests` was an unreferenced production export whose
+ * docstring claimed a parity with the run-timeout override that did not exist.
+ * These cases are that caller.
+ */
+describe("getPyodide boot failover", () => {
+  /** The origin a boot message points at: same-origin `/pyodide/` or the CDN. */
+  const originOf = (msg: Posted) =>
+    String(msg.pyodideJsUrl).includes("cdn.jsdelivr.net") ? "cdn" : "local";
+
+  it("falls back to the integrity-pinned CDN when the same-origin boot STALLS", async () => {
+    // A stalled fetch inside the worker never replies at all — no boot-error, no
+    // worker 'error' event — so only the watchdog can move the chain along.
+    FakeWorker.onBoot = (w, msg) => {
+      if (originOf(msg) === "cdn") w.emit({ type: "ready" });
+      // local: silence, forever.
+    };
+    const rt = loadRuntime();
+    rt.__setBootTimeoutMsForTests(20);
+
+    await rt.getPyodide();
+    expect(FakeWorker.instances).toHaveLength(2);
+    // The stalled attempt's worker is terminated before the next one spawns.
+    expect(FakeWorker.instances[0].terminated).toBe(true);
+    const cdnBoot = FakeWorker.instances[1].posted[0];
+    expect(cdnBoot.pyodideJsUrl).toContain("cdn.jsdelivr.net");
+    // The fallback is only acceptable because its bootstrap is SRI-pinned.
+    expect(cdnBoot.integrity).toMatch(/^sha384-/);
+  });
+
+  it("falls back to the CDN when the same-origin boot reports an error", async () => {
+    FakeWorker.onBoot = (w, msg) => {
+      if (originOf(msg) === "local") w.emit({ type: "boot-error", message: "404" });
+      else w.emit({ type: "ready" });
+    };
+    const rt = loadRuntime();
+    rt.__setBootTimeoutMsForTests(20);
+    await rt.getPyodide();
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(rt.isPyodideBooted()).toBe(true);
+  });
+
+  it("surfaces the actionable remediation message when BOTH origins fail", async () => {
+    FakeWorker.onBoot = () => {}; // neither origin ever replies
+    const rt = loadRuntime();
+    rt.__setBootTimeoutMsForTests(20);
+
+    await expect(rt.getPyodide()).rejects.toThrow(
+      /couldn't load the Python runtime from this site or the CDN/
+    );
+    await expect(rt.getPyodide()).rejects.toThrow(/network block, proxy, or ad-blocker/);
+    expect(rt.isPyodideBooted()).toBe(false);
+  });
+
+  it("clears the cache after a failed boot so a later attempt can still succeed", async () => {
+    FakeWorker.onBoot = () => {};
+    const rt = loadRuntime();
+    rt.__setBootTimeoutMsForTests(20);
+    await expect(rt.getPyodide()).rejects.toThrow(/couldn't load the Python runtime/);
+
+    // Without the cache reset, every runnable cell would stay bricked for the
+    // rest of the session on the same rejected promise.
+    FakeWorker.onBoot = (w) => w.emit({ type: "ready" });
+    await expect(rt.getPyodide()).resolves.toBeDefined();
+    expect(rt.isPyodideBooted()).toBe(true);
   });
 });

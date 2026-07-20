@@ -1,11 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { runPython, type RunResult } from "@/lib/pyodide-run";
 import {
+  isPyodideBooted,
+  PY_BOOT_NOTICE,
+  PY_BOOT_SLOW_NOTICE,
+  PY_RUNNING_NOTICE,
+  PY_RUNNING_SLOW_NOTICE,
+  PY_SLOW_NOTICE_MS,
+} from "@/lib/pyodide-runtime";
+import { useScrollRegion } from "@/hooks/use-scroll-region";
+import {
   cardShell,
   EyebrowLabel,
+  PlayIcon,
 } from "./widget-ui";
 
 /**
@@ -18,35 +28,87 @@ export function RunnableEditor({ source }: { source: string }) {
   const [code, setCode] = useState(source);
   const [result, setResult] = useState<RunResult | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether the CURRENT wait includes an interpreter boot (asked at click time,
+  // structurally — see isPyodideBooted). Runs 2..N of a session boot nothing and
+  // finish in milliseconds, so promising "first run takes a few seconds" there
+  // described something that was not happening.
+  const [booting, setBooting] = useState(true);
+  // Set once the wait outlives PY_SLOW_NOTICE_MS, so the copy escalates instead
+  // of sitting. The waits behind it are real: 30s for a runaway loop, up to 150s
+  // if both boot origins stall.
+  const [slow, setSlow] = useState(false);
   // Bumped on every run and on reset; a run only commits its result if its token
   // is still current, so resetting (or re-running) discards a stale in-flight run.
   const runToken = useRef(0);
 
   const run = async () => {
     const token = ++runToken.current;
+    setBooting(!isPyodideBooted());
+    setSlow(false);
     setBusy(true);
     setResult(null);
     try {
       const r = await runPython(code);
       if (runToken.current === token) setResult(r);
     } finally {
-      if (runToken.current === token) setBusy(false);
+      // Unconditional, unlike the result commit: `busy` tracks whether the
+      // interpreter is occupied, not whether this component still wants the
+      // answer. Run is disabled while busy, so at most one run is ever in
+      // flight and no stale settle can clear a newer run's busy state.
+      setBusy(false);
     }
   };
 
+  /**
+   * Reset restores the source and clears the panel. It deliberately does NOT
+   * clear `busy`: there is no way to cancel an in-flight run (the interpreter is
+   * a shared worker, and interrupting it means terminating the worker), so
+   * re-enabling Run would only queue the next run behind the abandoned one on
+   * the module-global FIFO — the learner would watch a trivial snippet hang for
+   * the remainder of the first run's 30s budget and then be told an "earlier
+   * run timed out". Leaving Run disabled until the run actually settles is the
+   * state that already exists, told honestly.
+   */
   const reset = () => {
     runToken.current++;
     setCode(source);
     setResult(null);
-    setBusy(false);
   };
 
-  const showOutput = busy || result;
-  const status: "busy" | "ok" | "error" = result?.error
-    ? "error"
-    : result
-      ? "ok"
-      : "busy";
+  // Arms the escalation while a run is in flight (`slow` is cleared by `run`
+  // itself, not here — a synchronous setState in an effect body cascades).
+  useEffect(() => {
+    if (!busy) return;
+    const timer = window.setTimeout(() => setSlow(true), PY_SLOW_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [busy]);
+
+  // One three-state machine, derived once. Every branch below (border, status
+  // dot, panel visibility, panel body) reads this rather than re-deriving its
+  // own split from `busy`/`result`.
+  const phase: "idle" | "running" | "ok" | "error" = busy
+    ? "running"
+    : result?.error
+      ? "error"
+      : result
+        ? "ok"
+        : "idle";
+  const showOutput = phase !== "idle";
+
+  const notice = booting
+    ? slow
+      ? PY_BOOT_SLOW_NOTICE
+      : PY_BOOT_NOTICE
+    : slow
+      ? PY_RUNNING_SLOW_NOTICE
+      : PY_RUNNING_NOTICE;
+
+  // Tracebacks and long print lines overflow horizontally, so the panel is a
+  // scroll region: the house measure-then-expose hook adds the tab stop and
+  // focus ring only when it actually overflows. It goes on a WRAPPER, not on
+  // the <pre> — the <pre> is the live region (role="status") and cannot also
+  // carry role="region".
+  const outputScroll = useScrollRegion<HTMLDivElement>("Python output");
 
   return (
     <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
@@ -56,7 +118,10 @@ export function RunnableEditor({ source }: { source: string }) {
         className="h-0.5 bg-gradient-to-r from-accent via-accent/40 to-warm/30"
       />
 
-      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-2.5 sm:px-5">
+      {/* py-3 (not py-2.5) is the activity-card header recipe challenge, quiz,
+          predict, debug and review-card all render; this row used to be 4px
+          shorter than its siblings in the same lesson. */}
+      <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2.5">
           <EyebrowLabel strong>
             Run it yourself
@@ -102,29 +167,32 @@ export function RunnableEditor({ source }: { source: string }) {
       <div className={showOutput ? "border-t border-(--bd)" : ""}>
         {showOutput && (
           <div className="flex items-center gap-2 bg-(--field) px-4 pt-3 sm:px-5">
-            <StatusDot state={status} />
+            <StatusDot phase={phase} />
             <span className="text-[10px] font-semibold uppercase tracking-widest text-caption">
               Output
             </span>
           </div>
         )}
-        <pre
-          role="status"
-          aria-live="polite"
+        <div
+          {...outputScroll.regionProps}
           className={
             showOutput
-              ? "overflow-x-auto bg-(--field) px-4 pb-4 pt-2 font-mono text-[13px] leading-relaxed sm:px-5 animate-fade-up"
+              ? `${outputScroll.regionProps.className} bg-(--field) px-4 pb-4 pt-2 sm:px-5 animate-fade-up`
               : "sr-only"
           }
         >
-          {busy && !result ? (
-            <span className="text-caption">
-              Booting Python (first run takes a few seconds)…
-            </span>
-          ) : result ? (
-            <Output result={result} />
-          ) : null}
-        </pre>
+          <pre
+            role="status"
+            aria-live="polite"
+            className="font-mono text-[13px] leading-relaxed"
+          >
+            {phase === "running" ? (
+              <span className="text-caption">{notice}</span>
+            ) : result ? (
+              <Output result={result} />
+            ) : null}
+          </pre>
+        </div>
       </div>
     </div>
   );
@@ -147,22 +215,14 @@ function Output({ result }: { result: RunResult }) {
   return <span className="text-(--ink)">{result.output}</span>;
 }
 
-function StatusDot({ state }: { state: "busy" | "ok" | "error" }) {
+function StatusDot({ phase }: { phase: "running" | "ok" | "error" }) {
   return (
     <span
       aria-hidden="true"
       className={`h-1.5 w-1.5 rounded-full ${
-        state === "error" ? "bg-warm" : "bg-accent"
-      } ${state === "busy" ? "animate-pulse motion-reduce:animate-none" : ""}`}
+        phase === "error" ? "bg-warm" : "bg-accent"
+      } ${phase === "running" ? "animate-pulse motion-reduce:animate-none" : ""}`}
     />
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M8 5v14l11-7z" />
-    </svg>
   );
 }
 

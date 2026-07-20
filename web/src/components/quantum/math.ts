@@ -228,8 +228,41 @@ export function simulateSteps(ops: Op[], n: number): Complex[][] {
  * the target regardless of overall phase. Aligns phase on the first significant
  * amplitude of `a`, then compares all amplitudes within `eps`.
  */
+/**
+ * Structural + finiteness guard for a state vector.
+ *
+ * Load-bearing, not defensive decoration: `statesApproxEqual` compares with
+ * `Math.abs(x - y) > eps`, and EVERY comparison against NaN is false, so an
+ * all-NaN vector would compare EQUAL to any target — a silent false pass in
+ * every grader that rides this kernel. Non-finite amplitudes are reachable from
+ * a learner circuit (`arcsin(2)` -> nan) and from JSON payloads (`1e400` ->
+ * Infinity), so both the producing and consuming sides guard.
+ */
+export function isFiniteState(v: unknown): v is Complex[] {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every(
+      (z) =>
+        Array.isArray(z) &&
+        z.length === 2 &&
+        typeof z[0] === "number" &&
+        Number.isFinite(z[0]) &&
+        typeof z[1] === "number" &&
+        Number.isFinite(z[1])
+    )
+  );
+}
+
 export function statesApproxEqual(a: Complex[], b: Complex[], eps = 1e-9): boolean {
   if (a.length !== b.length) return false;
+  // Non-finite components must be rejected BEFORE the comparisons below, not
+  // after: every `Math.abs(NaN - x) > eps` test is false, so an all-NaN vector
+  // would fall through the loop and report equal to ANY target — a silent false
+  // pass in every grader that rides this kernel (gradeTs, gradePy, gradeDebug,
+  // bloch, expectation). Reachable from a learner circuit (e.g. arcsin(2) -> nan)
+  // and from JSON payloads (1e400 -> Infinity).
+  if (!isFiniteState(a) || !isFiniteState(b)) return false;
   let phase: Complex = [1, 0];
   for (let i = 0; i < a.length; i++) {
     if (cAbs2(a[i]) > eps * eps) {

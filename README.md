@@ -180,7 +180,7 @@ flowchart TB
     subgraph authoring["Authoring & validation (repo)"]
         mark["Notebook adds<br/><code>&lt;!-- browser-runnable --&gt;</code><br/>to its first markdown cell"]
         scan["scripts/validate_runnable.py<br/>AST denylist scan"]
-        man["web/src/lib/runnable-manifest.json<br/><i>(drift-guarded in CI)</i>"]
+        man["web/src/lib/content-manifest.json<br/><i>(drift-guarded in CI)</i>"]
         mark --> scan --> man
     end
     subgraph build["Build (build.sh / Amplify preBuild)"]
@@ -206,11 +206,12 @@ flowchart TB
 
 ### The runnable-notebook contract
 
-A notebook is only offered as runnable if it **provably** works under Pyodide. This is enforced at three layers:
+A notebook is only offered as runnable if it **provably** works under Pyodide. This is enforced at four layers:
 
-1. **Opt-in marker** — the author adds `<!-- browser-runnable -->` to the notebook's first markdown cell. The portal ([`web/src/lib/content.ts`](web/src/lib/content.ts)) reads this exact marker to decide whether to show the **Run in browser** button.
+1. **Opt-in marker** — the author adds `<!-- browser-runnable -->` to the notebook's first markdown cell. The marker is read at build time by [`scripts/validate_runnable.py`](scripts/validate_runnable.py) (`is_marked_runnable`), never at runtime: the portal reads the scan RESULT, not the notebook.
 2. **Static AST scan** — [`scripts/validate_runnable.py`](scripts/validate_runnable.py) walks each marked notebook's code and **rejects** anything `qcsim` can't satisfy: imports outside `{braket, braket.circuits, braket.devices}`, denied packages (`pennylane`, `openfermion`, `pyscf`, `boto3`, `qiskit`, `cirq`, …), real-SDK names (`AwsDevice`, `AwsQuantumJob`, …), and unsupported result-type calls (`.probability`, `.expectation`, …).
-3. **Live execution + drift guard** — [`tests/test_notebook_contract.py`](tests/test_notebook_contract.py) actually **runs** every marked notebook end-to-end under `qcsim` (via `nbclient`), and asserts the committed `runnable-manifest.json`, when parsed, matches exactly what a fresh scan would produce — so the homepage list can never silently drift.
+3. **Live execution + drift guard** — [`tests/test_notebook_contract.py`](tests/test_notebook_contract.py) actually **runs** every marked notebook end-to-end under `qcsim` (via `nbclient`), and asserts the committed `content-manifest.json` matches exactly what a fresh scan would produce — so the homepage list can never silently drift.
+4. **The web gate** — the scan result is baked into [`web/src/lib/content-manifest.json`](web/src/lib/content-manifest.json) as a per-notebook `runnable` boolean, and [`manifest.ts`](web/src/lib/manifest.ts)'s `isNotebookRunnable` is the single function that gates the button. `content.ts` and `workspace.ts` both consume it, so the UI can only ever offer what CI validated.
 
 ### Parity, proven both ways
 
@@ -298,7 +299,7 @@ quantum-computing/
 │   ├── src/app/             #   layout, home, learn/[section] pages, globals.css
 │   ├── src/components/      #   nav, sidebar, markdown-renderer, notebook-link, …
 │   │   └── quantum/         #     circuit-lab (qsim widget), quiz, math.ts (TS sim)
-│   ├── src/lib/             #   content.ts, sections.ts, runnable-manifest.json
+│   ├── src/lib/             #   content.ts, sections.ts, manifest.ts, content-manifest.json
 │   ├── jupyterlite-build/   #   build.sh → builds the in-browser lab into public/lab/
 │   └── public/lab/          #   generated JupyterLite + Pyodide distribution
 │
@@ -584,7 +585,7 @@ Because `main` is protected by the CI gate, **only CI-green commits ever deploy.
 1. **Branch from `main`** (it's protected — changes land via PR with CI green).
 2. **`make setup`** then `make test` / `make lint`; for web changes, `cd web && npm test && npm run lint`.
 3. **Notebooks** are committed **output-stripped** automatically via the `nbstripout` git filter (installed by `make setup`) — keep diffs clean.
-4. **Making a notebook browser-runnable?** Add `<!-- browser-runnable -->` to its first markdown cell, ensure it imports only the qcsim-supported Braket surface, then run `python scripts/validate_runnable.py --write-manifest` and commit the updated `runnable-manifest.json`. CI will reject drift.
+4. **Making a notebook browser-runnable?** Add `<!-- browser-runnable -->` to its first markdown cell, ensure it imports only the qcsim-supported Braket surface, then run `python scripts/validate_runnable.py --write-manifest` and commit the updated `content-manifest.json`. CI will reject drift.
 5. **Python** is `ruff`-formatted (line length 100, target py310); notebooks are excluded from linting and validated by `test_notebook_contract.py` instead.
 6. **Contribute a Rep** — a graded exercise is one JSON file in [`content/reps/`](content/reps/); CI validates it with the same parsers and graders the live widgets use, and maintainers promote accepted Reps into the lessons. See [`content/reps/README.md`](content/reps/README.md).
 

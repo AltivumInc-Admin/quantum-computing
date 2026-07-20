@@ -1,0 +1,33 @@
+/* github-dark syntax tokens for lesson code fences, route-scoped.
+ *
+ * Imported by code-block.tsx (its only consumer) instead of globals.css, exactly
+ * like katex.min.css ships with the two components that render math: hljs markup
+ * exists on 4 of the 122 exported pages, so the other 118 no longer carry the
+ * theme's ~2KB of unused .hljs-* rules in the render-blocking global chunk.
+ *
+ * The theme also ships BOX rules that CodeBlock — not highlight.js — must own:
+ *
+ *   pre code.hljs { display: block; overflow-x: auto; padding: 1em }
+ *   .hljs        { background: #0d1117 }
+ *
+ * Left alone those paint a square-cornered #0d1117 panel inset ~18px inside the
+ * 12px-rounded wrapper, apply padding twice (pre 14px/16px + code 14px, ~62px of
+ * dead headroom on touch where the chrome reserve stacks on top), and — the real
+ * damage — make the <code> the horizontal scroller. That meant the <pre> never
+ * overflowed, so CodeBlock's overflow measurement (which gates the WCAG 2.1.1 /
+ * 1.4.10 keyboard scroll-region exposure) read a permanent false and no wide
+ * fence was ever focusable or labelled.
+ *
+ * Neutralized here, in the SAME file and immediately after the import, so the
+ * ordering is guaranteed by the CSS spec rather than by chunk-emission order:
+ * same origin, same specificity, later declaration wins. `color: #c9d1d9` from
+ * .hljs is deliberately left intact — that is the token base color we want.
+ */
+@import "highlight.js/styles/github-dark.css";
+
+pre code.hljs {
+  display: block;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+}

@@ -4,12 +4,17 @@
  * written in a GUIDE behaves identically in the static readout and the
  * scrubbable player.
  *
- * DSL (one instruction per line; '#' starts a comment):
- *   qubits 2          # optional; inferred from the highest qubit index
+ * DSL (one instruction per line; a line starting with '#' is a comment):
+ *   qubits 2      -- optional; inferred from the highest qubit index
  *   H 0
  *   CNOT 0 1
- *   RY 0 theta        # 'theta' binds the gate to the slider
- *   RX 0 1.5708       # or a literal angle in radians
+ *   RY 0 theta    -- 'theta' binds the gate to the slider
+ *   RX 0 1.5708   -- or a literal angle in radians
+ *
+ * The examples annotate with '--' rather than a trailing '#' deliberately: only
+ * WHOLE-line comments are stripped (see the line filter below), so expectArity
+ * treats a mid-line '#' as an extra token and rejects the instruction. The
+ * annotations above are docblock prose, not parseable lines.
  */
 
 import { type Op, NAMED_GATES } from "./math";

@@ -11,6 +11,9 @@ import {
   type CardKind,
 } from "@/lib/review-store";
 import { ReviewCard } from "@/components/quantum/review-card";
+// The lean primitives module, not ./widget-ui — this route's own chunk has no
+// use for the math kernel, the Dirac readout or CopyButton.
+import { CheckIcon, VerdictBadge } from "@/components/quantum/error-card";
 
 /**
  * The /review surface: resurfaces every card whose schedule has come due,
@@ -50,56 +53,45 @@ function liveSkeleton() {
   );
 }
 
-const ChallengeLive = dynamic(() => import("@/components/quantum/challenge").then((m) => ({ default: m.Challenge })), {
-  ssr: false,
-  loading: liveSkeleton,
-});
-const PredictLive = dynamic(() => import("@/components/quantum/predict-widget").then((m) => ({ default: m.PredictWidget })), {
-  ssr: false,
-  loading: liveSkeleton,
-});
-const BlochLive = dynamic(() => import("@/components/quantum/bloch-target-widget").then((m) => ({ default: m.BlochTargetWidget })), {
-  ssr: false,
-  loading: liveSkeleton,
-});
-const CostLive = dynamic(() => import("@/components/quantum/cost-estimate-widget").then((m) => ({ default: m.CostEstimateWidget })), {
-  ssr: false,
-  loading: liveSkeleton,
-});
-const DebugLive = dynamic(() => import("@/components/quantum/debug-circuit-widget").then((m) => ({ default: m.DebugCircuitWidget })), {
-  ssr: false,
-  loading: liveSkeleton,
-});
-const ExpectLive = dynamic(() => import("@/components/quantum/expectation-widget").then((m) => ({ default: m.ExpectationWidget })), {
-  ssr: false,
-  loading: liveSkeleton,
-});
+/**
+ * A Rep widget as this surface consumes it. All six accept the optional
+ * `surface` prop, so the registry can hold them directly — the six one-line
+ * wrapper components that existed only to pin surface="review" are gone, and
+ * the single call site passes it instead.
+ */
+type SourceWidget = ComponentType<{ source: string; surface?: "lesson" | "review" }>;
 
-type SourceWidget = ComponentType<{ source: string }>;
+/** widget-fence.tsx's lazyWidget, minus the skeleton-height parameter. */
+function liveWidget(
+  factory: () => Promise<{ default: SourceWidget }>,
+): SourceWidget {
+  return dynamic(factory, { ssr: false, loading: liveSkeleton });
+}
 
 // Each live widget is mounted surface="review": the challenge suppresses its
 // persistent solved-once-ever badge (this surface asks for a fresh attempt)
 // and the schedule notes read "Reviewed — next review in N days".
 const LIVE_WIDGETS: Record<CardKind, SourceWidget> = {
-  challenge: function ChallengeReview({ source }) {
-    return <ChallengeLive source={source} surface="review" />;
-  },
-  predict: function PredictReview({ source }) {
-    return <PredictLive source={source} surface="review" />;
-  },
-  bloch: function BlochReview({ source }) {
-    return <BlochLive source={source} surface="review" />;
-  },
-  cost: function CostReview({ source }) {
-    return <CostLive source={source} surface="review" />;
-  },
-  debug: function DebugReview({ source }) {
-    return <DebugLive source={source} surface="review" />;
-  },
-  expect: function ExpectReview({ source }) {
-    return <ExpectLive source={source} surface="review" />;
-  },
+  challenge: liveWidget(() => import("@/components/quantum/challenge").then((m) => ({ default: m.Challenge }))),
+  predict: liveWidget(() => import("@/components/quantum/predict-widget").then((m) => ({ default: m.PredictWidget }))),
+  bloch: liveWidget(() => import("@/components/quantum/bloch-target-widget").then((m) => ({ default: m.BlochTargetWidget }))),
+  cost: liveWidget(() => import("@/components/quantum/cost-estimate-widget").then((m) => ({ default: m.CostEstimateWidget }))),
+  debug: liveWidget(() => import("@/components/quantum/debug-circuit-widget").then((m) => ({ default: m.DebugCircuitWidget }))),
+  expect: liveWidget(() => import("@/components/quantum/expectation-widget").then((m) => ({ default: m.ExpectationWidget }))),
 };
+
+/**
+ * Resolve a stored `kind` to its live widget. OWN-PROPERTY membership, not a
+ * raw index: `kind` is an unchecked cast out of localStorage (and the sync
+ * backend), so `LIVE_WIDGETS["constructor"]` would resolve through the
+ * prototype chain to `Object` — a truthy "component" React then invokes,
+ * throwing "Objects are not valid as a React child" and taking out the whole
+ * /review route (src/app carries no error boundary). The documented
+ * "corrupt kind falls back to the recall card" guarantee lives here.
+ */
+function liveWidgetFor(kind: string | undefined): SourceWidget | undefined {
+  return kind && Object.hasOwn(LIVE_WIDGETS, kind) ? LIVE_WIDGETS[kind as CardKind] : undefined;
+}
 
 interface RosterEntry {
   id: string;
@@ -113,33 +105,23 @@ interface RosterState {
   entries: RosterEntry[];
 }
 
-function dueIdsOf(snapshotKey: string): string[] {
-  const dueStr = snapshotKey.split("|")[0];
-  return dueStr ? dueStr.split(",") : [];
-}
-
 function snapshot(): string {
   return `${dueCardIds().join(",")}|${getAllCardIds().length}`;
 }
 
-function CheckMark() {
-  return (
-    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  );
+/** The decoder for `snapshot()`, kept adjacent to it so the pair reads as one. */
+function parseSnapshot(key: string): { dueIds: string[]; total: number } {
+  const [dueStr, totalStr] = key.split("|");
+  return {
+    dueIds: dueStr ? dueStr.split(",") : [],
+    total: Number(totalStr) || 0,
+  };
 }
 
 export function ReviewDashboard() {
   const snap = useSyncExternalStore(subscribe, snapshot, () => "|0");
 
-  const { dueIds, total } = useMemo(() => {
-    const [dueStr, totalStr] = snap.split("|");
-    return {
-      dueIds: dueStr ? dueStr.split(",") : [],
-      total: Number(totalStr) || 0,
-    };
-  }, [snap]);
+  const { dueIds, total } = useMemo(() => parseSnapshot(snap), [snap]);
 
   // Session-sticky roster, advanced with the guarded adjust-state-during-render
   // pattern (not an effect) so a just-graded card never flashes out before
@@ -148,7 +130,7 @@ export function ReviewDashboard() {
   let entries = roster.entries;
   if (roster.key !== snap) {
     const dueSet = new Set(dueIds);
-    const prevDueSet = new Set(dueIdsOf(roster.key));
+    const prevDueSet = new Set(parseSnapshot(roster.key).dueIds);
     // A rostered card re-entering the due list gets a new generation (fresh mount).
     entries = roster.entries.map((e) =>
       dueSet.has(e.id) && !prevDueSet.has(e.id) ? { id: e.id, gen: e.gen + 1 } : e,
@@ -160,7 +142,18 @@ export function ReviewDashboard() {
   }
 
   const dueSet = new Set(dueIds);
-  const sessionComplete = entries.length > 0 && dueIds.length === 0;
+  // Resolve content ONCE, here, so every downstream consumer agrees on what the
+  // roster is. A due card whose content cache is missing (a failed/evicted
+  // setCardContent, or a corrupt record) used to stay in `entries` and render
+  // nothing — the "i / N" counter and its sr-only twin then skipped a number,
+  // and a roster of only such cards drew a blank page under a "3 due now"
+  // header with no empty state at all, because that state gated on
+  // entries.length. Dropping them here restores the honest "Nothing due" copy.
+  const items = entries.flatMap(({ id, gen }) => {
+    const content = getCardContent(id);
+    return content ? [{ id, gen, content }] : [];
+  });
+  const sessionComplete = items.length > 0 && dueIds.length === 0;
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-16">
@@ -171,7 +164,7 @@ export function ReviewDashboard() {
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
           Review
         </h1>
-        <p className="mt-4 text-lg text-(--mut) leading-relaxed">
+        <p className="mt-4 text-lg text-caption leading-relaxed">
           Cards you have studied resurface here exactly when you are about to
           forget them. A few minutes now keeps the whole curriculum fresh.
         </p>
@@ -181,7 +174,12 @@ export function ReviewDashboard() {
             <span className="font-semibold text-(--mut)">{dueIds.length}</span> due
             now
           </span>
-          <span className="text-gray-300 dark:text-gray-700">/</span>
+          {/* Decorative separator: tokenized (it was the tree's only
+              text-gray-300/700 pair, invisible to a token retune) and hidden
+              from AT, which read "3 due now slash 12 cards tracked". */}
+          <span aria-hidden="true" className="text-caption opacity-50">
+            /
+          </span>
           <span>
             <span className="font-semibold text-(--mut)">{total}</span> card
             {total === 1 ? "" : "s"} tracked
@@ -195,7 +193,7 @@ export function ReviewDashboard() {
           className="mb-8 rounded-card border border-accent/30 bg-accent/5 dark:bg-accent/10 px-4 py-3 animate-fade-up"
         >
           <p className="inline-flex items-center gap-2 text-sm font-medium text-accent-dark dark:text-accent-light">
-            <CheckMark />
+            <CheckIcon size="h-3 w-3" />
             Session complete — every due card reviewed.
           </p>
           <p className="mt-1 text-xs text-caption">
@@ -204,9 +202,9 @@ export function ReviewDashboard() {
         </div>
       )}
 
-      {entries.length === 0 ? (
+      {items.length === 0 ? (
         <div className="rounded-card glass shadow-(--shadow-resting) px-6 py-12 text-center">
-          <p className="text-base font-medium text-(--mut)">
+          <p className="text-base font-medium text-caption">
             {total === 0 ? "No cards yet" : "Nothing due — you're caught up"}
           </p>
           <p className="mt-2 text-sm text-caption">
@@ -217,41 +215,47 @@ export function ReviewDashboard() {
         </div>
       ) : (
         <ul role="list" className="m-0 list-none p-0">
-          {entries.map(({ id, gen }, i) => {
-            const content = getCardContent(id);
-            if (!content) return null;
-            // A corrupt/unknown stored kind indexes to undefined and falls back.
-            const Live = content.kind && content.source ? LIVE_WIDGETS[content.kind] : undefined;
-            const kindLabel = Live ? KIND_LABELS[content.kind!] : "Recall";
+          {items.map(({ id, gen, content }, i) => {
+            // A corrupt/unknown stored kind falls back to the recall card — see
+            // liveWidgetFor for why the membership test is own-property only.
+            const Live = content.source ? liveWidgetFor(content.kind) : undefined;
+            const kindLabel = Live ? KIND_LABELS[content.kind as CardKind] : "Recall";
             const done = !dueSet.has(id);
             return (
               <li key={`${id}:${gen}`} className="mt-10 first:mt-0">
                 <span className="sr-only">
-                  {`Review item ${i + 1} of ${entries.length} — ${kindLabel}${done ? ", reviewed" : ""}`}
+                  {`Review item ${i + 1} of ${items.length} — ${kindLabel}${done ? ", reviewed" : ""}`}
                 </span>
                 <div
                   aria-hidden="true"
                   className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest"
                 >
                   <span className="text-caption tabular-nums">
-                    {i + 1} / {entries.length} · {kindLabel}
+                    {i + 1} / {items.length} · {kindLabel}
                   </span>
                   {done ? (
-                    <span className="inline-flex items-center gap-1 rounded-chip bg-accent/10 px-2 py-0.5 text-accent-dark dark:text-accent-light">
-                      <CheckMark />
+                    <VerdictBadge tone="accent" size="xs">
                       Reviewed
-                    </span>
+                    </VerdictBadge>
                   ) : (
-                    <span className="rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-(--mut)">
+                    <span className="rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-caption">
                       Due
                     </span>
                   )}
                 </div>
                 {/* The widgets carry their own vertical margins for lesson flow;
-                    the roster owns spacing here, so neutralize them. */}
-                <div className={`[&>*]:my-0 ${done ? "opacity-80" : ""}`}>
+                    the roster owns spacing here, so neutralize them.
+
+                    No group opacity on the graded branch: this roster is sticky
+                    precisely so the learner can READ the outcome after grading,
+                    and a wrapper opacity composites the card's TEXT too, taking
+                    .text-caption and the accent schedule line under the 4.5:1 AA
+                    floor in both themes (and invisibly to the class-scanning
+                    contrast guards). The "Reviewed" badge above already carries
+                    the done-ness signal unambiguously. */}
+                <div className="[&>*]:my-0">
                   {Live ? (
-                    <Live source={content.source!} />
+                    <Live source={content.source!} surface="review" />
                   ) : (
                     <ReviewCard
                       source={JSON.stringify({ id, prompt: content.prompt, answer: content.answer })}
@@ -261,11 +265,13 @@ export function ReviewDashboard() {
                 {/* Failure remediation for live re-attempts: the recall answer is
                     already cached — a stuck learner should not be dead-ended. */}
                 {Live && !done && (
-                  <details className="mt-2">
-                    <summary className="inline-block cursor-pointer rounded-control px-1 text-xs text-caption focus-ring">
+                  <details className="mt-2 text-xs">
+                    {/* py-1 (not the bare px-1 this had) clears WCAG 2.5.8's
+                        24px target: 16px line-box + 2 x 4px. */}
+                    <summary className="inline-flex cursor-pointer rounded-control px-1 py-1 text-caption focus-ring">
                       Stuck? Show a correct answer
                     </summary>
-                    <p className="mt-1 px-1 font-mono text-sm text-(--mut)">
+                    <p className="mt-1 px-1 font-mono text-sm text-caption">
                       {content.answer}
                     </p>
                   </details>

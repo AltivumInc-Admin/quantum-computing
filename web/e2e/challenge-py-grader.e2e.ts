@@ -72,15 +72,18 @@ test("tier:py challenge: real Pyodide grades solve/wrong/error, fully same-origi
 
   const editor = page.getByLabel("Your circuit");
   const check = page.getByRole("button", { name: "Check" });
-  // Both the verdict div and the schedule note render role="status"; the verdict
-  // is first in the DOM.
+  // The widget's outcome region is ONE always-mounted role="status" holding the
+  // verdict, the interim boot notice and the schedule note (a live region has to
+  // persist to be announced reliably). .first() pins it against the page shell.
   const verdict = page.getByRole("status").first();
 
   // 1) Correct free-form Braket Python → the grader's exact solved literal.
   await editor.fill(SOLUTION);
   await check.click();
-  // The interim status renders synchronously on click; the WASM boot that
-  // follows takes seconds at minimum, so this cannot race past us.
+  // The interim notice renders synchronously on click; the WASM boot that
+  // follows takes seconds at minimum, so this cannot race past us. It is driven
+  // by the `busy` flag in a NEUTRAL tone — never published as a verdict, which
+  // is why nothing here asserts a wrong-answer skin around it.
   await expect(verdict).toContainText("Booting Python", { timeout: 15_000 });
   await expect(verdict).toContainText(
     "Correct — verified against the reference state vector.",

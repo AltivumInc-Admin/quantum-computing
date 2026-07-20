@@ -10,6 +10,7 @@ import {
   GateChips,
   LabeledSlider,
   LiveStatus,
+  PlayIcon,
   ProbBars,
   StateReadout,
   WidgetCard,
@@ -26,18 +27,6 @@ import { formatRadians, percentSR } from "./format";
  */
 
 const STEP_MS = 750;
-
-function PlayIcon({ playing }: { playing: boolean }) {
-  return (
-    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      {playing ? (
-        <path d="M8 5h3v14H8zM13 5h3v14h-3z" />
-      ) : (
-        <path d="M8 5v14l11-7z" />
-      )}
-    </svg>
-  );
-}
 
 export function WavefunctionScrubber({ source }: { source: string }) {
   const program = useMemo(() => parseProgram(source), [source]);

@@ -49,4 +49,65 @@ describe("parseChallenge", () => {
   it("errors on invalid JSON", () => {
     expect(parseChallenge("{ not json").error).toBeTruthy();
   });
+
+  it("accepts the two real tiers verbatim", () => {
+    expect(parseChallenge(JSON.stringify({ ...JSON.parse(valid), tier: "ts" })).spec!.tier).toBe("ts");
+    // py fences carry no allowedGates (see the tier/allowedGates rule below).
+    const py = parseChallenge(
+      JSON.stringify({ id: "py-1", prompt: "p", target: { program: "H 0" }, tier: "py" })
+    );
+    expect(py.error).toBeUndefined();
+    expect(py.spec!.tier).toBe("py");
+  });
+
+  // A tier typo used to be ABSORBED: `data.tier === "py" ? "py" : "ts"` turned
+  // "Py"/"python"/"pyodide" into a DSL challenge, and no CI gate could see it —
+  // the key check only asks whether `tier` is a known KEY, the py-vs-manifest
+  // 1:1 test filters on `tier === "py"` (so a typo'd fence leaves the py set and
+  // the equality still holds), and the ts degenerate-content guard asserts the
+  // starter does NOT solve, which Braket Python satisfies by failing to parse.
+  // The fence shipped and the learner got `unknown gate "from"` on first Check.
+  it.each(["Py", "python", "pyodide", "PY", "", null, 3])(
+    "refuses an unrecognized tier (%p) instead of silently coercing it to ts",
+    (tier) => {
+      const { spec, error } = parseChallenge(
+        JSON.stringify({ ...JSON.parse(valid), tier })
+      );
+      expect(spec).toBeUndefined();
+      expect(error).toMatch(/tier/i);
+    }
+  );
+
+  // gradePy grades free-form Python on state-vector equality alone and never
+  // reads allowedGates, but the widget renders the "Allowed gates:" caption on
+  // every tier — so the pair would show a learner a rule that is never applied
+  // to them, while rep-schema "validated" it against the AUTHOR's own circuit.
+  it('refuses tier:"py" combined with allowedGates (a rule gradePy cannot enforce)', () => {
+    const { spec, error } = parseChallenge(
+      JSON.stringify({
+        id: "py-gates-1",
+        prompt: "p",
+        target: { program: "H 0" },
+        tier: "py",
+        allowedGates: ["H", "CNOT"],
+      })
+    );
+    expect(spec).toBeUndefined();
+    expect(error).toMatch(/allowedGates/);
+  });
+
+  it('still allows allowedGates on the ts tier, and an empty list on py', () => {
+    expect(
+      parseChallenge(
+        JSON.stringify({
+          id: "py-nogates-1",
+          prompt: "p",
+          target: { program: "H 0" },
+          tier: "py",
+          allowedGates: [],
+        })
+      ).error
+    ).toBeUndefined();
+    expect(parseChallenge(valid).spec!.allowedGates).toEqual(["H", "X", "CNOT"]);
+  });
 });
