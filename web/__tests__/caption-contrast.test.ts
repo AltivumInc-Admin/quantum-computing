@@ -44,6 +44,16 @@ const EXCEPTIONS: Record<string, number> = {
 };
 
 // Resting (unprefixed) light-theme muted gray, ignoring opacity-modified tokens.
+//
+// Deliberately `text-*` only, NOT `fill-*`. SVG <text> labels do spell this tier
+// `fill-gray-*` and an inverted pair there fails 1.4.3 exactly as its text- twin
+// does (one such label was fixed in vqe-explorer). But a line-based scan cannot
+// tell an SVG <text> label from <circle>/<polygon>/marker geometry, which falls
+// under 1.4.11 non-text contrast (3:1) — a different rule with different
+// thresholds and a decorative-content exemption. Matching `fill-*` here would
+// conflate the two and would need per-file exceptions that mask real future text
+// violations. Auditing SVG label contrast belongs in its own graphics-tier guard;
+// token-contrast.test.ts already owns the 3:1 graphics floor for tokenized fills.
 const BASE_GRAY_400 = /(?<![:\w-])text-gray-400\b(?!\/)/;
 const BASE_MUTED = /(?<![:\w-])text-gray-(400|500)\b(?!\/)/;
 // Resting dark-theme text color (dark:hover:text-* etc. deliberately excluded).

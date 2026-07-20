@@ -93,9 +93,10 @@ your hardware only wires up nearest neighbors and your algorithm wants qubit 0 t
 together — and every SWAP is three more two-qubit gates, adding depth and, per the section above,
 more noise.
 
-Drag the endpoints below on a 3×3 grid (IQM-style nearest-neighbor lattice) and watch the SWAP
-chain the router has to insert. Then imagine the same gate on a trapped-ion machine, where every
-qubit is already connected to every other: **zero** SWAPs.
+Pick the two endpoints from the Qubit A / Qubit B dropdowns below on a 3×3 grid (IQM-style
+nearest-neighbor lattice) and watch the SWAP chain the router has to insert. Then imagine the
+same gate on a trapped-ion machine, where every qubit is already connected to every other:
+**zero** SWAPs.
 
 ```qcard
 {"id":"hw-swap-tax-1","prompt":"On a nearest-neighbor (lattice) device, what must the compiler do to run a two-qubit gate between non-adjacent qubits, and what does it cost?","answer":"It inserts a chain of `SWAP` gates along the shortest path to bring the two qubits together. Each `SWAP` costs roughly three more two-qubit gates, adding circuit depth and noise. On an all-to-all machine this cost is zero."}
