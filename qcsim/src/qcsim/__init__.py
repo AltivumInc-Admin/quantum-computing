@@ -25,7 +25,14 @@ __all__ = ["Circuit", "LocalSimulator"]
 # distinct used qubits), Gate-like Instruction.operator (.name matches Braket
 # capitalization, e.g. "CNot"), and measured_qubits on results. The version bump
 # changes the wheel filename so returning browsers fetch fresh, not a stale cache.
-__version__ = "0.2.0"
+# 0.3.0: Category F parity pass. Browser-visible: print(circuit) now lays out one
+# column per MOMENT (matching .depth and real Braket, where it previously printed
+# one per gate and contradicted its own depth line in 12 notebooks) and renders
+# Rx/Ry/Rz distinctly; sampling moved off numpy's global legacy RNG; an empty
+# circuit's state_vector() raises like Braket's; unknown LocalSimulator backends
+# are rejected as Braket rejects them; a float qubit index is a TypeError instead
+# of silently building a different circuit. Bumped for the same cache reason.
+__version__ = "0.3.0"
 
 
 def _register_braket_aliases() -> None:

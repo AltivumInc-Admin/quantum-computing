@@ -7,6 +7,15 @@ match qcsim's live matrices). Together they lock qcsim <-> fixture <-> math.ts,
 so a change to a qcsim gate matrix that is not regenerated into the fixture fails
 CI here instead of silently diverging the browser and Python simulators.
 
+The coverage guarantee is only as good as what ``build_fixture()`` enumerates.
+It used to hardcode ten gates, omitting CCNOT and CPhaseShift, so this file's
+"no gate is added to or dropped from qcsim without regenerating the fixture"
+claim was false and — because the check compared the fixture against that same
+hardcoded list — structurally unable to notice. ``build_fixture()`` now derives
+from ``qcsim.circuits._GATE_SPECS``, and
+``test_fixture_covers_every_registered_gate`` asserts that against the registry
+directly rather than against the generator's own opinion.
+
 Regenerate with: ``.venv/bin/python scripts/gen_gate_fixture.py``
 """
 
@@ -66,6 +75,27 @@ def test_committed_matrices_match_qcsim():
             assert np.allclose(
                 _to_complex(committed["rotations"][g][key]), _to_complex(mat), rtol=0, atol=1e-12
             ), f"rotation {g}[{key}] no longer matches qcsim — {REGEN_HINT}"
+
+
+def test_fixture_covers_every_registered_gate():
+    """Every gate in qcsim's registry is pinned — checked against the registry itself.
+
+    This is the assertion that makes test_gate_set_matches_qcsim's promise real:
+    it compares the COMMITTED fixture to ``_GATE_SPECS``, so it cannot be
+    satisfied by the generator and the check sharing a blind spot.
+    """
+    from qcsim.circuits import _GATE_SPECS
+
+    committed = _committed()
+    fixed = {k for k, spec in _GATE_SPECS.items() if not callable(spec.matrix)}
+    parameterized = {k.lower() for k, spec in _GATE_SPECS.items() if callable(spec.matrix)}
+    assert set(committed["gates"]) == fixed, f"unpinned/stale fixed gates — {REGEN_HINT}"
+    assert set(committed["rotations"]) == parameterized, (
+        f"unpinned/stale parameterized gates — {REGEN_HINT}"
+    )
+    # The two that were missing and carry QFT, QPE and Grover.
+    assert "CCNOT" in committed["gates"]
+    assert "cp" in committed["rotations"]
 
 
 def test_rotation_keys_match_the_ts_test_expectations():
