@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
+import { Chip, ErrorCard, LabeledSlider, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
 import { linearScale, linePath } from "./chart-utils";
 import { BlochDial } from "./bloch-dial";
 import {
@@ -11,9 +11,9 @@ import {
   oneQubitHamiltonian,
   vqeGradientDescent,
 } from "./chemistry";
-import { H2 } from "./h2-data";
+import { H2, R_MAX, R_MIN } from "./h2-data";
 import { usePrefersReducedMotion } from "./use-display-caps";
-import { parseJsonObject } from "./parse-utils";
+import { parseJsonObject, readNumberInRange } from "./parse-utils";
 import { formatFixed, formatHartree, formatAngstrom, formatRadians, hartreeSR, angstromSR } from "./format";
 
 /**
@@ -39,6 +39,17 @@ const ANIM_MS = 32; // per-frame delay while animating the optimizer trace
 
 const TAU = 2 * Math.PI;
 
+const THETA_STEP = Math.PI / 90; // 2 degrees per arrow press
+/**
+ * The opening angle, seeded onto the slider's own lattice (min + n * step).
+ * The literal 0.4 was a step mismatch — (0.4 + pi) / (pi/90) = 101.46 — so the
+ * range input sanitized its DOM value to 0.3840 while React state, the readout
+ * and the drawn marker all held 0.4, and the first arrow press moved the thumb
+ * by less than one step.
+ */
+const START_THETA =
+  -Math.PI + Math.round((0.4 + Math.PI) / THETA_STEP) * THETA_STEP;
+
 // ---------------------------------------------------------------------------
 // Parsing + validation
 // ---------------------------------------------------------------------------
@@ -53,31 +64,16 @@ function parseSource(source: string): ParseResult {
   if (base.obj === null) {
     return { ok: true, R: H2.equilibrium.R };
   }
-  const obj = base.obj;
-  const rawR = obj["R"];
-  if (rawR === undefined) {
-    return { ok: true, R: H2.equilibrium.R };
-  }
-  if (typeof rawR !== "number" || !Number.isFinite(rawR)) {
-    return { ok: false, error: '"R" must be a finite number (angstrom)' };
-  }
-  const first = H2.points[0];
-  const last = H2.points[H2.points.length - 1];
-  if (rawR < first.R || rawR > last.R) {
-    return {
-      ok: false,
-      error: `"R" must be within [${first.R}, ${last.R}] angstrom`,
-    };
-  }
-  return { ok: true, R: rawR };
-}
-
-// ---------------------------------------------------------------------------
-// Error card
-// ---------------------------------------------------------------------------
-
-function ErrorCard({ message }: { message: string }) {
-  return <SharedErrorCard label="qvqe" message={message} />;
+  const r = readNumberInRange(
+    base.obj,
+    "R",
+    H2.equilibrium.R,
+    R_MIN,
+    R_MAX,
+    "angstrom"
+  );
+  if (!r.ok) return r;
+  return { ok: true, R: r.value };
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +83,7 @@ function ErrorCard({ message }: { message: string }) {
 export function VqeExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseSource(source), [source]);
 
-  const [theta, setTheta] = useState(0.4);
+  const [theta, setTheta] = useState(START_THETA);
   const [optimizing, setOptimizing] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -130,9 +126,13 @@ export function VqeExplorer({ source }: { source: string }) {
     return { c0, cz, cx, H, floor, eMin, eMax, thetaToX, energyToY, curvePath, floorY };
   }, [parsed]);
 
-  if (!parsed.ok || !model) {
-    return <ErrorCard message={parsed.ok ? "no model" : parsed.error} />;
+  if (!parsed.ok) {
+    return <ErrorCard label="qvqe" message={parsed.error} />;
   }
+  // `model` is null only when parsing failed, which the guard above already
+  // returned on. This narrows the type without inventing a user-facing string
+  // ("qvqe error: no model") for a state that cannot occur.
+  if (!model) return null;
 
   const { c0, cz, cx, H, floor, thetaToX, energyToY, curvePath, floorY } = model;
   const R = parsed.R;
@@ -156,10 +156,21 @@ export function VqeExplorer({ source }: { source: string }) {
   const onOptimize = () => {
     stopAnimation();
     const result = vqeGradientDescent(H, [theta], OPT_LR, OPT_STEPS);
-    // Gradient descent returns an unbounded angle; wrap it into the plotted/slider
-    // domain [-pi, pi]. E(theta) is 2*pi-periodic, so the wrapped angle has the
-    // identical energy but keeps the marker on the curve and the slider thumb in sync.
-    const finalTheta = Math.atan2(Math.sin(result.theta[0]), Math.cos(result.theta[0]));
+    // Gradient descent returns an UNBOUNDED angle. Animate toward that raw
+    // endpoint and wrap only for display: the raw endpoint is downhill-connected
+    // to the start (E(theta) = c0 + A cos(theta - phi) has one maximum and one
+    // minimum per turn, and the descent never crosses the maximum), so energy is
+    // monotone non-increasing along the interpolation. Wrapping FIRST and then
+    // lerping toward the wrapped angle was the bug: whenever the descent exits
+    // via +pi, the wrapped target sits on the far side of the barrier and the
+    // marker sweeps backwards THROUGH the energy maximum. Measured against the
+    // committed fixture at R = 0.75, that climbed for 45.7% of starting angles —
+    // 1.542 Ha (96.6% of the plot's height) from theta = 3.0 — while the caption
+    // below promises Optimize "slides theta down to the variational floor".
+    // Gradient descent never ascends.
+    const rawTheta = result.theta[0];
+    const wrap = (t: number) => Math.atan2(Math.sin(t), Math.cos(t));
+    const finalTheta = wrap(rawTheta);
 
     if (reducedMotion) {
       setTheta(finalTheta);
@@ -167,9 +178,9 @@ export function VqeExplorer({ source }: { source: string }) {
       return;
     }
 
-    // Animate theta along a smooth descent toward the optimum. The optimizer's
-    // history is the energy trace; we ease theta from its current value to the
-    // converged angle so the marker visibly slides down to the floor.
+    // Animate theta along a smooth descent toward the optimum. The marker leaves
+    // one edge of the plot and re-enters at the other when the descent crosses
+    // +/-pi; those edges are the same point on the 2*pi-periodic curve.
     const start = theta;
     const frames = OPT_STEPS;
     setOptimizing(true);
@@ -177,8 +188,7 @@ export function VqeExplorer({ source }: { source: string }) {
     const tick = () => {
       frame += 1;
       const t = frame / frames;
-      const next = start + (finalTheta - start) * t;
-      setTheta(next);
+      setTheta(wrap(start + (rawTheta - start) * t));
       if (frame < frames) {
         timerRef.current = setTimeout(tick, ANIM_MS);
       } else {
@@ -193,7 +203,7 @@ export function VqeExplorer({ source }: { source: string }) {
   const onReset = () => {
     stopAnimation();
     setOptimizing(false);
-    setTheta(0.4);
+    setTheta(START_THETA);
   };
 
   const curveAria = `Variational energy E(theta) for tapered H2 at bond length ${angstromSR(R)}. Current angle ${formatFixed(theta, 2)} radians gives ${hartreeSR(energy)}, ${hartreeSR(aboveFloor)} above the exact ground floor ${hartreeSR(floor)}.`;
@@ -204,7 +214,7 @@ export function VqeExplorer({ source }: { source: string }) {
       chips={
         <>
           <Chip>1q ansatz</Chip>
-          <Chip>STO-3G</Chip>
+          <Chip tone="warn">STO-3G minimal basis</Chip>
           <Chip>R = {formatAngstrom(R)}</Chip>
         </>
       }
@@ -311,7 +321,7 @@ export function VqeExplorer({ source }: { source: string }) {
           {/* Bloch indicator (X-Z plane) */}
           <div className="flex items-center gap-3">
             <BlochDial vector={{ x: expX, y: 0, z: expZ }} size={86} />
-            <p className="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+            <p className="text-[10px] leading-relaxed text-caption font-mono tabular-nums">
               &#10216;Z&#10217; = {formatFixed(expZ, 3)}
               <br />
               &#10216;X&#10217; = {formatFixed(expX, 3)}
@@ -321,13 +331,13 @@ export function VqeExplorer({ source }: { source: string }) {
 
         {/* Controls + readout */}
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-sm tabular-nums text-gray-800 dark:text-gray-100">
+          <p className="font-mono text-sm tabular-nums text-(--ink)">
             {"E = "}
             <span className="font-semibold text-accent-dark dark:text-accent-light">
               {formatHartree(energy)}
             </span>
           </p>
-          <p className="mt-1 font-mono text-xs tabular-nums text-gray-500 dark:text-gray-400">
+          <p className="mt-1 font-mono text-xs tabular-nums text-caption">
             floor {formatHartree(floor)} &middot; gap {formatHartree(aboveFloor)}
           </p>
 
@@ -337,17 +347,21 @@ export function VqeExplorer({ source }: { source: string }) {
             value={theta}
             min={-Math.PI}
             max={Math.PI}
-            step={Math.PI / 90}
+            step={THETA_STEP}
             onChange={(v) => {
               stopAnimation();
               setOptimizing(false);
               setTheta(v);
             }}
             ariaLabel="Ansatz angle theta in radians"
-            ariaValueText={`${formatFixed(theta, 2)} radians, energy ${hartreeSR(energy)}`}
+            // Angle only. The polite LiveStatus already leads with this exact
+            // energy and re-fires on the same theta ticks, so carrying it here
+            // too made every arrow press announce the value twice — the
+            // collision the sibling qham slider is explicitly written to avoid.
+            ariaValueText={`${formatFixed(theta, 2)} radians`}
             display={formatRadians(theta)}
             rowClassName="mt-4 flex items-center gap-3"
-            labelClassName="w-6 shrink-0 font-mono text-sm text-gray-600 dark:text-gray-300"
+            labelClassName="w-6 shrink-0 font-mono text-sm text-(--mut)"
             valueWidth="w-20"
           />
 
@@ -369,7 +383,7 @@ export function VqeExplorer({ source }: { source: string }) {
             </button>
           </div>
 
-          <p className="mt-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          <p className="mt-4 text-xs leading-relaxed text-caption">
             Optimize runs parameter-shift gradient descent from the current
             angle and slides &#952; down to the variational floor. Here the floor
             equals the <strong>exact</strong> ground energy only because the

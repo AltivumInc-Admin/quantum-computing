@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, EyebrowLabel, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard, primaryActionClass, secondaryActionClass } from "./widget-ui";
 import { extent, linearScale, linePath, plotInner, type Plot } from "./chart-utils";
 import { H2 as H } from "./h2-data";
 import {
@@ -19,14 +19,23 @@ import { formatHartree, formatAngstrom, hartreeSR } from "./format";
  * chemistry kernel from module 05) as CloudWatch-style job monitoring: it runs
  * vqeGradientDescent on the tapered H2 Hamiltonian at bond length R and plots the
  * per-iteration energy trace as a metric line (iteration on x, energy in Ha on
- * y), with a dashed "stopping_condition" threshold line and a current-energy
- * readout. The Stream button reveals points iteration-by-iteration via setTimeout
+ * y), with a dashed convergence-tolerance line and a current-energy readout.
+ * The Stream button reveals points iteration-by-iteration via setTimeout
  * (reduced motion shows the full curve at once); Reset rewinds. The convergence
  * is genuine VQE — only the presentation is "what log_metric -> CloudWatch shows
  * while a Hybrid Job runs". Pure client, static-export safe, no AWS / network.
  *
+ * NAMING (this was wrong and is load-bearing): the dashed line is an ENERGY
+ * target, so it is a convergence `tol`, NOT Braket's `stopping_condition`.
+ * braket.jobs.config.StoppingCondition carries exactly one field —
+ * maxRuntimeInSeconds — i.e. a wall-clock cap with no metric-threshold form, so
+ * a learner who copied the old label would try to pass an energy to
+ * stopping_condition and fail. Module 06's own notebook 03 already teaches the
+ * correct split: an in-loop `tol` check returns early, and
+ * stopping_condition={"maxRuntimeInSeconds": 600} is the separate backstop.
+ *
  * Fence body (optional): { "R": 0.74, "threshold": -1.13 }. Empty defaults R to
- * the equilibrium bond length and the threshold to the equilibrium FCI + 0.02 Ha.
+ * the equilibrium bond length and the tol to the equilibrium FCI + 0.02 Ha.
  */
 
 const PLOT: Plot = { w: 320, h: 200, padL: 44, padR: 12, padT: 14, padB: 28 };
@@ -100,6 +109,11 @@ export function MetricsExplorer({ source }: { source: string }) {
   const headingId = useId();
   const [shown, setShown] = useState(0); // number of iterations revealed
   const [streaming, setStreaming] = useState(false);
+  // Reset zeroes `shown`, which used to empty the live region rather than
+  // update it — and emptying a polite region announces nothing, so the rewind
+  // was silent to AT. This flag gives Reset its own one-line announcement while
+  // keeping the initial mount silent.
+  const [didReset, setDidReset] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Run the REAL VQE optimization once per parsed R. history[i] is the energy at
@@ -115,6 +129,20 @@ export function MetricsExplorer({ source }: { source: string }) {
     const { min: eMin, max: eMax } = extent(history);
     return { history, eMin, eMax };
   }, [parsed]);
+
+  // Put the interaction state back to 'ready' whenever the run identity
+  // changes. Tearing down only the timer (below) left `streaming` true with a
+  // dead timer chain, and nothing could ever set it false again: the Stream
+  // button stuck on "Streaming…" and the phase chip on "running", a dead end
+  // with no exit but Reset. This is React's documented adjust-state-during-
+  // render pattern rather than an effect, so no cascading render is queued.
+  const [runId, setRunId] = useState(run);
+  if (run !== runId) {
+    setRunId(run);
+    setStreaming(false);
+    setShown(0);
+    setDidReset(false);
+  }
 
   // Clear any pending stream timer on unmount or when the run changes.
   useEffect(() => {
@@ -150,9 +178,14 @@ export function MetricsExplorer({ source }: { source: string }) {
   }, [run]);
 
   // The parse/error early-return happens only AFTER all hooks are declared.
-  if (!parsed.ok || !run || !geom) {
-    return <ErrorCard message={parsed.ok ? "no run" : parsed.error} />;
+  if (!parsed.ok) {
+    return <ErrorCard message={parsed.error} />;
   }
+  // Pure narrowing for TypeScript: `run` is null only when !parsed.ok and
+  // `geom` only when !run, so both are non-null here. This used to render an
+  // ErrorCard reading "qmetrics error: no run" — a compiler artifact dressed up
+  // as a user-facing failure mode that could never actually occur.
+  if (!run || !geom) return null;
 
   const { history } = run;
   const { threshold } = parsed;
@@ -167,9 +200,12 @@ export function MetricsExplorer({ source }: { source: string }) {
 
   const onStream = () => {
     // Ignore re-clicks while a stream is already in flight (was silently
-    // restarting the run from the first iteration).
+    // restarting the run from the first iteration). This guard is exactly
+    // co-extensive with `streaming`, which is why the button no longer needs a
+    // `disabled` attribute — and why the stopStream() that used to sit on the
+    // next line was dead: past this return, timerRef.current is provably null.
     if (timerRef.current !== null) return;
-    stopStream();
+    setDidReset(false);
     if (reducedMotion) {
       setShown(total);
       return;
@@ -196,6 +232,7 @@ export function MetricsExplorer({ source }: { source: string }) {
     stopStream();
     setStreaming(false);
     setShown(0);
+    setDidReset(true);
   };
 
   const { sx, sy, previewPath, yLo, yHi } = geom;
@@ -208,27 +245,37 @@ export function MetricsExplorer({ source }: { source: string }) {
   const lastEnergy = visible.length > 0 ? visible[lastIndex] : history[0];
   const thresholdY = Math.max(PLOT.padT, Math.min(PLOT.h - PLOT.padB, sy(threshold)));
   const belowThreshold = started && lastEnergy <= threshold;
-  const phase = streaming ? "running" : started ? (belowThreshold ? "met" : "stopped") : "ready";
+  // "unmet" is reachable only after a full run finishes above the tol — the
+  // Stream button cannot pause and Reset returns to "ready" — so the old
+  // "stopped" literal named a halt that never happened. It renders as the
+  // spelled-out mirror of "tol met", matching the announcement below.
+  const phase = streaming ? "running" : started ? (belowThreshold ? "met" : "unmet") : "ready";
+  const phaseLabel =
+    phase === "met" ? "tol met" : phase === "unmet" ? "tol not met" : phase;
 
   const streamStatus = streaming
     ? `Streaming ${total} iterations.`
     : shown >= total && shown > 0
-      ? `Converged to ${hartreeSR(lastEnergy)} at iteration ${lastIndex}; stopping_condition ${belowThreshold ? "met" : "not met"}.`
-      : "";
+      ? `Converged to ${hartreeSR(lastEnergy)} at iteration ${lastIndex}; convergence tol ${belowThreshold ? "met" : "not met"}.`
+      : didReset
+        ? "Reset; not started."
+        : "";
 
   const plotAria =
     `Live VQE convergence metric. Iteration from 0 to ${total - 1} on the x axis, ` +
     `energy from ${hartreeSR(yHi, 2)} to ${hartreeSR(yLo, 2)} on the y axis. ` +
-    `A dashed stopping_condition threshold sits at ${hartreeSR(threshold, 3)}. ` +
+    `A dashed convergence tolerance sits at ${hartreeSR(threshold, 3)}. ` +
     (started
       ? `At iteration ${lastIndex} the energy is ${hartreeSR(lastEnergy)}.`
       : `Not started; the full curve is previewed.`);
 
   return (
     <WidgetCard
-      header={
-        <div className="flex flex-wrap items-center gap-2 border-b border-(--bd) px-4 py-2">
-          <EyebrowLabel>Live job metrics</EyebrowLabel>
+      eyebrow="Live job metrics"
+      eyebrowAs="h3"
+      eyebrowId={headingId}
+      chips={
+        <>
           <Chip>R = {formatAngstrom(parsed.R)}</Chip>
           <Chip>metric: energy</Chip>
           <span
@@ -237,20 +284,20 @@ export function MetricsExplorer({ source }: { source: string }) {
                 ? "rounded-chip bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[11px] font-mono text-emerald-700 dark:text-emerald-300"
                 : phase === "running"
                   ? "rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300"
-                  : "rounded-chip bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[11px] font-mono text-gray-600 dark:text-gray-300"
+                  : "rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-[11px] font-mono text-caption"
             }
           >
-            {phase === "met" ? "stopping_condition met" : phase}
+            {phaseLabel}
           </span>
-        </div>
+        </>
       }
     >
       <div className="flex flex-col gap-6 px-4 py-4 sm:flex-row">
         {/* Metric chart */}
         <div className="min-w-0 flex-1">
-          <h3 id={headingId} className="sr-only">
-            Live job metrics: VQE energy per iteration
-          </h3>
+          {/* The card's eyebrow is now the real h3 (eyebrowAs/eyebrowId), so the
+              extra sr-only heading that used to live here would duplicate both
+              the heading and its id. */}
           <svg
             viewBox={`0 0 ${PLOT.w} ${PLOT.h}`}
             width={PLOT.w}
@@ -279,7 +326,8 @@ export function MetricsExplorer({ source }: { source: string }) {
               className="text-gray-300 dark:text-gray-600"
             />
 
-            {/* stopping_condition threshold line */}
+            {/* convergence tolerance line (an ENERGY target — see the naming
+                note at the top of this file; it is not stopping_condition) */}
             <line
               x1={PLOT.padL}
               y1={thresholdY}
@@ -298,7 +346,7 @@ export function MetricsExplorer({ source }: { source: string }) {
               className="fill-amber-600 dark:fill-amber-400 font-mono"
               aria-hidden="true"
             >
-              stopping_condition
+              convergence tol
             </text>
 
             {/* faint preview when idle */}
@@ -366,9 +414,7 @@ export function MetricsExplorer({ source }: { source: string }) {
 
         {/* Readout + controls */}
         <div className="min-w-0 sm:w-56 sm:shrink-0">
-          <p className="sr-only" role="status" aria-live="polite">
-            {streamStatus}
-          </p>
+          <LiveStatus>{streamStatus}</LiveStatus>
           <dl className="space-y-1.5 font-mono text-xs tabular-nums">
             <div className="flex items-center justify-between gap-2">
               <dt className="text-caption">iteration</dt>
@@ -383,7 +429,7 @@ export function MetricsExplorer({ source }: { source: string }) {
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-caption">threshold</dt>
+              <dt className="text-caption">tol</dt>
               <dd className="text-(--ink)">
                 {formatHartree(threshold)}
               </dd>
@@ -391,12 +437,18 @@ export function MetricsExplorer({ source }: { source: string }) {
           </dl>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
+            {/* Deliberately NOT `disabled` while streaming: the browser drops
+                focus to <body> when the focused element disables itself and
+                never restores it, so a keyboard user's next Tab restarted from
+                the top of the document. The timerRef guard in onStream already
+                makes re-clicks no-ops, so `disabled` only ever cost focus.
+                aria-disabled keeps AT informed of the unavailable state. */}
             <button
               type="button"
               onClick={onStream}
-              disabled={streaming}
+              aria-disabled={streaming || undefined}
               aria-busy={streaming}
-              className={primaryActionClass}
+              className={`${primaryActionClass}${streaming ? " opacity-60" : ""}`}
             >
               {streaming ? "Streaming…" : "Stream"}
             </button>
@@ -413,11 +465,16 @@ export function MetricsExplorer({ source }: { source: string }) {
 
       {/* Caption */}
       <div className="border-t border-(--bd) px-4 py-3">
-        <p className="text-xs leading-relaxed text-(--mut)">
+        <p className="text-xs leading-relaxed text-caption">
           This is what <span className="font-mono">log_metric</span> &rarr;
           CloudWatch shows while a Hybrid Job runs: each point is one optimizer
           iteration the managed device reports back, and the dashed line is the
-          job&apos;s stopping_condition.
+          convergence <span className="font-mono">tol</span> your algorithm
+          script checks each iteration to return early. That halt is your code —
+          Braket&apos;s{" "}
+          <span className="font-mono">stopping_condition</span> is a separate
+          wall-clock backstop and takes only{" "}
+          <span className="font-mono">maxRuntimeInSeconds</span>.
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-caption">
           Honesty note: the curve is a genuine single-qubit VQE optimization from

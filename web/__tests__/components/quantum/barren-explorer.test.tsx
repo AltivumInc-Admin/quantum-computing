@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { BarrenExplorer } from "@/components/quantum/barren-explorer";
 
 function mockMatchMedia(reduced: boolean) {
@@ -18,10 +18,12 @@ describe("BarrenExplorer", () => {
   it("renders the Barren plateaus header and both cost legends", () => {
     render(<BarrenExplorer source={JSON.stringify({ depth: 2, samples: 120 })} />);
     expect(screen.getByText(/barren plateaus/i)).toBeInTheDocument();
-    // Target the legend specifically; the variance readout also mentions
-    // "global"/"local", so the bare word would now match multiple elements.
-    expect(screen.getByText(/global cost/i)).toBeInTheDocument();
-    expect(screen.getByText(/local cost/i)).toBeInTheDocument();
+    // Target the legend specifically; the variance readout and the callout also
+    // mention "global"/"local cost", so a bare word (or even "local cost") now
+    // matches multiple elements — the parenthesized dash pattern is unique to
+    // the legend swatches.
+    expect(screen.getByText(/global cost \(solid\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/local cost \(dashed\)/i)).toBeInTheDocument();
   });
   it("rejects malformed JSON with the example-shaped error", () => {
     render(<BarrenExplorer source={"{not json"} />);
@@ -38,5 +40,36 @@ describe("BarrenExplorer", () => {
   it("rejects out-of-range samples with the exact error", () => {
     render(<BarrenExplorer source={JSON.stringify({ samples: 5 })} />);
     expect(screen.getByText(/samples must be a number in 10\.\.2000 \(got 5\)/)).toBeInTheDocument();
+  });
+  it("distinguishes the two curves by dash pattern, not hue alone (WCAG 1.4.1)", () => {
+    const { container } = render(
+      <BarrenExplorer source={JSON.stringify({ depth: 2, samples: 40 })} />
+    );
+    const dashed = container.querySelectorAll('polyline[stroke-dasharray="6 3"]');
+    expect(dashed).toHaveLength(1); // the local-cost curve
+    expect(screen.getByText(/global cost \(solid\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/local cost \(dashed\)/i)).toBeInTheDocument();
+  });
+  it("renders decade ticks with a raised exponent, so 10^0 never reads as '100'", () => {
+    const { container } = render(
+      <BarrenExplorer source={JSON.stringify({ depth: 2, samples: 40 })} />
+    );
+    const tspans = Array.from(container.querySelectorAll("text > tspan"));
+    expect(tspans.length).toBeGreaterThan(0);
+    // Every decade sits in its own raised tspan rather than inline after "10".
+    for (const t of tspans) expect(t.getAttribute("dy")).toBe("-2.5");
+    expect(tspans.map((t) => t.textContent)).toContain("0");
+  });
+  it("moving the depth slider recomputes the variance readout", () => {
+    render(<BarrenExplorer source={JSON.stringify({ depth: 1, samples: 40 })} />);
+    const before = screen.getByRole("status").textContent;
+    act(() => {
+      fireEvent.change(screen.getByRole("slider"), { target: { value: "5" } });
+    });
+    const status = screen.getByRole("status");
+    expect(status.textContent).not.toEqual(before);
+    // Once the deferred sweep settles, no surface is left flagged stale.
+    expect(status).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("img")).toHaveAttribute("aria-busy", "false");
   });
 });

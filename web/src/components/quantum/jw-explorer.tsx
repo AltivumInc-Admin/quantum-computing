@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LiveStatus, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard, EyebrowLabel, LiveStatus, WidgetCard } from "./widget-ui";
 import { hfOccupation, jwTransform } from "./jw";
 import { clampInt, parseJsonObject } from "./parse-utils";
 
@@ -77,28 +77,39 @@ function parseSource(source: string): ParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Error card
+// Shared cell / toggle tones
 // ---------------------------------------------------------------------------
 
-function ErrorCard({ message }: { message: string }) {
-  return <SharedErrorCard label="qjw" message={message} />;
-}
+/**
+ * The resting state of every toggle in this card, on the same --bd/--field/--mut
+ * trio the Pauli and occupation cells directly beneath them already use (and
+ * that the shared GateChip models). The three toggle groups each carried a
+ * verbatim copy of a raw cool-gray string, so one card mixed two neutral
+ * systems within ~120px — most exposed at 375px, where the clusters stack.
+ */
+const UNSELECTED_TOGGLE =
+  "border border-(--bd) bg-(--field) text-(--mut) hover:text-(--ink) hover:bg-(--glass-2)";
 
-// ---------------------------------------------------------------------------
-// Pauli factor cell styling
-// ---------------------------------------------------------------------------
+/** The occupied/parity accent wash, shared by the Z factor and the occupied ket bit. */
+const ACCENT_FILL =
+  "bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-(--ink)";
 
-function factorClass(label: string): string {
+/** What a Pauli cell means, independent of the glyph drawn in it. */
+type FactorKind = "operator" | "parity" | "identity";
+
+function factorClass(kind: FactorKind): string {
   // Color via tokens only: the active X/Y factor reads as accent; the Z parity
   // string reads as a muted fill; identity stays faint.
-  if (label === "X" || label === "Y") {
-    return "border-transparent chip-selected";
-  }
-  if (label === "Z") {
-    return "border-transparent bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-(--ink)";
-  }
+  if (kind === "operator") return "border-transparent chip-selected";
+  if (kind === "parity") return `border-transparent ${ACCENT_FILL}`;
   return "border border-(--bd) bg-(--field) text-caption";
 }
+
+const FACTOR_GLYPH: Record<FactorKind, string> = {
+  operator: "X/Y",
+  parity: "Z",
+  identity: "I",
+};
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -110,8 +121,8 @@ export function JwExplorer({ source }: { source: string }) {
   const config = parsed.ok ? parsed.config : DEFAULT_CONFIG;
   const [mode, setMode] = useState(config.mode);
   const [dagger, setDagger] = useState(config.dagger);
-  const headingId = useId();
   const groupId = useId();
+  const typeGroupId = useId();
 
   // Hartree-Fock occupation ket for the configured electron count.
   const occupation = useMemo(
@@ -129,24 +140,25 @@ export function JwExplorer({ source }: { source: string }) {
     [activeMode, config.modes, dagger]
   );
 
-  // Per-qubit Pauli factor labels for the X (and Y) string. Both strings share
-  // the same Z-chain and identity tail; only the central factor differs, so a
+  // Per-qubit Pauli factors for the X (and Y) string. Both strings share the
+  // same Z-chain and identity tail; only the central factor differs, so a
   // single row of cells (with the X/Y label at the operator mode) tells the
-  // whole story alongside the formula.
+  // whole story alongside the formula. Cells carry a KIND, not a display
+  // string: the render used to re-parse the label ("X/Y" ? "X" : label) to pick
+  // a style, so renaming the visible text would have silently restyled the cell.
   const factors = useMemo(() => {
-    const out: { qubit: number; label: string }[] = [];
+    const out: { qubit: number; kind: FactorKind }[] = [];
     for (let q = 0; q < config.modes; q++) {
-      let label: string;
-      if (q < activeMode) label = "Z";
-      else if (q === activeMode) label = "X/Y";
-      else label = "I";
-      out.push({ qubit: q, label });
+      out.push({
+        qubit: q,
+        kind: q < activeMode ? "parity" : q === activeMode ? "operator" : "identity",
+      });
     }
     return out;
   }, [config.modes, activeMode]);
 
   if (!parsed.ok) {
-    return <ErrorCard message={parsed.error} />;
+    return <ErrorCard label="qjw" message={parsed.error} />;
   }
 
   const ket = occupation.join("");
@@ -161,6 +173,7 @@ export function JwExplorer({ source }: { source: string }) {
   return (
     <WidgetCard
       eyebrow="Jordan-Wigner mapping"
+      eyebrowAs="h3"
       chips={
         <>
           <Chip>{config.modes}q</Chip>
@@ -177,15 +190,9 @@ export function JwExplorer({ source }: { source: string }) {
       </LiveStatus>
 
       <div className="flex flex-col gap-6 px-4 py-4">
-        <h3 id={headingId} className="sr-only">
-          Jordan-Wigner mapping explorer
-        </h3>
-
         {/* Hartree-Fock occupation ket */}
         <div>
-          <p className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent">
-            Hartree-Fock reference
-          </p>
+          <EyebrowLabel className="block">Hartree-Fock reference</EyebrowLabel>
           <div className="mt-2 flex items-center gap-2">
             <span className="font-mono text-lg text-(--mut)">
               |
@@ -199,9 +206,7 @@ export function JwExplorer({ source }: { source: string }) {
                 <div key={q} className="flex flex-col items-center gap-1">
                   <span
                     className={`flex h-8 w-8 items-center justify-center rounded-control font-mono text-sm tabular-nums ${
-                      bit === 1
-                        ? "bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-(--ink)"
-                        : "border border-(--bd) bg-(--field) text-caption"
+                      bit === 1 ? ACCENT_FILL : "border border-(--bd) bg-(--field) text-caption"
                     }`}
                   >
                     {bit}
@@ -221,12 +226,9 @@ export function JwExplorer({ source }: { source: string }) {
         {/* Mode picker + dagger toggle */}
         <div className="flex flex-col gap-3">
           <div>
-            <p
-              id={groupId}
-              className="font-mono text-xs font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent"
-            >
+            <EyebrowLabel id={groupId} className="block">
               Operator mode
-            </p>
+            </EyebrowLabel>
             <div
               className="mt-2 flex flex-wrap gap-1.5"
               role="group"
@@ -242,9 +244,7 @@ export function JwExplorer({ source }: { source: string }) {
                     aria-pressed={selected}
                     aria-label={`Select spin-orbital ${q}`}
                     className={`h-8 w-9 rounded-control font-mono text-sm tabular-nums focus-ring transition-colors motion-reduce:transition-none ${
-                      selected
-                        ? "chip-selected"
-                        : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      selected ? "chip-selected" : UNSELECTED_TOGGLE
                     }`}
                   >
                     {q}
@@ -254,15 +254,24 @@ export function JwExplorer({ source }: { source: string }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* The mode picker above is a named role="group"; this mutually
+              exclusive pair used to be a bare div, so AT announced "creation a
+              dagger, toggle button, pressed" with no statement of what the
+              choice governs and no relationship between the two buttons. */}
+          <p id={typeGroupId} className="sr-only">
+            Operator type
+          </p>
+          <div
+            className="flex items-center gap-2"
+            role="group"
+            aria-labelledby={typeGroupId}
+          >
             <button
               type="button"
               onClick={() => setDagger(true)}
               aria-pressed={dagger}
               className={`rounded-control px-3 py-1.5 text-sm font-medium focus-ring transition-colors motion-reduce:transition-none ${
-                dagger
-                  ? "chip-selected"
-                  : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                dagger ? "chip-selected" : UNSELECTED_TOGGLE
               }`}
             >
               creation a&#8202;<sup>&#8224;</sup>
@@ -272,9 +281,7 @@ export function JwExplorer({ source }: { source: string }) {
               onClick={() => setDagger(false)}
               aria-pressed={!dagger}
               className={`rounded-control px-3 py-1.5 text-sm font-medium focus-ring transition-colors motion-reduce:transition-none ${
-                !dagger
-                  ? "chip-selected"
-                  : "border border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                !dagger ? "chip-selected" : UNSELECTED_TOGGLE
               }`}
             >
               annihilation a
@@ -310,11 +317,11 @@ export function JwExplorer({ source }: { source: string }) {
                 <div key={f.qubit} className="flex flex-col items-center gap-1">
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-control font-mono text-sm ${factorClass(
-                      f.label === "X/Y" ? "X" : f.label
+                      f.kind
                     )}`}
                     aria-hidden="true"
                   >
-                    {f.label}
+                    {FACTOR_GLYPH[f.kind]}
                   </span>
                   <span className="font-mono text-[10px] text-caption">
                     q{f.qubit}

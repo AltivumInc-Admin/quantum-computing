@@ -1,8 +1,8 @@
 "use client";
 
 import { useDeferredValue, useId, useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
-import { gradientVariance, type Cost } from "./barren";
+import { Chip, ErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
+import { gradientVariances } from "./barren";
 import { mulberry32 } from "./rng";
 import { extent, linearScale, plotInner, polylinePoints, type Plot } from "./chart-utils";
 
@@ -12,13 +12,21 @@ import { extent, linearScale, plotInner, polylinePoints, type Plot } from "./cha
  * hardware-efficient ansatz (RY(pi/4) seed + RY layers + CZ ring) across qubit
  * counts n = 2..8 and computes the variance of the parameter-shift gradient of
  * a fixed probed parameter, for BOTH a global cost (collapses ~2^-n — the McClean
- * barren plateau) and a local cost (stays in a band at shallow depth). The two
- * curves are drawn on a log10 axis so the exponential collapse reads as a line.
+ * barren plateau) and a local cost (erodes far more slowly at these depths). The
+ * two curves are drawn on a log10 axis so the exponential collapse reads as a line.
  * Pure client, static-export safe, no AWS.
+ *
+ * Shape: `BarrenExplorer` only parses, so a malformed fence renders the error
+ * card without paying for the sweep; `BarrenView` owns every hook and receives
+ * an already-validated config. (Hooks may not follow a conditional return, so
+ * before the split the n=2..8 x 2-cost sweep ran in full on the error path and
+ * was then discarded.)
  */
 
 const N_MIN = 2;
 const N_MAX = 8;
+const DEPTH_MIN = 1;
+const DEPTH_MAX = 5;
 const SVG: Plot = { w: 320, h: 200, padL: 40, padR: 16, padT: 16, padB: 32 };
 
 interface ParsedConfig {
@@ -26,35 +34,40 @@ interface ParsedConfig {
   samples: number;
 }
 
-interface ParseResult {
-  config?: ParsedConfig;
-  error?: string;
-}
+/** The single home of the fence defaults — previously restated three times. */
+const DEFAULTS: ParsedConfig = { depth: 2, samples: 300 };
+
+type ParseResult = { ok: true; config: ParsedConfig } | { ok: false; error: string };
 
 function parseConfig(source: string): ParseResult {
   const trimmed = source.trim();
   if (trimmed.length === 0) {
-    return { config: { depth: 2, samples: 300 } };
+    return { ok: true, config: DEFAULTS };
   }
   let raw: unknown;
   try {
     raw = JSON.parse(trimmed);
   } catch {
-    return { error: "expected JSON like { \"depth\": 2, \"samples\": 400 }" };
+    // Deliberately bespoke rather than parse-utils' generic "invalid JSON": the
+    // example shape is the fastest fix for a lesson author who mistyped a fence.
+    return { ok: false, error: "expected JSON like { \"depth\": 2, \"samples\": 400 }" };
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { error: "expected a JSON object" };
+    return { ok: false, error: "expected a JSON object" };
   }
   const obj = raw as Record<string, unknown>;
-  const depth = obj.depth === undefined ? 2 : Number(obj.depth);
-  const samples = obj.samples === undefined ? 300 : Number(obj.samples);
-  if (!Number.isInteger(depth) || depth < 1 || depth > 5) {
-    return { error: `depth must be an integer in 1..5 (got ${String(obj.depth)})` };
+  const depth = obj.depth === undefined ? DEFAULTS.depth : Number(obj.depth);
+  const samples = obj.samples === undefined ? DEFAULTS.samples : Number(obj.samples);
+  if (!Number.isInteger(depth) || depth < DEPTH_MIN || depth > DEPTH_MAX) {
+    return {
+      ok: false,
+      error: `depth must be an integer in ${DEPTH_MIN}..${DEPTH_MAX} (got ${String(obj.depth)})`,
+    };
   }
   if (!Number.isFinite(samples) || samples < 10 || samples > 2000) {
-    return { error: `samples must be a number in 10..2000 (got ${String(obj.samples)})` };
+    return { ok: false, error: `samples must be a number in 10..2000 (got ${String(obj.samples)})` };
   }
-  return { config: { depth, samples: Math.round(samples) } };
+  return { ok: true, config: { depth, samples: Math.round(samples) } };
 }
 
 interface Sweep {
@@ -81,34 +94,37 @@ function project(
 
 export function BarrenExplorer({ source }: { source: string }) {
   const parsed = useMemo(() => parseConfig(source), [source]);
-  const initDepth = parsed.config?.depth ?? 2;
-  const samples = parsed.config?.samples ?? 300;
+  if (!parsed.ok) {
+    return <ErrorCard label="barren" message={parsed.error} />;
+  }
+  return <BarrenView config={parsed.config} />;
+}
 
-  const [depth, setDepth] = useState(initDepth);
-  // Defer the heavy 7-qubit-count x 2-cost sweep so a depth drag stays
-  // responsive; the slider/chip use the immediate value and the plot dims
-  // while it catches up (the kernel-explorer deferral pattern, WS-5c).
+function BarrenView({ config }: { config: ParsedConfig }) {
+  const { samples } = config;
+  const [depth, setDepth] = useState(config.depth);
+  // Defer the heavy 7-qubit-count sweep so a depth drag stays responsive; the
+  // slider uses the immediate value and every surface that renders sweep output
+  // (plot, chip, readout) dims together while it catches up (WS-5c pattern).
   const deferredDepth = useDeferredValue(depth);
+  const stale = depth !== deferredDepth;
   const titleId = useId();
 
-  // Sweep n = 2..8 for both cost functions. Seeded per-n with mulberry32(n) so
-  // the plot is deterministic and the curves are comparable across costs.
+  // Sweep n = 2..8. Seeded per-n with mulberry32(n) so the plot is deterministic
+  // and the two cost curves are drawn from the same theta draws; gradientVariances
+  // builds each state pair once and reads both costs off it.
   const sweep = useMemo<Sweep>(() => {
     const ns: number[] = [];
     const global: number[] = [];
     const local: number[] = [];
     for (let n = N_MIN; n <= N_MAX; n++) {
+      const { global: g, local: l } = gradientVariances(n, deferredDepth, samples, mulberry32(n));
       ns.push(n);
-      const run = (cost: Cost) => gradientVariance(n, deferredDepth, cost, samples, mulberry32(n));
-      global.push(run("global"));
-      local.push(run("local"));
+      global.push(g);
+      local.push(l);
     }
     return { ns, global, local };
   }, [deferredDepth, samples]);
-
-  if (parsed.error || !parsed.config) {
-    return <SharedErrorCard label="barren" message={parsed.error} />;
-  }
 
   // log10 of the variance, floored away from log(0) so empty/zero points plot.
   const FLOOR = 1e-12;
@@ -125,26 +141,63 @@ export function BarrenExplorer({ source }: { source: string }) {
   const ticks: number[] = [];
   for (let d = loLog; d <= hiLog; d++) ticks.push(d);
 
+  // How far the local curve descends across the whole qubit sweep, in decades —
+  // used so the chart's accessible description states what it actually shows at
+  // this depth instead of asserting a fixed "stays in a band".
+  const localFall = logL[0] - logL[logL.length - 1];
+  const localBehaviour =
+    localFall < 0.15
+      ? "holds a nearly flat band"
+      : localFall < 0.5
+        ? "tilts down only slightly"
+        : "has started to erode, though it is still far from the global collapse";
+
+  const dimClass = stale ? "opacity-60" : "";
+
   return (
     <WidgetCard
       eyebrow="Barren plateaus"
       chips={
         <>
-          <Chip>depth = {depth}</Chip>
+          <Chip>depth = {deferredDepth}</Chip>
           <Chip>{samples} samples</Chip>
         </>
       }
     >
       <div className="px-4 py-4">
-        {/* Legend */}
+        {/* Legend — the dash pattern, not the hue, is what distinguishes the
+            curves (WCAG 1.4.1); it mirrors each polyline's strokeDasharray. */}
         <div className="mb-3 flex flex-wrap items-center gap-4 text-xs">
-          <span className="flex items-center gap-1.5 text-(--mut)">
-            <span className="inline-block h-0.5 w-5 rounded-full bg-accent" aria-hidden="true" />
-            global cost
+          <span className="flex items-center gap-1.5 text-caption">
+            <svg width={20} height={4} aria-hidden="true" className="shrink-0 overflow-visible">
+              <line
+                x1={0}
+                y1={2}
+                x2={20}
+                y2={2}
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                className="text-accent-dark dark:text-accent"
+              />
+            </svg>
+            global cost (solid)
           </span>
-          <span className="flex items-center gap-1.5 text-(--mut)">
-            <span className="inline-block h-0.5 w-5 rounded-full bg-amber-500" aria-hidden="true" />
-            local cost
+          <span className="flex items-center gap-1.5 text-caption">
+            <svg width={20} height={4} aria-hidden="true" className="shrink-0 overflow-visible">
+              <line
+                x1={0}
+                y1={2}
+                x2={20}
+                y2={2}
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeDasharray="6 3"
+                strokeLinecap="round"
+                className="text-amber-600 dark:text-amber-400"
+              />
+            </svg>
+            local cost (dashed)
           </span>
         </div>
 
@@ -155,15 +208,13 @@ export function BarrenExplorer({ source }: { source: string }) {
           height={SVG.h}
           role="img"
           aria-labelledby={titleId}
-          aria-busy={depth !== deferredDepth}
-          className={`w-full max-w-[320px] mx-auto block transition-opacity ${
-            depth !== deferredDepth ? "opacity-60" : ""
-          }`}
+          aria-busy={stale}
+          className={`w-full max-w-[320px] mx-auto block transition-opacity ${dimClass}`}
         >
           <title id={titleId}>
             Variance of the parameter-shift gradient versus qubit count, log10 scale.
-            The accent curve collapses exponentially (barren plateau) while the amber
-            curve stays in a band at this depth.
+            The global-cost curve (solid) collapses exponentially — the barren plateau.
+            At depth {deferredDepth} the local-cost curve (dashed) {localBehaviour}.
           </title>
 
           {/* Y gridlines + decade labels */}
@@ -180,16 +231,23 @@ export function BarrenExplorer({ source }: { source: string }) {
                   strokeWidth={0.5}
                   className="text-gray-200 dark:text-gray-700"
                 />
+                {/* The exponent is a raised tspan, not an inline digit: `10{d}`
+                    rendered the d = 0 tick (which every reachable depth emits,
+                    since the largest variance is always < 1) as the literal
+                    glyphs "100" on a log axis whose value there is 1. */}
                 <text
                   x={SVG.padL - 4}
                   y={y}
                   textAnchor="end"
                   dominantBaseline="central"
                   fontSize={7}
-                  className="fill-gray-400 dark:fill-gray-500 font-mono"
+                  className="fill-gray-500 dark:fill-gray-400 font-mono"
                   aria-hidden="true"
                 >
-                  10{d}
+                  10
+                  <tspan dy={-2.5} fontSize={5}>
+                    {d}
+                  </tspan>
                 </text>
               </g>
             );
@@ -205,7 +263,7 @@ export function BarrenExplorer({ source }: { source: string }) {
                 y={SVG.h - SVG.padB + 12}
                 textAnchor="middle"
                 fontSize={7}
-                className="fill-gray-400 dark:fill-gray-500 font-mono"
+                className="fill-gray-500 dark:fill-gray-400 font-mono"
                 aria-hidden="true"
               >
                 {n}
@@ -223,25 +281,36 @@ export function BarrenExplorer({ source }: { source: string }) {
             qubits n
           </text>
 
-          {/* Global-cost curve */}
+          {/* Global-cost curve. accent-dark in light theme: the raw light --accent
+              is 2.79:1 on the surface, under the 3:1 WCAG 1.4.11 floor for a data
+              mark (the pairing PR #172 gave the sibling VQC loss stroke). */}
           <polyline
             points={polylinePoints(globalPts)}
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
-            className="text-accent"
+            className="text-accent-dark dark:text-accent"
           />
           {globalPts.map(({ x, y }, i) => (
-            <circle key={`g-${i}`} cx={x} cy={y} r={2} className="fill-accent" />
+            <circle
+              key={`g-${i}`}
+              cx={x}
+              cy={y}
+              r={2}
+              className="fill-accent-dark dark:fill-accent"
+            />
           ))}
 
-          {/* Local-cost curve */}
+          {/* Local-cost curve — dashed so the two series are separable without
+              hue (the pes-explorer HF-curve idiom), amber-600 in light theme to
+              clear 3:1 (amber-500 measures ~2.15:1 on the light glass). */}
           <polyline
             points={polylinePoints(localPts)}
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
-            className="text-amber-500 dark:text-amber-400"
+            strokeDasharray="6 3"
+            className="text-amber-600 dark:text-amber-400"
           />
           {localPts.map(({ x, y }, i) => (
             <circle
@@ -249,17 +318,20 @@ export function BarrenExplorer({ source }: { source: string }) {
               cx={x}
               cy={y}
               r={2}
-              className="fill-amber-500 dark:fill-amber-400"
+              className="fill-amber-600 dark:fill-amber-400"
             />
           ))}
         </svg>
 
         {/* Variance readout — a live region so the recomputed numbers are
-            announced when the depth slider changes. */}
+            announced when the depth slider changes. aria-busy holds the
+            announcement (and dims the text) until the deferred sweep settles,
+            so the polite region never narrates a value the plot is not showing. */}
         <p
           role="status"
           aria-live="polite"
-          className="mt-3 text-center text-xs font-mono tabular-nums text-(--mut)"
+          aria-busy={stale}
+          className={`mt-3 text-center text-xs font-mono tabular-nums text-caption transition-opacity ${dimClass}`}
         >
           Gradient variance at {N_MAX} qubits — global ≈ 10
           <sup>{logG[logG.length - 1].toFixed(1)}</sup>, local ≈ 10
@@ -270,8 +342,8 @@ export function BarrenExplorer({ source }: { source: string }) {
         <LabeledSlider
           label="depth"
           value={depth}
-          min={1}
-          max={5}
+          min={DEPTH_MIN}
+          max={DEPTH_MAX}
           step={1}
           parse={(s) => parseInt(s, 10)}
           onChange={setDepth}
@@ -284,9 +356,11 @@ export function BarrenExplorer({ source }: { source: string }) {
 
         {/* Callout */}
         <p className="mt-3 text-xs text-caption">
-          The accent curve&rsquo;s gradient variance vanishes roughly like 2
-          <sup>&minus;n</sup>: the optimizer faces an exponentially flat plateau. Raise
-          the depth slider and even the amber curve flattens (Cerezo 2021).
+          The global-cost curve&rsquo;s gradient variance vanishes roughly like 2
+          <sup>&minus;n</sup>: the optimizer faces an exponentially flat plateau. The
+          local cost buys trainability rather than immunity — raise the depth slider
+          and watch its band start to tilt as well. (Cerezo 2021 shows it collapses
+          too once depth grows past this slider&rsquo;s range.)
         </p>
       </div>
     </WidgetCard>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard, fieldClass } from "./widget-ui";
 import { parseJsonObject, readNumber } from "./parse-utils";
 import {
   INSTANCES,
@@ -192,9 +192,6 @@ function CompareBar({
   // Reduced motion: also skip the JS-driven width transition entirely (the
   // motion-reduce:transition-none class covers CSS, this guards inline styles).
   const transition = reduced ? "none" : undefined;
-  const ariaLabel = `${label}: wall-clock ${formatDuration(wallSec)}, total cost ${formatUsd(
-    cost
-  )}. ${note}`;
   const barColor = accent
     ? "color-mix(in oklab, var(--accent) 70%, transparent)"
     : "color-mix(in oklab, var(--accent) 24%, transparent)";
@@ -202,7 +199,7 @@ function CompareBar({
   return (
     <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-(--mut)">
+        <span className="text-xs font-semibold uppercase tracking-wide text-caption">
           {label}
         </span>
         <span className="text-[11px] text-caption">{note}</span>
@@ -225,8 +222,6 @@ function CompareBar({
         transition={transition}
         className="mt-2.5"
       />
-
-      <p className="sr-only">{ariaLabel}</p>
     </div>
   );
 }
@@ -265,13 +260,56 @@ function SubBar({
       <span
         role="img"
         aria-label={ariaLabel}
-        className="mt-1 block h-2.5 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden"
+        className="mt-1 block h-2.5 w-full rounded-full bg-(--track) overflow-hidden"
       >
         <span
           className="block h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none"
           style={{ width: `${(frac * 100).toFixed(2)}%`, background: barColor, transition }}
         />
       </span>
+    </div>
+  );
+}
+
+/**
+ * One labeled select. The provider and instance controls were two structurally
+ * identical 20-line blocks that each repeated the field chrome inline; this
+ * collapses them onto the shared `fieldClass` token (which WS-B7 moved onto the
+ * same --bd/--field/--ink tier this widget already used) plus the caller's own
+ * sizing, per that token's no-sizing contract.
+ */
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  label: ReactNode;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  ariaLabel: string;
+}) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="font-mono text-xs text-caption">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        className={`${fieldClass} px-2 py-1.5 font-mono text-xs`}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -292,8 +330,7 @@ export function JobExplorer({ source }: { source: string }) {
   const [provider, setProvider] = useState<Provider>(initial.provider);
   const [instance, setInstance] = useState<InstanceType>(initial.instance);
 
-  const providerId = useId();
-  const instanceId = useId();
+  const headingId = useId();
 
   const shots = initial.shots;
 
@@ -332,24 +369,28 @@ export function JobExplorer({ source }: { source: string }) {
     return <ErrorCard message={parsed.error} />;
   }
 
-  const headerAria = `Standalone tasks take ${formatDuration(
-    result.standaloneWall
-  )} at ${formatUsd(result.standaloneCost)}; the Hybrid Job takes ${formatDuration(
-    result.hybridWall
-  )} at ${formatUsd(result.hybridCost)}.`;
-
   return (
     <WidgetCard
-      header={
-        <div className="flex flex-wrap items-center gap-2 border-b border-(--bd) px-4 py-2">
-          <EyebrowLabel>Standalone vs Hybrid Job</EyebrowLabel>
+      eyebrow="Standalone vs Hybrid Job"
+      eyebrowAs="h3"
+      eyebrowId={headingId}
+      chips={
+        <>
           <Chip>{iterations} iter</Chip>
+          {/* shots drives ~99.6% of every dollar on screen at the GUIDE's
+              1000-shot default, so it cannot stay an invisible config value. */}
+          <Chip>{shots} shots</Chip>
           <Chip>{provider}</Chip>
-        </div>
+        </>
       }
     >
       <div className="flex flex-col gap-6 px-4 py-4">
-        <p className="sr-only">{headerAria}</p>
+        {/* Screen-reader exposure is deliberately one layer per level: the
+            visible label/value text carries each figure, each bar carries a
+            role="img" name, and the delta line below is the single live region.
+            A card-level sr-only summary and a per-panel one used to restate the
+            same four numbers, so every figure was announced three to four
+            times before the sentence that carries the teaching point. */}
 
         {/* Controls */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -367,7 +408,7 @@ export function JobExplorer({ source }: { source: string }) {
             ariaValueText={`${iterations} iterations`}
             display={iterations}
             rowClassName="flex flex-col gap-1"
-            labelClassName="font-mono text-xs text-(--mut)"
+            labelClassName="font-mono text-xs text-caption"
             valueWidth="w-12"
           />
 
@@ -384,7 +425,7 @@ export function JobExplorer({ source }: { source: string }) {
             ariaValueText={`${queueWaitSec.toFixed(0)} seconds`}
             display={`${queueWaitSec.toFixed(0)}s`}
             rowClassName="flex flex-col gap-1"
-            labelClassName="font-mono text-xs text-(--mut)"
+            labelClassName="font-mono text-xs text-caption"
             valueWidth="w-12"
           />
 
@@ -401,55 +442,26 @@ export function JobExplorer({ source }: { source: string }) {
             ariaValueText={`${iterSec.toFixed(1)} seconds`}
             display={`${iterSec.toFixed(1)}s`}
             rowClassName="flex flex-col gap-1"
-            labelClassName="font-mono text-xs text-(--mut)"
+            labelClassName="font-mono text-xs text-caption"
             valueWidth="w-12"
           />
 
           {/* provider + instance selects */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor={providerId}
-                className="font-mono text-xs text-(--mut)"
-              >
-                provider
-              </label>
-              <select
-                id={providerId}
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as Provider)}
-                aria-label="Quantum provider (per-shot QPU rates)"
-                className="rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 font-mono text-xs text-(--mut) focus-ring"
-              >
-                {PROVIDERS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor={instanceId}
-                className="font-mono text-xs text-(--mut)"
-              >
-                instance
-              </label>
-              <select
-                id={instanceId}
-                value={instance}
-                onChange={(e) => setInstance(e.target.value as InstanceType)}
-                aria-label="SageMaker ML instance for the Hybrid Job classical code"
-                className="rounded-control border border-(--bd) bg-(--field) px-2 py-1.5 font-mono text-xs text-(--mut) focus-ring"
-              >
-                {INSTANCE_KEYS.map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SelectField
+              label="provider"
+              value={provider}
+              options={PROVIDERS}
+              onChange={(v) => setProvider(v as Provider)}
+              ariaLabel="Quantum provider (per-shot QPU rates)"
+            />
+            <SelectField
+              label="instance"
+              value={instance}
+              options={INSTANCE_KEYS}
+              onChange={(v) => setInstance(v as InstanceType)}
+              ariaLabel="SageMaker ML instance for the Hybrid Job classical code"
+            />
           </div>
         </div>
 
@@ -472,7 +484,10 @@ export function JobExplorer({ source }: { source: string }) {
             wallFrac={result.hybridWall / result.maxWall}
             costFrac={result.hybridCost / result.maxCost}
             accent
-            note="priority access + instance"
+            // Naming the startup here is what makes the legitimate
+            // "hybrid is slower" state (queue wait at 0, or very few
+            // iterations) self-explanatory rather than looking broken.
+            note={`priority access, ${STARTUP_SEC}s startup + instance`}
             reduced={reduced}
           />
         </div>
@@ -492,15 +507,17 @@ export function JobExplorer({ source }: { source: string }) {
 
         {/* Honesty notes */}
         <p className="text-xs leading-relaxed text-caption">
-          The queue wait is an{" "}
-          <span className="font-medium text-(--mut)">
-            illustrative estimate
-          </span>{" "}
-          — real device queue times vary widely with demand. The cost rates are{" "}
-          <span className="font-medium text-(--mut)">real</span>{" "}
-          Braket per-task / per-shot and SageMaker hourly rates. The teaching point: a
-          Hybrid Job trades a small managed-instance charge for a large wall-clock
-          reduction via priority access.
+          Two inputs are{" "}
+          <span className="font-medium text-(--ink)">illustrative</span>: the
+          queue wait (real device queue times vary widely with demand) and the
+          one-time {STARTUP_SEC}s container startup this model assumes for the
+          Hybrid Job — that startup is what sets the break-even, so a short run
+          can legitimately finish sooner standalone. The QPU per-task /
+          per-shot rates are{" "}
+          <span className="font-medium text-(--ink)">Braket&apos;s published</span>{" "}
+          rates; the ML-instance hourly rates are representative on-demand prices.
+          The teaching point: a Hybrid Job trades a small managed-instance charge
+          for a large wall-clock reduction via priority access.
         </p>
       </div>
     </WidgetCard>

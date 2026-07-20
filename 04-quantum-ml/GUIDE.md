@@ -264,7 +264,9 @@ steps helps, because there is no slope to follow.
 See it happen. The plot below samples random circuits and tracks the gradient variance versus
 qubit count. The **global** cost (measuring all qubits) collapses exponentially; the **local** cost
 (measuring one qubit) stays in a band at shallow depth — the single most important mitigation.
-Then raise the depth slider and watch even the local cost eventually flatten (Cerezo et al.):
+Then raise the depth slider and watch the local band start to tilt too — locality buys trainability,
+not immunity, and Cerezo et al. show the local cost collapses as well once depth grows well past the
+range this slider offers:
 
 ```qcard
 {"id":"qml-barren-plateau-1","prompt":"In a barren plateau, how does the variance of the cost gradient scale with qubit count, and what is the single most important mitigation?","answer":"For random, expressive PQCs the gradient variance vanishes exponentially, roughly as `2^-n`, leaving a flat landscape. The single most important mitigation is using a local cost function (measuring one qubit instead of all)."}

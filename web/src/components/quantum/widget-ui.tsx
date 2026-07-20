@@ -99,6 +99,7 @@ export function Bar({
   labelClassName = "text-caption",
   valueClassName = "text-caption",
   valueWidth = "w-12",
+  ket = true,
   marker,
   ariaLabel,
 }: {
@@ -110,6 +111,14 @@ export function Bar({
   valueClassName?: string;
   /** Width class for the right-hand readout column (two-tone readouts use w-24). */
   valueWidth?: string;
+  /**
+   * Wrap the label in a Dirac ket (`|label⟩`). True for basis-state rows, which
+   * is every original caller. Pass `false` for labels that are not kets — the
+   * qham term list keys its rows on Pauli strings (`IIIZ`, `XXYY`), and that one
+   * hardcoded wrapper was the sole reason the widget hand-rolled its own copy of
+   * this row rather than reusing it.
+   */
+  ket?: boolean;
   /**
    * Expected-value marker: a thin vertical line inside the track at `fraction`.
    * Its presence switches the track to overflow-visible — at 100% the 2px line
@@ -131,7 +140,7 @@ export function Bar({
       aria-label={ariaLabel}
     >
       <span className={`w-12 shrink-0 font-mono text-xs ${labelClassName}`}>
-        |{label}&#10217;
+        {ket ? <>|{label}&#10217;</> : label}
       </span>
       <span
         className={`relative h-3 flex-1 rounded-full bg-(--track) ${
@@ -274,9 +283,29 @@ export function EyebrowLabel({
   );
 }
 
-export function Chip({ children }: { children: ReactNode }) {
+/**
+ * Chip tones. `neutral` is the resting descriptor. `warn` is the caution tier
+ * for a caveat the learner must carry (e.g. "STO-3G minimal basis" — a model
+ * limitation, not a feature), on the system's warm tokens rather than the raw
+ * `amber-100/amber-700` recipe two widgets had each hand-rolled: the same words
+ * were rendering neutral in qham and amber in qpes inside one lesson.
+ */
+export const CHIP_TONE: Record<"neutral" | "warn", string> = {
+  neutral: "border-(--bd) bg-(--field) text-caption",
+  warn: "border-warm/50 bg-warm/10 text-warm-dark dark:text-warm-light",
+};
+
+export function Chip({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "warn";
+}) {
   return (
-    <span className="rounded-chip border border-(--bd) bg-(--field) px-2.5 py-0.5 text-[11px] font-mono text-caption">
+    <span
+      className={`rounded-chip border px-2.5 py-0.5 text-[11px] font-mono ${CHIP_TONE[tone]}`}
+    >
       {children}
     </span>
   );

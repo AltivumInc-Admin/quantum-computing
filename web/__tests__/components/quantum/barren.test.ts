@@ -1,4 +1,4 @@
-import { gradientVariance } from "@/components/quantum/barren";
+import { gradientVariance, gradientVariances } from "@/components/quantum/barren";
 import { mulberry32 } from "@/components/quantum/rng";
 
 describe("barren", () => {
@@ -19,5 +19,22 @@ describe("barren", () => {
   it("is deterministic for a fixed seed", () => {
     expect(gradientVariance(4, 2, "global", 100, mulberry32(9)))
       .toBeCloseTo(gradientVariance(4, 2, "global", 100, mulberry32(9)), 12);
+  });
+
+  /**
+   * The explorer's sweep calls gradientVariances (one simulation pass, both
+   * costs) where it used to call gradientVariance twice with the same seed.
+   * Pinned float-EXACT, not toBeCloseTo: the shared pass and the zero-allocation
+   * RY butterfly it builds on are meant to be bit-for-bit substitutions, so a
+   * drift of even one ULP means one of them stopped being a pure optimization.
+   */
+  it("gradientVariances matches two same-seed gradientVariance calls exactly", () => {
+    for (const n of [2, 4, 6, 8]) {
+      for (const L of [1, 3, 5]) {
+        const fused = gradientVariances(n, L, 60, mulberry32(n));
+        expect(fused.global).toBe(gradientVariance(n, L, "global", 60, mulberry32(n)));
+        expect(fused.local).toBe(gradientVariance(n, L, "local", 60, mulberry32(n)));
+      }
+    }
   });
 });

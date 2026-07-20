@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Chip, ErrorCard as SharedErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
+import { Chip, ErrorCard, LabeledSlider, WidgetCard } from "./widget-ui";
 import { extent, linearScale, linePath, plotInner, type Plot } from "./chart-utils";
-import { H2 as H } from "./h2-data";
+import { H2, R_MAX, R_MIN, R_PITCH } from "./h2-data";
 import { h2Energies, oneQubitGroundEnergy } from "./chemistry";
-import { parseJsonObject } from "./parse-utils";
-import { formatHartree, formatAngstrom, hartreeSR, angstromSR } from "./format";
+import { parseJsonObject, readNumberInRange } from "./parse-utils";
+import { formatFixed, formatHartree, formatAngstrom, hartreeSR, angstromSR } from "./format";
 
 /**
  * Inline potential-energy-surface explorer rendered from a ```qpes fenced block.
@@ -32,31 +32,25 @@ const VQE_STRIDE = 6; // overlay a VQE dot every Nth fixture point
 type ParseResult = { ok: true; mark: number } | { ok: false; error: string };
 
 function parseSource(source: string): ParseResult {
-  const equilibrium = H.equilibrium.R;
   const base = parseJsonObject(source);
   if (!base.ok) return base;
-  if (base.obj === null) return { ok: true, mark: equilibrium };
-  const obj = base.obj;
-  const m = obj["mark"];
-  if (m === undefined) return { ok: true, mark: equilibrium };
-  if (typeof m !== "number" || !Number.isFinite(m)) {
-    return { ok: false, error: '"mark" must be a finite number' };
-  }
-  const lo = H.points[0].R;
-  const hi = H.points[H.points.length - 1].R;
-  if (m < lo || m > hi) {
-    return { ok: false, error: `"mark" must be within [${lo}, ${hi}] angstrom` };
-  }
-  return { ok: true, mark: m };
+  if (base.obj === null) return { ok: true, mark: H2.equilibrium.R };
+  const m = readNumberInRange(
+    base.obj,
+    "mark",
+    H2.equilibrium.R,
+    R_MIN,
+    R_MAX,
+    "angstrom"
+  );
+  if (!m.ok) return m;
+  return { ok: true, mark: m.value };
 }
 
-
-// ---------------------------------------------------------------------------
-// Error card
-// ---------------------------------------------------------------------------
-
-function ErrorCard({ message }: { message: string }) {
-  return <SharedErrorCard label="qpes" message={message} />;
+/** Snap onto the fixture's sampling grid — the lattice the scrubber steps on. */
+function snapR(R: number): number {
+  const n = Math.round((R - R_MIN) / R_PITCH);
+  return Math.min(R_MAX, Math.max(R_MIN, R_MIN + n * R_PITCH));
 }
 
 // ---------------------------------------------------------------------------
@@ -68,10 +62,9 @@ export function PesExplorer({ source }: { source: string }) {
 
   // Geometry of the curves + axis bounds — keyed on the (static) fixture.
   const geom = useMemo(() => {
-    const points = H.points;
-    const rs = points.map((p) => p.R);
-    const rMin = rs[0];
-    const rMax = rs[rs.length - 1];
+    const points = H2.points;
+    const rMin = R_MIN;
+    const rMax = R_MAX;
 
     const energies = points.flatMap((p) => [p.fci, p.hf]);
     const { min: eMin, max: eMax } = extent(energies);
@@ -92,14 +85,18 @@ export function PesExplorer({ source }: { source: string }) {
       .filter((_, i) => i % VQE_STRIDE === 0)
       .map((p) => ({ R: p.R, x: sx(p.R), y: sy(oneQubitGroundEnergy(p.c0, p.cz, p.cx)) }));
 
-    // Equilibrium (minimum FCI) marker.
-    const eqR = H.equilibrium.R;
-    const eqFci = H.equilibrium.fci;
-    // Well depth: right-edge FCI minus minimum FCI (in Ha).
+    // Minimum-FCI marker. loadH2Curve pins `equilibrium` to the argmin of
+    // `points`, so this coordinate pair is guaranteed to sit ON the FCI path.
+    const eqR = H2.equilibrium.R;
+    const eqFci = H2.equilibrium.fci;
+    // The FCI energy at the RIGHT EDGE of the sampled domain — deliberately not
+    // called the dissociation asymptote. H2 is not dissociated at R = 2.70 A:
+    // the curve is still climbing 0.28 mHa over the final 0.05 A step, and it
+    // sits 1.42 mHa BELOW its own STO-3G limit 2*E(H, STO-3G) = -0.933164 Ha
+    // (computed from the STO-3G hydrogen contraction). So `rightDepth` is a
+    // lower bound on the well depth, not the well depth.
     const rightFci = points[points.length - 1].fci;
-    const wellDepth = rightFci - eqFci;
-    // Dissociation asymptote: right-edge FCI energy.
-    const asymptote = rightFci;
+    const rightDepth = rightFci - eqFci;
 
     return {
       points,
@@ -114,13 +111,15 @@ export function PesExplorer({ source }: { source: string }) {
       vqeDots,
       eqR,
       eqFci,
-      wellDepth,
-      asymptote,
+      rightFci,
+      rightDepth,
     };
   }, []);
 
+  // Seeded onto the scrubber's own lattice so the thumb, the readout and the
+  // aria-valuetext cannot disagree from first paint.
   const [mark, setMark] = useState(() =>
-    parsed.ok ? parsed.mark : H.equilibrium.R
+    snapR(parsed.ok ? parsed.mark : H2.equilibrium.R)
   );
 
   // Read FCI/HF/gap at the current scrubber position.
@@ -131,7 +130,7 @@ export function PesExplorer({ source }: { source: string }) {
 
   // The parse/error early-return happens only AFTER all hooks are declared.
   if (!parsed.ok) {
-    return <ErrorCard message={parsed.error} />;
+    return <ErrorCard label="qpes" message={parsed.error} />;
   }
 
   const { sx, sy, rMin, rMax, yLo, yHi } = geom;
@@ -154,9 +153,7 @@ export function PesExplorer({ source }: { source: string }) {
       chips={
         <>
           <Chip>H&#8322; dissociation</Chip>
-          <span className="rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300">
-            STO-3G minimal basis
-          </span>
+          <Chip tone="warn">STO-3G minimal basis</Chip>
         </>
       }
     >
@@ -191,12 +188,13 @@ export function PesExplorer({ source }: { source: string }) {
               className="text-gray-300 dark:text-gray-600"
             />
 
-            {/* dissociation asymptote */}
+            {/* right-edge FCI reference (NOT the true dissociation asymptote —
+                see the honesty note below) */}
             <line
               x1={PLOT.padL}
-              y1={sy(geom.asymptote)}
+              y1={sy(geom.rightFci)}
               x2={PLOT.w - PLOT.padR}
-              y2={sy(geom.asymptote)}
+              y2={sy(geom.rightFci)}
               stroke="currentColor"
               strokeWidth={0.8}
               strokeDasharray="3 3"
@@ -269,6 +267,36 @@ export function PesExplorer({ source }: { source: string }) {
               className="fill-accent dark:fill-accent-light"
             />
 
+            {/* axis ticks. The plot's aria-label already spells the domain and
+                range out for AT; without these a sighted learner could not tell
+                where 1 A sits or how deep the well is. Matches the qvqe ticks. */}
+            {[rMin, rMax].map((r, i) => (
+              <text
+                key={`tx-${i}`}
+                x={sx(r)}
+                y={PLOT.h - PLOT.padB + 9}
+                textAnchor={i === 0 ? "start" : "end"}
+                fontSize={7}
+                className="fill-gray-500 dark:fill-gray-400 font-mono"
+                aria-hidden="true"
+              >
+                {formatFixed(r, 1)}
+              </text>
+            ))}
+            {[yHi, yLo].map((e, i) => (
+              <text
+                key={`ty-${i}`}
+                x={PLOT.padL - 3}
+                y={i === 0 ? PLOT.padT + 6 : PLOT.h - PLOT.padB - 1}
+                textAnchor="end"
+                fontSize={7}
+                className="fill-gray-500 dark:fill-gray-400 font-mono"
+                aria-hidden="true"
+              >
+                {formatFixed(e, 2)}
+              </text>
+            ))}
+
             {/* axis labels (decorative) */}
             <text
               x={PLOT.padL + innerW / 2}
@@ -334,7 +362,10 @@ export function PesExplorer({ source }: { source: string }) {
             value={mark}
             min={rMin}
             max={rMax}
-            step={0.01}
+            // The fixture's own sampling pitch, as the sibling qham slider uses:
+            // 0.01 needed ~240 arrow presses to cross the domain and put 4 of
+            // every 5 stops on a pure interpolant dressed up as a data point.
+            step={R_PITCH}
             onChange={setMark}
             ariaLabel="Bond length scrubber in angstrom"
             ariaValueText={`${angstromSR(mark)}; FCI ${hartreeSR(readout.fci, 3)}, Hartree-Fock ${hartreeSR(readout.hf, 3)}, gap ${hartreeSR(readout.gap, 3)}`}
@@ -361,8 +392,11 @@ export function PesExplorer({ source }: { source: string }) {
 
           {/* equilibrium / well-depth facts */}
           <dl className="mt-3 space-y-1.5 border-t border-(--bd) pt-3 font-mono text-xs tabular-nums text-caption">
+            {/* Labelled for what these numbers ARE: readings off a curve
+                sampled on a 0.05 A grid between 0.30 and 2.70 A, not converged
+                molecular constants. */}
             <div className="flex items-center justify-between gap-2">
-              <dt>equilibrium R</dt>
+              <dt>lowest sampled R</dt>
               <dd className="text-(--mut)">{formatAngstrom(geom.eqR)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
@@ -370,12 +404,12 @@ export function PesExplorer({ source }: { source: string }) {
               <dd className="text-(--mut)">{formatHartree(geom.eqFci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt>well depth</dt>
-              <dd className="text-(--mut)">{formatHartree(geom.wellDepth)}</dd>
+              <dt>FCI at {formatAngstrom(rMax)}</dt>
+              <dd className="text-(--mut)">{formatHartree(geom.rightFci)}</dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt>asymptote</dt>
-              <dd className="text-(--mut)">{formatHartree(geom.asymptote)}</dd>
+              <dt>depth to {formatAngstrom(rMax)}</dt>
+              <dd className="text-(--mut)">{formatHartree(geom.rightDepth)}</dd>
             </div>
           </dl>
         </div>
@@ -395,7 +429,16 @@ export function PesExplorer({ source }: { source: string }) {
           Honesty note: this is the STO-3G FCI curve, not the experimental exact
           PES. A minimal basis recovers full correlation only within its own tiny
           orbital space; the true potential energy surface needs a far larger
-          basis.
+          basis. Two limits are visible above. The molecule is not yet
+          dissociated at the right edge &mdash; the curve is still climbing, and
+          its own STO-3G limit 2&#183;E(H) = &minus;0.9332 Ha sits 1.4 mHa
+          <em> above</em> the reading at 2.70 &#8491;, so the dashed line and the
+          &ldquo;depth to 2.70 &#8491;&rdquo; figure are a lower bound rather
+          than a dissociation energy. And STO-3G overbinds: its full well depth
+          is 0.204 Ha (5.55 eV) against the measured 0.174 Ha (4.75 eV), with
+          its own minimum near 0.737 &#8491; against the measured 0.741 &#8491;
+          &mdash; the 0.75 &#8491; above is simply the lowest point on this
+          0.05 &#8491; grid.
         </p>
       </div>
     </WidgetCard>
