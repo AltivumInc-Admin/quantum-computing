@@ -338,21 +338,25 @@ Check yourself:
 {
   "questions": [
     {
+      "id": "hard-device-topology-dense-qaoa",
       "q": "Your algorithm is QAOA on a dense graph where almost every qubit must interact with every other. Which hardware family fits best, and why?",
       "hint": "Dense interaction means many two-qubit gates between arbitrary pairs. Which connectivity avoids inserting `SWAP` chains for distant pairs?",
       "a": "A trapped-ion machine (IonQ Forte). Its all-to-all connectivity means any pair entangles directly — no `SWAP` overhead — which a dense interaction graph would otherwise incur heavily on a lattice device."
     },
     {
+      "id": "hard-local-sim-first",
       "q": "Why develop and debug on the Local simulator before anything else?",
       "hint": "Think about the three things real hardware is that a laptop simulator is not: metered, queued, and slow to iterate.",
       "a": "It is free, instant, and has no queue, so you can iterate rapidly at zero cost. You reserve managed simulators and QPUs for circuits you have already validated locally."
     },
     {
+      "id": "hard-dm1-vs-sv1",
       "q": "What does DM1 give you that SV1 does not?",
       "hint": "The names are the clue: state vector vs density matrix. One of those representations can express mixed (noisy) states.",
       "a": "Noise modeling. DM1 is a density-matrix simulator, so it can apply noise channels (depolarizing, amplitude damping, etc.) and show how they degrade results. SV1 is an exact, noiseless state-vector simulator."
     },
     {
+      "id": "hard-swap-routing-cnot",
       "q": "You want a `CNOT` between two qubits at opposite corners of a square-lattice device. What does that cost compared to the same gate on an all-to-all machine?",
       "hint": "On a lattice the two qubits aren't adjacent, so the router must bring them together first. What operation does that, and what is its overhead?",
       "a": "On the lattice the compiler inserts a chain of `SWAP` gates (each ~3 two-qubit gates) along the shortest path to make the qubits adjacent, adding depth and error. On an all-to-all machine the cost is zero — they are already connected."

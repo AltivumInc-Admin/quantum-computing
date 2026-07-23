@@ -28,8 +28,9 @@
  *     guards corpus-vs-GUIDE collisions; this closes GUIDE-vs-GUIDE).
  *
  * ```quiz fences are gated too, in their own table further down: same JSON-spec
- * + parser + ErrorCard shape, but no kind envelope, no id and no truth kernel
- * (a quiz grades nothing), so the Rep rules above do not apply to them.
+ * + parser + ErrorCard shape, with stable per-question ids that feed FSRS via
+ * learner self-rating (no auto-grader / truth kernel), so the Rep rules above
+ * do not apply to them.
  */
 import { readFileSync, readdirSync, existsSync } from "fs";
 import path from "path";
@@ -169,11 +170,12 @@ describe.each(fences.map((f, i) => [`${f.guide} ${f.token} #${i}`, f] as const))
 /**
  * ```quiz fences. Structurally the same shape as the six gated kinds — a JSON
  * spec, a dedicated parser, an ErrorCard degrade on any failure — but with no
- * `kind` envelope, no id, and no truth kernel, because a quiz is a
- * reveal-answer self-check that grades nothing. It therefore gets its own
- * collector rather than being folded into the Rep table above, but the same
- * guarantee: a typo'd fence fails CI instead of shipping as a parse-error card
- * where a 4-to-10 question self-check should be.
+ * `kind` envelope and no auto-grader: each question carries a stable `id` and
+ * the learner self-rates after reveal (Again/Hard/Good/Easy), feeding the same
+ * FSRS store as ```qcard under the `quiz:` card-key prefix. It therefore gets
+ * its own collector rather than being folded into the Rep table above, but the
+ * same guarantee: a typo'd fence fails CI instead of shipping as a parse-error
+ * card where a 4-to-10 question self-check should be.
  */
 function collectQuizFences(): { guide: string; body: string }[] {
   const out: { guide: string; body: string }[] = [];
@@ -203,10 +205,11 @@ describe.each(quizFences.map((f, i) => [`${f.guide} quiz #${i}`, f] as const))(
       expect(parseQuiz(f.body).error).toBeUndefined();
     });
 
-    it("gives every question a non-empty prompt and answer", () => {
+    it("gives every question a stable id, non-empty prompt, and answer", () => {
       const { questions } = parseQuiz(f.body);
       expect(questions.length).toBeGreaterThan(0);
       questions.forEach((q, i) => {
+        expect(q.id.trim() ? "" : `question ${i + 1} has an empty "id"`).toBe("");
         expect(q.q.trim() ? "" : `question ${i + 1} has an empty "q"`).toBe("");
         expect(q.a.trim() ? "" : `question ${i + 1} has an empty "a"`).toBe("");
         // `hint` is documented optional, but an empty string is authoring
@@ -218,6 +221,24 @@ describe.each(quizFences.map((f, i) => [`${f.guide} quiz #${i}`, f] as const))(
     });
   }
 );
+
+it("quiz question ids are unique across the whole curriculum (rename orphans progress)", () => {
+  const seen = new Map<string, string>();
+  for (const f of quizFences) {
+    const { questions } = parseQuiz(f.body);
+    for (const q of questions) {
+      const prior = seen.get(q.id);
+      expect(
+        prior === undefined
+          ? true
+          : `duplicate quiz id "${q.id}" in ${f.guide} (also ${prior})`,
+      ).toBe(true);
+      seen.set(q.id, f.guide);
+    }
+  }
+  // Placement + four end-of-module checks: 10 + 5 + 4 + 4 + 4 = 27.
+  expect(seen.size).toBeGreaterThanOrEqual(27);
+});
 
 it("the tier:'py' GUIDE fences map 1:1 to the e2e-coverage manifest (both directions)", () => {
   const pyFenceIds = fences

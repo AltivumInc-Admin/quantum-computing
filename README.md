@@ -448,7 +448,7 @@ Notebooks that import `braket.aws` **must not** be marked browser-runnable — t
 **Two interactive Markdown extensions** (wired in [`markdown-renderer.tsx`](web/src/components/markdown-renderer.tsx) by overriding the `pre` renderer):
 
 - ` ```qsim ` → **`CircuitLab`** — a live simulator from a tiny gate DSL (`H 0`, `CNOT 0 1`, `RY 0 theta`). Renders probability bars, the Dirac-notation state, a single-qubit Bloch dial, and a θ slider for slider-bound rotations.
-- ` ```quiz ` → **`Quiz`** — an interactive quiz from a JSON block (`{ questions: [{ q, hint?, a }] }`) with per-question hint/answer disclosures and a "show all" toggle.
+- ` ```quiz ` → **`Quiz`** — multi-question self-check from a JSON block (`{ questions: [{ id, q, hint?, a }] }`) with per-question hint/answer disclosures, a "show all" toggle, and Again/Hard/Good/Easy self-rating that feeds the FSRS review schedule (same mastery loop as `qcard`).
 
 **Design system.** A token-driven system in `globals.css`: a cascading surface scale (`--surface-*`), two-step elevation shadows, a radius scale (`--radius-chip/-control/-card`), an OKLCH accent (cyan) + warm (amber) palette, fluid `clamp()` typography with `text-wrap: balance`, per-section hues, and comprehensive `prefers-reduced-motion` coverage. Accessibility is first-class (focus-visible rings everywhere, `aria-*` on every interactive control, reduced-motion, decorative SVG hidden from AT).
 

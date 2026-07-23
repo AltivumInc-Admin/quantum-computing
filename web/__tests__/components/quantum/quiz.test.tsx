@@ -4,15 +4,18 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Quiz } from "@/components/quantum/quiz";
+import { quizCardId } from "@/lib/quiz-schema";
 
 const source = JSON.stringify({
   questions: [
     {
+      id: "test-matmul",
       q: "In NumPy, what is the difference between `M @ v` and `M * v`?",
       hint: "Think about shapes.",
       a: "`@` is matrix multiplication; `*` is elementwise multiplication.",
     },
     {
+      id: "test-conj",
       q: "Write the conjugate transpose of `M`.",
       hint: "Two operations chained together.",
       a: "`M.conj().T`.",
@@ -21,6 +24,8 @@ const source = JSON.stringify({
 });
 
 describe("Quiz", () => {
+  beforeEach(() => localStorage.clear());
+
   it("renders every question with a zero-padded number", () => {
     render(<Quiz source={source} />);
     expect(screen.getByText(/what is the difference between/i)).toBeInTheDocument();
@@ -121,7 +126,7 @@ describe("Quiz", () => {
     render(
       <Quiz
         source={JSON.stringify({
-          questions: [{ q: "A hintless question.", a: "Its answer." }],
+          questions: [{ id: "hintless", q: "A hintless question.", a: "Its answer." }],
         })}
       />
     );
@@ -147,9 +152,40 @@ describe("Quiz", () => {
   });
 
   it("shows a parse error for a non-string hint instead of crashing the render", () => {
-    render(<Quiz source={JSON.stringify({ questions: [{ q: "x", a: "y", hint: 5 }] })} />);
+    render(
+      <Quiz
+        source={JSON.stringify({
+          questions: [{ id: "x", q: "x", a: "y", hint: 5 }],
+        })}
+      />
+    );
     expect(screen.getByText(/quiz parse error/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /show all answers/i })).not.toBeInTheDocument();
+  });
+
+  it("requires a non-empty id on every question", () => {
+    render(
+      <Quiz
+        source={JSON.stringify({
+          questions: [{ id: "", q: "q", a: "a" }],
+        })}
+      />
+    );
+    expect(screen.getByText(/non-empty string "id"/i)).toBeInTheDocument();
+  });
+
+  it("rejects duplicate ids within one fence", () => {
+    render(
+      <Quiz
+        source={JSON.stringify({
+          questions: [
+            { id: "dup", q: "one", a: "a" },
+            { id: "dup", q: "two", a: "b" },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByText(/duplicate question id "dup"/i)).toBeInTheDocument();
   });
 
   it("treats an empty question set as malformed rather than rendering empty chrome", () => {
@@ -158,5 +194,71 @@ describe("Quiz", () => {
     expect(
       screen.queryByRole("button", { name: /show all answers/i })
     ).not.toBeInTheDocument();
+  });
+
+  it("shows self-rate buttons after an answer is revealed", () => {
+    render(<Quiz source={source} />);
+    expect(screen.queryByText("Good")).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /show answer/i })[0]);
+    for (const label of ["Again", "Hard", "Good", "Easy"]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.getByText(/how well did you recall it/i)).toBeInTheDocument();
+  });
+
+  it("schedules an FSRS card under the quiz: prefix and reports the next review", () => {
+    render(<Quiz source={source} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /show answer/i })[0]);
+    fireEvent.click(screen.getByText("Good"));
+    expect(screen.getByText(/next review/i)).toBeInTheDocument();
+    const key = `qc:card:${quizCardId("test-matmul")}`;
+    expect(localStorage.getItem(key)).not.toBeNull();
+    const state = JSON.parse(localStorage.getItem(key)!);
+    expect(state.reps).toBe(1);
+  });
+
+  it("re-grading a question that is no longer due is a no-op (interval-inflation guard)", () => {
+    render(<Quiz source={source} />);
+    fireEvent.click(screen.getAllByRole("button", { name: /show answer/i })[0]);
+    fireEvent.click(screen.getByText("Good"));
+    const key = `qc:card:${quizCardId("test-matmul")}`;
+    const first = JSON.parse(localStorage.getItem(key)!);
+    expect(first.reps).toBe(1);
+
+    fireEvent.click(screen.getByText("Good"));
+    const second = JSON.parse(localStorage.getItem(key)!);
+    expect(second.reps).toBe(1);
+    expect(second.dueEpochDay).toBe(first.dueEpochDay);
+    expect(screen.getByText(/schedule unchanged/i)).toBeInTheDocument();
+  });
+
+  it("caches prompt + answer for every question so /review can re-mount from the schedule", () => {
+    render(<Quiz source={source} />);
+    const cached1 = JSON.parse(
+      localStorage.getItem(`qc:card-content:${quizCardId("test-matmul")}`)!,
+    );
+    expect(cached1).toEqual({
+      prompt: "In NumPy, what is the difference between `M @ v` and `M * v`?",
+      answer: "`@` is matrix multiplication; `*` is elementwise multiplication.",
+    });
+    // No kind/source — dashboard falls back to the text recall card.
+    expect(cached1.kind).toBeUndefined();
+    expect(cached1.source).toBeUndefined();
+
+    const cached2 = JSON.parse(
+      localStorage.getItem(`qc:card-content:${quizCardId("test-conj")}`)!,
+    );
+    expect(cached2.prompt).toMatch(/conjugate transpose/i);
+  });
+
+  it("rates questions independently (grading one does not schedule the other)", () => {
+    render(<Quiz source={source} />);
+    fireEvent.click(screen.getByRole("button", { name: /show all answers/i }));
+    // Two Good buttons — grade only the first question's strip. Order follows
+    // document order: question 1's four ratings, then question 2's.
+    const goods = screen.getAllByText("Good");
+    fireEvent.click(goods[0]);
+    expect(localStorage.getItem(`qc:card:${quizCardId("test-matmul")}`)).not.toBeNull();
+    expect(localStorage.getItem(`qc:card:${quizCardId("test-conj")}`)).toBeNull();
   });
 });

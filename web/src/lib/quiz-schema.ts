@@ -1,14 +1,25 @@
 // Parse + validate the JSON inside a ```quiz fenced block.
 //
-// A quiz is a REVEAL-ANSWER SELF-CHECK, not a graded Rep: no learner input is
-// captured, no verdict is computed, and nothing is persisted. It therefore has
-// no truth kernel and no scheduler adapter — but it is still a JSON spec that
-// degrades to an error card on any mistake, so it belongs in the same
+// A quiz is a multi-question REVEAL-THEN-RATE self-check: the learner reveals
+// the worked answer, then self-rates (Again / Hard / Good / Easy) exactly like
+// a ```qcard. Each rated question becomes an FSRS card under `qc:card:quiz:<id>`
+// and resurfaces on /review as a text recall card. There is no auto-grader and
+// no truth kernel — honesty is the learner's, same as qcard.
+//
+// It still degrades to an error card on any mistake, so it belongs in the same
 // `@/lib/*-schema` layer the gated kinds use and is validated by the same
 // GUIDE-corpus gate (guide-reps.test.ts), rather than only at runtime in the
 // learner's browser.
+//
+// IMPORTANT: never rename or reuse a question `id` — it is the localStorage
+// key (via quizCardId), so a changed id silently orphans a learner's progress.
 
 export interface QuizQuestion {
+  /**
+   * Stable author id. Scoped under the `quiz:` card-key prefix so it cannot
+   * collide with a bare ```qcard id or a graded-Rep `kind:id` key.
+   */
+  id: string;
   q: string;
   /** Optional — see README's fence contract. The component branches on absence. */
   hint?: string;
@@ -18,6 +29,16 @@ export interface QuizQuestion {
 export interface ParsedQuiz {
   questions: QuizQuestion[];
   error?: string;
+}
+
+/**
+ * Review-card storage id for a quiz question: `quiz:<id>`. Mirrors
+ * `cardIdFor(kind, id)` for graded Reps, but quiz is not a live-widget CardKind
+ * (it always falls back to the text recall card on /review), so the prefix
+ * lives here rather than on that union.
+ */
+export function quizCardId(questionId: string): string {
+  return `quiz:${questionId}`;
 }
 
 export function parseQuiz(source: string): ParsedQuiz {
@@ -40,6 +61,7 @@ export function parseQuiz(source: string): ParsedQuiz {
     if (data.questions.length === 0) {
       throw new Error("quiz needs at least one question");
     }
+    const seen = new Set<string>();
     data.questions.forEach((item, i) => {
       // Guard the entry itself first: a `null` array element would otherwise
       // make the field reads below throw a raw TypeError, which the catch would
@@ -48,6 +70,13 @@ export function parseQuiz(source: string): ParsedQuiz {
         throw new Error(`question ${i + 1} must be an object`);
       }
       const q = item as Partial<QuizQuestion>;
+      if (typeof q.id !== "string" || !q.id.trim()) {
+        throw new Error(`question ${i + 1} needs a non-empty string "id"`);
+      }
+      if (seen.has(q.id)) {
+        throw new Error(`duplicate question id "${q.id}"`);
+      }
+      seen.add(q.id);
       if (typeof q.q !== "string" || typeof q.a !== "string") {
         throw new Error(`question ${i + 1} needs string "q" and "a" fields`);
       }

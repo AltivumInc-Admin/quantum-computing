@@ -411,57 +411,69 @@ If those feel routine, move on to [01-foundations](../01-foundations/GUIDE.md).
 
 Ten short questions. If you can answer at least seven without looking anything up, you
 are ready for `01-foundations`. Stuck on one? Reveal a hint. Want to check yourself? Show
-the answer under each question — but try first.
+the answer under each question — but try first. After you reveal, rate how well you
+recalled it (Again / Hard / Good / Easy); those ratings enter your spaced-repetition
+schedule so the skill comes back when you are about to forget it.
 
 ```quiz
 {
   "questions": [
     {
+      "id": "prereq-numpy-matmul-vs-elementwise",
       "q": "In NumPy, what is the difference between `M @ v` and `M * v`?",
       "hint": "Think about shapes. One of these follows the rows-times-columns rule of linear algebra and raises an error when the dimensions do not line up; the other just pairs entries position-by-position and broadcasts. Which is which?",
       "a": "`@` is matrix multiplication; `*` is elementwise multiplication."
     },
     {
+      "id": "prereq-conj-transpose",
       "q": "Write the NumPy expression for the conjugate transpose of a complex matrix `M`.",
       "hint": "It is two operations bolted together. One method flips the sign of the imaginary parts; one attribute swaps rows and columns. Chain them.",
       "a": "`M.conj().T`."
     },
     {
+      "id": "prereq-unitary-property",
       "q": "What property must a matrix `U` satisfy to be called unitary?",
       "hint": "A quantum gate must never change the length of a state vector. Write the equation that says exactly that, using the conjugate transpose (the dagger) and the identity matrix.",
       "a": "`U.conj().T @ U == I`, i.e. `U†U = I`."
     },
     {
+      "id": "prereq-born-rule-complex-amplitudes",
       "q": "Given `psi = [1/sqrt(2), 1j/sqrt(2)]`, what are `P(0)` and `P(1)`?",
       "hint": "Born rule: a probability is the squared magnitude of an amplitude. The magnitude of a complex number does not care whether it is real or imaginary — `|1j/sqrt(2)|` is just `1/sqrt(2)`. Square each amplitude's magnitude.",
       "a": "Both `0.5`. The imaginary unit in the second amplitude has magnitude 1, so `|1j/sqrt(2)|^2 = 1/2`."
     },
     {
+      "id": "prereq-dirac-to-numpy-inner-product",
       "q": "Translate `<0|H|+>` into a one-line NumPy expression.",
       "hint": "Walk the symbols left to right and substitute each using the Dirac-to-NumPy table in section 5: a bra becomes a conjugated row vector, a gate stays a matrix in the middle, a ket is its column vector, and adjacency becomes `@`. Recall that `|+>` is the equal superposition of `|0>` and `|1>`.",
       "a": "`np.array([1,0]).conj() @ H @ ((np.array([1,0]) + np.array([0,1]))/np.sqrt(2))` — and it equals `1`."
     },
     {
+      "id": "prereq-kronecker-two-qubit",
       "q": "What is `np.kron([1, 0], [0, 1])` numerically, and which two-qubit state does it represent?",
       "hint": "The Kronecker product of two single-qubit kets builds a four-entry vector for the two-qubit system. Write out the four amplitudes, find which position holds the lone `1`, then read off the basis label using the order `|q0 q1>`.",
       "a": "`[0, 1, 0, 0]` — the state `|01>`."
     },
     {
+      "id": "prereq-bloch-plus-minus",
       "q": "On the Bloch sphere, where does `|+>` live? Where does `|->` live?",
       "hint": "Both are equal superpositions, so they sit on the equator, not at the poles (the poles are `|0>` and `|1>`). They are antipodal to each other along the horizontal axis that carries the plus/minus sign.",
       "a": "`|+>` is on the positive X-axis of the equator; `|->` is on the negative X-axis."
     },
     {
+      "id": "prereq-bloch-polar-p0",
       "q": "If a qubit has Bloch polar angle `theta = pi/3`, what is `P(0)`?",
       "hint": "For a Bloch state, `P(0) = cos^2(theta/2)`. Halve the angle first, so `theta/2 = pi/6`, then evaluate the cosine you already know.",
       "a": "`cos^2(pi/6) = 3/4`."
     },
     {
+      "id": "prereq-plus-minus-same-z-stats",
       "q": "Why do `|+>` and `|->` give the same computational-basis measurement distribution?",
       "hint": "Write both as `(|0> ± |1>)/sqrt(2)`; the only difference is the sign on the `|1>` amplitude. Now apply the Born rule — does squaring a magnitude remember that minus sign?",
       "a": "The Born rule only sees `|alpha|^2` and `|beta|^2`. The sign of `beta` does not survive squaring. To distinguish them you have to apply a gate (e.g. `H`) before measuring."
     },
     {
+      "id": "prereq-born-rule-sentence",
       "q": "State the Born rule in one sentence.",
       "hint": "It is the rule that turns amplitudes into probabilities. For `|psi> = alpha|0> + beta|1>`, give the probability of each outcome — and say whether it depends on the amplitude itself or on its squared magnitude.",
       "a": "Measuring `|psi> = alpha|0> + beta|1>` in the computational basis yields outcome `0` with probability `|alpha|^2` and outcome `1` with probability `|beta|^2`."
