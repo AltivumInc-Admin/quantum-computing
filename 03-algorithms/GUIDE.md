@@ -312,21 +312,25 @@ $\epsilon$). It's the basis of quantum approaches to option pricing and risk ana
 {
   "questions": [
     {
+      "id": "algo-dj-one-query",
       "q": "Why does Deutsch–Jozsa need only ONE oracle query where a classical algorithm may need `2^(n-1) + 1` queries?",
       "hint": "Think about what the oracle is queried on, and what the final layer of Hadamards does to the resulting signs.",
       "a": "The oracle is queried once on a superposition of all `2^n` inputs at once. The final Hadamards make the phase-kicked amplitudes interfere: the all-zeros amplitude is `(1/N) * sum_x (-1)^f(x)`, which is `±1` for constant `f` and exactly `0` for balanced `f`. One query plus interference decides it."
     },
     {
+      "id": "algo-grover-geometry",
       "q": "What does a single Grover iteration do to the state, geometrically?",
       "hint": "It is two reflections back to back. Two reflections compose into what kind of transformation?",
       "a": "It rotates the state vector by a fixed angle toward the marked state: the oracle reflects about the marked state, then diffusion reflects about the uniform superposition, and two reflections make a rotation. The marked amplitude grows for about `(pi/4)*sqrt(N)` iterations, then over-rotates."
     },
     {
+      "id": "algo-qft-period",
       "q": "How does the QFT expose a hidden period `r` in a state?",
       "hint": "A periodic input has amplitude only on a comb of indices. Where do those terms interfere constructively in the output?",
       "a": "The QFT of a period-`r` comb interferes constructively only at output indices that are multiples of `N/r`, producing sharp spikes there and cancellation elsewhere. Reading the spike spacing recovers the period — the core of phase estimation and Shor's algorithm."
     },
     {
+      "id": "algo-qaoa-gamma-beta",
       "q": "In QAOA, what do the two angles `gamma` and `beta` control?",
       "hint": "One angle belongs to the cost unitary, the other to the mixer.",
       "a": "`gamma` scales the cost unitary `e^(-i*gamma*C)`, which imprints the optimization problem as phases; `beta` scales the mixer `RX(2*beta)` on every qubit, which spreads amplitude between assignments. A classical optimizer tunes `(gamma, beta)` to maximize the expected cut."

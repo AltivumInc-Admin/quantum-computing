@@ -449,26 +449,31 @@ Five questions that tie the module together. Try each before revealing the hint 
 {
   "questions": [
     {
+      "id": "found-plus-shot-stats",
       "q": "You prepare `|+>` and take 1,000 shots. Roughly how many `0` outcomes do you expect, and why is it never exactly 500?",
       "hint": "The Born rule fixes the true probability at 0.5; a finite sample fluctuates around the mean by an amount that grows like the square root of the shot count, not the count itself.",
       "a": "About 500, give or take ~16 — shot noise scales like `sqrt(N*p*q)`, and `sqrt(250)` is about 16. You only hit the exact 50/50 in the limit of infinitely many shots."
     },
     {
+      "id": "found-ry-axis-and-state",
       "q": "Which axis does `RY(theta)` rotate the Bloch vector about, and what state is `RY(pi)|0>`?",
       "hint": "The name says the axis. A `pi` rotation is a half-turn, which sends the north pole to the opposite pole.",
       "a": "About the Y-axis. `RY(pi)|0> = |1>` (up to global phase) — a half-turn from north pole to south pole."
     },
     {
+      "id": "found-global-phase-stats",
       "q": "Do `|+>` and `e^(i*pi/4)|+>` produce different measurement statistics?",
       "hint": "One of these differs from the other only by an overall (global) phase. Does the Born rule's squared magnitude remember a global phase?",
       "a": "No. A global phase is physically invisible — `|e^(i*pi/4)|^2 = 1`, so every outcome probability is identical. Only relative phase between `|0>` and `|1>` is observable."
     },
     {
+      "id": "found-bell-from-h-cnot",
       "q": "Starting from `|00>`, you apply `H` to qubit 0 then `CNOT(0,1)`. What state results, and is it entangled?",
       "hint": "H makes qubit 0 a 50/50 superposition; CNOT then flips qubit 1 in the half of the superposition where qubit 0 is 1. Try to factor the result into a tensor product of a qubit-0 state and a qubit-1 state.",
       "a": "`(|00> + |11>)/sqrt(2)`, the Bell state `|Phi+>`. It is entangled — there is no way to write it as a product of two single-qubit states."
     },
     {
+      "id": "found-bell-measurement-no-signaling",
       "q": "You share a Bell pair `|Phi+>` with a friend across the galaxy, measure your qubit, and get `1`. What will your friend's qubit give?",
       "hint": "`|Phi+>` has weight only on `|00>` and `|11>`. Given your outcome, which joint outcomes are still possible?",
       "a": "`1`, with certainty. The outcomes are perfectly correlated — though note this transmits no usable message faster than light, since your own result was random."

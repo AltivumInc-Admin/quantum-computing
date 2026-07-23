@@ -341,21 +341,25 @@ yourself:
 {
   "questions": [
     {
+      "id": "qml-encoding-matters",
       "q": "Why does the choice of data encoding matter so much in QML?",
       "hint": "Think about what the encoding determines before any training happens.",
       "a": "The encoding defines the quantum feature map — the geometry of the space the model operates in. A model can only separate what the encoding makes separable, so the encoding is a modeling decision, not a formality. (And over-scaling features aliases distinct inputs together, hurting accuracy.)"
     },
     {
+      "id": "qml-kernel-vs-vqc-tradeoff",
       "q": "What is the trade-off between quantum kernels and variational training?",
       "hint": "One uses a fixed feature map + a classical convex solver; the other trains the circuit itself.",
       "a": "Quantum kernels compute a fixed feature-map similarity K and hand it to a classical SVM — convex, no barren plateaus, but `O(n^2)` kernel evaluations in the dataset size. Variational training tunes the circuit end-to-end — flexible and compact, but the optimization is non-convex and can hit barren plateaus."
     },
     {
+      "id": "qml-barren-plateau",
       "q": "What is a barren plateau, and name one mitigation?",
       "hint": "It is about how the gradient behaves as you add qubits.",
       "a": "For random/expressive PQCs the variance of the cost gradient vanishes exponentially in qubit count (about `2^-n`), so the landscape is flat and the optimizer can't progress. Mitigations: use a LOCAL cost, keep the ansatz shallow/structured/problem-inspired, initialize near the identity, or train layer-by-layer."
     },
     {
+      "id": "qml-parameter-shift",
       "q": "What does the parameter-shift rule compute, and how many circuit runs does it need?",
       "hint": "It is an exact gradient, not an approximation.",
       "a": "The exact gradient of an expectation value with respect to a gate angle: `df/dtheta = (1/2)[f(theta + pi/2) - f(theta - pi/2)]` — just two circuit evaluations, with no finite-difference error."

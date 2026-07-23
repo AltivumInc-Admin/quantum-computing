@@ -1,26 +1,35 @@
 "use client";
 
-import { useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 // The LEAN import path (./error-card, not ./widget-ui): quiz needs only the
 // shell, the failure card, the eyebrow and the reveal-panel tones, and
 // widget-ui statically pulls the math kernel, the Dirac state readout, format
 // and CopyButton — none of which quiz can execute — straight into this
 // widget's own code-split chunk.
 import { cardShell, ErrorCard, EyebrowLabel, REVEAL_PANEL } from "./error-card";
-import { parseQuiz } from "@/lib/quiz-schema";
+import { parseQuiz, quizCardId } from "@/lib/quiz-schema";
+import { gradeCardIfDue, setCardContent } from "@/lib/review-store";
+import {
+  nextIntervalDays,
+  reviewDayPhrase,
+  type CardState,
+  type Rating,
+} from "@/lib/review-schedule";
 
 /**
  * Interactive self-check rendered from a ```quiz fenced block in a GUIDE.
- * Each question carries an optional thoughtful hint and a worked answer, both
- * revealed on demand so the learner chooses when to see them.
- *
- * This is a REVEAL-ANSWER self-check BY DESIGN: no answer is captured, no
- * verdict is computed, and nothing is persisted. It is not a graded Rep and
- * carries no schedule.
+ * Each question carries an optional thoughtful hint and a worked answer; the
+ * learner reveals the answer, then self-rates (Again / Hard / Good / Easy).
+ * A rating writes an FSRS card under `quiz:<id>` so the question resurfaces
+ * on /review — the same mastery loop as ```qcard, for multi-question section
+ * checkpoints (placement quiz, end-of-module checks).
  *
  * Data shape (JSON inside the fence) — parsed by @/lib/quiz-schema, which the
  * GUIDE-corpus gate validates at build time:
- *   { "questions": [ { "q": "...", "hint": "...", "a": "..." }, ... ] }
+ *   { "questions": [ { "id": "...", "q": "...", "hint": "...", "a": "..." }, ... ] }
+ *
+ * IMPORTANT: never rename or reuse a question `id` — it is the localStorage
+ * key, so a changed id silently orphans a learner's progress on that card.
  *
  * Rendering is client-side: like every fenced widget this mounts behind
  * widget-fence's approach gate with `ssr:false`, so the answer text arrives in
@@ -85,15 +94,64 @@ function HintIcon() {
   );
 }
 
+// Same four-button strip as ReviewCard — duplicated rather than shared so this
+// chunk stays free of review-card's heavier imports and the two surfaces can
+// evolve copy independently if needed.
+const RATINGS: { rating: Rating; label: string; tone: string }[] = [
+  {
+    rating: "again",
+    label: "Again",
+    tone: "border-warm/40 bg-warm/5 text-warm-dark dark:text-warm-light hover:bg-warm/10",
+  },
+  {
+    rating: "hard",
+    label: "Hard",
+    tone: "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
+  },
+  {
+    rating: "good",
+    label: "Good",
+    tone: "border-accent/30 bg-accent/5 text-accent-dark dark:text-accent-light hover:bg-accent/10",
+  },
+  {
+    rating: "easy",
+    label: "Easy",
+    tone: "border-accent/40 bg-accent/10 text-accent-dark dark:text-accent-light hover:bg-accent/20",
+  },
+];
+
+type GradeOutcome =
+  | { kind: "graded"; state: CardState }
+  | { kind: "noop" };
+
 export function Quiz({ source }: { source: string }) {
   const quiz = useMemo(() => parseQuiz(source), [source]);
   const [openHints, setOpenHints] = useState<ReadonlySet<number>>(new Set());
   const [openAnswers, setOpenAnswers] = useState<ReadonlySet<number>>(new Set());
+  // Per-question grade outcome, keyed by author id. Cleared never mid-session:
+  // a not-due re-rate just flips the same key to "noop".
+  const [outcomes, setOutcomes] = useState<ReadonlyMap<string, GradeOutcome>>(
+    () => new Map(),
+  );
   const baseId = useId();
+
+  // Cache every question's prompt/answer so /review can re-mount from the
+  // schedule alone (the schedule is keyed by card id only). Same contract as
+  // ReviewCard — a graded card whose content was never cached is dropped from
+  // the roster.
+  useEffect(() => {
+    if (quiz.error) return;
+    for (const item of quiz.questions) {
+      setCardContent(quizCardId(item.id), {
+        prompt: item.q,
+        answer: item.a,
+      });
+    }
+  }, [quiz]);
 
   const toggle = (
     setter: React.Dispatch<React.SetStateAction<ReadonlySet<number>>>,
-    i: number
+    i: number,
   ) =>
     setter((prev) => {
       const next = new Set(prev);
@@ -111,8 +169,22 @@ export function Quiz({ source }: { source: string }) {
 
   const toggleAll = () =>
     setOpenAnswers(
-      allOpen ? new Set() : new Set(quiz.questions.map((_, i) => i))
+      allOpen ? new Set() : new Set(quiz.questions.map((_, i) => i)),
     );
+
+  // Due-gated like ReviewCard / graded Reps: re-rating a card that is no
+  // longer due must not advance the schedule.
+  const onGrade = (questionId: string, rating: Rating) => {
+    const next = gradeCardIfDue(quizCardId(questionId), rating);
+    setOutcomes((prev) => {
+      const map = new Map(prev);
+      map.set(
+        questionId,
+        next ? { kind: "graded", state: next } : { kind: "noop" },
+      );
+      return map;
+    });
+  };
 
   return (
     <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
@@ -121,9 +193,7 @@ export function Quiz({ source }: { source: string }) {
             and an end-of-module retention check in the other four sections,
             whose own headings say "check yourself" — a hardcoded "Placement
             quiz" contradicted the heading directly above it in 4 of 5 sites. */}
-        <EyebrowLabel strong>
-          Self-check
-        </EyebrowLabel>
+        <EyebrowLabel strong>Self-check</EyebrowLabel>
         {/* No aria-pressed: the label already flips, and "Hide all answers,
             pressed" announces a state opposite to what the label names. The
             per-question controls use aria-expanded for the same reason. */}
@@ -143,8 +213,9 @@ export function Quiz({ source }: { source: string }) {
           const answerOpen = openAnswers.has(i);
           const hintId = `${baseId}-hint-${i}`;
           const answerId = `${baseId}-answer-${i}`;
+          const outcome = outcomes.get(item.id);
           return (
-            <li key={i} className="flex gap-3 sm:gap-4 px-4 sm:px-5 py-4">
+            <li key={item.id} className="flex gap-3 sm:gap-4 px-4 sm:px-5 py-4">
               <span className="shrink-0 w-9 h-9 rounded-chip bg-accent/10 text-accent-dark dark:text-accent-light font-bold text-sm flex items-center justify-center font-mono tabular-nums">
                 {String(i + 1).padStart(2, "0")}
               </span>
@@ -214,7 +285,36 @@ export function Quiz({ source }: { source: string }) {
                     <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.a)}
                     </p>
+
+                    <div className="mt-3 border-t border-accent/15 pt-3">
+                      <span className="block text-[11px] text-caption mb-1.5">
+                        How well did you recall it?
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {RATINGS.map(({ rating, label, tone }) => (
+                          <button
+                            key={rating}
+                            type="button"
+                            onClick={() => onGrade(item.id, rating)}
+                            className={`rounded-control border px-3 py-1.5 text-sm font-medium interactive focus-ring ${tone}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                {outcome && (
+                  <p
+                    role="status"
+                    className="mt-3 text-sm text-caption animate-fade-up"
+                  >
+                    {outcome.kind === "noop"
+                      ? "Schedule unchanged — this card was already reviewed and isn't due again yet."
+                      : `Next review ${reviewDayPhrase(nextIntervalDays(outcome.state))}.`}
+                  </p>
                 )}
               </div>
             </li>
