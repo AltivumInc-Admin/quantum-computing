@@ -209,10 +209,60 @@ export const en: TranslationDict = {
       other: "{{count}} sections",
     },
     summaryFallback: "Hands-on lessons and exercises.",
+    exploreSection: "Explore section",
+    notebookCount: {
+      one: "{{count}} notebook",
+      other: "{{count}} notebooks",
+    },
+    glossaryEyebrow: "Reference",
+    glossaryTitle: "Glossary",
+    glossaryBody:
+      "Look up any quantum term, A to Z — each linked to the lesson that teaches it.",
+    glossaryCta: "Browse terms",
+    glossaryAria: "Glossary, an A to Z reference of quantum terms",
     tutorMockTitle: "Ask the margin",
     tutorMockReading: "Reading: 03 — Quantum Algorithms",
     tutorMockQuestion: "Why does Grover's search only need about √N queries?",
     tutorMockAnswer:
       "Each Grover iteration rotates the state a fixed angle toward the marked item, so its amplitude — not just its probability — grows with every step. Amplitudes square into probabilities, which is where the quadratic speedup lives: about π/4·√N iterations instead of N/2 checks.",
+  },
+  // Card display titles + short blurbs for the welcome curriculum grid.
+  // Full GUIDE.md prose stays English until Phase 2 content translation.
+  sections: {
+    "00-prereqs": {
+      title: "Prerequisites: From Zero to Ready-for-Quantum",
+      summary:
+        "This is the on-ramp module. If you have no quantum background, start here. By the end of this module you will have the math, code, and intuition to read the rest of the curriculum.",
+    },
+    "01-foundations": {
+      title: "Quantum Computing Foundations",
+      summary:
+        "Qubits, superposition, entanglement, and measurement — taught by running circuits, not by staring at equations alone.",
+    },
+    "02-hardware": {
+      title: "Quantum Hardware on Amazon Braket",
+      summary:
+        "What a qubit physically is, how each machine trades speed against fidelity, and what QPU time actually costs before you spend a cent.",
+    },
+    "03-algorithms": {
+      title: "Quantum Algorithms",
+      summary:
+        "The canon, hands-on: Deutsch-Jozsa, Grover, the quantum Fourier transform, and phase estimation — built gate by gate.",
+    },
+    "04-quantum-ml": {
+      title: "Quantum Machine Learning",
+      summary:
+        "Variational circuits as models: encode data, train parameterized gates, and judge when a quantum model earns its keep.",
+    },
+    "05-quantum-chemistry": {
+      title: "Quantum Chemistry & Biochemistry",
+      summary:
+        "Map molecular Hamiltonians onto qubits, run VQE for ground-state energies, and simulate real molecules with OpenFermion.",
+    },
+    "06-hybrid-jobs": {
+      title: "Production Hybrid Quantum-Classical Jobs",
+      summary:
+        "From notebook to production: Braket Hybrid Jobs with priority QPU access, checkpointing, and cost controls.",
+    },
   },
 };
