@@ -143,4 +143,77 @@ export const es: TranslationDict = {
       other: "Nada pendiente. Próximo ejercicio en {{count}} días.",
     },
   },
+  home: {
+    eyebrow: "Aprende computación cuántica, de forma práctica",
+    headlineLead: "Domina la computación cuántica",
+    headlineDim: "desde los fundamentos",
+    subtitle:
+      "Desde los fundamentos de circuitos hasta cargas híbridas de producción — un playground en vivo, hardware cuántico real y un tutor de IA al margen. Gratis, en tu navegador.",
+    signUpFree: "Regístrate gratis",
+    signIn: "Iniciar sesión",
+    signUpSoon: "Registro próximamente",
+    exploreCurriculum: "Explorar el currículo",
+    poweredBy: "Impulsado por",
+    scrollToCurriculum: "Ir al currículo",
+    scrollDown: "Desplazarse hacia abajo",
+    quantumHorizons: "Horizontes cuánticos",
+    statSections: "secciones del currículo",
+    statNotebooks: "cuadernos prácticos",
+    statGates: "puertas en el playground en vivo",
+    notebooksCount: {
+      one: "{{count}} cuaderno",
+      other: "{{count}} cuadernos",
+    },
+    nodeFoundations: "Fundamentos",
+    nodeHardware: "Hardware",
+    nodeAlgorithms: "Algoritmos",
+    nodeChemistry: "Química",
+    featuresHeading: "Un lugar para aprender, construir y ejecutar",
+    bandPlaygroundKicker: "Playground",
+    bandPlaygroundTitle: "Diseña circuitos y ve el estado cuántico al instante",
+    bandPlaygroundBody:
+      "Compón puertas en un editor en vivo y observa cómo se redibujan amplitudes, probabilidades y un diagrama de circuito estilo publicación en cada tecla. Guarda circuitos localmente, compártelos por URL y exporta OpenQASM estándar cuando quieras salir.",
+    bandPlaygroundCta: "Abrir el playground",
+    bandHardwareKicker: "Hardware real",
+    bandHardwareTitle: "Pasa del simulador a QPUs reales",
+    bandHardwareBody:
+      "Cuando un algoritmo esté listo, envíalo a procesadores cuánticos reales a través de Amazon Braket. Cada ejecución muestra una estimación de costo transparente antes de confirmar, y los límites de presupuesto mantienen el gasto honesto.",
+    bandHardwareCta: "Leer el runbook de hardware",
+    bandCurriculumKicker: "Currículo",
+    bandCurriculumTitle: "Aprende ejecutando cuadernos reales",
+    bandCurriculumBody:
+      "{{notebooks}} cuadernos prácticos en {{sections}} secciones te llevan desde tu primer cúbit hasta trabajos híbridos cuántico-clásicos de producción. La mayoría se ejecuta en el navegador — sin instalación, sin configuración, solo una cuenta gratuita.",
+    bandCurriculumCta: "Explorar la ruta de aprendizaje",
+    bandTutorKicker: "Tutor de IA",
+    bandTutorTitle: "Un tutor de IA que sabe exactamente dónde estás",
+    bandTutorBody:
+      "Cada lección incluye Pregunta al margen: pulsa Cmd-K o Ctrl-K, pregunta lo que te confunde y un tutor con Claude transmite una respuesta anclada a la página exacta que lees — sin cambiar de pestaña ni pegar contexto. Incluido gratis para cada aprendiz.",
+    bandTutorCta: "Conócelo dentro de cualquier lección",
+    toolChallengesTitle: "Retos que se califican solos",
+    toolChallengesBody:
+      "Las lecciones terminan con comprobaciones prácticas — predice una medición, depura un circuito, estima una factura de QPU — calificadas al instante en tu navegador, para que sepas que una idea se quedó antes de construir sobre ella.",
+    toolReviewTitle: "Repaso de repetición espaciada",
+    toolReviewBody:
+      "Las ideas clave se convierten automáticamente en tarjetas de repaso. Una cola diaria las reaparece justo antes de que las olvides.",
+    toolGlossaryTitle: "Un glosario que enseña",
+    toolGlossaryBody:
+      "{{count}} términos con definiciones precisas, matemáticas renderizadas y enlaces a las lecciones donde se construye cada idea.",
+    accountEyebrow: "Tu espacio de trabajo",
+    accountHeading: "Crea una cuenta gratuita y mantén todo sincronizado",
+    accountBody:
+      "Una cuenta lleva tu progreso de lecciones, tarjetas de repaso y circuitos guardados entre dispositivos — y abre el camino al hardware cuántico real cuando estés listo.",
+    accountReassurance:
+      "Correo o Google. Sin tarjeta de crédito — todo el currículo y el simulador son gratuitos.",
+    learningPath: "Ruta de aprendizaje",
+    sectionsCount: {
+      one: "{{count}} sección",
+      other: "{{count}} secciones",
+    },
+    summaryFallback: "Lecciones y ejercicios prácticos.",
+    tutorMockTitle: "Pregunta al margen",
+    tutorMockReading: "Leyendo: 03 — Algoritmos cuánticos",
+    tutorMockQuestion: "¿Por qué la búsqueda de Grover solo necesita unas √N consultas?",
+    tutorMockAnswer:
+      "Cada iteración de Grover rota el estado un ángulo fijo hacia el elemento marcado, de modo que su amplitud — no solo su probabilidad — crece en cada paso. Las amplitudes se elevan al cuadrado y se convierten en probabilidades: ahí vive la aceleración cuadrática, unas π/4·√N iteraciones en lugar de N/2 comprobaciones.",
+  },
 };
