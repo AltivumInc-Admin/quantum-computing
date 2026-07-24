@@ -1,15 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
 import { ReviewNavBadge } from "./review-nav-badge";
 import { AccountMenu } from "./auth/account-menu";
+import { LanguageSelector } from "./language-selector";
 import { SITE_HEADER_ID } from "@/lib/layout-regions";
-
-const NAV = [
-  { href: "/playground", label: "Playground" },
-  { href: "/runbook", label: "Runbook" },
-  { href: "/credentials", label: "Credentials" },
-  { href: "/pricing", label: "Pricing" },
-];
+import { useLocale } from "@/i18n";
 
 // One link treatment for both pill rows (md+ centered pill, small-screen row)
 // so the two renderings can never drift. `shrink-0` only matters in the
@@ -18,6 +15,13 @@ const pillLink =
   "shrink-0 rounded-chip px-3 py-1.5 text-sm font-medium text-(--mut) transition-colors hover:bg-(--field) hover:text-(--ink) focus-ring";
 
 function PillLinks() {
+  const { t } = useLocale();
+  const NAV = [
+    { href: "/playground", label: t("nav.playground") },
+    { href: "/runbook", label: t("nav.runbook") },
+    { href: "/credentials", label: t("nav.credentials") },
+    { href: "/pricing", label: t("nav.pricing") },
+  ];
   return (
     <>
       {NAV.map((n) => (
@@ -30,6 +34,7 @@ function PillLinks() {
 }
 
 export function Nav() {
+  const { t } = useLocale();
   return (
     <header
       id={SITE_HEADER_ID}
@@ -56,7 +61,7 @@ export function Nav() {
               </svg>
             </span>
             <span className="font-display text-lg text-(--ink) transition-colors group-hover:text-accent">
-              Quantum Learner
+              {t("nav.brand")}
             </span>
           </Link>
 
@@ -68,6 +73,7 @@ export function Nav() {
           <div className="flex items-center gap-1.5 justify-self-end">
             <ReviewNavBadge />
             <AccountMenu />
+            <LanguageSelector />
             <ThemeToggle />
           </div>
         </div>

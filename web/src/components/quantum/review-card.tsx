@@ -18,6 +18,7 @@ import {
 // math, no state readout and no copy button, and widget-ui would pull all three
 // into its chunk. See error-card.tsx's module doc.
 import { cardShell, ErrorCard, EyebrowLabel, REVEAL_PANEL } from "./error-card";
+import { useLocale } from "@/i18n";
 
 /**
  * A spaced-repetition review prompt rendered from a ```qcard fenced block in a
@@ -94,14 +95,17 @@ function useCardState(id: string): CardState | null {
   return useMemo(() => parseCardState(raw), [raw]);
 }
 
-const RATINGS: { rating: Rating; label: string; tone: string }[] = [
-  { rating: "again", label: "Again", tone: "border-warm/40 bg-warm/5 text-warm-dark dark:text-warm-light hover:bg-warm/10" },
-  { rating: "hard", label: "Hard", tone: "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800" },
-  { rating: "good", label: "Good", tone: "border-accent/30 bg-accent/5 text-accent-dark dark:text-accent-light hover:bg-accent/10" },
-  { rating: "easy", label: "Easy", tone: "border-accent/40 bg-accent/10 text-accent-dark dark:text-accent-light hover:bg-accent/20" },
-];
+const RATING_TONES: Record<Rating, string> = {
+  again: "border-warm/40 bg-warm/5 text-warm-dark dark:text-warm-light hover:bg-warm/10",
+  hard: "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
+  good: "border-accent/30 bg-accent/5 text-accent-dark dark:text-accent-light hover:bg-accent/10",
+  easy: "border-accent/40 bg-accent/10 text-accent-dark dark:text-accent-light hover:bg-accent/20",
+};
+
+const RATING_ORDER: Rating[] = ["again", "hard", "good", "easy"];
 
 export function ReviewCard({ source }: { source: string }) {
+  const { t } = useLocale();
   const parsed = useMemo(() => parseCard(source), [source]);
   const spec = parsed.spec;
   const state = useCardState(spec?.id ?? "");
@@ -146,11 +150,11 @@ export function ReviewCard({ source }: { source: string }) {
     <div className={`not-prose my-8 overflow-hidden ${cardShell}`}>
       <div className="flex items-center justify-between gap-3 border-b border-(--bd) px-4 sm:px-5 py-3">
         <EyebrowLabel strong>
-          Recall
+          {t("reviewCard.eyebrow")}
         </EyebrowLabel>
         {streak > 0 && (
           <span className="text-xs tabular-nums text-caption">
-            {streak} in a row
+            {t("reviewCard.inARow", { count: streak }, streak)}
           </span>
         )}
       </div>
@@ -166,18 +170,18 @@ export function ReviewCard({ source }: { source: string }) {
             onClick={() => setRevealed(true)}
             className="mt-3 inline-flex items-center gap-1.5 rounded-control border border-accent/30 bg-accent/5 px-3 py-1.5 text-sm font-medium text-accent-dark dark:text-accent-light interactive focus-ring hover:bg-accent/10"
           >
-            Show answer
+            {t("reviewCard.showAnswer")}
           </button>
         ) : (
           <>
             <div
               id={answerId}
               role="region"
-              aria-label="Answer"
+              aria-label={t("reviewCard.answerLabel")}
               className={`mt-3 rounded-control ${REVEAL_PANEL.accent} px-3.5 py-3 animate-fade-up`}
             >
               <EyebrowLabel strong className="block mb-1">
-                Answer
+                {t("reviewCard.answerLabel")}
               </EyebrowLabel>
               <p className="text-sm leading-relaxed text-(--mut)">
                 {renderInline(spec.answer)}
@@ -186,17 +190,17 @@ export function ReviewCard({ source }: { source: string }) {
 
             <div className="mt-3">
               <span className="block text-[11px] text-caption mb-1.5">
-                How well did you recall it?
+                {t("reviewCard.howWell")}
               </span>
               <div className="flex flex-wrap gap-2">
-                {RATINGS.map(({ rating, label, tone }) => (
+                {RATING_ORDER.map((rating) => (
                   <button
                     key={rating}
                     type="button"
                     onClick={() => onGrade(rating)}
-                    className={`rounded-control border px-3 py-1.5 text-sm font-medium interactive focus-ring ${tone}`}
+                    className={`rounded-control border px-3 py-1.5 text-sm font-medium interactive focus-ring ${RATING_TONES[rating]}`}
                   >
-                    {label}
+                    {t(`reviewCard.${rating}`)}
                   </button>
                 ))}
               </div>
@@ -210,8 +214,10 @@ export function ReviewCard({ source }: { source: string }) {
             className="mt-3 text-sm text-caption animate-fade-up"
           >
             {outcome.kind === "noop"
-              ? "Schedule unchanged — this card was already reviewed and isn't due again yet."
-              : `Next review ${reviewDayPhrase(nextIntervalDays(outcome.state))}.`}
+              ? t("reviewCard.outcomeNoop")
+              : t("reviewCard.outcomeScheduled", {
+                  phrase: reviewDayPhrase(nextIntervalDays(outcome.state), t),
+                })}
           </p>
         )}
       </div>

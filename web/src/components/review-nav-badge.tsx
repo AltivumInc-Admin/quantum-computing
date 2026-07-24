@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { dueCount, subscribe } from "@/lib/review-store";
+import { useLocale } from "@/i18n";
 
 /**
  * Header link to the /review page with a live "due now" count. The count reads
@@ -12,6 +13,7 @@ import { dueCount, subscribe } from "@/lib/review-store";
  */
 export function ReviewNavBadge() {
   const count = useSyncExternalStore(subscribe, () => dueCount(), () => 0);
+  const { t } = useLocale();
 
   return (
     <Link
@@ -21,10 +23,14 @@ export function ReviewNavBadge() {
       // ordinal or a section number — and it mutates silently as cards are
       // graded elsewhere on the site. The chip is hidden from AT so the number
       // is not also read twice.
-      aria-label={count > 0 ? `Review, ${count} card${count === 1 ? "" : "s"} due` : "Review"}
+      aria-label={
+        count > 0
+          ? t("nav.reviewDue", { count }, count)
+          : t("nav.review")
+      }
       className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-accent dark:hover:text-accent-light interactive focus-ring"
     >
-      Review
+      {t("nav.review")}
       {count > 0 && (
         <span
           aria-hidden="true"
