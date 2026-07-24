@@ -313,11 +313,22 @@ export function HomePageContent({
           </div>
           <CurriculumGrid
             sections={sections.map((section, i) => {
-              const summary = summaries[i] || t("home.summaryFallback");
+              // Prefer short localized card copy; fall back to manifest title
+              // and GUIDE teaser so a missing slug never blanks a card.
+              const titleKey = `sections.${section.slug}.title`;
+              const summaryKey = `sections.${section.slug}.summary`;
+              const localizedTitle = t(titleKey);
+              const localizedSummary = t(summaryKey);
+              const title =
+                localizedTitle === titleKey ? section.title : localizedTitle;
+              const summary =
+                localizedSummary === summaryKey
+                  ? summaries[i] || t("home.summaryFallback")
+                  : localizedSummary;
               return {
                 slug: section.slug,
                 index: section.index,
-                title: section.title,
+                title,
                 notebookCount: section.notebookCount,
                 runnableCount: section.runnableCount,
                 summary,

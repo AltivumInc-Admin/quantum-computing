@@ -1,5 +1,8 @@
+"use client";
+
 import { TransitionLink } from "@/components/transition-link";
 import { hueFor } from "@/lib/sections";
+import { useLocale } from "@/i18n";
 
 interface SectionCardProps {
   slug: string;
@@ -31,6 +34,7 @@ export function SectionCard({
   onClick,
   hasPopup,
 }: SectionCardProps) {
+  const { t } = useLocale();
   const hue = hueFor(index);
 
   return (
@@ -62,7 +66,7 @@ export function SectionCard({
             aria-hidden="true"
             className="text-xs text-caption tabular-nums mt-1"
           >
-            {notebookCount} {notebookCount === 1 ? "notebook" : "notebooks"}
+            {t("home.notebookCount", { count: notebookCount }, notebookCount)}
           </span>
         </div>
 
@@ -80,7 +84,7 @@ export function SectionCard({
           aria-hidden="true"
           className="flex items-center gap-1.5 text-xs font-medium text-caption group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200"
         >
-          <span>Explore section</span>
+          <span>{t("home.exploreSection")}</span>
           <svg className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>

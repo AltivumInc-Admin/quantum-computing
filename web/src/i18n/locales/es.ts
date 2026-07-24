@@ -210,10 +210,58 @@ export const es: TranslationDict = {
       other: "{{count}} secciones",
     },
     summaryFallback: "Lecciones y ejercicios prácticos.",
+    exploreSection: "Explorar sección",
+    notebookCount: {
+      one: "{{count}} cuaderno",
+      other: "{{count}} cuadernos",
+    },
+    glossaryEyebrow: "Referencia",
+    glossaryTitle: "Glosario",
+    glossaryBody:
+      "Consulta cualquier término cuántico, de la A a la Z — cada uno enlazado a la lección que lo enseña.",
+    glossaryCta: "Explorar términos",
+    glossaryAria: "Glosario, una referencia de la A a la Z de términos cuánticos",
     tutorMockTitle: "Pregunta al margen",
     tutorMockReading: "Leyendo: 03 — Algoritmos cuánticos",
     tutorMockQuestion: "¿Por qué la búsqueda de Grover solo necesita unas √N consultas?",
     tutorMockAnswer:
       "Cada iteración de Grover rota el estado un ángulo fijo hacia el elemento marcado, de modo que su amplitud — no solo su probabilidad — crece en cada paso. Las amplitudes se elevan al cuadrado y se convierten en probabilidades: ahí vive la aceleración cuadrática, unas π/4·√N iteraciones en lugar de N/2 comprobaciones.",
+  },
+  sections: {
+    "00-prereqs": {
+      title: "Prerrequisitos: de cero a listo para lo cuántico",
+      summary:
+        "El módulo de entrada. Si no tienes base en cuántica, empieza aquí. Al terminar tendrás la matemática, el código y la intuición para leer el resto del currículo.",
+    },
+    "01-foundations": {
+      title: "Fundamentos de computación cuántica",
+      summary:
+        "Cúbits, superposición, entrelazamiento y medición — enseñados ejecutando circuitos, no solo mirando ecuaciones.",
+    },
+    "02-hardware": {
+      title: "Hardware cuántico en Amazon Braket",
+      summary:
+        "Qué es físicamente un cúbit, cómo cada máquina equilibra velocidad y fidelidad, y cuánto cuesta el tiempo de QPU antes de gastar un centavo.",
+    },
+    "03-algorithms": {
+      title: "Algoritmos cuánticos",
+      summary:
+        "El canon, con las manos: Deutsch-Jozsa, Grover, la transformada de Fourier cuántica y estimación de fase — construidos puerta a puerta.",
+    },
+    "04-quantum-ml": {
+      title: "Aprendizaje automático cuántico",
+      summary:
+        "Circuitos variacionales como modelos: codifica datos, entrena puertas parametrizadas y juzga cuándo un modelo cuántico vale la pena.",
+    },
+    "05-quantum-chemistry": {
+      title: "Química cuántica y bioquímica",
+      summary:
+        "Mapea hamiltonianos moleculares a cúbits, ejecuta VQE para energías del estado base y simula moléculas reales con OpenFermion.",
+    },
+    "06-hybrid-jobs": {
+      title: "Trabajos híbridos cuántico-clásicos de producción",
+      summary:
+        "Del cuaderno a producción: Hybrid Jobs de Braket con acceso prioritario a QPU, puntos de control y control de costos.",
+    },
   },
 };

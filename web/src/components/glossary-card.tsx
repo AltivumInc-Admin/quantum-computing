@@ -1,5 +1,8 @@
+"use client";
+
 import type { CSSProperties } from "react";
 import { TransitionLink } from "@/components/transition-link";
+import { useLocale } from "@/i18n";
 
 // Companion resource card. Mirrors SectionCard's chrome (rounded card, surface
 // token, hover lift/glow) but carries a "Reference" eyebrow and no number badge,
@@ -10,10 +13,11 @@ import { TransitionLink } from "@/components/transition-link";
 // and identical-looking cards in one grid must not bounce the same visitor
 // two different ways.
 export function GlossaryCard({ href = "/glossary" }: { href?: string }) {
+  const { t } = useLocale();
   return (
     <TransitionLink
       href={href}
-      aria-label="Glossary, an A to Z reference of quantum terms"
+      aria-label={t("home.glossaryAria")}
       style={{ "--hue": 192 } as CSSProperties}
       className="group relative block rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) backdrop-blur-md overflow-hidden interactive focus-ring shadow-(--shadow-resting) hover:-translate-y-1.5 hover:shadow-(--shadow-raised) hover:border-gray-300/80 dark:hover:border-white/[0.12] transition-all duration-300"
     >
@@ -22,19 +26,21 @@ export function GlossaryCard({ href = "/glossary" }: { href?: string }) {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-(--surface-1)" />
       </div>
       <div className="relative p-6 -mt-6">
-        <p className="text-xs font-semibold tracking-widest uppercase hue-text mb-3">Reference</p>
+        <p className="text-xs font-semibold tracking-widest uppercase hue-text mb-3">
+          {t("home.glossaryEyebrow")}
+        </p>
         <h3 className="font-display text-display-md tracking-tight text-(--ink) group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">
-          Glossary
+          {t("home.glossaryTitle")}
         </h3>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-3">
-          Look up any quantum term, A to Z — each linked to the lesson that teaches it.
+          {t("home.glossaryBody")}
         </p>
         <div className="h-px bg-gradient-to-r from-gray-200/50 dark:from-gray-700/30 to-transparent mt-4 mb-4" />
         <div
           aria-hidden="true"
           className="flex items-center gap-1.5 text-xs font-medium text-caption group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200"
         >
-          <span>Browse terms</span>
+          <span>{t("home.glossaryCta")}</span>
           <svg className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
