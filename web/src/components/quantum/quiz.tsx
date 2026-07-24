@@ -15,6 +15,7 @@ import {
   type CardState,
   type Rating,
 } from "@/lib/review-schedule";
+import { useLocale } from "@/i18n";
 
 /**
  * Interactive self-check rendered from a ```quiz fenced block in a GUIDE.
@@ -94,37 +95,21 @@ function HintIcon() {
   );
 }
 
-// Same four-button strip as ReviewCard — duplicated rather than shared so this
-// chunk stays free of review-card's heavier imports and the two surfaces can
-// evolve copy independently if needed.
-const RATINGS: { rating: Rating; label: string; tone: string }[] = [
-  {
-    rating: "again",
-    label: "Again",
-    tone: "border-warm/40 bg-warm/5 text-warm-dark dark:text-warm-light hover:bg-warm/10",
-  },
-  {
-    rating: "hard",
-    label: "Hard",
-    tone: "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
-  },
-  {
-    rating: "good",
-    label: "Good",
-    tone: "border-accent/30 bg-accent/5 text-accent-dark dark:text-accent-light hover:bg-accent/10",
-  },
-  {
-    rating: "easy",
-    label: "Easy",
-    tone: "border-accent/40 bg-accent/10 text-accent-dark dark:text-accent-light hover:bg-accent/20",
-  },
-];
+// Same four-button strip as ReviewCard — tones stay local; labels come from t().
+const RATING_TONES: Record<Rating, string> = {
+  again: "border-warm/40 bg-warm/5 text-warm-dark dark:text-warm-light hover:bg-warm/10",
+  hard: "border-(--bd) bg-(--field) text-(--mut) hover:bg-gray-100 dark:hover:bg-gray-800",
+  good: "border-accent/30 bg-accent/5 text-accent-dark dark:text-accent-light hover:bg-accent/10",
+  easy: "border-accent/40 bg-accent/10 text-accent-dark dark:text-accent-light hover:bg-accent/20",
+};
+const RATING_ORDER: Rating[] = ["again", "hard", "good", "easy"];
 
 type GradeOutcome =
   | { kind: "graded"; state: CardState }
   | { kind: "noop" };
 
 export function Quiz({ source }: { source: string }) {
+  const { t } = useLocale();
   const quiz = useMemo(() => parseQuiz(source), [source]);
   const [openHints, setOpenHints] = useState<ReadonlySet<number>>(new Set());
   const [openAnswers, setOpenAnswers] = useState<ReadonlySet<number>>(new Set());
@@ -161,7 +146,7 @@ export function Quiz({ source }: { source: string }) {
     });
 
   if (quiz.error) {
-    return <ErrorCard label="quiz parse" message={quiz.error} className="my-8" />;
+    return <ErrorCard label={t("quiz.parseError")} message={quiz.error} className="my-8" />;
   }
 
   const allOpen =
@@ -193,7 +178,7 @@ export function Quiz({ source }: { source: string }) {
             and an end-of-module retention check in the other four sections,
             whose own headings say "check yourself" — a hardcoded "Placement
             quiz" contradicted the heading directly above it in 4 of 5 sites. */}
-        <EyebrowLabel strong>Self-check</EyebrowLabel>
+        <EyebrowLabel strong>{t("quiz.eyebrow")}</EyebrowLabel>
         {/* No aria-pressed: the label already flips, and "Hide all answers,
             pressed" announces a state opposite to what the label names. The
             per-question controls use aria-expanded for the same reason. */}
@@ -202,7 +187,7 @@ export function Quiz({ source }: { source: string }) {
           onClick={toggleAll}
           className="inline-flex items-center gap-1.5 rounded-control px-2.5 py-1 text-xs font-medium text-caption hover:text-accent-dark dark:hover:text-accent-light hover:bg-accent/5 interactive focus-ring"
         >
-          {allOpen ? "Hide all answers" : "Show all answers"}
+          {allOpen ? t("quiz.hideAll") : t("quiz.showAll")}
           <ChevronIcon open={allOpen} />
         </button>
       </div>
@@ -235,7 +220,7 @@ export function Quiz({ source }: { source: string }) {
                       className="inline-flex items-center gap-1.5 rounded-control border border-warm/40 bg-warm/5 px-2.5 py-1 text-xs font-medium text-warm-dark dark:text-warm-light interactive focus-ring hover:bg-warm/10"
                     >
                       <HintIcon />
-                      {hintOpen ? "Hide hint" : "Hint"}
+                      {hintOpen ? t("quiz.hideHint") : t("quiz.hint")}
                     </button>
                   )}
                   <button
@@ -245,7 +230,7 @@ export function Quiz({ source }: { source: string }) {
                     aria-controls={answerOpen ? answerId : undefined}
                     className="inline-flex items-center gap-1.5 rounded-control border border-accent/30 bg-accent/5 px-2.5 py-1 text-xs font-medium text-accent-dark dark:text-accent-light interactive focus-ring hover:bg-accent/10"
                   >
-                    {answerOpen ? "Hide answer" : "Show answer"}
+                    {answerOpen ? t("quiz.hideAnswer") : t("quiz.showAnswer")}
                     <ChevronIcon open={answerOpen} />
                   </button>
                 </div>
@@ -264,7 +249,7 @@ export function Quiz({ source }: { source: string }) {
                     className={`mt-3 rounded-control ${REVEAL_PANEL.warm} px-3.5 py-3 animate-fade-up`}
                   >
                     <EyebrowLabel strong tone="warm" className="block mb-1">
-                      Hint
+                      {t("quiz.hintLabel")}
                     </EyebrowLabel>
                     <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.hint)}
@@ -280,7 +265,7 @@ export function Quiz({ source }: { source: string }) {
                     className={`mt-3 rounded-control ${REVEAL_PANEL.accent} px-3.5 py-3 animate-fade-up`}
                   >
                     <EyebrowLabel strong className="block mb-1">
-                      Answer
+                      {t("quiz.answerLabel")}
                     </EyebrowLabel>
                     <p className="text-sm leading-relaxed text-(--mut)">
                       {renderInline(item.a)}
@@ -288,17 +273,17 @@ export function Quiz({ source }: { source: string }) {
 
                     <div className="mt-3 border-t border-accent/15 pt-3">
                       <span className="block text-[11px] text-caption mb-1.5">
-                        How well did you recall it?
+                        {t("quiz.howWell")}
                       </span>
                       <div className="flex flex-wrap gap-2">
-                        {RATINGS.map(({ rating, label, tone }) => (
+                        {RATING_ORDER.map((rating) => (
                           <button
                             key={rating}
                             type="button"
                             onClick={() => onGrade(item.id, rating)}
-                            className={`rounded-control border px-3 py-1.5 text-sm font-medium interactive focus-ring ${tone}`}
+                            className={`rounded-control border px-3 py-1.5 text-sm font-medium interactive focus-ring ${RATING_TONES[rating]}`}
                           >
-                            {label}
+                            {t(`quiz.${rating}`)}
                           </button>
                         ))}
                       </div>
@@ -312,8 +297,10 @@ export function Quiz({ source }: { source: string }) {
                     className="mt-3 text-sm text-caption animate-fade-up"
                   >
                     {outcome.kind === "noop"
-                      ? "Schedule unchanged — this card was already reviewed and isn't due again yet."
-                      : `Next review ${reviewDayPhrase(nextIntervalDays(outcome.state))}.`}
+                      ? t("quiz.outcomeNoop")
+                      : t("quiz.outcomeScheduled", {
+                          phrase: reviewDayPhrase(nextIntervalDays(outcome.state), t),
+                        })}
                   </p>
                 )}
               </div>

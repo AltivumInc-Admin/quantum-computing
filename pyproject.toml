@@ -16,7 +16,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
-    "ruff>=0.5",
+    # Pin below 0.16: 0.16.0 tightens RUF100/default rules and fails make lint
+    # on pre-existing test-only noqa noise when CI pip-installs latest.
+    "ruff>=0.5,<0.16",
     "pip-tools>=7.0",
     "nbstripout>=0.7",
     # Notebook-contract test (tests/test_notebook_contract.py): execute every

@@ -8,6 +8,8 @@ import { Footer } from "@/components/footer";
 import { FogField } from "@/components/fog-field";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { AuthWall } from "@/components/auth/auth-wall";
+import { LocaleProvider } from "@/i18n";
+import { SkipToContent } from "@/components/skip-to-content";
 import { SITE_URL, SITE_NAME, OG_IMAGE } from "@/lib/site";
 import "./globals.css";
 
@@ -69,22 +71,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${sora.variable} ${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          <AuthProvider>
-            <FogField />
-            <a
-              href="#main"
-              className="sr-only surface-accent focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-control focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus-ring"
-            >
-              Skip to content
-            </a>
-            <Nav />
-            <main id="main" tabIndex={-1} className="outline-none">
-              <AuthWall>{children}</AuthWall>
-            </main>
-            <Footer />
-            <AskTutor />
-            <ProgressSync />
-          </AuthProvider>
+          <LocaleProvider>
+            <AuthProvider>
+              <FogField />
+              <SkipToContent />
+              <Nav />
+              <main id="main" tabIndex={-1} className="outline-none">
+                <AuthWall>{children}</AuthWall>
+              </main>
+              <Footer />
+              <AskTutor />
+              <ProgressSync />
+            </AuthProvider>
+          </LocaleProvider>
         </ThemeProvider>
       </body>
     </html>

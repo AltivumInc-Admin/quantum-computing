@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { SITE_NAME } from "@/lib/site";
 import { SITE_FOOTER_ID } from "@/lib/layout-regions";
+import { useLocale } from "@/i18n";
 
 const REPO_URL = "https://github.com/AltivumInc-Admin/quantum-computing";
 
@@ -8,6 +11,7 @@ const linkClass =
   "text-gray-600 dark:text-gray-400 hover:text-accent dark:hover:text-accent-light interactive focus-ring rounded transition-colors";
 
 export function Footer() {
+  const { t } = useLocale();
   return (
     <footer
       id={SITE_FOOTER_ID}
@@ -15,43 +19,43 @@ export function Footer() {
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-caption">
-          {SITE_NAME} — learn quantum computing with Amazon Braket.
+          {t("footer.tagline", { site: SITE_NAME })}
         </p>
         <nav
-          aria-label="Footer"
+          aria-label={t("footer.ariaLabel")}
           className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium"
         >
           <Link href="/playground" className={linkClass}>
-            Playground
+            {t("nav.playground")}
           </Link>
           <Link href="/runbook" className={linkClass}>
-            Runbook
+            {t("nav.runbook")}
           </Link>
           <Link href="/credentials" className={linkClass}>
-            Credentials
+            {t("nav.credentials")}
           </Link>
           <Link href="/glossary" className={linkClass}>
-            Glossary
+            {t("nav.glossary")}
           </Link>
           <Link href="/review" className={linkClass}>
-            Review
+            {t("nav.review")}
           </Link>
           <Link href="/pricing" className={linkClass}>
-            Pricing
+            {t("nav.pricing")}
           </Link>
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={linkClass}>
-            GitHub
+            {t("nav.github")}
           </a>
           <Link
             href="/privacy"
             className="text-caption hover:text-accent dark:hover:text-accent-light interactive focus-ring rounded transition-colors"
           >
-            Privacy
+            {t("nav.privacy")}
           </Link>
         </nav>
       </div>
       <p className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 text-xs text-caption">
-        Altivum Inc. — built with Amazon Braket.
+        {t("footer.builtWith")}
       </p>
     </footer>
   );

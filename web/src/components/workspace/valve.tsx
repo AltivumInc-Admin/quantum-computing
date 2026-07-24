@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { Panel } from "./panel";
 import type { WorkspaceModel } from "@/lib/workspace";
+import { useLocale } from "@/i18n";
 
 /**
  * Z2 — THE VALVE. The one control that moves the retention line: the due count in
@@ -16,13 +19,15 @@ export function Valve({
   dueKinds,
   dueRetained,
 }: Pick<WorkspaceModel, "valve" | "due" | "dueKinds" | "dueRetained">) {
+  const { t } = useLocale();
+  const dueLabel = t("workspace.valveDueReps", { count: due }, due);
   return (
-    <Panel title="Due now" id="ws-valve" className="flex flex-col">
+    <Panel title={t("workspace.valveDueNow")} id="ws-valve" className="flex flex-col">
       <dl>
-        <dt className="sr-only">Reps due today</dt>
+        <dt className="sr-only">{dueLabel}</dt>
         <dd className="font-display text-display-2xl leading-none tracking-tight text-gray-900 tabular-nums dark:text-white">
           {due}
-          <span className="sr-only"> Reps due today</span>
+          <span className="sr-only"> {dueLabel}</span>
         </dd>
       </dl>
 
@@ -42,9 +47,14 @@ export function Valve({
       {dueRetained > 0 && (
         <p className="mt-4 border-t border-gray-200/60 pt-3 text-xs leading-relaxed text-caption dark:border-white/[0.06]">
           <span className="font-medium text-warm-dark dark:text-warm-light">
-            {dueRetained} {dueRetained === 1 ? "is a retained skill" : "are retained skills"}
+            {t("workspace.valveRetainedOne", { count: dueRetained }, dueRetained)}
           </span>{" "}
-          — an &ldquo;Again&rdquo; resets {dueRetained === 1 ? "it" : "them"} to a 1-day interval.
+          {t("workspace.valveRetainedWarning", {
+            them:
+              dueRetained === 1
+                ? t("workspace.valveThemOne")
+                : t("workspace.valveThemOther"),
+          })}
         </p>
       )}
 

@@ -40,6 +40,9 @@ import {
 } from "./runbook";
 import { MASTERY_TIERS, CONSISTENCY_TIERS, nextUnearnedTier } from "./credentials";
 import { getAllMeasurements } from "./skill-measure";
+import { translate } from "@/i18n/translate";
+import { readStoredLocale } from "@/i18n/storage";
+import type { TFunction } from "@/i18n/types";
 
 /** Below this many tracked cards the histogram is three thin bars and looks broken;
  *  Z1 shows an honest hairline list of intervals instead (which becomes the spectrum
@@ -148,13 +151,17 @@ export function resolveValve(input: {
   tracked: number;
   daysUntilNext: number | null;
   firstIncomplete: { slug: string; title: string } | null;
+  /** Optional translator; defaults to English so pure unit tests stay deterministic. */
+  t?: TFunction;
 }): ValveAction {
   const { due, tracked, daysUntilNext, firstIncomplete } = input;
+  const t: TFunction =
+    input.t ?? ((key, values, count) => translate("en", key, values, count));
   if (due > 0) {
     return {
       kind: "review",
       headline: "",
-      cta: `Review ${due} card${due === 1 ? "" : "s"}`,
+      cta: t("workspace.ctaReview", { count: due }, due),
       href: "/review",
       external: false,
     };
@@ -162,26 +169,32 @@ export function resolveValve(input: {
   if (tracked === 0) {
     return {
       kind: "start",
-      headline: "You have not graded a Rep yet.",
-      cta: "Start Prerequisites",
+      headline: t("workspace.headlineNoTracked"),
+      cta: t("workspace.ctaStart"),
       href: "/learn/00-prereqs",
       external: false,
     };
   }
   const nextLine =
     daysUntilNext !== null
-      ? `Nothing is due. Next Rep in ${daysUntilNext} day${daysUntilNext === 1 ? "" : "s"}.`
-      : "Nothing is due right now.";
+      ? t("workspace.headlineNextDue", { count: daysUntilNext }, daysUntilNext)
+      : t("workspace.headlineNothingDue");
   if (firstIncomplete) {
     return {
       kind: "continue",
       headline: nextLine,
-      cta: `Continue ${firstIncomplete.title}`,
+      cta: t("workspace.ctaContinue", { title: firstIncomplete.title }),
       href: `/learn/${firstIncomplete.slug}`,
       external: false,
     };
   }
-  return { kind: "lab", headline: nextLine, cta: "Open the lab", href: LAB_HREF, external: true };
+  return {
+    kind: "lab",
+    headline: nextLine,
+    cta: t("workspace.ctaLab"),
+    href: LAB_HREF,
+    external: true,
+  };
 }
 
 /**
@@ -224,11 +237,16 @@ export function readWorkspace(today: number): WorkspaceModel {
       raw && Object.hasOwn(KIND_LABELS, raw) ? (raw as CardKind) : "unknown";
     kindCounts[k] = (kindCounts[k] ?? 0) + 1;
   }
+  const locale = readStoredLocale();
+  const t: TFunction = (key, values, count) => translate(locale, key, values, count);
   const dueKinds: DueKindRow[] = ([...Object.keys(KIND_LABELS), "unknown"] as (CardKind | "unknown")[])
     .filter((k) => (kindCounts[k] ?? 0) > 0)
     .map((k) => ({
       kind: k,
-      label: k === "unknown" ? "Other" : KIND_LABELS[k as CardKind],
+      label:
+        k === "unknown"
+          ? t("review.kindLabels.unknown")
+          : t(`review.kindLabels.${k as CardKind}`),
       count: kindCounts[k],
     }));
 
@@ -263,6 +281,7 @@ export function readWorkspace(today: number): WorkspaceModel {
     firstIncomplete: firstIncompleteSec
       ? { slug: firstIncompleteSec.slug, title: firstIncompleteSec.title }
       : null,
+    t,
   });
 
   // The sparse fallback: honest intervals when the histogram would look broken.

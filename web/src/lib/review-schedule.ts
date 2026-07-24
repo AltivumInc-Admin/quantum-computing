@@ -153,8 +153,19 @@ export function nextIntervalDays(state: CardState): number {
  * it ("Reviewed — next review …", "Added to your review — back …", "Next review
  * …"), but the boundary test belongs in one place: the widgets had drifted onto
  * `<= 1` while review-card used `=== 1` for the identical decision.
+ *
+ * Optional `t` binds the active locale; without it, English is used so pure
+ * unit tests and call sites that have not adopted i18n yet stay deterministic.
  */
-export function reviewDayPhrase(days: number): string {
+export function reviewDayPhrase(
+  days: number,
+  t?: (key: string, values?: Record<string, string | number>, count?: number) => string,
+): string {
+  if (t) {
+    return days <= 1
+      ? t("schedule.tomorrow")
+      : t("schedule.inDays", { count: days }, days);
+  }
   return days <= 1 ? "tomorrow" : `in ${days} days`;
 }
 

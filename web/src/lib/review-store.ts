@@ -174,10 +174,12 @@ export function dueCount(nowMs: number = Date.now()): number {
 }
 
 /**
- * Human labels for each graded-Rep kind. Lifted here from review-dashboard.tsx so
- * the /review roster and the /workspace "Due now" breakdown name a kind identically
- * — review-dashboard imports it back. Shared-module edit: the /review suite must stay
- * green (it asserts these exact strings).
+ * Human labels for each graded-Rep kind (English). Lifted here from
+ * review-dashboard.tsx so the /review roster and the /workspace "Due now"
+ * breakdown name a kind identically — review-dashboard imports it back.
+ * Display sites that are locale-aware should prefer `kindLabel(kind, t)`.
+ * Shared-module edit: the /review suite must stay green (it asserts these
+ * exact English strings as the default).
  */
 export const KIND_LABELS: Record<CardKind, string> = {
   challenge: "Circuit challenge",
@@ -187,6 +189,15 @@ export const KIND_LABELS: Record<CardKind, string> = {
   debug: "Fix the circuit",
   expect: "Expectation value",
 };
+
+/** Locale-aware kind label via the i18n catalog. */
+export function kindLabel(
+  kind: CardKind | "unknown",
+  t: (key: string) => string,
+): string {
+  if (kind === "unknown") return t("review.kindLabels.unknown");
+  return t(`review.kindLabels.${kind}`);
+}
 
 /**
  * Normalize a stored `kind` to a bucket the breakdown can render. `getCardContent`
