@@ -7,13 +7,14 @@ import {
   getAllCardIds,
   getCardContent,
   subscribe,
-  KIND_LABELS,
+  kindLabel as labelForKind,
   type CardKind,
 } from "@/lib/review-store";
 import { ReviewCard } from "@/components/quantum/review-card";
 // The lean primitives module, not ./widget-ui — this route's own chunk has no
 // use for the math kernel, the Dirac readout or CopyButton.
 import { CheckIcon, VerdictBadge } from "@/components/quantum/error-card";
+import { useLocale } from "@/i18n";
 
 /**
  * The /review surface: resurfaces every card whose schedule has come due,
@@ -119,6 +120,7 @@ function parseSnapshot(key: string): { dueIds: string[]; total: number } {
 }
 
 export function ReviewDashboard() {
+  const { t } = useLocale();
   const snap = useSyncExternalStore(subscribe, snapshot, () => "|0");
 
   const { dueIds, total } = useMemo(() => parseSnapshot(snap), [snap]);
@@ -159,20 +161,18 @@ export function ReviewDashboard() {
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-16">
       <div className="mb-10">
         <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light mb-3">
-          Spaced repetition
+          {t("review.eyebrow")}
         </p>
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
-          Review
+          {t("review.heading")}
         </h1>
         <p className="mt-4 text-lg text-caption leading-relaxed">
-          Cards you have studied resurface here exactly when you are about to
-          forget them. A few minutes now keeps the whole curriculum fresh.
+          {t("review.body")}
         </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm tabular-nums text-caption">
-          <span>
-            <span className="font-semibold text-(--mut)">{dueIds.length}</span> due
-            now
+          <span className="font-semibold text-(--mut)">
+            {t("review.dueCount", { count: dueIds.length }, dueIds.length)}
           </span>
           {/* Decorative separator: tokenized (it was the tree's only
               text-gray-300/700 pair, invisible to a token retune) and hidden
@@ -180,9 +180,8 @@ export function ReviewDashboard() {
           <span aria-hidden="true" className="text-caption opacity-50">
             /
           </span>
-          <span>
-            <span className="font-semibold text-(--mut)">{total}</span> card
-            {total === 1 ? "" : "s"} tracked
+          <span className="font-semibold text-(--mut)">
+            {t("review.trackedCount", { count: total }, total)}
           </span>
         </div>
       </div>
@@ -194,10 +193,10 @@ export function ReviewDashboard() {
         >
           <p className="inline-flex items-center gap-2 text-sm font-medium text-accent-dark dark:text-accent-light">
             <CheckIcon size="h-3 w-3" />
-            Session complete — every due card reviewed.
+            {t("review.sessionCompleteTitle")}
           </p>
           <p className="mt-1 text-xs text-caption">
-            New reviews will appear here as their schedules come due.
+            {t("review.sessionCompleteSub")}
           </p>
         </div>
       )}
@@ -205,12 +204,12 @@ export function ReviewDashboard() {
       {items.length === 0 ? (
         <div className="rounded-card glass shadow-(--shadow-resting) px-6 py-12 text-center">
           <p className="text-base font-medium text-caption">
-            {total === 0 ? "No cards yet" : "Nothing due — you're caught up"}
+            {total === 0 ? t("review.emptyNoCards") : t("review.emptyUpToDate")}
           </p>
           <p className="mt-2 text-sm text-caption">
             {total === 0
-              ? "Work through a lesson and grade its recall cards to start building a review schedule."
-              : "Come back when more cards come due, or keep reading new lessons."}
+              ? t("review.emptyNoCardsHint")
+              : t("review.emptyUpToDateHint")}
           </p>
         </div>
       ) : (
@@ -219,27 +218,34 @@ export function ReviewDashboard() {
             // A corrupt/unknown stored kind falls back to the recall card — see
             // liveWidgetFor for why the membership test is own-property only.
             const Live = content.source ? liveWidgetFor(content.kind) : undefined;
-            const kindLabel = Live ? KIND_LABELS[content.kind as CardKind] : "Recall";
+            const kindName = Live
+              ? labelForKind(content.kind as CardKind, t)
+              : t("review.recallKind");
             const done = !dueSet.has(id);
             return (
               <li key={`${id}:${gen}`} className="mt-10 first:mt-0">
                 <span className="sr-only">
-                  {`Review item ${i + 1} of ${items.length} — ${kindLabel}${done ? ", reviewed" : ""}`}
+                  {t("review.itemSr", {
+                    i: i + 1,
+                    n: items.length,
+                    kind: kindName,
+                    done: done ? t("review.itemReviewedSuffix") : "",
+                  })}
                 </span>
                 <div
                   aria-hidden="true"
                   className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest"
                 >
                   <span className="text-caption tabular-nums">
-                    {i + 1} / {items.length} · {kindLabel}
+                    {i + 1} / {items.length} · {kindName}
                   </span>
                   {done ? (
                     <VerdictBadge tone="accent" size="xs">
-                      Reviewed
+                      {t("review.reviewedLabel")}
                     </VerdictBadge>
                   ) : (
                     <span className="rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-caption">
-                      Due
+                      {t("review.dueLabel")}
                     </span>
                   )}
                 </div>
@@ -269,7 +275,7 @@ export function ReviewDashboard() {
                     {/* py-1 (not the bare px-1 this had) clears WCAG 2.5.8's
                         24px target: 16px line-box + 2 x 4px. */}
                     <summary className="inline-flex cursor-pointer rounded-control px-1 py-1 text-caption focus-ring">
-                      Stuck? Show a correct answer
+                      {t("review.stuckSummary")}
                     </summary>
                     <p className="mt-1 px-1 font-mono text-sm text-caption">
                       {content.answer}
