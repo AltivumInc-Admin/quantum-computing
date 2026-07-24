@@ -1,5 +1,8 @@
+"use client";
+
 import { TransitionLink } from "@/components/transition-link";
 import { getSections, type Section } from "@/lib/sections";
+import { useLocale, sectionTitle } from "@/i18n";
 
 interface PrevNextProps {
   currentSlug: string;
@@ -16,7 +19,9 @@ function PrevNextCard({
   section: Section;
   direction: "prev" | "next";
 }) {
+  const { t } = useLocale();
   const isNext = direction === "next";
+  const title = sectionTitle(t, section.slug, section.title);
   const chevron = (
     <svg
       className="w-4 h-4 text-caption group-hover:text-accent shrink-0 transition-colors"
@@ -43,10 +48,10 @@ function PrevNextCard({
       {!isNext && chevron}
       <div className="min-w-0">
         <p className="text-[10px] uppercase tracking-wider text-caption font-medium">
-          {isNext ? "Next" : "Previous"}
+          {isNext ? t("common.next") : t("common.previous")}
         </p>
         <p className="text-sm font-medium text-(--mut) group-hover:text-accent dark:group-hover:text-accent-light truncate transition-colors">
-          {section.title}
+          {title}
         </p>
       </div>
       {isNext && chevron}

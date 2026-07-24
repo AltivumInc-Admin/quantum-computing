@@ -7,6 +7,7 @@ import { activeDays } from "@/lib/activity-log";
 import { completedCount } from "@/lib/progress-store";
 import { getSections } from "@/lib/sections";
 import { epochDay } from "@/lib/review-schedule";
+import { useLocale } from "@/i18n";
 import {
   streak,
   masteryCount,
@@ -136,27 +137,27 @@ export function RunbookDashboard() {
 
 /** Server/first-paint and no-data state — a single inert, today-independent card. */
 function EmptyShell() {
+  const { t } = useLocale();
   return (
     <div className="rounded-card glass px-6 py-10 text-center shadow-(--shadow-resting)">
       <p className="font-display text-display-md tracking-tight text-(--ink)">
-        Your Runbook is empty — for now.
+        {t("runbookUi.emptyTitle")}
       </p>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-(--mut)">
-        Grade your first Rep on a lesson and it lands here. Every day you practice
-        marks the graph; every skill you keep sharp raises the count above it.
+        {t("runbookUi.emptyBody")}
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link
           href="/learn/00-prereqs"
           className="inline-flex items-center rounded-control surface-accent px-4 py-2 text-sm font-medium interactive focus-ring"
         >
-          Start a lesson
+          {t("runbookUi.startLesson")}
         </Link>
         <Link
           href="/review"
           className="inline-flex items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-(--mut) interactive focus-ring"
         >
-          Go to review
+          {t("runbookUi.goToReview")}
         </Link>
       </div>
     </div>
@@ -164,12 +165,13 @@ function EmptyShell() {
 }
 
 function Ledger({ data }: { data: Ledger }) {
+  const { t } = useLocale();
   const hasActivity = data.totalActiveDays > 0;
   return (
     <div className="animate-fade-up">
       {/* North-Star headline: the number this whole platform steers on. */}
       <section
-        aria-label="Skills in proven retention"
+        aria-label={t("runbookUi.skillsRetention")}
         className="rounded-card glass px-6 py-7 shadow-(--shadow-resting) sm:px-8"
       >
         <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
@@ -203,19 +205,19 @@ function Ledger({ data }: { data: Ledger }) {
 
       {/* A hairline-separated instrument strip — Linear/GitHub register. */}
       <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-(--bd) bg-(--bd) shadow-(--shadow-resting) sm:grid-cols-4">
-        <Stat label="Longest streak" value={data.longestWeeks} unit={data.longestWeeks === 1 ? "week" : "weeks"} />
+        <Stat label={t("runbookUi.longestStreak")} value={data.longestWeeks} unit={data.longestWeeks === 1 ? "week" : "weeks"} />
         <Stat
-          label="Active this week"
+          label={t("runbookUi.activeThisWeek")}
           value={data.activeThisWeek}
           unit={data.activeThisWeek === 1 ? "day" : "days"}
         />
         <Stat
-          label="Modules complete"
+          label={t("runbookUi.modulesComplete")}
           value={data.sectionsDone}
           unit={`of ${data.sectionsTotal}`}
         />
         <Stat
-          label="Due to review"
+          label={t("runbookUi.dueToReview")}
           value={data.due}
           unit={data.due === 1 ? "card" : "cards"}
           href={data.due > 0 ? "/review" : undefined}
@@ -319,6 +321,7 @@ function ContributionGraph({
   weeks: number;
   totalActive: number;
 }) {
+  const { t, locale } = useLocale();
   const columns = useMemo(() => {
     const cols: ContributionCell[][] = Array.from({ length: weeks }, () => []);
     for (const c of cells) cols[c.weekCol].push(c);
@@ -334,13 +337,21 @@ function ContributionGraph({
     for (let w = 0; w < weeks; w++) {
       const d = new Date(columns[w][0].epochDay * 86_400_000);
       const m = d.getUTCMonth();
-      labels.push(m !== prev ? d.toLocaleString("en-US", { month: "short", timeZone: "UTC" }) : null);
+      labels.push(
+        m !== prev
+          ? d.toLocaleString(locale === "es" ? "es-MX" : "en-US", {
+              month: "short",
+              timeZone: "UTC",
+            })
+          : null,
+      );
       prev = m;
     }
     return labels;
-  }, [columns, weeks]);
+  }, [columns, weeks, locale]);
 
-  const WEEKDAY = ["Mon", "", "Wed", "", "Fri", "", ""];
+  const WEEKDAY =
+    locale === "es" ? ["lun", "", "mié", "", "vie", "", ""] : ["Mon", "", "Wed", "", "Fri", "", ""];
 
   return (
     <div className="overflow-x-auto">
@@ -384,10 +395,10 @@ function ContributionGraph({
 
       {/* legend */}
       <div className="mt-3 flex items-center gap-1.5 text-[0.6rem] text-caption">
-        <span>Inactive</span>
+        <span>{t("runbookUi.inactive")}</span>
         <span className="h-[11px] w-[11px] rounded-[2px] bg-gray-200/80 dark:bg-white/[0.05]" />
         <span className="h-[11px] w-[11px] rounded-[2px] bg-accent-dark dark:bg-accent" />
-        <span>Active</span>
+        <span>{t("runbookUi.active")}</span>
       </div>
 
       {/* Keyboard/touch/screen-reader equivalent of the mouse-only cell tooltips:

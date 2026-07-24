@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Panel } from "./panel";
 import { getRepoUrl } from "@/lib/manifest";
 import type { WorkspaceSection } from "@/lib/workspace";
+import { useLocale } from "@/i18n";
 
 /**
  * Z3 — THE LAB, the IDEATE surface: the JupyterLite notebooks that are the platform's
@@ -20,6 +21,7 @@ export function Lab({
   sections: WorkspaceSection[];
   runnableTotal: number;
 }) {
+  const { t } = useLocale();
   const [selected, setSelected] = useState(0);
   const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const active = sections[selected];
@@ -55,14 +57,14 @@ export function Lab({
 
   return (
     <Panel
-      title="The lab"
+      title={t("workspaceUi.theLab")}
       id="ws-lab"
       sub={`${runnableTotal} notebooks run in-browser`}
     >
       {/* The chips are the one wide element in this column — they scroll within their
           own track so the page body never scrolls horizontally. */}
       <div className="-mx-1 overflow-x-auto px-1 pb-1">
-        <div role="radiogroup" aria-label="Curriculum section" className="flex gap-2">
+        <div role="radiogroup" aria-label={t("workspaceUi.sectionGroup")} className="flex gap-2">
           {sections.map((s, i) => {
             // Chip label from the real manifest title (correctly cased), not the
             // slug — slug-recasing turned "04-quantum-ml" into "Quantum Ml". Trim

@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { Panel } from "./panel";
 import { RetentionSpectrum } from "./retention-spectrum";
 import type { WorkspaceModel } from "@/lib/workspace";
+import { useLocale } from "@/i18n";
 
 /**
  * Z1 — THE INSTRUMENT. The North-Star number (skills in proven retention) ALONE, in
@@ -17,19 +20,20 @@ export function Instrument({
   spectrum,
   sparse,
 }: Pick<WorkspaceModel, "mastery" | "masteredThisWeek" | "spectrum" | "sparse">) {
+  const { t } = useLocale();
   return (
-    <Panel title="Skills in proven retention" id="ws-instrument" sub="the mastery you can't cram">
+    <Panel title={t("workspaceUi.skillsRetention")} id="ws-instrument" sub={t("workspaceUi.skillsRetentionSub")}>
       <dl>
-        <dt className="sr-only">Skills in proven retention</dt>
+        <dt className="sr-only">{t("workspaceUi.skillsRetention")}</dt>
         <dd className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <span className="font-display text-display-2xl leading-none tracking-tight text-gray-900 tabular-nums dark:text-white">
             {mastery}
           </span>
-          <span className="sr-only">skills in proven retention</span>
+          <span className="sr-only">{t("workspaceUi.skillsRetentionSr")}</span>
           {masteredThisWeek > 0 && (
             <span className="text-sm font-medium text-accent-dark dark:text-accent-light">
               +{masteredThisWeek}{" "}
-              <span className="font-normal text-caption">kept sharp this week</span>
+              <span className="font-normal text-caption">{t("workspaceUi.keptSharp")}</span>
             </span>
           )}
         </dd>

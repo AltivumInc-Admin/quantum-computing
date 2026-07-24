@@ -5,6 +5,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import { WalletBadge } from "@/components/pricing/wallet-badge";
+import { LocaleProvider } from "@/i18n";
 
 jest.mock("@/lib/billing-client", () => ({
   getWallet: jest.fn(),
@@ -14,10 +15,22 @@ import { getWallet, isBillingConfigured } from "@/lib/billing-client";
 
 afterEach(() => jest.clearAllMocks());
 
+function renderBadge() {
+  return render(
+    <LocaleProvider>
+      <WalletBadge />
+    </LocaleProvider>,
+  );
+}
+
 test("renders the balance and tier once the wallet loads", async () => {
   (isBillingConfigured as jest.Mock).mockReturnValue(true);
-  (getWallet as jest.Mock).mockResolvedValue({ tier: "plus", credits: 1890, subscriptionStatus: "active" });
-  render(<WalletBadge />);
+  (getWallet as jest.Mock).mockResolvedValue({
+    tier: "plus",
+    credits: 1890,
+    subscriptionStatus: "active",
+  });
+  renderBadge();
   const badge = await screen.findByTestId("wallet-badge");
   expect(badge).toHaveTextContent("1,890 credits");
   expect(badge).toHaveTextContent("Plus plan");
@@ -25,7 +38,7 @@ test("renders the balance and tier once the wallet loads", async () => {
 
 test("renders nothing when billing is not configured (never calls the API)", () => {
   (isBillingConfigured as jest.Mock).mockReturnValue(false);
-  render(<WalletBadge />);
+  renderBadge();
   expect(screen.queryByTestId("wallet-badge")).not.toBeInTheDocument();
   expect(getWallet).not.toHaveBeenCalled();
 });
@@ -33,7 +46,7 @@ test("renders nothing when billing is not configured (never calls the API)", () 
 test("stays silent when the wallet fetch fails (signed out / transient)", async () => {
   (isBillingConfigured as jest.Mock).mockReturnValue(true);
   (getWallet as jest.Mock).mockRejectedValue(new Error("401"));
-  render(<WalletBadge />);
+  renderBadge();
   await waitFor(() => expect(getWallet).toHaveBeenCalled());
   expect(screen.queryByTestId("wallet-badge")).not.toBeInTheDocument();
 });

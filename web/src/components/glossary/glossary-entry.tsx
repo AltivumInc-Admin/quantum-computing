@@ -8,7 +8,21 @@ import { SeeAlsoLinks } from "./see-also-links";
 // passes them into the client <Glossary> as ReactNode props), so the markdown/
 // KaTeX pipeline inside InlineMarkdown stays out of the client bundle.
 
-export function GlossaryEntry({ term }: { term: GlossaryTerm }) {
+export function GlossaryEntry({
+  term,
+  displayTerm,
+  definition,
+  seeAlsoLabels,
+}: {
+  term: GlossaryTerm;
+  /** Localized term label; defaults to English term.term. */
+  displayTerm?: string;
+  /** Localized definition; defaults to English term.definition. */
+  definition?: string;
+  /** Optional localized display labels for seeAlso English keys. */
+  seeAlsoLabels?: Record<string, string>;
+}) {
+  // Links always use the English term slug (stable URL).
   return (
     <article
       id={termSlug(term.term)}
@@ -20,15 +34,15 @@ export function GlossaryEntry({ term }: { term: GlossaryTerm }) {
             href={`/glossary/${termSlug(term.term)}`}
             className="text-(--ink) hover:text-accent dark:hover:text-accent-light focus-ring rounded"
           >
-            {term.term}
+            {displayTerm ?? term.term}
           </TransitionLink>
         </h3>
         <CategoryChip section={term.section} />
       </div>
       <p className="mt-2 text-gray-600 dark:text-gray-300 leading-relaxed [&_code]:rounded [&_code]:bg-gray-100 dark:[&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]">
-        <InlineMarkdown>{term.definition}</InlineMarkdown>
+        <InlineMarkdown>{definition ?? term.definition}</InlineMarkdown>
       </p>
-      <SeeAlsoLinks refs={term.seeAlso} />
+      <SeeAlsoLinks refs={term.seeAlso} labels={seeAlsoLabels} />
     </article>
   );
 }

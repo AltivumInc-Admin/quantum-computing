@@ -7,6 +7,7 @@ import { getSections, type Section } from "@/lib/sections";
 import { useSectionComplete, useCompletedCount } from "@/hooks/use-progress";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { DRAWER_INERT_REGION_IDS } from "@/lib/layout-regions";
+import { useLocale, sectionTitle } from "@/i18n";
 
 function CheckBadge() {
   return (
@@ -32,7 +33,9 @@ function SidebarItem({
   isActive: boolean;
   onNavigate: (e: MouseEvent<HTMLAnchorElement>) => void;
 }) {
+  const { t } = useLocale();
   const complete = useSectionComplete(section.slug);
+  const title = sectionTitle(t, section.slug, section.title);
 
   return (
     <TransitionLink
@@ -56,8 +59,8 @@ function SidebarItem({
       >
         {complete ? <CheckBadge /> : String(section.index).padStart(2, "0")}
       </span>
-      <span className="truncate">{section.title}</span>
-      {complete && <span className="sr-only">completed</span>}
+      <span className="truncate">{title}</span>
+      {complete && <span className="sr-only">{t("sidebar.completed")}</span>}
     </TransitionLink>
   );
 }
@@ -65,6 +68,7 @@ function SidebarItem({
 export function Sidebar() {
   const pathname = usePathname();
   const sections = getSections();
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const asideId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -134,7 +138,7 @@ export function Sidebar() {
       <button
         ref={toggleRef}
         onClick={() => (open ? close() : setOpen(true))}
-        aria-label="Toggle navigation"
+        aria-label={t("sidebar.toggleNav")}
         aria-expanded={open}
         aria-controls={asideId}
         className={`lg:hidden fixed bottom-4 right-4 ${
@@ -170,7 +174,7 @@ export function Sidebar() {
         tabIndex={-1}
         role={open ? "dialog" : undefined}
         aria-modal={open || undefined}
-        aria-label={open ? "Learning path navigation" : undefined}
+        aria-label={open ? t("sidebar.drawerLabel") : undefined}
         className={`fixed top-16 left-0 w-72 h-[calc(100vh-4rem)] supports-[height:100dvh]:h-[calc(100dvh-4rem)] overflow-y-auto border-r border-(--bd) bg-[color-mix(in_oklab,var(--surface-1)_95%,transparent)] dark:bg-[color-mix(in_oklab,var(--surface-2)_95%,transparent)] backdrop-blur-xl p-6 outline-none transition-[transform,visibility] motion-reduce:transition-none lg:translate-x-0 ${
           open
             ? "z-[60] translate-x-0 max-lg:visible"
@@ -178,14 +182,14 @@ export function Sidebar() {
         }`}
       >
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono mb-3">
-          Learning Path
+          {t("sidebar.learningPath")}
         </p>
 
         {/* Overall progress */}
         <div className="mb-5 rounded-control border border-(--bd) bg-(--field) p-3">
           <div className="flex items-baseline justify-between mb-2">
             <span className="text-xs font-medium text-caption">
-              {completed} of {total} complete
+              {t("sidebar.ofComplete", { completed, total })}
             </span>
             <span className="text-sm font-semibold text-accent-dark dark:text-accent-light tabular-nums">
               {pct}%
@@ -196,7 +200,7 @@ export function Sidebar() {
             aria-valuenow={completed}
             aria-valuemin={0}
             aria-valuemax={total}
-            aria-label="Learning path progress"
+            aria-label={t("sidebar.progressLabel")}
             className="h-1.5 w-full overflow-hidden rounded-full bg-(--track)"
           >
             <div
@@ -211,7 +215,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        <nav aria-label="Learning path" className="space-y-0.5">
+        <nav aria-label={t("sidebar.navLabel")} className="space-y-0.5">
           {sections.map((section) => (
             <SidebarItem
               key={section.slug}

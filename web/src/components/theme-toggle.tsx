@@ -2,11 +2,13 @@
 
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
+import { useLocale } from "@/i18n";
 
 const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
+  const { t } = useLocale();
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   if (!mounted) return <div className="w-11 h-11" />;
@@ -19,7 +21,7 @@ export function ThemeToggle() {
     <button
       onClick={() => setTheme(isDark ? "light" : "dark")}
       className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control hover:bg-(--field) interactive focus-ring"
-      aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={isDark ? t("theme.switchToLight") : t("theme.switchToDark")}
     >
       {isDark ? (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -2,6 +2,7 @@
 
 import { getRepoUrl, humanizeNotebook, notebookHref } from "@/lib/manifest";
 import { CopyButton } from "./copy-button";
+import { useLocale } from "@/i18n";
 
 interface NotebookLinkProps {
   filename: string;
@@ -14,6 +15,7 @@ export function NotebookLink({
   sectionDir,
   browserRunnable = false,
 }: NotebookLinkProps) {
+  const { t } = useLocale();
   // Canonical repo URL comes from the content manifest; an explicit env var
   // (set in Amplify) can still override it for forks/previews.
   const repoUrl = process.env.NEXT_PUBLIC_GITHUB_REPO || getRepoUrl();
@@ -66,12 +68,12 @@ export function NotebookLink({
               pill in a row built for 11px text and a 10px chip. */}
           <CopyButton
             getText={() => `${sectionDir}/notebooks/${filename}`}
-            label="Copy notebook path"
+            label={t("lesson.copyNotebookPath")}
             size="sm"
           />
           {browserRunnable && (
             <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-accent/10 text-accent-dark dark:text-accent-light">
-              Pyodide
+              {t("lesson.pyodide")}
             </span>
           )}
         </div>
@@ -84,9 +86,9 @@ export function NotebookLink({
             target="_blank"
             rel="noopener noreferrer"
             className="px-2.5 py-1.5 text-xs font-medium rounded-lg surface-accent interactive focus-ring"
-            aria-label={`Run ${label} in browser`}
+            aria-label={t("lesson.runAria", { label })}
           >
-            Run in browser
+            {t("lesson.runInBrowser")}
           </a>
         ) : (
           // aria-disabled is not a supported state on a generic span (axe:
@@ -107,12 +109,11 @@ export function NotebookLink({
           // could ride along `runnable: false` in the manifest later.
           <span
             className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-caption cursor-not-allowed"
-            title="Not available in the browser runtime — run this one locally with the full Python environment"
+            title={t("lesson.unavailableTitle")}
           >
-            Run in browser
+            {t("lesson.runInBrowser")}
             <span className="sr-only">
-              {" "}
-              — unavailable in the browser runtime; run it locally with the full Python environment
+              {t("lesson.unavailableSr")}
             </span>
           </span>
         )}
@@ -121,7 +122,7 @@ export function NotebookLink({
           target="_blank"
           rel="noopener noreferrer"
           className="p-1.5 rounded-lg text-caption hover:text-accent hover:bg-accent/10 transition-colors interactive focus-ring"
-          aria-label={`View ${label} on GitHub`}
+          aria-label={t("lesson.viewOnGithub", { label })}
         >
           <svg
             className="w-4 h-4"

@@ -8,6 +8,7 @@ import {
   TOPUP_MAX_USD,
 } from "@/lib/billing-client";
 import { formatCredits } from "@/lib/pricing";
+import { useLocale } from "@/i18n";
 
 const PRESETS = [5, 20, 50, 100];
 
@@ -22,6 +23,7 @@ function defaultNavigate(url: string) {
  * `navigate` is injectable for tests (jsdom locks window.location).
  */
 export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string) => void }) {
+  const { t } = useLocale();
   const [amount, setAmount] = useState("20");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,10 +107,10 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
           className="surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-60"
         >
           {busy
-            ? "Starting…"
+            ? t("pricingUi.starting")
             : valid
               ? `Buy ${formatCredits(parsed * 100)}`
-              : "Buy credits"}
+              : t("pricingUi.buyCredits")}
         </button>
       </div>
 

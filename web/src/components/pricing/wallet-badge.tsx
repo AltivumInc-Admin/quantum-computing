@@ -3,12 +3,8 @@
 import { useEffect, useState } from "react";
 import { getWallet, isBillingConfigured, type Wallet } from "@/lib/billing-client";
 import { formatCredits } from "@/lib/pricing";
+import { useLocale } from "@/i18n";
 
-const TIER_LABEL: Record<Wallet["tier"], string> = {
-  free: "Free",
-  plus: "Plus",
-  pro: "Pro",
-};
 
 /**
  * A quiet chip showing the signed-in learner's wallet. Renders nothing until it
@@ -16,7 +12,17 @@ const TIER_LABEL: Record<Wallet["tier"], string> = {
  * (a pricing page must never break because the wallet is momentarily
  * unreachable).
  */
+function tierLabel(
+  tier: Wallet["tier"],
+  t: (key: string) => string,
+): string {
+  if (tier === "free") return t("pricingUi.free");
+  // Product tier names stay English (Plus / Pro).
+  return tier === "plus" ? "Plus" : "Pro";
+}
+
 export function WalletBadge() {
+  const { t } = useLocale();
   const [wallet, setWallet] = useState<Wallet | null>(null);
 
   useEffect(() => {
@@ -43,7 +49,9 @@ export function WalletBadge() {
     >
       <span className="text-accent-dark dark:text-accent-light">{formatCredits(wallet.credits)}</span>
       <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">·</span>
-      <span>{TIER_LABEL[wallet.tier]} plan</span>
+      <span>
+        {tierLabel(wallet.tier, t)} {t("pricingUi.plan")}
+      </span>
     </span>
   );
 }

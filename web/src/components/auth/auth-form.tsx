@@ -15,6 +15,7 @@ import { mapAuthError, type AuthView } from "@/lib/auth-errors";
 import { allCriteriaMet } from "@/lib/password-policy";
 import { PasswordField } from "./password-field";
 import { PasswordChecklist } from "./password-checklist";
+import { useLocale } from "@/i18n";
 
 const primaryBtn =
   "w-full surface-accent inline-flex items-center justify-center rounded-control px-4 py-2.5 text-sm font-medium interactive focus-ring disabled:opacity-60";
@@ -22,6 +23,7 @@ const linkBtn =
   "text-sm text-accent-dark dark:text-accent-light hover:underline focus-ring rounded";
 
 export function AuthForm() {
+  const { t } = useLocale();
   const router = useRouter();
   const params = useSearchParams();
   const [view, setView] = useState<AuthView>(
@@ -32,8 +34,10 @@ export function AuthForm() {
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [error, setError] = useState<string | null>(
-    params.get("error") === "google" ? "Google sign-in didn't complete. Please try again." : null
+  // Google failure lands with ?error=google — resolve from the active dictionary
+  // at first render (no setState-in-effect; locale is already available).
+  const [error, setError] = useState<string | null>(() =>
+    params.get("error") === "google" ? t("auth.googleFailed") : null,
   );
   const [busy, setBusy] = useState(false);
   // Resend-code feedback + a cooldown that guards rapid re-clicks straight into a
@@ -44,8 +48,8 @@ export function AuthForm() {
   // Tick the cooldown down to zero, one second at a time.
   useEffect(() => {
     if (resendCooldown <= 0) return;
-    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
   }, [resendCooldown]);
 
   // When the flow advances to a new view, move focus to its heading so the
@@ -78,7 +82,7 @@ export function AuthForm() {
       await fn();
     } catch (err) {
       const m = mapAuthError(err);
-      setError(m.message);
+      setError(t(m.messageKey));
       if (m.view) {
         setConfirm("");
         setView(m.view);
@@ -130,16 +134,16 @@ export function AuthForm() {
       setResendCooldown(30);
     } catch (err) {
       setResendState("error");
-      setError(mapAuthError(err).message);
+      setError(t(mapAuthError(err).messageKey));
     }
   };
 
   const title: Record<AuthView, string> = {
-    signIn: "Sign in",
-    signUp: "Create your account",
-    confirm: "Confirm your email",
-    forgot: "Reset your password",
-    reset: "Set a new password",
+    signIn: t("auth.signIn"),
+    signUp: t("auth.signUp"),
+    confirm: t("auth.confirmEmail"),
+    forgot: t("auth.forgotPassword"),
+    reset: t("auth.resetPassword"),
   };
 
   const signUpInvalid = !allCriteriaMet(password) || password !== confirm;
@@ -169,7 +173,7 @@ export function AuthForm() {
           <Field
             id="email"
             name="email"
-            label="Email"
+            label={t("auth.email")}
             type="email"
             value={email}
             onChange={setEmail}
@@ -177,7 +181,7 @@ export function AuthForm() {
           />
           <PasswordField
             id="password"
-            label="Password"
+            label={t("auth.password")}
             value={password}
             onChange={setPassword}
             autoComplete="current-password"
@@ -185,14 +189,14 @@ export function AuthForm() {
           />
           {password && <PasswordChecklist id="signin-pw-rules" password={password} />}
           <button type="submit" disabled={busy} className={primaryBtn}>
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? t("auth.signingIn") : t("auth.signIn")}
           </button>
           <div className="flex items-center justify-between">
             <button type="button" className={linkBtn} onClick={() => goTo("forgot")}>
-              Forgot password?
+              {t("auth.forgotLink")}
             </button>
             <button type="button" className={linkBtn} onClick={() => goTo("signUp")}>
-              Create account
+              {t("auth.createAccount")}
             </button>
           </div>
           <GoogleBlock onClick={doGoogle} />
@@ -204,7 +208,7 @@ export function AuthForm() {
           <Field
             id="email"
             name="email"
-            label="Email"
+            label={t("auth.email")}
             type="email"
             value={email}
             onChange={setEmail}
@@ -212,7 +216,7 @@ export function AuthForm() {
           />
           <PasswordField
             id="password"
-            label="Password"
+            label={t("auth.password")}
             value={password}
             onChange={setPassword}
             autoComplete="new-password"
@@ -220,18 +224,18 @@ export function AuthForm() {
           />
           <PasswordField
             id="confirm"
-            label="Confirm password"
+            label={t("auth.confirmPassword")}
             value={confirm}
             onChange={setConfirm}
             autoComplete="new-password"
           />
           {password && <PasswordChecklist id="signup-pw-rules" password={password} confirm={confirm} />}
           <button type="submit" disabled={busy || signUpInvalid} className={primaryBtn}>
-            {busy ? "Creating…" : "Create account"}
+            {busy ? t("auth.creating") : t("auth.createAccount")}
           </button>
           <div className="text-center">
             <button type="button" className={linkBtn} onClick={() => goTo("signIn")}>
-              Already have an account? Sign in
+              {t("auth.alreadyHaveAccount")}
             </button>
           </div>
           <GoogleBlock onClick={doGoogle} />
@@ -241,14 +245,14 @@ export function AuthForm() {
       {view === "confirm" && (
         <form onSubmit={doConfirm} className="mt-6 space-y-4">
           <p className="text-sm text-(--mut)">
-            Enter the 6-digit code we emailed to {email || "your address"}.
+            {t("auth.enterCode", { email: email || t("auth.yourAddress") })}
           </p>
           {/* one-time-code + numeric: Mail/Messages offer the emailed code as an
               autofill suggestion, and mobile keyboards open on digits. */}
           <Field
             id="code"
             name="code"
-            label="Confirmation code"
+            label={t("auth.confirmationCode")}
             type="text"
             value={code}
             onChange={setCode}
@@ -257,7 +261,7 @@ export function AuthForm() {
             pattern="[0-9]*"
           />
           <button type="submit" disabled={busy} className={primaryBtn}>
-            {busy ? "Confirming…" : "Confirm"}
+            {busy ? t("auth.confirming") : t("auth.confirmBtn")}
           </button>
           <div className="space-y-1 text-center">
             <button
@@ -267,14 +271,14 @@ export function AuthForm() {
               disabled={resendState === "sending" || resendCooldown > 0}
             >
               {resendCooldown > 0
-                ? `Resend code (${resendCooldown}s)`
+                ? t("auth.resendCodeCooldown", { seconds: resendCooldown })
                 : resendState === "sending"
-                  ? "Sending…"
-                  : "Resend code"}
+                  ? t("auth.sending")
+                  : t("auth.resendCode")}
             </button>
             {resendState === "sent" && (
               <p role="status" className="text-xs text-caption">
-                A new code is on its way.
+                {t("auth.codeOnWay")}
               </p>
             )}
           </div>
@@ -287,18 +291,18 @@ export function AuthForm() {
           <Field
             id="email"
             name="email"
-            label="Email"
+            label={t("auth.email")}
             type="email"
             value={email}
             onChange={setEmail}
             autoComplete="username"
           />
           <button type="submit" disabled={busy} className={primaryBtn}>
-            {busy ? "Sending…" : "Send reset code"}
+            {busy ? t("auth.sending") : t("auth.sendResetCode")}
           </button>
           <div className="text-center">
             <button type="button" className={linkBtn} onClick={() => goTo("signIn")}>
-              Back to sign in
+              {t("auth.backToSignIn")}
             </button>
           </div>
         </form>
@@ -309,7 +313,7 @@ export function AuthForm() {
           <Field
             id="code"
             name="code"
-            label="Reset code"
+            label={t("auth.resetCode")}
             type="text"
             value={code}
             onChange={setCode}
@@ -319,7 +323,7 @@ export function AuthForm() {
           />
           <PasswordField
             id="newPassword"
-            label="New password"
+            label={t("auth.newPassword")}
             value={newPassword}
             onChange={setNewPassword}
             autoComplete="new-password"
@@ -327,14 +331,14 @@ export function AuthForm() {
           />
           <PasswordField
             id="confirm"
-            label="Confirm new password"
+            label={t("auth.confirmNewPassword")}
             value={confirm}
             onChange={setConfirm}
             autoComplete="new-password"
           />
           {newPassword && <PasswordChecklist id="reset-pw-rules" password={newPassword} confirm={confirm} />}
           <button type="submit" disabled={busy || resetInvalid} className={primaryBtn}>
-            {busy ? "Saving…" : "Set new password"}
+            {busy ? t("auth.saving") : t("auth.setNewPassword")}
           </button>
         </form>
       )}
@@ -384,11 +388,12 @@ function Field({
 }
 
 function GoogleBlock({ onClick }: { onClick: () => void }) {
+  const { t } = useLocale();
   return (
     <>
       <div className="flex items-center gap-3 py-1">
         <span className="h-px flex-1 bg-(--bd)" />
-        <span className="text-xs text-caption">or</span>
+        <span className="text-xs text-caption">{t("common.or")}</span>
         <span className="h-px flex-1 bg-(--bd)" />
       </div>
       <button
@@ -396,7 +401,7 @@ function GoogleBlock({ onClick }: { onClick: () => void }) {
         onClick={onClick}
         className="w-full inline-flex items-center justify-center gap-2 rounded-control border border-(--bd) px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring"
       >
-        Continue with Google
+        {t("auth.continueWithGoogle")}
       </button>
     </>
   );

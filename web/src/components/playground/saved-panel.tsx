@@ -12,6 +12,7 @@ import {
 import { subscribe } from "@/lib/progress-store";
 import { Panel } from "@/components/workspace/panel";
 import { benchButtonClass, benchFieldClass } from "./controls";
+import { useLocale } from "@/i18n";
 
 /**
  * The shelf: named circuits in localStorage under qc:circuit:* (so they ride the
@@ -44,6 +45,7 @@ export function SavedPanel({
   onSaved: (c: SavedCircuit) => void;
   onDeleted: (id: string) => void;
 }) {
+  const { t } = useLocale();
   const [circuits, setCircuits] = useState<SavedCircuit[]>([]);
   const [status, setStatus] = useState("");
   const [statusIsError, setStatusIsError] = useState(false);
@@ -95,7 +97,7 @@ export function SavedPanel({
 
   return (
     <Panel
-      title="Saved circuits"
+      title={t("playgroundUi.saved")}
       id="saved"
       sub={circuits.length > 0 ? `${circuits.length}/${MAX_SAVED_CIRCUITS}` : undefined}
     >
@@ -104,7 +106,7 @@ export function SavedPanel({
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           maxLength={MAX_CIRCUIT_NAME}
-          aria-label="Circuit name"
+          aria-label={t("playgroundUi.circuitName")}
           placeholder="Name this circuit"
           className={`${benchFieldClass} min-w-0 flex-1 px-3 py-1.5 text-sm`}
         />
@@ -164,7 +166,7 @@ export function SavedPanel({
                     : "border-gray-200 bg-gray-50 text-danger-dark hover:bg-danger/10 dark:border-gray-700/50 dark:bg-gray-900/50 dark:text-danger-light"
                 }`}
               >
-                {confirmingId === c.id ? "Confirm?" : "Delete"}
+                {confirmingId === c.id ? t("common.confirm") : t("common.delete")}
               </button>
             </li>
           ))}

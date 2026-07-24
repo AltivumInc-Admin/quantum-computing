@@ -2,12 +2,14 @@
 
 import { PASSWORD_CRITERIA, allCriteriaMet } from "@/lib/password-policy";
 import { LiveStatus } from "../live-status";
+import { useLocale } from "@/i18n";
 
 function Row({ met, label }: { met: boolean; label: string }) {
+  const { t } = useLocale();
   return (
     <li
       data-met={met ? "true" : "false"}
-      aria-label={`${label}: ${met ? "met" : "not met"}`}
+      aria-label={`${label}: ${met ? t("auth.criterionMet") : t("auth.criterionNotMet")}`}
       className={`flex items-center gap-2 text-xs ${
         met ? "text-success-dark dark:text-success-light" : "text-danger-dark dark:text-danger-light"
       }`}
@@ -37,21 +39,25 @@ export function PasswordChecklist({
   confirm?: string;
   id?: string;
 }) {
+  const { t } = useLocale();
   const allMet = allCriteriaMet(password);
   const matchMet = confirm === undefined ? true : confirm.length > 0 && confirm === password;
   // Announce the milestone only on views where the criteria gate submission (sign-up
   // / reset pass `confirm`); on sign-in the checklist is purely informational. One
   // concise polite line at the gate-opening point, not a row per keystroke.
   const announcement =
-    confirm !== undefined && allMet && matchMet ? "Password meets all requirements." : "";
+    confirm !== undefined && allMet && matchMet ? t("auth.passwordMeetsAll") : "";
   return (
     <>
       <ul id={id} className="mt-2 space-y-1">
         {PASSWORD_CRITERIA.map((c) => (
-          <Row key={c.key} met={c.test(password)} label={c.label} />
+          <Row key={c.key} met={c.test(password)} label={t(c.labelKey)} />
         ))}
         {confirm !== undefined && (
-          <Row met={confirm.length > 0 && confirm === password} label="Passwords match" />
+          <Row
+            met={confirm.length > 0 && confirm === password}
+            label={t("auth.passwordsMatch")}
+          />
         )}
       </ul>
       <LiveStatus>{announcement}</LiveStatus>

@@ -2,6 +2,7 @@
 
 import { useSectionComplete } from "@/hooks/use-progress";
 import { toggleSectionComplete } from "@/lib/progress-store";
+import { useLocale } from "@/i18n";
 
 function CheckIcon() {
   return (
@@ -34,6 +35,7 @@ function CheckIcon() {
  */
 export function SectionProgress({ slug }: { slug: string }) {
   const complete = useSectionComplete(slug);
+  const { t } = useLocale();
 
   return (
     <button
@@ -55,7 +57,7 @@ export function SectionProgress({ slug }: { slug: string }) {
       >
         <CheckIcon />
       </span>
-      Mark as complete
+      {t("lesson.markComplete")}
     </button>
   );
 }
