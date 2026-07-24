@@ -6,13 +6,16 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { Locale, TFunction, TranslateValues } from "./types";
-import { DEFAULT_LOCALE } from "./types";
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY } from "./types";
 import { translate } from "./translate";
-import { readStoredLocale, writeStoredLocale } from "./storage";
+import { isLocale, readStoredLocale, writeStoredLocale } from "./storage";
+
+/** Same-tab locale changes (storage events only fire across tabs). */
+const LOCALE_EVENT = "qc-locale-change";
 
 interface LocaleContextValue {
   locale: Locale;
@@ -22,45 +25,53 @@ interface LocaleContextValue {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
+function subscribeLocale(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === LOCALE_STORAGE_KEY || e.key === null) onStoreChange();
+  };
+  const onLocal = () => onStoreChange();
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(LOCALE_EVENT, onLocal);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(LOCALE_EVENT, onLocal);
+  };
+}
+
+function getClientLocale(): Locale {
+  return readStoredLocale();
+}
+
+function getServerLocale(): Locale {
+  return DEFAULT_LOCALE;
+}
+
 /**
  * Learner locale preference — mirrors next-themes' role for color scheme.
  * Persists under qc:locale (syncs with progress), updates <html lang>, and
  * provides a bound t() for the tree.
+ *
+ * Locale is read via useSyncExternalStore (not useEffect+setState) so the
+ * static-export prerender stays on "en" and the client hydrates from storage
+ * without cascading-render lint failures.
  */
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  // Start at the default so SSR/static export and the first client paint match;
-  // then hydrate from storage (same flicker class as next-themes).
-  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
-  const [hydrated, setHydrated] = useState(false);
+  const locale = useSyncExternalStore(
+    subscribeLocale,
+    getClientLocale,
+    getServerLocale,
+  );
 
   useEffect(() => {
-    setLocaleState(readStoredLocale());
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
     document.documentElement.lang = locale;
-  }, [locale, hydrated]);
-
-  // Cross-tab: another tab changed qc:locale.
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== "qc:locale") return;
-      if (e.newValue === "en" || e.newValue === "es") {
-        setLocaleState(e.newValue);
-      } else if (e.newValue === null) {
-        setLocaleState(DEFAULT_LOCALE);
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
-    setLocaleState(next);
+    if (!isLocale(next)) return;
     writeStoredLocale(next);
     document.documentElement.lang = next;
+    window.dispatchEvent(new Event(LOCALE_EVENT));
   }, []);
 
   const t: TFunction = useCallback(

@@ -79,7 +79,6 @@ export function translate(
 
   if (leaf === undefined) {
     if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
       console.warn(`[i18n] missing key: ${key}`);
     }
     return key;
