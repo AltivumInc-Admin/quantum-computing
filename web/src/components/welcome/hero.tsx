@@ -88,6 +88,9 @@ export function WelcomeHero({
   stats,
   nodes,
   sectionCount,
+  scrollLabel = "Scroll to the curriculum",
+  scrollCueText,
+  horizonsLabel = "Quantum horizons",
 }: {
   eyebrow: string;
   headlineLead: string;
@@ -99,6 +102,11 @@ export function WelcomeHero({
   /** Real curriculum size — drives the horizons meter and the scroll-cue
       counter so the decoration can never silently lie when a section lands. */
   sectionCount: number;
+  /** Accessible name for the scroll-cue link. */
+  scrollLabel?: string;
+  /** Visible scroll-cue text (may include section counter). */
+  scrollCueText?: string;
+  horizonsLabel?: string;
 }) {
   return (
     <section className="dark relative px-3 pt-3 sm:px-4 sm:pt-4">
@@ -183,7 +191,7 @@ export function WelcomeHero({
             horizons meter) and is decorative; the aria-label is the truth. */}
         <a
           href="#curriculum"
-          aria-label="Scroll to the curriculum"
+          aria-label={scrollLabel}
           className="absolute bottom-5 left-5 z-20 hidden items-center gap-2.5 rounded-chip border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white/60 backdrop-blur-md transition-colors hover:text-white/90 sm:flex interactive focus-ring"
         >
           <span className="grid h-6 w-6 place-items-center rounded-full border border-white/15" aria-hidden="true">
@@ -192,7 +200,8 @@ export function WelcomeHero({
             </svg>
           </span>
           <span className="font-mono tracking-wide" aria-hidden="true">
-            01 / {String(sectionCount).padStart(2, "0")} · Scroll down
+            {scrollCueText ??
+              `01 / ${String(sectionCount).padStart(2, "0")} · Scroll down`}
           </span>
         </a>
 
@@ -203,7 +212,7 @@ export function WelcomeHero({
           aria-hidden="true"
           className="absolute bottom-6 right-6 z-20 hidden select-none flex-col items-end gap-2 sm:flex"
         >
-          <span className="font-mono text-[12px] tracking-wide text-white/55">Quantum horizons</span>
+          <span className="font-mono text-[12px] tracking-wide text-white/55">{horizonsLabel}</span>
           <div className="flex items-center gap-1">
             <span className="h-1 w-7 rounded-full bg-accent" />
             {Array.from({ length: Math.max(0, sectionCount - 1) }).map((_, i) => (
