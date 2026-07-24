@@ -38,9 +38,9 @@ export const metadata: Metadata = {
  */
 export default async function HomePage() {
   const sections = getSections();
-  const summaries = await Promise.all(
-    sections.map((s) => getContentSummary(s.slug))
-  );
+  const summaries = (
+    await Promise.all(sections.map((s) => getContentSummary(s.slug)))
+  ).map((s) => s ?? "");
   const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
   const playgroundGates = PALETTE.reduce((n, group) => n + group.chips.length, 0);
 
