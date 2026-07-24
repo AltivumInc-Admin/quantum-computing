@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
 import { resetLocalDeletions, wipeLocalProgress } from "@/lib/progress-merge";
 import { isReviewPrefsConfigured, deleteReminderPrefs } from "@/lib/review-prefs-client";
+import { useLocale } from "@/i18n";
 
 const CONFIRM_WORD = "delete";
 
@@ -17,6 +18,7 @@ const CONFIRM_WORD = "delete";
  * client lazy-loads amplify internally.
  */
 export function DeleteAccount({ className = "" }: { className?: string }) {
+  const { t } = useLocale();
   const router = useRouter();
   const { signOut } = useAuth();
   const [open, setOpen] = useState(false);
@@ -129,10 +131,10 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
           onClick={() => setOpen(true)}
           className="inline-flex items-center rounded-control border border-red-300/70 dark:border-red-500/30 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 interactive focus-ring"
         >
-          Delete account
+          {t("deleteAccount.title")}
         </button>
         <p className="mt-2 text-xs text-caption">
-          Permanently removes your account and all data. Asks for confirmation first.
+          {t("deleteAccount.blurb")}
         </p>
       </div>
     );
@@ -140,7 +142,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
 
   return (
     <section
-      aria-label="Delete account"
+      aria-label={t("deleteAccount.ariaLabel")}
       className={`rounded-card border border-red-300/70 dark:border-red-500/30 bg-(--surface-1) p-6 shadow-(--shadow-resting) ${className}`}
     >
       <h2
@@ -148,23 +150,24 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
         tabIndex={-1}
         className="text-sm font-medium text-(--ink) outline-none"
       >
-        Delete account
+        {t("deleteAccount.title")}
       </h2>
       <p className="mt-2 text-sm text-(--mut)">
-        This permanently deletes:
+        {t("deleteAccount.intro")}
       </p>
       <ul className="mt-2 list-disc pl-5 text-sm text-(--mut) space-y-1">
-        {syncConfigured && <li>your synced progress on the server (including your email address)</li>}
-        {prefsConfigured && <li>your email reminder preference</li>}
-        <li>your account and sign-in</li>
-        <li>this device&apos;s local copy of your progress</li>
+        {syncConfigured && <li>{t("deleteAccount.itemProgress")}</li>}
+        {prefsConfigured && <li>{t("deleteAccount.itemPrefs")}</li>}
+        <li>{t("deleteAccount.itemAccount")}</li>
+        <li>{t("deleteAccount.itemLocal")}</li>
       </ul>
       <p className="mt-3 text-sm text-(--mut)">
-        There is no undo and no recovery period.
+        {t("deleteAccount.noUndo")}
       </p>
 
       <label htmlFor="delete-confirm" className="mt-4 block text-sm text-(--mut)">
-        Type <span className="font-mono font-medium">{CONFIRM_WORD}</span> to confirm
+        {t("deleteAccount.confirmLabel")}{" "}
+        <span className="font-mono font-medium">{CONFIRM_WORD}</span>
       </label>
       <input
         id="delete-confirm"
@@ -190,7 +193,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
           disabled={!confirmed || busy}
           className="inline-flex items-center rounded-control border border-red-700 dark:border-red-500/50 bg-red-700 px-4 py-2 text-sm font-medium text-white interactive focus-ring disabled:opacity-50"
         >
-          {busy ? "Deleting…" : "Delete my account"}
+          {busy ? t("deleteAccount.deleting") : t("deleteAccount.submit")}
         </button>
         <button
           type="button"
@@ -202,7 +205,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
           disabled={busy}
           className="inline-flex items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-(--mut) interactive focus-ring disabled:opacity-60"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </section>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/i18n";
 
 /**
  * One reusable copy-to-clipboard button for every paste-worthy surface (code
@@ -91,7 +92,7 @@ function fallbackCopy(text: string): boolean {
 
 export function CopyButton({
   getText,
-  label = "Copy",
+  label,
   tone = "default",
   size = "md",
 }: {
@@ -100,6 +101,8 @@ export function CopyButton({
   tone?: keyof typeof TONE;
   size?: keyof typeof SIZE;
 }) {
+  const { t } = useLocale();
+  const resolvedLabel = label ?? t("common.copy");
   const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -141,14 +144,14 @@ export function CopyButton({
     <button
       type="button"
       onClick={copy}
-      aria-label={copied ? "Copied" : failed ? "Copy failed" : label}
+      aria-label={copied ? t("common.copied") : failed ? t("common.copyFailed") : resolvedLabel}
       className={`inline-flex shrink-0 items-center justify-center rounded-control interactive focus-ring ${
         SIZE[size]
       } ${TONE[tone].surface} ${failed ? FAILED_TEXT : TONE[tone].text}`}
     >
       {copied ? <CheckIcon /> : failed ? <FailIcon /> : <ClipboardIcon />}
       <span className="sr-only" role="status" aria-live="polite">
-        {copied ? "Copied" : failed ? "Copy failed" : ""}
+        {copied ? t("common.copied") : failed ? t("common.copyFailed") : ""}
       </span>
     </button>
   );

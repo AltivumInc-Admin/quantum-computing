@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { TransitionLink } from "@/components/transition-link";
 import { hueFor } from "@/lib/sections";
-import { ACCOUNT_REASSURANCE } from "@/lib/section-pitch";
+import { useLocale, sectionPitch, sectionTitle } from "@/i18n";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 export interface GateSection {
@@ -35,23 +35,26 @@ interface SectionGateModalProps {
  * during static export.
  */
 export function SectionGateModal({ section, authenticated, onClose }: SectionGateModalProps) {
+  const { t } = useLocale();
   const dialogRef = useRef<HTMLDivElement>(null);
   const trapFocus = useFocusTrap(dialogRef);
   const titleId = useId();
   const descId = useId();
   const hue = hueFor(section.index);
+  const displayTitle = sectionTitle(t, section.slug, section.title);
+  const pitch = sectionPitch(t, section.slug, section.pitch);
 
   // Truthful per-section runnable note. Coverage varies (all of 01, 4 of 6 in
   // 02, none of 06), so the copy states each section's own number instead of
   // a blanket "most" that is false for 06-hybrid-jobs.
   const runNote =
     section.runnableCount === 0
-      ? "built to run in your own Braket environment"
+      ? t("gate.runNone")
       : section.runnableCount === section.notebookCount
         ? section.notebookCount === 1
-          ? "it runs right in your browser"
-          : "all run right in your browser"
-        : `${section.runnableCount} run${section.runnableCount === 1 ? "s" : ""} right in your browser`;
+          ? t("gate.runAllOne")
+          : t("gate.runAllMany")
+        : t("gate.runSome", { count: section.runnableCount }, section.runnableCount);
 
   // Move focus into the dialog on open, hand it back on close (aria-modal
   // claims the page, so it must return what it took). Also lock body scroll.
@@ -108,7 +111,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close dialog"
+          aria-label={t("common.closeDialog")}
           className="interactive focus-ring absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-control text-gray-500 hover:bg-gray-900/5 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -129,7 +132,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
               {String(section.index).padStart(2, "0")}
             </span>
             <span className="text-xs font-semibold uppercase tracking-widest hue-text">
-              Section preview
+              {t("gate.sectionPreview")}
             </span>
           </div>
 
@@ -137,16 +140,19 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
             id={titleId}
             className="font-display text-display-md tracking-tight text-gray-900 text-balance dark:text-white"
           >
-            {section.title}
+            {displayTitle}
           </h2>
 
           <p id={descId} className="mt-3 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-            {section.pitch}
+            {pitch}
           </p>
 
           <p className="mt-4 text-xs text-caption tabular-nums">
-            {section.notebookCount} hands-on{" "}
-            {section.notebookCount === 1 ? "notebook" : "notebooks"} — {runNote}
+            {t(
+              "gate.notebookLine",
+              { count: section.notebookCount, runNote },
+              section.notebookCount,
+            )}
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -156,7 +162,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
                 onClick={onClose}
                 className="surface-accent interactive focus-ring inline-flex items-center rounded-control px-5 py-2.5 text-sm font-semibold"
               >
-                Continue to section
+                {t("gate.continueToSection")}
               </TransitionLink>
             ) : (
               <>
@@ -164,20 +170,20 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
                   href="/login?mode=signup"
                   className="surface-accent interactive focus-ring inline-flex items-center rounded-control px-5 py-2.5 text-sm font-semibold"
                 >
-                  Create a free account
+                  {t("gate.createFreeAccount")}
                 </Link>
                 <Link
                   href="/login"
                   className="interactive focus-ring inline-flex items-center rounded-control border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-900/5 dark:border-white/20 dark:text-white dark:hover:bg-white/5"
                 >
-                  Sign in
+                  {t("gate.signIn")}
                 </Link>
               </>
             )}
           </div>
 
           {!authenticated && (
-            <p className="mt-4 text-xs text-caption">{ACCOUNT_REASSURANCE}</p>
+            <p className="mt-4 text-xs text-caption">{t("home.accountReassurance")}</p>
           )}
         </div>
       </div>

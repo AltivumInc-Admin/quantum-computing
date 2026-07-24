@@ -5,3 +5,4 @@ export { translate, flattenKeys, getDict, lookup } from "./translate";
 export { localeCode } from "./locale-code";
 export { pluralCategory } from "./pluralize";
 export { readStoredLocale, writeStoredLocale, isLocale } from "./storage";
+export { sectionTitle, sectionPitch } from "./section-title";

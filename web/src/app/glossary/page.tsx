@@ -2,7 +2,9 @@
 import type { Metadata } from "next";
 import { Glossary } from "@/components/glossary/glossary";
 import { GlossaryEntry } from "@/components/glossary/glossary-entry";
+import { GlossaryPageHeader } from "@/components/glossary/glossary-page-header";
 import { GLOSSARY } from "@/lib/glossary";
+import { GLOSSARY_ES, GLOSSARY_TERM_ES } from "@/lib/glossary-es";
 import { SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -14,28 +16,41 @@ export const metadata: Metadata = {
 
 export default function GlossaryPage() {
   // Every entry (markdown + KaTeX) is rendered HERE, on the server, at build —
-  // the client <Glossary> only filters/shows these prerendered nodes, so the
-  // react-markdown/rehype-katex pipeline never ships to the browser and a
-  // search keystroke re-renders nothing but visibility.
-  const entries = Object.fromEntries(
-    GLOSSARY.map((term) => [term.term, <GlossaryEntry key={term.term} term={term} />])
+  // once in English and once in Spanish. The client <Glossary> only picks which
+  // set to show from the learner's locale, so the pipeline never ships to the
+  // browser and a search keystroke re-renders nothing but visibility.
+  const entriesEn = Object.fromEntries(
+    GLOSSARY.map((term) => [
+      term.term,
+      <GlossaryEntry
+        key={`en-${term.term}`}
+        term={term}
+        seeAlsoLabels={Object.fromEntries(
+          (term.seeAlso ?? []).map((r) => [r, r]),
+        )}
+      />,
+    ]),
+  );
+  const entriesEs = Object.fromEntries(
+    GLOSSARY.map((term) => [
+      term.term,
+      <GlossaryEntry
+        key={`es-${term.term}`}
+        term={term}
+        displayTerm={GLOSSARY_TERM_ES[term.term] ?? term.term}
+        definition={GLOSSARY_ES[term.term] ?? term.definition}
+        seeAlsoLabels={Object.fromEntries(
+          (term.seeAlso ?? []).map((r) => [r, GLOSSARY_TERM_ES[r] ?? r]),
+        )}
+      />,
+    ]),
   );
   return (
     <div className="relative overflow-hidden">
       <div className="absolute inset-0 bg-atmosphere" />
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-        <header className="mb-8">
-          <p className="text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light mb-4">
-            Reference
-          </p>
-          <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">
-            Glossary
-          </h1>
-          <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl leading-relaxed">
-            Look up any quantum computing term, A to Z. Each entry links to the lesson where it is taught.
-          </p>
-        </header>
-        <Glossary entries={entries} />
+        <GlossaryPageHeader />
+        <Glossary entriesEn={entriesEn} entriesEs={entriesEs} />
       </div>
     </div>
   );

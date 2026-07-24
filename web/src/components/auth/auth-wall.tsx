@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useLocale } from "@/i18n";
 
 /**
  * Routes that never require an account. The marketing funnel (`/`, `/pricing`)
@@ -20,6 +21,7 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function GateScreen() {
+  const { t } = useLocale();
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-xl items-center justify-center px-4 py-16">
       <p className="flex items-center gap-3 text-sm text-caption" role="status">
@@ -27,7 +29,7 @@ function GateScreen() {
           className="h-4 w-4 animate-spin motion-reduce:animate-none rounded-full border-2 border-(--bd) border-t-accent"
           aria-hidden="true"
         />
-        Checking your access…
+        {t("auth.checkingAccess")}
       </p>
     </div>
   );

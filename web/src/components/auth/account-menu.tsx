@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useAuth } from "./auth-provider";
+import { useLocale } from "@/i18n";
 
 // Keep in sync with the menuitems rendered below (Workspace, Sign out): the roving
 // tabindex / arrow-key model is hand-indexed against this count.
@@ -10,6 +11,7 @@ const ITEM_COUNT = 2;
 
 export function AccountMenu() {
   const { status, email, signOut } = useAuth();
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,7 +48,7 @@ export function AccountMenu() {
         href="/login"
         className="inline-flex items-center whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-(--ink) interactive focus-ring"
       >
-        Sign in
+        {t("auth.signIn")}
       </Link>
     );
   }
@@ -130,7 +132,7 @@ export function AccountMenu() {
         <div
           id={menuId}
           role="menu"
-          aria-label="Account"
+          aria-label={t("auth.accountMenu")}
           onKeyDown={onMenuKeyDown}
           onBlur={(e) => {
             // Close once focus leaves the menu entirely (Tab/Shift+Tab to an element
@@ -150,7 +152,7 @@ export function AccountMenu() {
             onClick={() => setOpen(false)}
             className="block rounded-control px-3 py-2 text-sm text-(--ink) hover:bg-(--field) interactive focus-ring"
           >
-            Workspace
+            {t("auth.workspace")}
           </Link>
           <button
             type="button"
@@ -165,7 +167,7 @@ export function AccountMenu() {
             }}
             className="block w-full rounded-control px-3 py-2 text-left text-sm text-(--ink) hover:bg-(--field) interactive focus-ring"
           >
-            Sign out
+            {t("auth.signOut")}
           </button>
         </div>
       )}

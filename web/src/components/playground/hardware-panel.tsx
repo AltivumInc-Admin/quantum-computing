@@ -11,6 +11,7 @@ import { primaryActionClass } from "@/components/quantum/widget-ui";
 import { Panel } from "@/components/workspace/panel";
 import type { Program } from "@/components/quantum/qsim-dsl";
 import { benchButtonClass } from "./controls";
+import { useLocale } from "@/i18n";
 
 /**
  * The exit ramp: the bench's circuit compiled to the exact OpenQASM 3.0 dialect
@@ -29,6 +30,7 @@ export function HardwarePanel({
   theta: number;
   name?: string;
 }) {
+  const { t } = useLocale();
   const router = useRouter();
   const compiled = useMemo(() => compileToQasm(program, theta), [program, theta]);
   const configured = isQpuConfigured();
@@ -60,14 +62,14 @@ export function HardwarePanel({
   };
 
   return (
-    <Panel title="Hardware" id="hardware-export" sub="OpenQASM 3.0">
+    <Panel title={t("playgroundUi.hardware")} id="hardware-export" sub={t("playgroundUi.openQasm")}>
       {compiled.ok ? (
         <>
           <pre className="overflow-x-auto rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--ink)">
             {compiled.qasm}
           </pre>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <CopyButton getText={() => (compiled.ok ? compiled.qasm : "")} label="Copy OpenQASM" />
+            <CopyButton getText={() => (compiled.ok ? compiled.qasm : "")} label={t("playgroundUi.copyQasm")} />
             <button type="button" onClick={download} className={benchButtonClass}>
               Download .qasm
             </button>

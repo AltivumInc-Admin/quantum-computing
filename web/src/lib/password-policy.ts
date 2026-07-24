@@ -12,16 +12,39 @@ export interface PasswordCriteria {
 
 export interface CriterionDef {
   key: keyof PasswordCriteria;
+  /** i18n key (auth.pwLength etc.) — components translate with t(labelKey). */
+  labelKey: string;
+  /** English label kept for non-React callers / tests. */
   label: string;
   test: (pw: string) => boolean;
 }
 
 // Order here is the checklist display order.
 export const PASSWORD_CRITERIA: CriterionDef[] = [
-  { key: "length", label: "At least 8 characters", test: (pw) => pw.length >= 8 },
-  { key: "upper", label: "An uppercase letter", test: (pw) => /[A-Z]/.test(pw) },
-  { key: "lower", label: "A lowercase letter", test: (pw) => /[a-z]/.test(pw) },
-  { key: "number", label: "A number", test: (pw) => /[0-9]/.test(pw) },
+  {
+    key: "length",
+    labelKey: "auth.pwLength",
+    label: "At least 8 characters",
+    test: (pw) => pw.length >= 8,
+  },
+  {
+    key: "upper",
+    labelKey: "auth.pwUpper",
+    label: "An uppercase letter",
+    test: (pw) => /[A-Z]/.test(pw),
+  },
+  {
+    key: "lower",
+    labelKey: "auth.pwLower",
+    label: "A lowercase letter",
+    test: (pw) => /[a-z]/.test(pw),
+  },
+  {
+    key: "number",
+    labelKey: "auth.pwNumber",
+    label: "A number",
+    test: (pw) => /[0-9]/.test(pw),
+  },
 ];
 
 export function passwordCriteria(pw: string): PasswordCriteria {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { useLocale } from "@/i18n";
 import {
   isSyncConfigured,
   subscribeSyncHealth,
@@ -9,18 +10,19 @@ import {
 } from "@/lib/sync-client";
 
 /**
- * Z0 — the masthead: h1 "Workspace", the account email, and a right-aligned sync
+ * Z0 — the masthead: h1 "{t("workspaceUi.title")}", the account email, and a right-aligned sync
  * readout. A terminal shows the timestamp, not "3m ago", so the readout is a status
  * dot + an exact <time>. The h1 lives here so EVERY page state (authenticated,
  * unconfigured, loading) carries the page's one heading — fixing the pre-existing bug
  * where the title rendered as a <p> and the page had no heading outline at all.
  */
 export function Masthead({ email }: { email: string | null }) {
+  const { t } = useLocale();
   return (
     <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div>
         <h1 className="font-display text-display-lg tracking-tight text-(--ink)">
-          Workspace
+          {t("workspaceUi.title")}
         </h1>
         {email && <p className="mt-1 text-sm text-caption">{email}</p>}
       </div>
@@ -41,6 +43,7 @@ type SyncState = "idle" | "syncing" | "error" | "mismatch";
 const OK_HEALTH: SyncHealth = "ok";
 
 function SyncReadout() {
+  const { t } = useLocale();
   const configured = isSyncConfigured();
   const [state, setState] = useState<SyncState>("idle");
   const [lastSynced, setLastSynced] = useState<number | null>(null);
@@ -75,7 +78,7 @@ function SyncReadout() {
 
   if (!configured) {
     return (
-      <p className="text-sm text-caption">This device only — progress is stored locally</p>
+      <p className="text-sm text-caption">{t("workspaceUi.localOnly")}</p>
     );
   }
 
@@ -127,13 +130,13 @@ function SyncReadout() {
         ) : health === "degraded" ? (
           "Sync paused — retrying"
         ) : state === "error" ? (
-          "Sync failed"
+          t("workspaceUi.syncFailed")
         ) : clock ? (
           <>
             Synced <time dateTime={iso}>{clock}</time>
           </>
         ) : (
-          "Not yet synced"
+          t("workspaceUi.notYetSynced")
         )}
       </span>
       <button

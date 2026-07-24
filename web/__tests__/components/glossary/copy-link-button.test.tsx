@@ -5,6 +5,7 @@ import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CopyLinkButton } from "@/components/glossary/copy-link-button";
+import { LocaleProvider } from "@/i18n";
 
 describe("CopyLinkButton", () => {
   let originalClipboard: Clipboard;
@@ -29,9 +30,13 @@ describe("CopyLinkButton", () => {
       configurable: true,
       writable: true,
     });
-    render(<CopyLinkButton />);
+    render(
+      <LocaleProvider>
+        <CopyLinkButton />
+      </LocaleProvider>,
+    );
     await user.click(screen.getByRole("button", { name: /copy link/i }));
     expect(writeText).toHaveBeenCalledWith(window.location.href);
-    expect(await screen.findByText("Copied")).toBeInTheDocument();
+    expect(await screen.findAllByText("Copied")).not.toHaveLength(0);
   });
 });

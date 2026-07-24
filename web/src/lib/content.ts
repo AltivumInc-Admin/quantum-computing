@@ -6,6 +6,8 @@ import { stripLinksAndEmphasis } from "./strip-inline";
 
 const REPO_ROOT = path.resolve(process.cwd(), "..");
 
+export type GuideLocale = "en" | "es";
+
 export interface NotebookEntry {
   filename: string;
   browserRunnable: boolean;
@@ -13,19 +15,28 @@ export interface NotebookEntry {
 
 export interface ContentData {
   markdown: string;
+  /** Spanish GUIDE when GUIDE.es.md exists; otherwise same as markdown (en). */
+  markdownEs: string;
   notebooks: NotebookEntry[];
 }
 
-// Read just the section's GUIDE.md. Shared by getContent (which also lists
-// notebooks) and getContentSummary (which only needs the prose) so the landing
-// page doesn't pay for a notebooks readdir + manifest lookup it never uses.
-async function readGuide(slug: string): Promise<string | null> {
+// Read the section GUIDE for a locale. English: GUIDE.md. Spanish: GUIDE.es.md
+// with fallback to English so a missing translation never 404s the lesson.
+async function readGuide(
+  slug: string,
+  locale: GuideLocale = "en",
+): Promise<string | null> {
   const section = getSectionBySlug(slug);
   if (!section) return null;
-  const guidePath = path.join(REPO_ROOT, section.dirName, "GUIDE.md");
+  const fileName = locale === "es" ? "GUIDE.es.md" : "GUIDE.md";
+  const guidePath = path.join(REPO_ROOT, section.dirName, fileName);
   try {
     return await fs.readFile(guidePath, "utf-8");
   } catch {
+    if (locale === "es") {
+      // Fall back to English when Spanish guide is absent.
+      return readGuide(slug, "en");
+    }
     return null;
   }
 }
@@ -34,17 +45,18 @@ export async function getContent(slug: string): Promise<ContentData | null> {
   const section = getSectionBySlug(slug);
   if (!section) return null;
 
-  const markdown = await readGuide(slug);
+  const markdown = await readGuide(slug, "en");
   if (markdown === null) return null;
+  const markdownEs = (await readGuide(slug, "es")) ?? markdown;
 
   // No title field: the rendered lesson title comes from the GUIDE's own h1
   // via MarkdownRenderer, and metadata titles come from sections.ts.
   const notebooks = await listNotebooks(section.dirName);
-  return { markdown, notebooks };
+  return { markdown, markdownEs, notebooks };
 }
 
 export async function getContentSummary(slug: string): Promise<string | null> {
-  const markdown = await readGuide(slug);
+  const markdown = await readGuide(slug, "en");
   if (markdown === null) return null;
 
   const lines = markdown.split("\n");

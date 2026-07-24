@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useLocale } from "@/i18n";
 import {
   HARDWARE_RATES,
   TASK_FEE_CREDITS,
@@ -76,6 +77,7 @@ function PresetChips({
  * estimate on every real submission.
  */
 export function CostEstimator() {
+  const { t } = useLocale();
   const [deviceIdx, setDeviceIdx] = useState(2); // IQM Garnet — the curriculum's workhorse
   const [shots, setShots] = useState(1000);
   const [modelIdx, setModelIdx] = useState(0);
@@ -165,7 +167,7 @@ export function CostEstimator() {
           </div>
         </div>
 
-        <Readout label="This run" credits={runCredits} />
+        <Readout label={t("pricingUi.thisRun")} credits={runCredits} />
         <p className="mt-3 text-xs text-caption">
           {device.creditsPerShot} credits per shot + {TASK_FEE_CREDITS} credits
           per task.
@@ -187,7 +189,7 @@ export function CostEstimator() {
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Model
             </span>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Tutor model">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("pricingUi.tutorModel")}>
               {TUTOR_RATES.map((r, i) => (
                 <button
                   key={r.model}

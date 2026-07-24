@@ -7,6 +7,7 @@ import { sha256Hex } from "@/lib/sha256";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { DRAWER_INERT_REGION_IDS, TUTOR_TRIGGER_ID } from "@/lib/layout-regions";
 import { getSectionBySlug } from "@/lib/sections";
+import { useLocale, sectionTitle } from "@/i18n";
 
 /**
  * "Ask the margin" — a Socratic lesson tutor. A fixed affordance (and Cmd/Ctrl-K)
@@ -66,12 +67,12 @@ const serverShortcut = () => MAC_SHORTCUT;
  * deployed before that change still blocks with WAF's default 403, so the two
  * must read identically for the copy to be true in both states.
  */
-function transportErrorMessage(status: number): string {
+function transportErrorMessage(status: number, t: (k: string) => string): string {
   if (status === 403 || status === 429) {
-    return "Too many questions in a short window — give it a minute and try again.";
+    return t("tutor.rateLimited");
   }
-  if (status >= 500) return "The tutor is unavailable right now — please try again shortly.";
-  return "The tutor could not answer that request — please try again.";
+  if (status >= 500) return t("tutor.unavailable");
+  return t("tutor.couldNotAnswer");
 }
 
 function lessonSlug(pathname: string | null): string | null {
@@ -81,6 +82,7 @@ function lessonSlug(pathname: string | null): string | null {
 }
 
 export function AskTutor() {
+  const { t } = useLocale();
   const url = process.env.NEXT_PUBLIC_TUTOR_URL;
   const pathname = usePathname();
   const slug = lessonSlug(pathname);
@@ -190,7 +192,10 @@ export function AskTutor() {
   // Hooks above always run; the feature is inert without an endpoint or lesson.
   if (!url || !slug) return null;
 
-  const lessonTitle = getSectionBySlug(slug)?.title ?? slug;
+  const section = getSectionBySlug(slug);
+  const lessonTitle = section
+    ? sectionTitle(t, slug, section.title)
+    : slug;
   // The refusal is not an answer — render it in the muted caption register so it
   // does not read as grounded lesson prose in the learner's own words.
   const refused = answer.trim() === OUT_OF_SCOPE_MESSAGE;
@@ -216,7 +221,7 @@ export function AskTutor() {
     setBusy(true);
     setError(null);
     setAnswer("");
-    setSrStatus("Thinking");
+    setSrStatus(t("tutor.thinking"));
     try {
       const bodyStr = JSON.stringify({ slug, question: q });
       // CloudFront Origin Access Control requires the SHA-256 of the POST body in
@@ -237,7 +242,7 @@ export function AskTutor() {
         // The numeric status stays in the console for debugging; the learner gets
         // copy that says what happened and what to do about it.
         console.warn(`tutor request failed (${res.status})`);
-        throw new Error(transportErrorMessage(res.status));
+        throw new Error(transportErrorMessage(res.status, t));
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -256,7 +261,7 @@ export function AskTutor() {
           setAnswer(acc.slice(0, marker).trimEnd());
           setError(
             acc.slice(marker + TUTOR_ERROR_SENTINEL.length).trim() ||
-              "The tutor hit an error. Please try again."
+              t("tutor.hitError")
           );
           setSrStatus("");
           await reader.cancel();
@@ -270,20 +275,20 @@ export function AskTutor() {
         // the client can detect — and it is unambiguous: the endpoint always
         // writes either an answer, the refusal, or the sentinel. Report it as the
         // failure it is instead of rendering an empty, authoritative answer.
-        setError("The tutor did not send an answer — please try again.");
+        setError(t("tutor.noAnswer"));
         setSrStatus("");
         return;
       }
-      setSrStatus("Answer ready");
+      setSrStatus(t("tutor.answerReady"));
     } catch (e) {
       if (controller.signal.aborted) {
         // Aborted by the watchdog → tell the learner; aborted by Close/navigation
         // → the panel is gone or reset, so stay silent.
-        if (timedOut) setError("The tutor stopped responding — please try again.");
+        if (timedOut) setError(t("tutor.stopped"));
       } else if (e instanceof TypeError) {
         // fetch rejects with a TypeError for DNS/offline/CORS — its raw message
         // ("Failed to fetch") is a developer string, not an explanation.
-        setError("Could not reach the tutor — check your connection.");
+        setError(t("tutor.unreachable"));
       } else {
         setError((e as Error).message);
       }
@@ -303,7 +308,7 @@ export function AskTutor() {
         // is open (see lib/layout-regions.ts and sidebar.tsx).
         id={TUTOR_TRIGGER_ID}
         type="button"
-        aria-label="Ask about this lesson"
+        aria-label={t("tutor.ariaAsk")}
         onClick={() => setOpen(true)}
         // Below lg the sidebar's mobile drawer toggle owns the bottom-right
         // corner (fixed bottom-4 right-4, ~48px); the pill sits one slot above
@@ -311,7 +316,7 @@ export function AskTutor() {
         // affordances never stack. Desktop keeps the original placement.
         className="fixed bottom-20 right-4 lg:bottom-5 lg:right-5 z-50 inline-flex items-center gap-2 rounded-full glass px-4 py-2.5 text-sm font-medium text-(--mut) interactive focus-ring hover:text-accent dark:hover:text-accent-light"
       >
-        Ask
+        {t("tutor.ask")}
         {/* The chord is only pressable where a keyboard is: below lg the pill is
             deliberately repositioned for touch, where advertising a shortcut is
             noise that costs width. */}
@@ -336,7 +341,7 @@ export function AskTutor() {
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Lesson tutor"
+            aria-label={t("tutor.ariaDialog")}
             tabIndex={-1}
             // Height prefers the dynamic viewport so the composer at the bottom
             // clears iOS Safari's toolbar, with h-screen as the natural fallback
@@ -348,7 +353,7 @@ export function AskTutor() {
           >
             <div className="flex items-start justify-between gap-3 border-b border-(--bd) px-5 py-4">
               <div className="min-w-0">
-                <p className="font-display text-lg text-(--ink)">Ask the margin</p>
+                <p className="font-display text-lg text-(--ink)">{t("tutor.title")}</p>
                 {/* The CANONICAL section title from the content manifest — the
                     byte-identical string the Lambda puts in the system prompt as
                     'The lesson is titled "…"'. A slug-derived label was a third,
@@ -356,13 +361,13 @@ export function AskTutor() {
                     page heading ("Quantum Ml", "Prereqs"). Real titles run long,
                     so the line clamps rather than pushing the header open. */}
                 <p className="mt-0.5 line-clamp-2 text-xs text-caption">
-                  Grounded in:{" "}
+                  {t("tutor.groundedIn")}{" "}
                   <span className="text-accent-dark dark:text-accent-light">{lessonTitle}</span>
                 </p>
               </div>
               <button
                 type="button"
-                aria-label="Close tutor"
+                aria-label={t("tutor.ariaClose")}
                 onClick={close}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control p-1.5 text-caption hover:text-(--mut) interactive focus-ring"
               >
@@ -397,8 +402,8 @@ export function AskTutor() {
               ) : (
                 <p className="text-sm text-caption">
                   {busy
-                    ? "Thinking…"
-                    : "Ask anything about this lesson. I answer only from the lesson text and will nudge you with a question before handing over the full answer."}
+                    ? t("tutor.thinking")
+                    : t("tutor.emptyHint")}
                 </p>
               )}
               {/* Two announcements per question — "Thinking", then "Answer ready"
@@ -421,7 +426,7 @@ export function AskTutor() {
               className="border-t border-(--bd) px-5 py-4"
             >
               <label htmlFor="ask-tutor-input" className="sr-only">
-                Your question
+                {t("tutor.questionLabel")}
               </label>
               <textarea
                 id="ask-tutor-input"
@@ -440,13 +445,13 @@ export function AskTutor() {
                 // paste mid-word and answered the fragment as though it were the
                 // whole question; the browser now stops the input at the keyboard.
                 maxLength={MAX_QUESTION_CHARS}
-                placeholder="e.g. why does the Z-string only act on the lower modes?"
+                placeholder={t("tutor.placeholder")}
                 className="w-full resize-y rounded-control border border-(--bd) bg-(--field) px-3 py-2.5 text-sm text-(--ink) focus-ring"
               />
               <div className="mt-2 flex items-center justify-between gap-3">
                 {/* A rows={3}, resize-y textarea reads as multi-line, but bare
                     Enter submits — so the escape hatch has to be stated. */}
-                <p className="text-xs text-caption">Enter to send, Shift+Enter for a new line</p>
+                <p className="text-xs text-caption">{t("tutor.enterHint")}</p>
                 <button
                   type="submit"
                   // aria-disabled, not disabled: a hard `disabled` flipping on
@@ -456,7 +461,7 @@ export function AskTutor() {
                   aria-disabled={submitBlocked}
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-control surface-accent px-3.5 py-1.5 text-sm font-medium interactive focus-ring aria-disabled:opacity-60"
                 >
-                  {busy ? "Asking…" : "Ask"}
+                  {busy ? t("tutor.asking") : t("tutor.ask")}
                 </button>
               </div>
             </form>

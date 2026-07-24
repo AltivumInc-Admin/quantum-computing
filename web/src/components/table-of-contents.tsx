@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Heading } from "@/lib/extract-headings";
+import { useLocale } from "@/i18n";
 
 // Track which heading the reader is at. The rootMargin confines intersection
 // to the top ~30% of the viewport (the trigger band): the topmost heading in
@@ -73,19 +74,20 @@ function useActiveHeading(slugs: string[]): string | null {
  * rail — as the reader scrolls.
  */
 export function TableOfContents({ headings }: { headings: Heading[] }) {
+  const { t } = useLocale();
   const slugs = useMemo(() => headings.map((h) => h.slug), [headings]);
   const active = useActiveHeading(slugs);
 
   if (headings.length === 0) return null;
 
   return (
-    <nav aria-label="On this page" className="text-sm">
+    <nav aria-label={t("lesson.onThisPage")} className="text-sm">
       <p className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-caption">
         <span
           aria-hidden="true"
           className="h-px w-4 bg-gradient-to-r from-accent/70 to-transparent"
         />
-        On this page
+        {t("lesson.onThisPage")}
       </p>
       <ul className="space-y-px border-l border-(--bd)">
         {headings.map((h) => {

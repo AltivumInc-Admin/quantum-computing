@@ -1,23 +1,46 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { GLOSSARY, groupByLetter, matchesQuery, ALPHABET } from "@/lib/glossary";
+import {
+  GLOSSARY,
+  groupByLetter,
+  matchesQuery,
+  ALPHABET,
+  type GlossaryTerm,
+} from "@/lib/glossary";
+import { GLOSSARY_ES, GLOSSARY_TERM_ES } from "@/lib/glossary-es";
+import { useLocale } from "@/i18n";
 
 interface GlossaryProps {
   /**
-   * Prerendered entry nodes keyed by term name, built ONCE on the server
-   * (glossary/page.tsx renders <GlossaryEntry> per term at build). The search
-   * below only filters and re-mounts these stable nodes — no markdown/KaTeX
-   * work happens client-side, on load or on a keystroke.
+   * Prerendered English entry nodes keyed by English term name.
    */
-  entries: Record<string, ReactNode>;
+  entriesEn: Record<string, ReactNode>;
+  /**
+   * Prerendered Spanish entry nodes keyed by English term name (stable key).
+   */
+  entriesEs: Record<string, ReactNode>;
 }
 
-export function Glossary({ entries }: GlossaryProps) {
+function matchesLocaleQuery(term: GlossaryTerm, query: string, locale: string): boolean {
+  if (matchesQuery(term, query)) return true;
+  if (locale !== "es" || !query.trim()) return false;
+  const q = query.trim().toLowerCase();
+  const esTerm = (GLOSSARY_TERM_ES[term.term] ?? "").toLowerCase();
+  const esDef = (GLOSSARY_ES[term.term] ?? "").toLowerCase();
+  return esTerm.includes(q) || esDef.includes(q);
+}
+
+export function Glossary({ entriesEn, entriesEs }: GlossaryProps) {
+  const { locale, t } = useLocale();
   const [query, setQuery] = useState("");
   const searchId = useId();
+  const entries = locale === "es" ? entriesEs : entriesEn;
 
-  const filtered = useMemo(() => GLOSSARY.filter((t) => matchesQuery(t, query)), [query]);
+  const filtered = useMemo(
+    () => GLOSSARY.filter((term) => matchesLocaleQuery(term, query, locale)),
+    [query, locale],
+  );
   const groups = useMemo(() => groupByLetter(filtered), [filtered]);
   const present = useMemo(() => new Set(groups.map((g) => g.letter)), [groups]);
 
@@ -25,24 +48,24 @@ export function Glossary({ entries }: GlossaryProps) {
     <div>
       <div className="sticky top-16 z-10 -mx-4 px-4 py-4 bg-(--surface-base)/80 backdrop-blur-md">
         <label htmlFor={searchId} className="sr-only">
-          Search glossary terms
+          {t("glossaryUi.searchLabel")}
         </label>
         <input
           id={searchId}
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search terms..."
+          placeholder={t("glossaryUi.searchPlaceholder")}
           autoComplete="off"
           className="w-full rounded-control border border-(--bd) bg-(--surface-1) px-4 py-2.5 text-sm text-(--ink) placeholder:text-gray-400 focus-ring shadow-(--shadow-resting)"
         />
-        <nav aria-label="Jump to letter" className="mt-3 flex flex-wrap gap-1">
+        <nav aria-label={t("glossaryUi.jumpToLetter")} className="mt-3 flex flex-wrap gap-1">
           {ALPHABET.map((letter) =>
             present.has(letter) ? (
               <a
                 key={letter}
                 href={`#letter-${letter}`}
-                aria-label={`Jump to ${letter}`}
+                aria-label={t("glossaryUi.jumpTo", { letter })}
                 className="w-7 h-7 flex items-center justify-center rounded-chip text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 interactive focus-ring"
               >
                 {letter}
@@ -55,18 +78,18 @@ export function Glossary({ entries }: GlossaryProps) {
               >
                 {letter}
               </span>
-            )
+            ),
           )}
         </nav>
       </div>
 
       <p role="status" className="sr-only">
-        {filtered.length} term{filtered.length === 1 ? "" : "s"}
+        {t("glossaryUi.termCount", { count: filtered.length }, filtered.length)}
       </p>
 
       {groups.length === 0 ? (
         <p className="py-16 text-center text-gray-500 dark:text-gray-400">
-          No terms match &ldquo;{query}&rdquo;.
+          {t("glossaryUi.noMatch", { query })}
         </p>
       ) : (
         groups.map((group) => (

@@ -3,21 +3,23 @@ import { mapAuthError } from "@/lib/auth-errors";
 describe("mapAuthError", () => {
   it("maps NotAuthorizedException to a generic credentials message", () => {
     expect(mapAuthError({ name: "NotAuthorizedException" })).toEqual({
+      messageKey: "auth.errors.incorrectCredentials",
       message: "Incorrect email or password.",
     });
   });
 
   it("maps UserNotConfirmedException to a confirm-view jump", () => {
     expect(mapAuthError({ name: "UserNotConfirmedException" })).toEqual({
+      messageKey: "auth.errors.confirmEmailFirst",
       message: "Please confirm your email first — we just sent you a new code.",
       view: "confirm",
     });
   });
 
   it("maps UsernameExistsException", () => {
-    expect(mapAuthError({ name: "UsernameExistsException" }).message).toMatch(
-      /already exists/i
-    );
+    const m = mapAuthError({ name: "UsernameExistsException" });
+    expect(m.messageKey).toBe("auth.errors.emailExists");
+    expect(m.message).toMatch(/already exists/i);
   });
 
   it("maps CodeMismatchException and ExpiredCodeException", () => {
@@ -32,9 +34,11 @@ describe("mapAuthError", () => {
 
   it("falls back to a generic message for unknown errors", () => {
     expect(mapAuthError({ name: "SomethingElse" })).toEqual({
+      messageKey: "auth.errors.generic",
       message: "Something went wrong. Please try again.",
     });
     expect(mapAuthError("not even an object")).toEqual({
+      messageKey: "auth.errors.generic",
       message: "Something went wrong. Please try again.",
     });
   });

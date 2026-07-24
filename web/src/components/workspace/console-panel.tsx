@@ -3,6 +3,7 @@
 import { Panel } from "./panel";
 import { ReminderPrefs } from "@/components/reminder-prefs";
 import { DeleteAccount } from "@/components/auth/delete-account";
+import { useLocale } from "@/i18n";
 
 /**
  * Z8 — THE CONSOLE, the CONFIGURE surface (the basement). ONE panel, three hairline
@@ -18,6 +19,7 @@ export function ConsolePanel({
   email: string | null;
   onSignOut: () => void;
 }) {
+  const { t } = useLocale();
   const row = "border-t border-gray-200/60 py-3 first:border-t-0 dark:border-white/[0.06]";
   return (
     <Panel title="Console" id="ws-console" as="aside">
@@ -25,7 +27,7 @@ export function ConsolePanel({
 
       <div className={`flex items-center justify-between gap-3 ${row}`}>
         <span className="min-w-0 truncate text-sm text-gray-700 dark:text-gray-200">
-          {email ?? "Signed in"}
+          {email ?? t("common.signedIn")}
         </span>
         <button
           type="button"

@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { Panel } from "./panel";
 import type { WorkspaceSection } from "@/lib/workspace";
+import { useLocale } from "@/i18n";
 
 /**
  * Z4 — THE MAP, the PLAN surface. Seven dense rows, not marketing cards: a 3px hue
@@ -17,9 +20,10 @@ export function CurriculumMap({
   sections: WorkspaceSection[];
   sectionsDone: number;
 }) {
+  const { t } = useLocale();
   return (
     <Panel
-      title="Curriculum"
+      title={t("workspaceUi.curriculum")}
       id="ws-map"
       sub={`${sectionsDone} of ${sections.length} modules complete`}
       bodyClassName="px-5 pb-4 pt-2"
@@ -59,15 +63,16 @@ export function CurriculumMap({
 }
 
 function Status({ done }: { done: boolean }) {
+  const { t } = useLocale();
   if (!done) {
-    return <span className="shrink-0 text-xs font-semibold text-caption">Open</span>;
+    return <span className="shrink-0 text-xs font-semibold text-caption">{t("common.open")}</span>;
   }
   return (
     <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-accent-dark dark:text-accent-light">
       <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
       </svg>
-      Done
+      {t("sidebar.completed")}
     </span>
   );
 }

@@ -11,6 +11,7 @@ import "@testing-library/jest-dom";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { CurriculumGrid, type CurriculumSection } from "@/components/curriculum-grid";
 import type { AuthStatus } from "@/components/auth/auth-provider";
+import { LocaleProvider, translate } from "@/i18n";
 
 let mockStatus: AuthStatus = "unconfigured";
 
@@ -157,11 +158,16 @@ describe("CurriculumGrid", () => {
     });
 
     it("shows the clicked section's own pitch and account CTAs", () => {
-      render(<CurriculumGrid sections={SECTIONS} />);
+      render(
+        <LocaleProvider>
+          <CurriculumGrid sections={SECTIONS} />
+        </LocaleProvider>,
+      );
       fireEvent.click(cardFor("Quantum Foundations"));
       const dialog = screen.getByRole("dialog");
-      expect(dialog).toHaveTextContent("Quantum Foundations");
-      expect(dialog).toHaveTextContent(SECTIONS[1].pitch);
+      // Dialog title/pitch come from the i18n dictionary for known slugs.
+      expect(dialog).toHaveTextContent(translate("en", "sections.01-foundations.title"));
+      expect(dialog).toHaveTextContent(translate("en", "pitches.01-foundations"));
       expect(dialog).toHaveTextContent(/5 hands-on notebooks — all run right in your browser/i);
       expect(screen.getByRole("link", { name: /create a free account/i })).toHaveAttribute(
         "href",
@@ -244,25 +250,39 @@ describe("CurriculumGrid", () => {
     });
 
     it("labels the dialog accessibly", () => {
-      render(<CurriculumGrid sections={SECTIONS} />);
+      render(
+        <LocaleProvider>
+          <CurriculumGrid sections={SECTIONS} />
+        </LocaleProvider>,
+      );
       fireEvent.click(cardFor("Prerequisites"));
       const dialog = screen.getByRole("dialog");
       expect(dialog).toHaveAttribute("aria-modal", "true");
       expect(dialog).toHaveAccessibleName(/prerequisites/i);
-      expect(dialog).toHaveAccessibleDescription(SECTIONS[0].pitch);
+      expect(dialog).toHaveAccessibleDescription(
+        translate("en", "pitches.00-prereqs"),
+      );
     });
   });
 
   it("gates during the brief configuring window, then offers continue once signed in", () => {
     mockStatus = "configuring";
-    const { rerender } = render(<CurriculumGrid sections={SECTIONS} />);
+    const { rerender } = render(
+      <LocaleProvider>
+        <CurriculumGrid sections={SECTIONS} />
+      </LocaleProvider>,
+    );
     fireEvent.click(cardFor("Prerequisites"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     // The session resolves to signed-in while the dialog is open: the gate
     // steps aside and offers the section instead of a sign-up form.
     mockStatus = "authenticated";
-    rerender(<CurriculumGrid sections={SECTIONS} />);
+    rerender(
+      <LocaleProvider>
+        <CurriculumGrid sections={SECTIONS} />
+      </LocaleProvider>,
+    );
     const continueLink = screen.getByRole("link", { name: /continue to section/i });
     expect(continueLink).toHaveAttribute("href", "/learn/00-prereqs");
     expect(

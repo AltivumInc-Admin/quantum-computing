@@ -15,6 +15,7 @@ import {
   type HardwareReach,
 } from "@/lib/qpu-budget";
 import type { Budget } from "@/lib/qpu-client";
+import { useLocale } from "@/i18n";
 
 /**
  * Z7 — WITHIN REACH. The nearest UNEARNED rung of each track and its exact distance —
@@ -29,6 +30,7 @@ export function WithinReach({
   reachConsistency,
   sectionsTotal,
 }: Pick<WorkspaceModel, "reachMastery" | "reachConsistency"> & { sectionsTotal: number }) {
+  const { t } = useLocale();
   const { status, budget } = useWorkspaceBudget();
   const showHardware = status !== "unconfigured";
   // Single-sourced total: one medal per module + every tier. Never a hardcoded 18.
@@ -36,7 +38,7 @@ export function WithinReach({
     sectionsTotal + MASTERY_TIERS.length + CONSISTENCY_TIERS.length + HARDWARE_TIERS.length;
 
   return (
-    <Panel title="Within reach" id="ws-reach" as="aside" bodyClassName="px-5 pb-4 pt-2">
+    <Panel title={t("workspaceUi.withinReach")} id="ws-reach" as="aside" bodyClassName="px-5 pb-4 pt-2">
       <div className="flex flex-col">
         <Rung group="Mastery" rung={reachMastery} />
         <Rung group="Consistency" rung={reachConsistency} />

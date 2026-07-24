@@ -9,6 +9,7 @@ import { CircuitDiagram } from "@/components/quantum/circuit-diagram";
 import { MAX_SHARE_SRC } from "@/lib/circuit-url";
 import { benchButtonClass, benchGroupLabelClass } from "./controls";
 import { PALETTE } from "./palette";
+import { useLocale } from "@/i18n";
 
 /**
  * The editor half of the bench: a plain styled textarea over the qsim DSL (the
@@ -58,6 +59,7 @@ export function ComposePanel({
   /** Canonical share fragment for the current source, or null while it doesn't parse. */
   shareHash: string | null;
 }) {
+  const { t } = useLocale();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   // Last-known caret, tracked on the textarea's own events. A palette click
   // moves focus to the button before the handler runs, so reading selectionStart
@@ -138,7 +140,7 @@ export function ComposePanel({
           onClick={() => void copyShareLink()}
           className="rounded px-1.5 py-0.5 text-xs font-medium text-accent-dark hover:underline dark:text-accent-light interactive focus-ring"
         >
-          {copied ? "Copied" : "Copy share link"}
+          {copied ? t("common.copied") : t("playgroundUi.copyShare")}
         </button>
       }
     >
