@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/i18n";
 import { startCheckout, BillingAuthError, type CheckoutLookupKey } from "@/lib/billing-client";
 
 function defaultNavigate(url: string) {
@@ -25,6 +26,7 @@ export function CheckoutButton({
   className?: string;
   navigate?: (url: string) => void;
 }) {
+  const { t } = useLocale();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
@@ -55,11 +57,11 @@ export function CheckoutButton({
           "surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-70"
         }
       >
-        {busy ? "Starting…" : label}
+        {busy ? t("pricingUi.starting") : label}
       </button>
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger-dark dark:text-danger-light">
-          Could not start checkout. Please try again.
+          {t("pricingUi.checkoutFailed")}
         </p>
       )}
     </div>

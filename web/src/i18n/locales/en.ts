@@ -552,6 +552,14 @@ export const en: TranslationDict = {
   },
   pricingUi: {
     title: "Pricing",
+    eyebrow: "Pricing",
+    headlineBefore: "The learning is",
+    headlineFree: "free",
+    headlineAfter: ". The metal is metered.",
+    heroBody:
+      "The entire curriculum, simulator, and playground are free with a free account — forever. One credit wallet meters the only two things that cost real money: frontier AI tutoring and real quantum hardware. One credit is one cent, always.",
+    creditPeg: "1 credit = $0.01",
+    topUpFrom: "Top up from {{amount}}",
     lead:
       "The entire quantum curriculum and simulator are free with a free account. One dollar-pegged credit wallet meters the only two things that cost real money: AI tutoring and real quantum hardware.",
     principleLearning: "Learning is the product",
@@ -559,59 +567,180 @@ export const en: TranslationDict = {
       "Lessons, notebooks, and the circuit simulator run in your browser, so we can keep them free for everyone, forever. The curriculum never moves behind the wallet.",
     principleWallet: "One wallet, pegged to the dollar",
     principleWalletBody:
-      "Credits buy tutor replies and real QPU shots. One credit is one US dollar of underlying cost, so the meter stays honest when a provider changes its rates.",
+      "One credit is one cent — always. Top up from {{min}}, spend on any backend or any tutor model, and purchased credits never expire.",
     principleLine: "A clear line",
     principleLineBody:
-      "Free forever for learning. Credits only when you use the AI tutor or real quantum hardware.",
-    faqLearningQ: "Is learning really free forever?",
-    faqLearningA:
-      "Yes. The full curriculum, notebooks, and in-browser simulator stay free with a free account.",
-    faqCreditsQ: "What do credits buy?",
-    faqCreditsA:
-      "AI tutor replies and real quantum hardware shots. Nothing else in the platform is metered.",
-    faqExpireQ: "Do credits expire?",
-    faqExpireA:
-      "Purchased credits never expire. Monthly Plus and Pro credits roll over for as long as the subscription is active.",
-    faqBackendsQ: "Why do backends cost such different amounts?",
-    faqBackendsA:
-      "Providers charge different per-shot and per-task rates. We pass those through transparently as credits.",
-    faqProviderQ: "What happens when a provider changes its prices?",
-    faqProviderA:
-      "We update the credit table so one credit still tracks one dollar of underlying cost.",
-    faqBuyQ: "How do I buy credits?",
-    faqBuyA: "Sign in and use the top-up options on this page once billing is live.",
-    faqWhenQ: "When can I buy credits?",
-    faqWhenA: "As soon as billing launches — until then tiers show Launching soon.",
-    free: "Free",
-    plan: "plan",
-    buyCredits: "Buy credits",
-    starting: "Starting…",
-    thisRun: "This run",
-    tutorModel: "Tutor model",
+      "Credits meter exactly two things: questions to the AI tutor and runs on real quantum hardware. If it is neither of those, it is free.",
+    tiersHeading: "Three ways to fund the wallet",
+    tiersIntro:
+      "Every account is pay-as-you-go at heart: top up any amount, spend it on anything metered. Plus and Pro are monthly credit bundles with stronger tutor models — never an all-you-can-eat plan, so the deal stays honest in both directions.",
+    bestForRegulars: "Best for regulars",
+    forever: "forever",
+    perMonth: "/ month",
+    creditsEveryMonth: "{{credits}} every month",
+    getTier: "Get {{name}}",
+    startFreeWhileWait: "Start free while you wait",
+    launchingSoon: "Launching soon",
+    signUpFree: "Sign up free",
+    signUpSoon: "Sign-up coming soon",
     launchPricing: "Launch pricing:",
     launchPricingBody:
-      " wallets are dollar-pegged from day one so early buyers are never overcharged when rates change.",
+      " wallets are live. During the transition, the in-lesson tutor remains free to try and existing curriculum hardware runs stay sponsored — your credits meter new wallet-billed usage as it rolls out.",
     earlyAccess: "Early access:",
-    earlyAccessBody: " billing has not launched yet — tiers below show Launching soon.",
+    earlyAccessBody:
+      " billing has not launched yet — these are launch prices. Today the tutor is free to try, and hardware runs inside the curriculum are sponsored. When wallets go live, you fund your own from a top-up or a plan.",
+    estimatorHeading: "Know the number before you run",
+    estimatorIntro:
+      "No quantum platform should surprise you with a bill. Price any backend and any tutor habit here — the identical estimate gates every real submission.",
+    ratesHeading: "Every rate, published",
+    ratesAsOf: "{{date}} rates",
+    ratesIntro:
+      "The full price list — no enterprise-sales veil. QPU runs add a flat {{fee}}-credit task fee; managed simulators bill by the minute; the browser simulator is free and always will be.",
+    aiTutor: "AI tutor",
+    tutorTypical: "Typical credits per question.",
+    quantumHardware: "Quantum hardware",
+    hardwarePerShotPlusFee: "Credits per shot, plus the {{fee}}-credit task fee.",
+    shotRun: "{{n}}-shot run",
+    creditsPerMinute: "{{n}} credits / minute",
     model: "Model",
     tier: "Tier",
     credits: "Credits",
     backend: "Backend",
     perShot: "Per shot",
-    launchingSoon: "Launching soon",
+    faqHeading: "Fair questions",
+    faqLearningQ: "Is learning really free forever?",
+    faqLearningA:
+      "Yes. The full curriculum, the browser simulator, the playground, the glossary, and spaced-repetition review are free with a free account — email or Google, no credit card. That is the product, not a trial.",
+    faqCreditsQ: "What do credits buy?",
+    faqCreditsA:
+      "Two things: AI tutor questions and real quantum compute (QPU runs and managed cloud simulators). One credit equals one cent. Before any hardware run executes, you see the exact cost and approve it — nothing spends your balance without a number in front of you.",
+    faqExpireQ: "Do credits expire?",
+    faqExpireA:
+      "Purchased credits never expire. Monthly Plus and Pro credits roll over for as long as the subscription is active.",
+    faqBackendsQ: "Why do backends cost such different amounts?",
+    faqBackendsA:
+      "Because the machines really do. A trapped-ion shot on IonQ lists at roughly 180 times a superconducting shot on Rigetti. We publish every backend's rate and let you choose the physics your budget wants — the estimate is always shown before you commit.",
+    faqProviderQ: "What happens when a provider changes its prices?",
+    faqProviderA:
+      "Hardware rates track the providers' published price sheets (currently the {{date}} revision). When a provider reprices, our credit rates follow, and the pre-flight estimate always reflects the live rate at submission time.",
+    faqBuyQ: "How do I buy credits?",
+    faqBuyA:
+      "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire.",
+    faqWhenQ: "When can I buy credits?",
+    faqWhenA:
+      "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create your free account now so you are ready the moment wallets go live.",
+    ctaHeading: "Start learning today. The wallet can wait.",
+    ctaBody:
+      "Everything you need to learn quantum computing is already free — just a free account. Email or Google, no credit card.",
+    free: "Free",
+    plan: "plan",
+    buyCredits: "Buy credits",
+    buyCreditsAmount: "Buy {{amount}}",
+    starting: "Starting…",
+    thisRun: "This run",
+    perMonthLabel: "Per month",
+    perMoSuffix: " / mo",
+    tutorModel: "Tutor model",
+    presets: "Presets",
+    priceHardware: "Price a hardware run",
+    priceHardwareBody:
+      "The same estimate appears before every real submission — nothing runs until you approve the number.",
+    shots: "Shots",
+    shotsValue: "{{n}} shots",
+    priceTutorMonth: "Price a month of tutoring",
+    priceTutorBody:
+      "Typical questions — long derivations cost proportionally more, and the margin shows the cost as you type.",
+    questionsPerMonth: "Questions per month",
+    questionsValue: "{{n}} questions per month",
+    perShotPlusTask:
+      "{{perShot}} credits per shot + {{fee}} credits per task.",
+    aboutCreditsPerQ: {
+      one: "{{model}}: about {{count}} credit per question. {{note}}",
+      other: "{{model}}: about {{count}} credits per question. {{note}}",
+    },
+    topUpTitle: "Top up any amount",
+    topUpBody:
+      "{{credits}} per dollar — the $0.01 peg, always. Whole dollars from ${{min}} to ${{max}}.",
+    amountPresets: "Amount presets",
+    customAmount: "Custom amount (USD)",
+    invalidAmount: "Enter a whole dollar amount from ${{min}} to ${{max}}.",
+    topUpFootnote:
+      "Purchased credits never expire. You will see the exact amount on the Stripe checkout page before paying.",
+    checkoutFailed: "Could not start checkout. Please try again.",
+    // Tier marketing (names Free/Plus/Pro stay English product names).
+    freeTagline: "The entire learning platform. No card, no clock.",
+    freeFootnote: "Free forever. Learning never moves behind the wallet.",
+    freeF0: "Full curriculum — every section, every notebook",
+    freeF1: "Unlimited browser simulation — circuits run on your machine",
+    freeF2: "Playground, glossary, spaced-repetition review",
+    freeF3: "Progress and saved circuits synced across devices",
+    freeF4: "Add credits only when you use the AI tutor or real quantum hardware",
+    plusTagline: "Monthly credits and stronger tutor models.",
+    plusFootnote: "Cancel anytime. Purchased credits never expire.",
+    plusF0: "Everything in Free",
+    plusF1: "1,890 credits every month — a 5% bonus over pay-as-you-go",
+    plusF2: "Credits roll over while you are subscribed",
+    plusF3: "Claude Sonnet and Opus unlocked in the tutor",
+    plusF4: "Run on any quantum backend from your balance",
+    proTagline: "The full model roster and first in line for metal.",
+    proFootnote: "For daily practitioners. Team seats are on the roadmap.",
+    proF0: "Everything in Plus",
+    proF1: "6,200 credits every month",
+    proF2: "Claude Fable unlocked — the frontier tutor",
+    proF3: "Priority queue on quantum hardware",
+    proF4: "Early access to new backends as they land",
+    // Hardware technology descriptors for rate table
+    techSuperconducting108: "Superconducting, 108 qubits",
+    techSuperconducting: "Superconducting",
+    techNeutralAtom: "Neutral-atom analog",
+    techTrappedIon: "Trapped-ion",
+    simSv1: "State-vector simulator, up to 34 qubits",
+    simDm1: "Density-matrix (noise) simulator, up to 17 qubits",
+    tutorNoteHaiku: "Fast and sharp — the everyday tutor.",
+    tutorNoteSonnet: "Deeper reasoning for tougher derivations.",
+    tutorNoteOpus: "Full-strength reasoning, circuit review.",
+    tutorNoteFable: "The frontier model, for the hardest questions.",
   },
   privacyUi: {
     title: "Privacy",
+    eyebrow: "Policy",
+    lead:
+      "The short version: your learning progress lives in your browser. If you create an account, we store your email address and a copy of that progress so it can follow you across devices — and you can delete all of it, permanently, yourself.",
     whatWeStore: "What we store",
+    storeLocal:
+      "Without an account, everything — lesson progress, review cards, widget state — is stored only in your browser's local storage. Nothing identifies you and nothing leaves your device except the requests that fetch the site itself.",
+    storeCircuits:
+      "Circuits you save in the playground follow the same rule: they live in your browser's local storage and, if you sign in, are included in the synced progress snapshot described below.",
+    storeServerIntro:
+      "If you create an account and use sync, we store on our servers (AWS, us-east-2 region):",
+    storeEmail:
+      "your email address and sign-in credentials, in Amazon Cognito (passwords are handled entirely by Cognito; we never see them)",
+    storeProgress:
+      "a snapshot of your learning progress (sections completed, review-card scheduling state), in Amazon DynamoDB, keyed to your account",
+    storePrefs:
+      "your review-reminder email preference — off unless you turn it on — and, if you do, the date we last emailed you",
+    storeHardware:
+      "if you run a circuit on real quantum hardware, a record of that run (device, shot count, cost, and a hash of the circuit) to enforce the sponsored hardware budget",
+    storeTutor:
+      "If you ask the lesson tutor a question, the question and the surrounding lesson context are sent to our tutor service (AWS Bedrock, us-east-2) to generate the answer.",
     whatWeDont: "What we don't collect",
-    emails: "Emails",
-    retention: "Retention and deletion",
-    lastUpdated: "Last updated {{date}}.",
-    noAnalytics: "No analytics or tracking scripts — none exist anywhere on this site.",
+    noAnalytics:
+      "No analytics or tracking scripts — none exist anywhere on this site.",
     noAds: "No advertising, and no data is sold or shared for advertising.",
     noCookies:
-      "No tracking cookies. Sign-in tokens are kept in your browser's local storage only for your session.",
+      "No tracking cookies. Sign-in tokens are kept in your browser's per-tab session storage.",
     noThirdParty:
-      "No third-party fonts, CDNs, or beacons — the site and its in-browser lab load from our own origin.",
+      "No third-party fonts, CDNs, or beacons — the site and its in-browser Python runtime are served from our own origin. (One exception: if our copy of the Python runtime fails to load, the browser falls back to fetching it from the public jsDelivr CDN.)",
+    emails: "Emails",
+    emailsBody:
+      "Review-reminder emails are strictly opt-in: the default is off, and nothing is sent unless you enable them in your workspace. When enabled, you get at most one email every 7 days, and only when you actually have review cards due. Every email contains a one-click unsubscribe, and you can turn reminders off in your workspace at any time.",
+    retention: "Retention and deletion",
+    retentionDelete:
+      "Server-side data is kept until you delete it. Your workspace has a \"Delete account\" control that permanently removes your synced progress, your email preference, your account itself, and this device's local copy — in that order, and it stops and tells you if any step fails. There is no undo and no recovery period.",
+    retentionLogs:
+      "Operational service logs (used for debugging and abuse prevention) are retained in AWS CloudWatch for 30 days and then deleted automatically.",
+    contact: "Contact",
+    contactBody: "Questions about this policy or your data:",
+    lastUpdated: "Last updated {{date}}.",
   },
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useLocale } from "@/i18n";
+import { useLocale, localeCode } from "@/i18n";
 import {
   HARDWARE_RATES,
   TASK_FEE_CREDITS,
@@ -44,14 +44,16 @@ function PresetChips({
   value,
   onSelect,
   format,
+  ariaLabel,
 }: {
   presets: number[];
   value: number;
   onSelect: (v: number) => void;
   format: (v: number) => string;
+  ariaLabel: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Presets">
+    <div className="flex flex-wrap gap-2" role="group" aria-label={ariaLabel}>
       {presets.map((p) => (
         <button
           key={p}
@@ -77,7 +79,8 @@ function PresetChips({
  * estimate on every real submission.
  */
 export function CostEstimator() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const loc = localeCode(locale);
   const [deviceIdx, setDeviceIdx] = useState(2); // IQM Garnet — the curriculum's workhorse
   const [shots, setShots] = useState(1000);
   const [modelIdx, setModelIdx] = useState(0);
@@ -99,11 +102,10 @@ export function CostEstimator() {
       {/* ---- Quantum hardware ---- */}
       <div className={paneChrome}>
         <h3 className="font-display text-display-md text-(--ink)">
-          Price a hardware run
+          {t("pricingUi.priceHardware")}
         </h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          The same estimate appears before every real submission — nothing runs
-          until you approve the number.
+          {t("pricingUi.priceHardwareBody")}
         </p>
 
         <div className="mt-6 space-y-5">
@@ -112,7 +114,7 @@ export function CostEstimator() {
               htmlFor={deviceId}
               className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
             >
-              Backend
+              {t("pricingUi.backend")}
             </label>
             <select
               id={deviceId}
@@ -120,11 +122,23 @@ export function CostEstimator() {
               onChange={(e) => setDeviceIdx(Number(e.target.value))}
               className="w-full rounded-control border border-(--bd) bg-(--surface-2) px-3 py-2 text-sm text-(--ink) focus-ring"
             >
-              {HARDWARE_RATES.map((r, i) => (
-                <option key={r.name} value={i}>
-                  {r.name} — {r.technology}
-                </option>
-              ))}
+              {HARDWARE_RATES.map((r, i) => {
+                const techKey =
+                  r.technology === "Superconducting, 108 qubits"
+                    ? "pricingUi.techSuperconducting108"
+                    : r.technology === "Superconducting"
+                      ? "pricingUi.techSuperconducting"
+                      : r.technology === "Neutral-atom analog"
+                        ? "pricingUi.techNeutralAtom"
+                        : r.technology === "Trapped-ion"
+                          ? "pricingUi.techTrappedIon"
+                          : null;
+                return (
+                  <option key={r.name} value={i}>
+                    {r.name} — {techKey ? t(techKey) : r.technology}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -134,10 +148,10 @@ export function CostEstimator() {
                 htmlFor={shotsId}
                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
               >
-                Shots
+                {t("pricingUi.shots")}
               </label>
               <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                {shots.toLocaleString("en-US")}
+                {shots.toLocaleString(loc)}
               </span>
             </div>
             <input
@@ -154,14 +168,15 @@ export function CostEstimator() {
               // contract explicitly rather than announcing a bare number with
               // no visible focus affordance.
               className="slider w-full focus-ring"
-              aria-valuetext={`${shots.toLocaleString("en-US")} shots`}
+              aria-valuetext={t("pricingUi.shotsValue", { n: shots.toLocaleString(loc) })}
             />
             <div className="mt-3">
               <PresetChips
                 presets={SHOT_PRESETS}
                 value={shots}
                 onSelect={setShots}
-                format={(v) => v.toLocaleString("en-US")}
+                format={(v) => v.toLocaleString(loc)}
+                ariaLabel={t("pricingUi.presets")}
               />
             </div>
           </div>
@@ -169,25 +184,26 @@ export function CostEstimator() {
 
         <Readout label={t("pricingUi.thisRun")} credits={runCredits} />
         <p className="mt-3 text-xs text-caption">
-          {device.creditsPerShot} credits per shot + {TASK_FEE_CREDITS} credits
-          per task.
+          {t("pricingUi.perShotPlusTask", {
+            perShot: device.creditsPerShot,
+            fee: TASK_FEE_CREDITS,
+          })}
         </p>
       </div>
 
       {/* ---- AI tutor ---- */}
       <div className={paneChrome}>
         <h3 className="font-display text-display-md text-(--ink)">
-          Price a month of tutoring
+          {t("pricingUi.priceTutorMonth")}
         </h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Typical questions — long derivations cost proportionally more, and the
-          margin shows the cost as you type.
+          {t("pricingUi.priceTutorBody")}
         </p>
 
         <div className="mt-6 space-y-5">
           <div>
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Model
+              {t("pricingUi.model")}
             </span>
             <div className="flex flex-wrap gap-2" role="group" aria-label={t("pricingUi.tutorModel")}>
               {TUTOR_RATES.map((r, i) => (
@@ -213,10 +229,10 @@ export function CostEstimator() {
                 htmlFor={questionsId}
                 className="text-sm font-medium text-gray-700 dark:text-gray-300"
               >
-                Questions per month
+                {t("pricingUi.questionsPerMonth")}
               </label>
               <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                {questions.toLocaleString("en-US")}
+                {questions.toLocaleString(loc)}
               </span>
             </div>
             <input
@@ -228,24 +244,38 @@ export function CostEstimator() {
               value={questions}
               onChange={(e) => setQuestions(Number(e.target.value))}
               className="slider w-full focus-ring"
-              aria-valuetext={`${questions.toLocaleString("en-US")} questions per month`}
+              aria-valuetext={t("pricingUi.questionsValue", { n: questions.toLocaleString(loc) })}
             />
             <div className="mt-3">
               <PresetChips
                 presets={QUESTION_PRESETS}
                 value={questions}
                 onSelect={setQuestions}
-                format={(v) => v.toLocaleString("en-US")}
+                format={(v) => v.toLocaleString(loc)}
+                ariaLabel={t("pricingUi.presets")}
               />
             </div>
           </div>
         </div>
 
-        <Readout label="Per month" credits={tutorCredits} suffix=" / mo" />
+        <Readout label={t("pricingUi.perMonthLabel")} credits={tutorCredits} suffix={t("pricingUi.perMoSuffix")} />
         <p className="mt-3 text-xs text-caption">
-          {tutor.model}: about {tutor.typicalCreditsPerQuestion}{" "}
-          {tutor.typicalCreditsPerQuestion === 1 ? "credit" : "credits"} per
-          question. {tutor.note}
+          {t(
+            "pricingUi.aboutCreditsPerQ",
+            {
+              model: tutor.model,
+              count: tutor.typicalCreditsPerQuestion,
+              note:
+                tutor.model === "Claude Haiku"
+                  ? t("pricingUi.tutorNoteHaiku")
+                  : tutor.model === "Claude Sonnet"
+                    ? t("pricingUi.tutorNoteSonnet")
+                    : tutor.model === "Claude Opus"
+                      ? t("pricingUi.tutorNoteOpus")
+                      : t("pricingUi.tutorNoteFable"),
+            },
+            tutor.typicalCreditsPerQuestion,
+          )}
         </p>
       </div>
     </div>

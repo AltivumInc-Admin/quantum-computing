@@ -550,6 +550,14 @@ export const es: TranslationDict = {
   },
   pricingUi: {
     title: "Precios",
+    eyebrow: "Precios",
+    headlineBefore: "Aprender es",
+    headlineFree: "gratis",
+    headlineAfter: ". El metal se mide.",
+    heroBody:
+      "Todo el currículo, el simulador y el playground son gratuitos con una cuenta gratis — para siempre. Una billetera de créditos mide solo dos cosas que cuestan dinero real: tutoría de IA de frontera y hardware cuántico real. Un crédito es un centavo, siempre.",
+    creditPeg: "1 crédito = $0.01",
+    topUpFrom: "Recarga desde {{amount}}",
     lead:
       "Todo el currículo cuántico y el simulador son gratuitos con una cuenta gratis. Una billetera de créditos anclada al dólar mide solo dos cosas que cuestan dinero real: tutoría de IA y hardware cuántico real.",
     principleLearning: "Aprender es el producto",
@@ -557,59 +565,178 @@ export const es: TranslationDict = {
       "Las lecciones, los cuadernos y el simulador de circuitos se ejecutan en tu navegador, así que podemos mantenerlos gratis para todos, para siempre. El currículo nunca pasa detrás de la billetera.",
     principleWallet: "Una billetera, anclada al dólar",
     principleWalletBody:
-      "Los créditos compran respuestas del tutor y disparos reales en QPU. Un crédito es un dólar estadounidense de costo subyacente, para que el medidor se mantenga honesto cuando un proveedor cambie sus tarifas.",
+      "Un crédito es un centavo — siempre. Recarga desde {{min}}, gasta en cualquier backend o modelo de tutor, y los créditos comprados no expiran.",
     principleLine: "Una línea clara",
     principleLineBody:
-      "Gratis para siempre al aprender. Créditos solo cuando usas el tutor de IA o hardware cuántico real.",
-    faqLearningQ: "¿Aprender es realmente gratis para siempre?",
-    faqLearningA:
-      "Sí. El currículo completo, los cuadernos y el simulador en el navegador se mantienen gratis con una cuenta gratuita.",
-    faqCreditsQ: "¿Qué compran los créditos?",
-    faqCreditsA:
-      "Respuestas del tutor de IA y disparos en hardware cuántico real. Nada más en la plataforma se mide.",
-    faqExpireQ: "¿Expiran los créditos?",
-    faqExpireA:
-      "Los créditos comprados no expiran. Los créditos mensuales de Plus y Pro se acumulan mientras la suscripción esté activa.",
-    faqBackendsQ: "¿Por qué los backends cuestan tan distinto?",
-    faqBackendsA:
-      "Los proveedores cobran distintas tarifas por disparo y por tarea. Las transferimos de forma transparente como créditos.",
-    faqProviderQ: "¿Qué pasa cuando un proveedor cambia sus precios?",
-    faqProviderA:
-      "Actualizamos la tabla de créditos para que un crédito siga correspondiendo a un dólar de costo subyacente.",
-    faqBuyQ: "¿Cómo compro créditos?",
-    faqBuyA: "Inicia sesión y usa las opciones de recarga en esta página cuando la facturación esté activa.",
-    faqWhenQ: "¿Cuándo puedo comprar créditos?",
-    faqWhenA: "En cuanto se lance la facturación — hasta entonces los planes muestran Próximamente.",
-    free: "Gratis",
-    plan: "plan",
-    buyCredits: "Comprar créditos",
-    starting: "Iniciando…",
-    thisRun: "Esta ejecución",
-    tutorModel: "Modelo del tutor",
+      "Los créditos miden exactamente dos cosas: preguntas al tutor de IA y ejecuciones en hardware cuántico real. Si no es ninguna de esas, es gratis.",
+    tiersHeading: "Tres formas de fondear la billetera",
+    tiersIntro:
+      "Toda cuenta es de pago por uso en el fondo: recarga cualquier monto y gástalo en lo que se mida. Plus y Pro son paquetes mensuales de créditos con modelos de tutor más potentes — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones.",
+    bestForRegulars: "Ideal para uso regular",
+    forever: "para siempre",
+    perMonth: "/ mes",
+    creditsEveryMonth: "{{credits}} cada mes",
+    getTier: "Obtener {{name}}",
+    startFreeWhileWait: "Empieza gratis mientras esperas",
+    launchingSoon: "Próximamente",
+    signUpFree: "Regístrate gratis",
+    signUpSoon: "Registro próximamente",
     launchPricing: "Precios de lanzamiento:",
     launchPricingBody:
-      " las billeteras están ancladas al dólar desde el primer día para que los primeros compradores no paguen de más si cambian las tarifas.",
+      " las billeteras ya están activas. Durante la transición, el tutor en la lección sigue siendo gratis para probar y las ejecuciones de hardware del currículo siguen patrocinadas — tus créditos miden el uso nuevo facturado a la billetera a medida que se despliega.",
     earlyAccess: "Acceso anticipado:",
-    earlyAccessBody: " la facturación aún no se ha lanzado — los planes de abajo muestran Próximamente.",
+    earlyAccessBody:
+      " la facturación aún no se ha lanzado — estos son precios de lanzamiento. Hoy el tutor es gratis para probar, y las ejecuciones de hardware dentro del currículo están patrocinadas. Cuando las billeteras estén activas, las financiares tú con una recarga o un plan.",
+    estimatorHeading: "Conoce el número antes de ejecutar",
+    estimatorIntro:
+      "Ninguna plataforma cuántica debería sorprenderte con una factura. Calcula aquí cualquier backend y cualquier hábito de tutor — la misma estimación bloquea cada envío real.",
+    ratesHeading: "Todas las tarifas, publicadas",
+    ratesAsOf: "Tarifas de {{date}}",
+    ratesIntro:
+      "La lista completa de precios — sin velo de ventas empresariales. Las ejecuciones en QPU suman una tarifa fija de {{fee}} créditos por tarea; los simuladores gestionados se facturan por minuto; el simulador del navegador es gratis y lo será siempre.",
+    aiTutor: "Tutor de IA",
+    tutorTypical: "Créditos típicos por pregunta.",
+    quantumHardware: "Hardware cuántico",
+    hardwarePerShotPlusFee: "Créditos por disparo, más la tarifa de {{fee}} créditos por tarea.",
+    shotRun: "Ejecución de {{n}} disparos",
+    creditsPerMinute: "{{n}} créditos / minuto",
     model: "Modelo",
     tier: "Nivel",
     credits: "Créditos",
     backend: "Backend",
     perShot: "Por disparo",
-    launchingSoon: "Próximamente",
+    faqHeading: "Preguntas justas",
+    faqLearningQ: "¿Aprender es realmente gratis para siempre?",
+    faqLearningA:
+      "Sí. El currículo completo, el simulador del navegador, el playground, el glosario y el repaso de repetición espaciada son gratis con una cuenta gratuita — correo o Google, sin tarjeta de crédito. Ese es el producto, no una prueba.",
+    faqCreditsQ: "¿Qué compran los créditos?",
+    faqCreditsA:
+      "Dos cosas: preguntas al tutor de IA y cómputo cuántico real (ejecuciones en QPU y simuladores en la nube gestionados). Un crédito equivale a un centavo. Antes de que se ejecute cualquier corrida de hardware, ves el costo exacto y lo apruebas — nada gasta tu saldo sin un número delante.",
+    faqExpireQ: "¿Expiran los créditos?",
+    faqExpireA:
+      "Los créditos comprados no expiran. Los créditos mensuales de Plus y Pro se acumulan mientras la suscripción esté activa.",
+    faqBackendsQ: "¿Por qué los backends cuestan tan distinto?",
+    faqBackendsA:
+      "Porque las máquinas realmente cuestan distinto. Un disparo de iones atrapados en IonQ lista aproximadamente 180 veces un disparo superconductor en Rigetti. Publicamos la tarifa de cada backend y tú eliges la física que cabe en tu presupuesto — la estimación siempre se muestra antes de confirmar.",
+    faqProviderQ: "¿Qué pasa cuando un proveedor cambia sus precios?",
+    faqProviderA:
+      "Las tarifas de hardware siguen las hojas de precios publicadas de los proveedores (actualmente la revisión de {{date}}). Cuando un proveedor reprecie, nuestras tarifas en créditos lo siguen, y la estimación previa al envío siempre refleja la tarifa vigente al momento del envío.",
+    faqBuyQ: "¿Cómo compro créditos?",
+    faqBuyA:
+      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de $5 a $500 — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran.",
+    faqWhenQ: "¿Cuándo puedo comprar créditos?",
+    faqWhenA:
+      "La facturación se lanza pronto; los precios de esta página son de lanzamiento. Hasta entonces, el tutor es gratis para probar y las ejecuciones de hardware dentro del currículo están patrocinadas — crea tu cuenta gratis ahora para estar listo en cuanto las billeteras se activen.",
+    ctaHeading: "Empieza a aprender hoy. La billetera puede esperar.",
+    ctaBody:
+      "Todo lo que necesitas para aprender computación cuántica ya es gratis — solo una cuenta gratuita. Correo o Google, sin tarjeta de crédito.",
+    free: "Gratis",
+    plan: "plan",
+    buyCredits: "Comprar créditos",
+    buyCreditsAmount: "Comprar {{amount}}",
+    starting: "Iniciando…",
+    thisRun: "Esta ejecución",
+    perMonthLabel: "Por mes",
+    perMoSuffix: " / mes",
+    tutorModel: "Modelo del tutor",
+    presets: "Preajustes",
+    priceHardware: "Precio de una ejecución de hardware",
+    priceHardwareBody:
+      "La misma estimación aparece antes de cada envío real — nada se ejecuta hasta que apruebes el número.",
+    shots: "Disparos",
+    shotsValue: "{{n}} disparos",
+    priceTutorMonth: "Precio de un mes de tutoría",
+    priceTutorBody:
+      "Preguntas típicas — las derivaciones largas cuestan proporcionalmente más, y el margen muestra el costo mientras escribes.",
+    questionsPerMonth: "Preguntas por mes",
+    questionsValue: "{{n}} preguntas por mes",
+    perShotPlusTask:
+      "{{perShot}} créditos por disparo + {{fee}} créditos por tarea.",
+    aboutCreditsPerQ: {
+      one: "{{model}}: unos {{count}} crédito por pregunta. {{note}}",
+      other: "{{model}}: unos {{count}} créditos por pregunta. {{note}}",
+    },
+    topUpTitle: "Recarga cualquier monto",
+    topUpBody:
+      "{{credits}} por dólar — el anclaje de $0.01, siempre. Dólares enteros de ${{min}} a ${{max}}.",
+    amountPresets: "Montos predefinidos",
+    customAmount: "Monto personalizado (USD)",
+    invalidAmount: "Ingresa un monto en dólares enteros de ${{min}} a ${{max}}.",
+    topUpFootnote:
+      "Los créditos comprados no expiran. Verás el monto exacto en la página de checkout de Stripe antes de pagar.",
+    checkoutFailed: "No se pudo iniciar el checkout. Inténtalo de nuevo.",
+    freeTagline: "Toda la plataforma de aprendizaje. Sin tarjeta, sin reloj.",
+    freeFootnote: "Gratis para siempre. Aprender nunca pasa detrás de la billetera.",
+    freeF0: "Currículo completo — cada sección, cada cuaderno",
+    freeF1: "Simulación ilimitada en el navegador — los circuitos corren en tu máquina",
+    freeF2: "Playground, glosario, repaso de repetición espaciada",
+    freeF3: "Progreso y circuitos guardados sincronizados entre dispositivos",
+    freeF4: "Añade créditos solo cuando uses el tutor de IA o hardware cuántico real",
+    plusTagline: "Créditos mensuales y modelos de tutor más potentes.",
+    plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
+    plusF0: "Todo lo de Gratis",
+    plusF1: "1,890 créditos cada mes — un 5% de bonificación sobre pago por uso",
+    plusF2: "Los créditos se acumulan mientras estés suscrito",
+    plusF3: "Claude Sonnet y Opus desbloqueados en el tutor",
+    plusF4: "Ejecuta en cualquier backend cuántico desde tu saldo",
+    proTagline: "La plantilla completa de modelos y prioridad en el metal.",
+    proFootnote: "Para practicantes diarios. Asientos de equipo están en el mapa de ruta.",
+    proF0: "Todo lo de Plus",
+    proF1: "6,200 créditos cada mes",
+    proF2: "Claude Fable desbloqueado — el tutor de frontera",
+    proF3: "Cola prioritaria en hardware cuántico",
+    proF4: "Acceso anticipado a nuevos backends cuando lleguen",
+    techSuperconducting108: "Superconductor, 108 cúbits",
+    techSuperconducting: "Superconductor",
+    techNeutralAtom: "Analógico de átomos neutros",
+    techTrappedIon: "Iones atrapados",
+    simSv1: "Simulador de vector de estado, hasta 34 cúbits",
+    simDm1: "Simulador de matriz de densidad (ruido), hasta 17 cúbits",
+    tutorNoteHaiku: "Rápido y preciso — el tutor de todos los días.",
+    tutorNoteSonnet: "Razonamiento más profundo para derivaciones difíciles.",
+    tutorNoteOpus: "Razonamiento a plena potencia, revisión de circuitos.",
+    tutorNoteFable: "El modelo de frontera, para las preguntas más duras.",
   },
   privacyUi: {
     title: "Privacidad",
+    eyebrow: "Política",
+    lead:
+      "La versión corta: tu progreso de aprendizaje vive en tu navegador. Si creas una cuenta, guardamos tu correo y una copia de ese progreso para que te siga entre dispositivos — y puedes borrar todo, de forma permanente, tú mismo.",
     whatWeStore: "Qué almacenamos",
+    storeLocal:
+      "Sin una cuenta, todo — progreso de lecciones, tarjetas de repaso, estado de widgets — se guarda solo en el almacenamiento local de tu navegador. Nada te identifica y nada sale de tu dispositivo excepto las solicitudes que cargan el sitio.",
+    storeCircuits:
+      "Los circuitos que guardas en el playground siguen la misma regla: viven en el almacenamiento local de tu navegador y, si inicias sesión, se incluyen en la instantánea de progreso sincronizado descrita abajo.",
+    storeServerIntro:
+      "Si creas una cuenta y usas la sincronización, almacenamos en nuestros servidores (AWS, región us-east-2):",
+    storeEmail:
+      "tu correo y credenciales de inicio de sesión, en Amazon Cognito (las contraseñas las maneja por completo Cognito; nunca las vemos)",
+    storeProgress:
+      "una instantánea de tu progreso de aprendizaje (secciones completadas, estado de programación de tarjetas de repaso), en Amazon DynamoDB, asociada a tu cuenta",
+    storePrefs:
+      "tu preferencia de recordatorios por correo — desactivada salvo que la enciendas — y, si la activas, la fecha del último correo que te enviamos",
+    storeHardware:
+      "si ejecutas un circuito en hardware cuántico real, un registro de esa ejecución (dispositivo, número de disparos, costo y un hash del circuito) para aplicar el presupuesto de hardware patrocinado",
+    storeTutor:
+      "Si le haces una pregunta al tutor de la lección, la pregunta y el contexto de la lección se envían a nuestro servicio de tutor (AWS Bedrock, us-east-2) para generar la respuesta.",
     whatWeDont: "Qué no recopilamos",
-    emails: "Correos",
-    retention: "Retención y eliminación",
-    lastUpdated: "Última actualización {{date}}.",
-    noAnalytics: "Sin analítica ni scripts de seguimiento — no existen en ningún lugar de este sitio.",
+    noAnalytics:
+      "Sin analítica ni scripts de seguimiento — no existen en ningún lugar de este sitio.",
     noAds: "Sin publicidad, y no se vende ni se comparte datos con fines publicitarios.",
     noCookies:
-      "Sin cookies de seguimiento. Los tokens de inicio de sesión se guardan solo en el almacenamiento local de tu navegador para tu sesión.",
+      "Sin cookies de seguimiento. Los tokens de inicio de sesión se guardan en el almacenamiento de sesión por pestaña de tu navegador.",
     noThirdParty:
-      "Sin fuentes, CDN ni balizas de terceros — el sitio y su laboratorio en el navegador se cargan desde nuestro propio origen.",
+      "Sin fuentes, CDN ni balizas de terceros — el sitio y su entorno Python en el navegador se sirven desde nuestro propio origen. (Una excepción: si nuestra copia del entorno Python no carga, el navegador puede recurrir a la CDN pública jsDelivr.)",
+    emails: "Correos",
+    emailsBody:
+      "Los recordatorios de repaso son estrictamente opt-in: el valor predeterminado es desactivado, y no se envía nada a menos que los actives en tu espacio de trabajo. Cuando están activos, recibes como máximo un correo cada 7 días, y solo cuando realmente tienes tarjetas de repaso pendientes. Cada correo incluye cancelación en un clic, y puedes desactivar los recordatorios en tu espacio de trabajo en cualquier momento.",
+    retention: "Retención y eliminación",
+    retentionDelete:
+      "Los datos del servidor se conservan hasta que los elimines. Tu espacio de trabajo tiene un control \"Eliminar cuenta\" que borra de forma permanente tu progreso sincronizado, tu preferencia de correo, la cuenta misma y la copia local de este dispositivo — en ese orden, y se detiene y te avisa si algún paso falla. No hay deshacer ni periodo de recuperación.",
+    retentionLogs:
+      "Los registros operativos del servicio (para depuración y prevención de abusos) se conservan en AWS CloudWatch durante 30 días y luego se eliminan automáticamente.",
+    contact: "Contacto",
+    contactBody: "Preguntas sobre esta política o tus datos:",
+    lastUpdated: "Última actualización {{date}}.",
   },
 };

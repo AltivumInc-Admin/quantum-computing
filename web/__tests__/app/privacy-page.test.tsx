@@ -4,6 +4,15 @@
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import PrivacyPage, { metadata } from "@/app/privacy/page";
+import { LocaleProvider } from "@/i18n";
+
+function renderPrivacy() {
+  return render(
+    <LocaleProvider>
+      <PrivacyPage />
+    </LocaleProvider>,
+  );
+}
 
 describe("PrivacyPage", () => {
   it("has honest page metadata", () => {
@@ -11,7 +20,7 @@ describe("PrivacyPage", () => {
   });
 
   it("states what is stored, where, and the opt-in email terms", () => {
-    render(<PrivacyPage />);
+    renderPrivacy();
     expect(screen.getByRole("heading", { name: "Privacy" })).toBeInTheDocument();
     expect(screen.getByText(/what we store/i)).toBeInTheDocument();
     expect(screen.getAllByText(/us-east-2/).length).toBeGreaterThan(0);
@@ -22,14 +31,14 @@ describe("PrivacyPage", () => {
   });
 
   it("points at the real deletion control and gives a contact", () => {
-    render(<PrivacyPage />);
+    renderPrivacy();
     expect(screen.getByText(/delete account/i)).toBeInTheDocument();
     const mail = screen.getByRole("link", { name: /christian\.perez@altivum\.io/ });
     expect(mail).toHaveAttribute("href", "mailto:christian.perez@altivum.io");
   });
 
   it("carries its last-updated date", () => {
-    render(<PrivacyPage />);
+    renderPrivacy();
     expect(screen.getByText(/last updated 2026-07-12/i)).toBeInTheDocument();
   });
 });
