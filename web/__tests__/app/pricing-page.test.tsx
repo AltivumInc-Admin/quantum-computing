@@ -5,6 +5,15 @@
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import PricingPage, { metadata } from "@/app/pricing/page";
+import { LocaleProvider } from "@/i18n";
+
+function renderPricing() {
+  return render(
+    <LocaleProvider>
+      <PricingPage />
+    </LocaleProvider>,
+  );
+}
 
 const COGNITO_ENV = {
   NEXT_PUBLIC_COGNITO_USER_POOL_ID: "us-east-2_TestPool",
@@ -37,7 +46,7 @@ describe("PricingPage", () => {
   });
 
   it("leads with the free-learning thesis", () => {
-    render(<PricingPage />);
+    renderPricing();
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1.textContent).toContain("The learning is");
     expect(h1.textContent).toContain("free");
@@ -47,7 +56,7 @@ describe("PricingPage", () => {
   });
 
   it("renders all three tiers with launch prices", () => {
-    render(<PricingPage />);
+    renderPricing();
     for (const name of ["Free", "Plus", "Pro"]) {
       expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
     }
@@ -59,7 +68,7 @@ describe("PricingPage", () => {
   });
 
   it("carries the early-access honesty note (sponsored runs, free tutor today)", () => {
-    render(<PricingPage />);
+    renderPricing();
     const note = screen.getByText(/billing has not launched yet/i);
     expect(note.parentElement?.textContent).toMatch(/sponsored/i);
     expect(note.parentElement?.textContent).toMatch(/tutor is free to try/i);
@@ -69,7 +78,7 @@ describe("PricingPage", () => {
     setAuthEnv(true);
     process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
     try {
-      render(<PricingPage />);
+      renderPricing();
       // Paid tiers become real checkout buttons; the teaser is gone.
       expect(screen.getByRole("button", { name: "Get Plus" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Get Pro" })).toBeInTheDocument();
@@ -90,7 +99,7 @@ describe("PricingPage", () => {
 
   it("gates sign-up CTAs on the Cognito env (configured)", () => {
     setAuthEnv(true);
-    render(<PricingPage />);
+    renderPricing();
     const signups = screen.getAllByRole("link", { name: "Sign up free" });
     expect(signups.length).toBeGreaterThanOrEqual(2); // Free card + closing CTA
     for (const link of signups) {
@@ -103,7 +112,7 @@ describe("PricingPage", () => {
   });
 
   it("falls back to the coming-soon teaser when auth is not configured", () => {
-    render(<PricingPage />);
+    renderPricing();
     expect(screen.getAllByText("Sign-up coming soon").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("link", { name: "Sign up free" })).not.toBeInTheDocument();
     expect(
@@ -112,7 +121,7 @@ describe("PricingPage", () => {
   });
 
   it("publishes the full hardware and tutor rate tables", () => {
-    render(<PricingPage />);
+    renderPricing();
     // The estimator's <select> also lists device names; scope to table cells.
     for (const device of ["IonQ Forte-1", "IQM Garnet", "Rigetti Cepheus-1-108Q", "QuEra Aquila"]) {
       expect(
@@ -129,7 +138,7 @@ describe("PricingPage", () => {
   });
 
   it("answers the fair questions", () => {
-    render(<PricingPage />);
+    renderPricing();
     expect(screen.getByText("Do credits expire?")).toBeInTheDocument();
     expect(
       screen.getByText(/Why do backends cost such different amounts\?/)
@@ -138,7 +147,7 @@ describe("PricingPage", () => {
   });
 
   it("stays consistent with the account-gate story (never 'no account required')", () => {
-    render(<PricingPage />);
+    renderPricing();
     expect(screen.queryByText(/no account required/i)).not.toBeInTheDocument();
     expect(screen.getByText(/just a free account/i)).toBeInTheDocument();
   });

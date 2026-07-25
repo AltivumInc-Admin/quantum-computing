@@ -53,14 +53,18 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   return (
     <div className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 sm:p-8 shadow-(--shadow-resting)">
       <h3 className="font-display text-display-md text-(--ink)">
-        Top up any amount
+        {t("pricingUi.topUpTitle")}
       </h3>
       <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        {`${formatCredits(100)} per dollar — the $0.01 peg, always. Whole dollars from $${TOPUP_MIN_USD} to $${TOPUP_MAX_USD}.`}
+        {t("pricingUi.topUpBody", {
+          credits: formatCredits(100),
+          min: TOPUP_MIN_USD,
+          max: TOPUP_MAX_USD,
+        })}
       </p>
 
       <div className="mt-5 flex flex-wrap items-end gap-4">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Amount presets">
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t("pricingUi.amountPresets")}>
           {PRESETS.map((p) => (
             <button
               key={p}
@@ -82,7 +86,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
             htmlFor={inputId}
             className="block text-xs font-medium text-caption mb-1"
           >
-            Custom amount (USD)
+            {t("pricingUi.customAmount")}
           </label>
           <div className="flex items-center gap-1.5">
             <span aria-hidden="true" className="text-gray-500 dark:text-gray-400">$</span>
@@ -109,14 +113,19 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
           {busy
             ? t("pricingUi.starting")
             : valid
-              ? `Buy ${formatCredits(parsed * 100)}`
+              ? t("pricingUi.buyCreditsAmount", {
+                  amount: formatCredits(parsed * 100),
+                })
               : t("pricingUi.buyCredits")}
         </button>
       </div>
 
       {!valid && amount !== "" && (
         <p className="mt-3 text-xs text-warm-dark dark:text-warm-light">
-          Enter a whole dollar amount from ${TOPUP_MIN_USD} to ${TOPUP_MAX_USD}.
+          {t("pricingUi.invalidAmount", {
+            min: TOPUP_MIN_USD,
+            max: TOPUP_MAX_USD,
+          })}
         </p>
       )}
       {error && (
@@ -125,8 +134,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
         </p>
       )}
       <p className="mt-4 text-xs text-caption">
-        Purchased credits never expire. You will see the exact amount on the
-        Stripe checkout page before paying.
+        {t("pricingUi.topUpFootnote")}
       </p>
     </div>
   );
