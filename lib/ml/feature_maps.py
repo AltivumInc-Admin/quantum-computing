@@ -183,10 +183,22 @@ def _apply_uniformly_controlled_ry(
     2^k-angle uniformly-controlled Ry expands into 2^k Ry rotations
     interleaved with 2^k CNOTs whose control qubits follow gray-code
     differences.
+
+    Raises:
+        ValueError: if ``alphas`` does not hold exactly 2^len(controls) angles.
     """
     k = len(controls)
     n_angles = len(alphas)
-    assert n_angles == (1 << k), "alphas length must be 2^len(controls)"
+    # Raised, not asserted: `python -O` strips asserts, and this loop does not fail loudly
+    # without the check. The angle count drives both the Ry count and the gray-code CNOT
+    # pattern, so a mismatch almost always builds a well-formed circuit that encodes the wrong
+    # state (len(alphas)=2 with 3 controls silently drops a control qubit entirely); only the
+    # degenerate single-angle case trips an IndexError. Verified by running the old assert under
+    # -O. A wrong state that looks fine is the worst outcome here, hence a real exception.
+    if n_angles != (1 << k):
+        raise ValueError(
+            f"alphas must hold 2^len(controls) = {1 << k} angles for {k} controls (got {n_angles})"
+        )
 
     thetas = _mottonen_angle_transform(alphas)
 

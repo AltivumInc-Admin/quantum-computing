@@ -8,6 +8,8 @@ import {
   HARDWARE_TIERS,
   type CredentialInput,
 } from "@/lib/credentials";
+import { translate } from "@/i18n/translate";
+import type { TFunction } from "@/i18n/types";
 
 // The ONE shared contract between the money path (lambda/qpu) and the credential
 // wall (web) — they live in different packages and cannot import each other. The
@@ -178,6 +180,107 @@ describe("computeCredentials", () => {
     const earned = creds.filter((c) => c.earned).length;
     // 1 completion + 2 mastery (1,5) + 1 consistency (4) = 4.
     expect(earned).toBe(4);
+  });
+});
+
+describe("computeCredentials — the Spanish path", () => {
+  // The bug this covers: every one of these strings already had a Spanish
+  // translation in the dictionary and the kernel referenced NONE of them, so a
+  // Spanish learner read an entirely English credentials wall. The English
+  // assertions above are the byte-for-byte wording spec; these are the proof the
+  // translator is actually threaded through, not that it merely type-checks.
+  const es: TFunction = (key, values, count) => translate("es", key, values, count);
+  const esInput: CredentialInput = { ...base, t: es, locale: "es" };
+
+  it("translates a completion medal's requirement and evidence", () => {
+    const creds = computeCredentials({
+      ...esInput,
+      sections: [{ slug: "00-prereqs", title: "Prerrequisitos", done: true }],
+    });
+    const medal = creds.find((c) => c.group === "completion")!;
+    // The module NAME is interpolated (the caller resolves it through
+    // i18n/sectionTitle); the sentence around it is what the kernel translates.
+    expect(medal.requirement).toBe("Completa el módulo Prerrequisitos");
+    expect(medal.evidence).toBe("Módulo Prerrequisitos completado");
+  });
+
+  it("agrees Spanish number and gender on the mastery medals (singular and plural)", () => {
+    const one = computeCredentials({ ...esInput, mastery: 1 }).find((c) => c.id === "mastery:1")!;
+    expect(one.title).toBe("Primera retención");
+    expect(one.requirement).toBe("Mantén 1 habilidad en retención comprobada");
+    expect(one.evidence).toBe("1 habilidad en retención comprobada");
+
+    const many = computeCredentials({ ...esInput, mastery: 15 });
+    expect(many.find((c) => c.id === "mastery:15")!.title).toBe("Con fluidez");
+    // Plural: "habilidades", which the English "s" suffix trick could not express.
+    expect(many.find((c) => c.id === "mastery:15")!.evidence).toBe(
+      "15 habilidades en retención comprobada",
+    );
+    expect(many.find((c) => c.id === "mastery:5")!.requirement).toBe(
+      "Mantén 5 habilidades en retención comprobada",
+    );
+  });
+
+  it("translates a consistency medal's streak evidence", () => {
+    const creds = computeCredentials({ ...esInput, longestStreakWeeks: 12 });
+    const medal = creds.find((c) => c.id === "consistency:12")!;
+    expect(medal.title).toBe("Comprometido");
+    expect(medal.evidence).toBe("Una racha de 12 semanas");
+  });
+
+  it("translates BOTH hardware metrics, keeping the shared completed-runs clause", () => {
+    const creds = computeCredentials({ ...esInput, hardwareRuns: 4, hardwareShots: 1_247 });
+    const runTier = creds.find((c) => c.id === "hardware:runs:3")!;
+    expect(runTier.title).toBe("Serie de ejecuciones");
+    expect(runTier.evidence).toBe("4 ejecuciones completadas en IQM Garnet");
+
+    const shotTier = creds.find((c) => c.id === "hardware:shots:1000")!;
+    expect(shotTier.title).toBe("Muestra profunda");
+    // The lab record in Spanish: the sample AND the runs it was sampled across.
+    // es-MX groups thousands with a comma, same as en-US.
+    expect(shotTier.evidence).toBe(
+      "1,247 disparos repartidos en 4 ejecuciones completadas en IQM Garnet",
+    );
+
+    // Singular agreement on the shared clause.
+    const single = computeCredentials({ ...esInput, hardwareRuns: 1, hardwareShots: 1 });
+    expect(single.find((c) => c.id === "hardware:runs:1")!.evidence).toBe(
+      "1 ejecución completada en IQM Garnet",
+    );
+  });
+
+  it("a Spanish shots tier NEVER renders the runs grammar either", () => {
+    // The metric discriminant has to survive translation: two separate dictionary
+    // keys, so no locale can collapse the shots demand into the runs sentence.
+    const shotTier = computeCredentials(esInput).find((c) => c.id === "hardware:shots:1000")!;
+    expect(shotTier.requirement).toBe("Ejecuta 1,000 disparos en total en hardware real");
+    expect(shotTier.requirement).toMatch(/disparos/i);
+    // "ejecuciones" is the runs noun — the shots medal must never demand them.
+    // (The verb "Ejecuta" shares a root but not the noun, which is the point.)
+    expect(shotTier.requirement).not.toMatch(/\bejecuciones\b/i);
+    expect(shotTier.requirement).not.toMatch(/^completa/i);
+
+    const runTier = computeCredentials(esInput).find((c) => c.id === "hardware:runs:3")!;
+    expect(runTier.requirement).toBe("Completa 3 ejecuciones en hardware real");
+    expect(runTier.requirement).not.toMatch(/disparo/i);
+  });
+
+  it("never leaks a raw dictionary key onto a Spanish medal", () => {
+    // A missing tier key would render as "credentialsUi.tiers.mastery.30" — a
+    // failure mode that looks like content, so it gets its own guard.
+    const creds = computeCredentials({
+      ...esInput,
+      sections: [{ slug: "00-prereqs", title: "Prerrequisitos", done: true }],
+      mastery: 50,
+      longestStreakWeeks: 26,
+      hardwareRuns: 4,
+      hardwareShots: 1_247,
+    });
+    for (const c of creds) {
+      for (const s of [c.title, c.requirement, c.evidence]) {
+        expect(s).not.toMatch(/credentialsUi\./);
+      }
+    }
   });
 });
 

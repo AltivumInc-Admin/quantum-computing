@@ -7,11 +7,19 @@ import { render, screen, act, waitFor } from "@testing-library/react";
 // The hardware group pulls COMPLETED runs from the QPU backend. Default: QPU off
 // (isQpuConfigured false) → the effect no-ops, hardware badges stay locked, and
 // the other tests are unaffected.
-jest.mock("@/lib/qpu-client", () => ({
-  __esModule: true,
-  isQpuConfigured: jest.fn(() => false),
-  getBudget: jest.fn(),
-}));
+jest.mock("@/lib/qpu-client", () => {
+  // The REAL rate-limit predicate and the error class it narrows on: a stubbed
+  // isRateLimited would let this file stay green while the classification itself
+  // rotted (the reasoning qpu-submit-panel.test.tsx records for its own mock).
+  const actual = jest.requireActual("@/lib/qpu-client") as typeof import("@/lib/qpu-client");
+  return {
+    __esModule: true,
+    isQpuConfigured: jest.fn(() => false),
+    getBudget: jest.fn(),
+    isRateLimited: actual.isRateLimited,
+    QpuHttpError: actual.QpuHttpError,
+  };
+});
 
 // The hardware fetch is gated on auth resolving (status === "authenticated") —
 // mutable so tests can drive the configuring → authenticated transition.
@@ -22,6 +30,7 @@ jest.mock("@/components/auth/auth-provider", () => ({
 }));
 
 import { CredentialsWall } from "@/components/credentials-wall";
+import { LocaleProvider, translate } from "@/i18n";
 import * as qpu from "@/lib/qpu-client";
 import { epochDay } from "@/lib/review-schedule";
 import { RETENTION_STABILITY } from "@/lib/runbook";
@@ -279,6 +288,91 @@ describe("CredentialsWall", () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
   });
 
+  /**
+   * A THROTTLED record read (the edge's 429, lambda/qpu/edge.yaml). Two claims, and the
+   * split between them is the whole fix:
+   *
+   *  - the MEDAL STATE must not move. Under a throttle the record is genuinely unknown,
+   *    so nothing may show as earned and nothing as "Locked" (a word that asserts the
+   *    medal is still winnable). "Unverified" is the honest state and stays.
+   *  - the EXPLANATION must move. The generic note says the record could not be verified
+   *    and ends "Reload to retry" — under a rate limit that is advice that makes it
+   *    worse, since an immediate reload is one more blocked request. It was also the
+   *    THIRD diagnosis one throttle produced on /workspace, next to the submit panel's
+   *    "a rate limit, not an outage".
+   */
+  const throttle = () => {
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+    (qpu.getBudget as jest.Mock).mockRejectedValue(new qpu.QpuHttpError("budget", 429));
+  };
+
+  it("a THROTTLED read keeps the medals unverified — the state must not move", async () => {
+    throttle();
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() => expect(hardware).toHaveTextContent(/Unverified/i));
+    for (const li of Array.from(hardware.querySelectorAll("li"))) {
+      expect(li).toHaveTextContent(/Unverified/i);
+      expect(li).not.toHaveTextContent(/Locked/i); // never "still winnable"
+      expect(li).not.toHaveTextContent(/Out of reach/i); // never a foreclosure
+      expect(li).not.toHaveTextContent(/Earned/i); // and never earned on an unknown
+    }
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("a THROTTLED read explains the rate limit — not an unverifiable record", async () => {
+    throttle();
+    render(<CredentialsWall />);
+    const hardware = screen.getByLabelText("Hardware");
+    await waitFor(() => expect(hardware).toHaveTextContent(/Unverified/i));
+    // The note the unverified medals point at — read it through aria-describedby, so
+    // this asserts the explanation a screen-reader user actually reaches.
+    const described = hardware.querySelector("li [aria-describedby]")!;
+    const note = document.getElementById(described.getAttribute("aria-describedby")!)!;
+    expect(note).toHaveTextContent(/rate limit, not an outage/i);
+    expect(note).toHaveTextContent(/wait a minute/i);
+    // Still says what the medals show, because that is still true.
+    expect(note).toHaveTextContent(/unverified, not locked/i);
+    // The two things the generic note gets wrong here.
+    expect(note).not.toHaveTextContent(/couldn't verify your hardware record/i);
+    expect(note).not.toHaveTextContent(/reload to retry/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("does NOT hijack a 403 or a 502 — those keep the couldn't-verify note", async () => {
+    // 403 on the QPU path is ambiguous (qpu-core.mjs answers an edge-secret mismatch
+    // with it), so it must keep reading as a fault rather than telling the learner to
+    // wait out a misconfiguration — the same line qpu-client.ts draws.
+    for (const status of [403, 502]) {
+      (qpu.isQpuConfigured as jest.Mock).mockReturnValue(true);
+      (qpu.getBudget as jest.Mock).mockRejectedValue(new qpu.QpuHttpError("budget", status));
+      const { unmount } = render(<CredentialsWall />);
+      const hardware = screen.getByLabelText("Hardware");
+      await waitFor(() => expect(hardware).toHaveTextContent(/couldn't verify your hardware record/i));
+      expect(hardware).not.toHaveTextContent(/rate limit/i);
+      unmount();
+    }
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
+  it("says the throttle in Spanish", async () => {
+    localStorage.setItem("qc:locale", "es");
+    throttle();
+    render(
+      <LocaleProvider>
+        <CredentialsWall />
+      </LocaleProvider>,
+    );
+    const hardware = screen.getByLabelText("Hardware");
+    const es = translate("es", "credentialsUi.unverifiedThrottledNote");
+    // A Spanish leaf copied from English would satisfy the render assertion below while
+    // shipping the untranslated sentence.
+    expect(es).not.toBe(translate("en", "credentialsUi.unverifiedThrottledNote"));
+    await waitFor(() => expect(hardware).toHaveTextContent(es));
+    expect(hardware).not.toHaveTextContent(/rate limit, not an outage/i);
+    (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
+  });
+
   it("earns a completion medal from a section flag", () => {
     localStorage.setItem("qc:section:00-prereqs", "1");
     render(<CredentialsWall />);
@@ -322,6 +416,33 @@ describe("CredentialsWall", () => {
       window.dispatchEvent(new Event("qc-progress"));
     });
     expect(screen.getByLabelText("Consistency")).toHaveTextContent("Earned");
+  });
+
+  it("renders the whole wall in Spanish when the stored locale is es", () => {
+    // The wiring proof. Every string below already had a Spanish translation in the
+    // dictionary; the wall referenced none of them, so a Spanish learner read an
+    // English wall — including the medal STATE words, which are the only place a
+    // screen-reader user hears earned/locked at all.
+    localStorage.setItem("qc:locale", "es");
+    render(
+      <LocaleProvider>
+        <CredentialsWall />
+      </LocaleProvider>,
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Tus credenciales" })).toBeInTheDocument();
+    for (const group of ["Finalización", "Dominio", "Constancia", "Hardware"]) {
+      expect(screen.getByRole("heading", { name: group })).toBeInTheDocument();
+    }
+    const mastery = screen.getByLabelText("Dominio");
+    expect(mastery).toHaveTextContent("Primera retención");
+    expect(mastery).toHaveTextContent("Bloqueada");
+    expect(mastery).toHaveTextContent("Mantén 1 habilidad en retención comprobada");
+    expect(mastery).not.toHaveTextContent(/Locked/i);
+    // The wall's own prose, not just the medal kernel's.
+    expect(screen.getByLabelText("Hardware")).toHaveTextContent(
+      /Las tres caben en el presupuesto patrocinado/,
+    );
+    expect(screen.getByRole("link", { name: "Ejecutar en IQM Garnet" })).toBeInTheDocument();
   });
 
   it("updates live on the qc-progress channel", () => {

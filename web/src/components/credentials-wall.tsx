@@ -8,7 +8,7 @@ import { completedCount, isSectionComplete } from "@/lib/progress-store";
 import { getSections } from "@/lib/sections";
 import { epochDay } from "@/lib/review-schedule";
 import { masteryCount, streak, freezesEarned } from "@/lib/runbook";
-import { isQpuConfigured, getBudget } from "@/lib/qpu-client";
+import { isQpuConfigured, getBudget, isRateLimited } from "@/lib/qpu-client";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   computeCredentials,
@@ -23,6 +23,7 @@ import {
   tierReachable,
   type HardwareReach,
 } from "@/lib/qpu-budget";
+import { useLocale, localeCode, sectionTitle, type Locale, type TFunction } from "@/i18n";
 
 /**
  * The Credentials wall: an engraved-medal register of what the learner has
@@ -49,6 +50,21 @@ type MedalState = "earned" | "locked" | "out-of-reach" | "unverified";
  *  travels with the medal rather than sitting in a group header. */
 const HARDWARE_UNVERIFIED_NOTE_ID = "hardware-record-unverified";
 
+/**
+ * WHY the hardware record is unverified. The MEDAL STATE is the same either way and
+ * must stay that way: under a throttle the record is genuinely unknown, so nothing may
+ * be shown as earned and nothing as "Locked" (see the medalState note below — that is a
+ * correctness constraint, not a wording preference). Only the EXPLANATION differs, and
+ * it has to: the generic note ends "Reload to retry", which under a rate limit is advice
+ * that makes it worse — an immediate reload is one more blocked request. It also stops
+ * one throttle reading as three separate diagnoses on /workspace.
+ *
+ *   null       — verified (or an honest zero: signed out, QPU surface off).
+ *   "unknown"  — the record could not be fetched, or the server omitted the counters.
+ *   "throttled" — the edge rate-limited the read (429). Not an outage; wait.
+ */
+type UnverifiedCause = null | "unknown" | "throttled";
+
 // One enamel hue per group — the wall reads as a collection of distinct medal
 // types (an oklch hue angle; earned seals only, locked stay neutral).
 const GROUP_HUE: Record<CredentialGroup, number> = {
@@ -57,18 +73,20 @@ const GROUP_HUE: Record<CredentialGroup, number> = {
   consistency: 288, // violet
   hardware: 42, // gold — the run-on-real-hardware prestige
 };
-const GROUP_TITLE: Record<CredentialGroup, string> = {
-  completion: "Completion",
-  mastery: "Mastery",
-  consistency: "Consistency",
-  hardware: "Hardware",
+// Group headings and blurbs are locale-derived: the module-level constants hold
+// dictionary KEYS, and the text is resolved per render. Keyed by CredentialGroup
+// so groups.map and the section aria-label still index straight off the group.
+const GROUP_TITLE_KEY: Record<CredentialGroup, string> = {
+  completion: "credentialsUi.completion",
+  mastery: "credentialsUi.mastery",
+  consistency: "credentialsUi.consistency",
+  hardware: "credentialsUi.hardware",
 };
-const GROUP_BLURB: Record<CredentialGroup, string> = {
-  completion: "Modules carried to the end.",
-  mastery: "Skills held in proven, spaced-repetition retention.",
-  consistency: "Weeks of showing up, unbroken.",
-  hardware:
-    "Circuits run on a real quantum computer. The platform pays Amazon Braket for every one of these runs.",
+const GROUP_BLURB_KEY: Record<CredentialGroup, string> = {
+  completion: "credentialsUi.completionBlurb",
+  mastery: "credentialsUi.masteryBlurb",
+  consistency: "credentialsUi.consistencyBlurb",
+  hardware: "credentialsUi.hardwareBlurb",
 };
 
 function snapshot(): string {
@@ -93,6 +111,8 @@ function snapshot(): string {
 function readCredentials(
   today: number,
   hardware: { runs: number; shots: number },
+  t: TFunction,
+  locale: Locale,
 ): { creds: Credential[]; earned: number } {
   const states = getAllCardStates();
   const mastery = masteryCount(states);
@@ -100,7 +120,10 @@ function readCredentials(
   const longestStreakWeeks = streak(days, today, freezesEarned(mastery)).longestWeeks;
   const sections = getSections().map((s) => ({
     slug: s.slug,
-    title: s.title,
+    // The completion medal names a module, so the module name has to be the
+    // learner's — sectionTitle falls back to the manifest title when a section
+    // has no translation yet.
+    title: sectionTitle(t, s.slug, s.title),
     done: isSectionComplete(s.slug),
   }));
   const creds = computeCredentials({
@@ -109,12 +132,15 @@ function readCredentials(
     longestStreakWeeks,
     hardwareRuns: hardware.runs,
     hardwareShots: hardware.shots,
+    t,
+    locale,
   });
   return { creds, earned: creds.filter((c) => c.earned).length };
 }
 
 export function CredentialsWall() {
   const snap = useSyncExternalStore(subscribe, snapshot, () => SERVER_SNAPSHOT);
+  const { t, locale } = useLocale();
   const { status } = useAuth();
   // Hardware runs come from the QPU backend (server-reconciled provenance), not
   // the local qc:* snapshot. The fetch waits for auth to resolve to
@@ -139,7 +165,7 @@ export function CredentialsWall() {
   });
   // Signed out / QPU surface off is an HONEST zero (locked). A failed fetch is
   // not — it becomes an explicit "couldn't verify" note on the Hardware group.
-  const [hardwareUnverified, setHardwareUnverified] = useState(false);
+  const [unverifiedCause, setUnverifiedCause] = useState<UnverifiedCause>(null);
   useEffect(() => {
     if (!isQpuConfigured() || status !== "authenticated") return;
     let disposed = false;
@@ -150,7 +176,7 @@ export function CredentialsWall() {
         // Reachability and even "earned" are then unknowable, so this is the SAME state
         // as a failed fetch — never invented zeros that would un-earn a real medal.
         if (b.completedRuns === null || b.completedShots === null) {
-          setHardwareUnverified(true);
+          setUnverifiedCause("unknown");
           return;
         }
         setHardware({
@@ -159,12 +185,15 @@ export function CredentialsWall() {
           remainingMicros: b.remainingMicros,
           known: true,
         });
-        setHardwareUnverified(false);
+        setUnverifiedCause(null);
       })
-      .catch((e: Error) => {
+      .catch((e: unknown) => {
         // Signed out mid-flight → honest zero, not an error.
-        if (disposed || e?.name === "NotSignedIn") return;
-        setHardwareUnverified(true);
+        if (disposed || (e as Error)?.name === "NotSignedIn") return;
+        // A throttle leaves the record just as unknown as an outage does — the medals
+        // stay unverified either way — but it does NOT license the outage explanation,
+        // and its retry advice is the opposite one ("wait", not "reload now").
+        setUnverifiedCause(isRateLimited(e) ? "throttled" : "unknown");
       });
     return () => {
       disposed = true;
@@ -173,8 +202,12 @@ export function CredentialsWall() {
 
   const data = useMemo(() => {
     if (snap === SERVER_SNAPSHOT) return null;
-    return readCredentials(Number(snap.split("|")[0]) || 0, hardware);
-  }, [snap, hardware]);
+    return readCredentials(Number(snap.split("|")[0]) || 0, hardware, t, locale);
+  }, [snap, hardware, t, locale]);
+
+  // Digit grouping for the counts the wall prints itself (the medals get theirs
+  // from computeCredentials).
+  const num = (n: number) => n.toLocaleString(localeCode(locale));
 
   const groups: CredentialGroup[] = ["completion", "mastery", "consistency", "hardware"];
 
@@ -193,11 +226,14 @@ export function CredentialsWall() {
    *   unverified    — the hardware record could not be fetched, so `earned` is
    *                   UNKNOWN, not false. Rendering an earned medal as "Locked" here
    *                   was a lie told only to the screen-reader user, since the sighted
-   *                   caveat lived in the group header.
+   *                   caveat lived in the group header. A RATE-LIMITED read lands here
+   *                   too, and must: a throttle leaves the record exactly as unknown as
+   *                   an outage does, so the medal state is the honest one either way.
+   *                   Only the note explaining it differs (see UnverifiedCause).
    */
   const medalState = (c: Credential): MedalState => {
     if (c.group !== "hardware") return c.earned ? "earned" : "locked";
-    if (hardwareUnverified) return "unverified";
+    if (unverifiedCause !== null) return "unverified";
     if (c.earned) return "earned";
     const [, metric, n] = c.id.split(":");
     const tier = { metric: metric as "runs" | "shots", n: Number(n) };
@@ -216,20 +252,20 @@ export function CredentialsWall() {
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
       <header className="mb-10">
         <p className="font-mono text-sm font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light mb-3">
-          Credentials
+          {t("credentialsUi.title")}
         </p>
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
-          Your credentials
+          {t("credentialsUi.pageTitle")}
         </h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-(--mut)">
-          Each medal is earned, not awarded — struck from work you can point to. Mastery
-          medals reflect what you hold in retention right now, so they mean exactly what
-          they say.
+          {t("credentialsUi.pageBody")}
         </p>
         {data && (
           <p className="mt-4 text-sm tabular-nums text-caption">
-            <span className="font-semibold text-(--mut)">{data.earned}</span> of{" "}
-            {data.creds.length} earned
+            {/* The earned count keeps its emphasis, so it stays outside the
+                template; both dictionaries lead with it (see earnedOfTotal). */}
+            <span className="font-semibold text-(--mut)">{num(data.earned)}</span>{" "}
+            {t("credentialsUi.earnedOfTotal", { total: num(data.creds.length) })}
           </p>
         )}
       </header>
@@ -244,22 +280,24 @@ export function CredentialsWall() {
           {groups.map((g) => {
             const items = data.creds.filter((c) => c.group === g);
             return (
-              <section key={g} aria-label={GROUP_TITLE[g]}>
+              <section key={g} aria-label={t(GROUP_TITLE_KEY[g])}>
                 <div className="mb-4">
                   <h2 className="font-display text-display-md tracking-tight text-(--ink)">
-                    {GROUP_TITLE[g]}
+                    {t(GROUP_TITLE_KEY[g])}
                   </h2>
-                  <p className="mt-0.5 text-sm text-caption">{GROUP_BLURB[g]}</p>
+                  <p className="mt-0.5 text-sm text-caption">{t(GROUP_BLURB_KEY[g])}</p>
                   {/* The lab record: the artifact a peer would actually be shown. */}
                   {g === "hardware" && hardware.runs > 0 && (
                     <p className="mt-1 text-sm tabular-nums text-(--mut)">
-                      Your record:{" "}
+                      {t("credentialsUi.recordLabel")}{" "}
                       <span className="font-medium">
-                        {hardware.runs.toLocaleString("en-US")} completed run
-                        {hardware.runs === 1 ? "" : "s"}
+                        {t("credentialsUi.recordRuns", { n: num(hardware.runs) }, hardware.runs)}
                       </span>
-                      , <span className="font-medium">{hardware.shots.toLocaleString("en-US")} shots</span>{" "}
-                      on IQM Garnet.
+                      ,{" "}
+                      <span className="font-medium">
+                        {t("credentialsUi.recordShots", { n: num(hardware.shots) }, hardware.shots)}
+                      </span>{" "}
+                      {t("credentialsUi.recordDevice")}
                     </p>
                   )}
                   {/* The route out of a dead end. The hardware group listed three
@@ -269,29 +307,40 @@ export function CredentialsWall() {
                       hosts the submit panel. */}
                   {g === "hardware" && (
                     <p className="mt-1 text-sm leading-relaxed text-caption">
-                      All three fit inside the sponsored allowance:{" "}
+                      {t("credentialsUi.allowanceLead")}{" "}
                       <span className="tabular-nums text-(--mut)">
-                        {LADDER_RUNS} runs totalling {DEEP_SAMPLE_SHOTS.toLocaleString("en-US")}{" "}
-                        shots — {usd(LADDER_MICROS)}
+                        {t("credentialsUi.allowancePlan", {
+                          runs: num(LADDER_RUNS),
+                          shots: num(DEEP_SAMPLE_SHOTS),
+                          cost: usd(LADDER_MICROS),
+                        })}
                       </span>
-                      . The allowance is one-time and does not refill, so how you spend it decides
-                      which of these you can still earn.{" "}
+                      {". "}
+                      {t("credentialsUi.allowanceTail")}{" "}
                       <Link
                         href="/workspace"
                         className="font-medium text-accent-dark dark:text-accent-light underline underline-offset-2 interactive focus-ring rounded-control"
                       >
-                        Run on IQM Garnet
+                        {t("credentialsUi.runOnGarnet")}
                       </Link>
                     </p>
                   )}
-                  {g === "hardware" && hardwareUnverified && (
+                  {g === "hardware" && unverifiedCause !== null && (
                     <p
                       id={HARDWARE_UNVERIFIED_NOTE_ID}
                       role="status"
                       className="mt-1 text-xs text-warm-dark dark:text-warm-light"
                     >
-                      Couldn&apos;t verify your hardware record — these medals show as unverified,
-                      not locked. Reload to retry.
+                      {/* Same medal state, the truthful explanation. "Reload to retry"
+                          is wrong advice under a throttle — the reload is another
+                          blocked request — and calling a live-but-rate-limited service
+                          unverifiable-for-unknown-reasons is the third diagnosis one
+                          throttle used to produce on /workspace. */}
+                      {t(
+                        unverifiedCause === "throttled"
+                          ? "credentialsUi.unverifiedThrottledNote"
+                          : "credentialsUi.unverifiedNote",
+                      )}
                     </p>
                   )}
                 </div>
@@ -310,17 +359,20 @@ export function CredentialsWall() {
 }
 
 function Medal({ cred, hue, state }: { cred: Credential; hue: number; state: MedalState }) {
+  const { t } = useLocale();
   const enamel = `oklch(0.62 0.13 ${hue})`;
   // State is carried by the chip's WORD (and the seal's form), never by colour — the
   // four states have to be four different things to hear, not four different things to
-  // see. The out-of-reach and unverified tones are the semantic warm pair, but they
-  // are redundant with the label by construction.
-  const chip = {
-    earned: "Earned",
-    locked: "Locked",
-    "out-of-reach": "Out of reach",
-    unverified: "Unverified",
-  }[state];
+  // see. All four words are translated for the same reason: an English "Locked" chip on
+  // a Spanish wall would be a state a Spanish screen-reader user cannot read.
+  const chip = t(
+    {
+      earned: "credentialsUi.earned",
+      locked: "credentialsUi.locked",
+      "out-of-reach": "credentialsUi.outOfReach",
+      unverified: "credentialsUi.unverified",
+    }[state],
+  );
   const chipTone = {
     earned: "bg-accent/12 text-accent-dark dark:text-accent-light",
     locked: "bg-(--field) text-(--mut)",
@@ -330,7 +382,7 @@ function Medal({ cred, hue, state }: { cred: Credential; hue: number; state: Med
   const detail = {
     earned: cred.evidence,
     locked: cred.requirement,
-    "out-of-reach": `${cred.requirement} — out of reach on your remaining sponsored budget.`,
+    "out-of-reach": t("credentialsUi.outOfReachDetail", { requirement: cred.requirement }),
     unverified: cred.requirement,
   }[state];
   return (
