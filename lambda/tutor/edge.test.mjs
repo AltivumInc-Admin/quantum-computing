@@ -14,9 +14,20 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadTemplate } from "./cfn-slice.mjs";
+import { loadTemplate, section, blocks } from "./cfn-slice.mjs";
+import { readFileSync } from "node:fs";
 
 const { text: edge, body, typeOf, ofType } = loadTemplate("edge.yaml", import.meta.url);
+// The main (us-east-2) stack, read ONLY to cross-check the one value the two
+// stacks must agree on: the browser origin. See the AllowedOrigin test below.
+const main = readFileSync(new URL("./template.yaml", import.meta.url), "utf8");
+
+/** The `Default:` of a top-level Parameter, or undefined if it has none. */
+function paramDefault(text, name) {
+  const param = blocks(section(text, "Parameters"))[name];
+  assert.ok(param, `template has no ${name} parameter`);
+  return param.join("\n").match(/^\s+Default: (.+)$/m)?.[1]?.trim();
+}
 
 /** AWS Managed-CachingDisabled. Any other id caches the streamed answer. */
 const MANAGED_CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad";
@@ -44,6 +55,86 @@ test("the rate-limit rule blocks per source IP and returns the 429 it documents"
   // broken OAC signature in both the client and the CloudFront logs.
   assert.match(acl, /CustomResponse:\s*\n\s*ResponseCode: 429/, "block must return 429, not WAF's default 403");
   assert.match(acl, /CustomResponseBodies:/, "429 needs a body the client can read");
+
+  // The referenced body must actually exist under CustomResponseBodies, and its
+  // key must satisfy WAF's CustomResponseBodyKey pattern (^[\w\-]+$) — a key with
+  // any other character is rejected at deploy, not at lint.
+  const key = acl.match(/CustomResponseBodyKey: (\S+)/)?.[1];
+  assert.ok(key, "the 429 must reference a custom response body");
+  assert.match(key, /^[\w-]+$/, `CustomResponseBodyKey "${key}" violates WAF's ^[\\w\\-]+$ pattern`);
+  assert.match(acl, new RegExp(`CustomResponseBodies:\\s*\\n\\s*${key}:`), `no body defined for key ${key}`);
+});
+
+test("the 429 carries the CORS header without which no browser can READ it", () => {
+  // The gap this closes: a WAF block is generated at the EDGE, so the request never
+  // reaches the origin and the Function URL's own Cors block never runs. The site
+  // (quantum.altivum.ai) is cross-origin to this distribution, and ask-tutor.tsx
+  // sends `content-type: application/json` plus `x-amz-content-sha256` — neither is
+  // CORS-safelisted, so every call is preflighted and every response is CORS-checked.
+  // Streaming does not exempt it: res.body.getReader() only runs on a CORS-ok
+  // response. Strip Access-Control-Allow-Origin and the browser DISCARDS the 429:
+  // fetch rejects with TypeError, res.status is never observed, and ask-tutor's
+  // catch reports tutor.unreachable — the outage claim for a wait-a-minute
+  // condition. Nothing at deploy time or in any metric shows this; the WAF reports
+  // a blocked request either way.
+  const acl = body("TutorWebAcl");
+  const from = acl.indexOf("CustomResponse:");
+  assert.notEqual(from, -1, "the rate-limit block no longer has a CustomResponse");
+  const customResponse = acl.slice(from, acl.indexOf("Statement:", from));
+  assert.match(
+    customResponse,
+    /ResponseHeaders:\s*\n\s*- Name: Access-Control-Allow-Origin\s*\n\s*Value: !Ref AllowedOrigin/,
+    "the 429 must carry Access-Control-Allow-Origin, sourced from the AllowedOrigin parameter",
+  );
+  // Not credentials-mode: ask-tutor's fetch never sets credentials, and the
+  // endpoint is anonymous. Allow-Credentials would advertise a cookie contract
+  // this endpoint does not have.
+  assert.doesNotMatch(customResponse, /Access-Control-Allow-Credentials/);
+});
+
+test("the allowed-origin DEFAULTS cannot drift between edge.yaml and template.yaml", () => {
+  // Two stacks, one allowlist. template.yaml (us-east-2) decides who may read a
+  // NORMAL response via the Function URL's Cors.AllowOrigins; this stack decides
+  // who may read the THROTTLED one. If the two disagree, the throttle goes
+  // unreadable in exactly the case it was created for, and the failure is
+  // invisible until a real learner is being rate limited.
+  //
+  // HONEST SCOPE: this pins the templates' Default: lines, which is all an
+  // offline test can see. Both stacks deploy with explicit --parameter-overrides,
+  // so an operator overriding one side differently still produces the drift this
+  // test cannot catch — the deploy runbook passes AllowedOrigin explicitly on
+  // both for exactly that reason.
+  const here = paramDefault(edge, "AllowedOrigin");
+  const there = paramDefault(main, "AllowedOrigin");
+  assert.ok(here, "edge.yaml must parameterize AllowedOrigin, not hardcode an origin");
+  assert.equal(here, there, "edge.yaml and template.yaml disagree on AllowedOrigin");
+  assert.match(here, /^https:\/\//, "the allowed origin must be https");
+  // A single static header can name ONE origin. That is lossless only while
+  // template.yaml also lists exactly one; a second entry there (a localhost dev
+  // origin, say) would silently lose the ability to read a throttle.
+  assert.notEqual(here, "*", "a wildcard would expose this endpoint's responses to any origin");
+});
+
+test("CORS preflights are exempt from the rate limit, which is what makes the 429 reachable", () => {
+  // A preflight must answer with an ok (2xx) status or the browser treats the whole
+  // request as a network error — so a preflight blocked with 429 cannot be rescued
+  // by any header, and the Access-Control-Allow-Origin above would never be seen.
+  // CloudFront forwards OPTIONS and every ask-tutor call is preflighted, so the
+  // burst that trips the limit would otherwise block the preflight too.
+  const acl = body("TutorWebAcl");
+  const rate = acl.slice(acl.indexOf("RateBasedStatement:"));
+  assert.match(rate, /ScopeDownStatement:/, "preflights must be excluded from the rate count");
+  // Polarity is the whole test. Dropping `NotStatement` inverts it: the rule would
+  // then count ONLY preflights and leave POST — the path that invokes Bedrock —
+  // with no rate limit at all, while every metric and every deploy stayed green.
+  assert.match(
+    rate,
+    /ScopeDownStatement:\s*\n\s*NotStatement:\s*\n\s*Statement:\s*\n\s*ByteMatchStatement:/,
+    "the scope-down must be a NotStatement; without it the rate limit inverts",
+  );
+  assert.match(rate, /FieldToMatch:\s*\n\s*Method: \{\}/, "the exemption must key on the HTTP method");
+  assert.match(rate, /PositionalConstraint: EXACTLY/);
+  assert.match(rate, /SearchString: OPTIONS/);
 });
 
 test("the origin is signed with SigV4 on every request (OAC)", () => {
