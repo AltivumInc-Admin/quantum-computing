@@ -32,6 +32,11 @@
  * impossible to earn, under a header promising "Each medal is earned, not awarded."
  */
 
+import { translate } from "@/i18n/translate";
+import { localeCode } from "@/i18n/locale-code";
+import { DEFAULT_LOCALE } from "@/i18n/types";
+import type { Locale, TFunction } from "@/i18n/types";
+
 export type CredentialGroup = "completion" | "mastery" | "consistency" | "hardware";
 
 export interface Credential {
@@ -56,9 +61,22 @@ export interface CredentialInput {
   hardwareRuns: number;
   /** Total shots across COMPLETED real-hardware runs. */
   hardwareShots: number;
+  /** Optional translator; defaults to English so the pure unit tests stay
+   *  deterministic (mirrors workspace.resolveValve). */
+  t?: TFunction;
+  /** Locale for Intl digit grouping ONLY — a dictionary leaf cannot express
+   *  "1,000", so the 1,000-shot tier needs the BCP 47 tag as well as `t`.
+   *  (es-MX groups with a comma too, so the grouped strings coincide; that is a
+   *  coincidence of these two locales, not something to rely on.) */
+  locale?: Locale;
 }
 
-/** Retention milestones. `label` names the rung on the Newcomer→Practitioner→SME ladder. */
+/** Retention milestones. `title` is the tier's STABLE ENGLISH IDENTITY, not its
+ *  display name: it is asserted verbatim by nextUnearnedTier's tests and (for
+ *  HARDWARE_TIERS) deep-equal locked to the cross-package ladder fixture. The
+ *  displayed name is looked up as `credentialsUi.tiers.<group>.<n>` instead, so
+ *  no translation key may be stored on these objects.
+ *  `title` names the rung on the Newcomer→Practitioner→SME ladder. */
 export const MASTERY_TIERS: { n: number; title: string }[] = [
   { n: 1, title: "First retention" },
   { n: 5, title: "Practiced" },
@@ -102,71 +120,97 @@ export function nextUnearnedTier<T extends { n: number }>(
 }
 
 export function computeCredentials(input: CredentialInput): Credential[] {
+  const t: TFunction =
+    input.t ?? ((key, values, count) => translate(DEFAULT_LOCALE, key, values, count));
+  // Digit grouping is the one thing the dictionary cannot carry.
+  const tag = localeCode(input.locale ?? DEFAULT_LOCALE);
+  const num = (n: number) => n.toLocaleString(tag);
   const creds: Credential[] = [];
 
-  // Completion — one per module.
+  // Completion — one per module. The section title arrives already localized
+  // (the caller resolves it through i18n/sectionTitle), so it is interpolated,
+  // never re-translated here.
   for (const s of input.sections) {
     creds.push({
       id: `completion:${s.slug}`,
       group: "completion",
       title: s.title,
-      requirement: `Complete the ${s.title} module`,
+      requirement: t("credentialsUi.completionRequirement", { title: s.title }),
       earned: s.done,
-      evidence: s.done ? `Completed the ${s.title} module` : "",
+      evidence: s.done ? t("credentialsUi.completionEvidence", { title: s.title }) : "",
     });
   }
 
-  // Mastery — retention milestones.
-  for (const t of MASTERY_TIERS) {
-    const earned = input.mastery >= t.n;
+  // Mastery — retention milestones. The display title is DERIVED from the tier's
+  // threshold, never read off `tier.title`: that field is the stable English
+  // identity the fixture lock and the nextUnearnedTier tests assert against.
+  for (const tier of MASTERY_TIERS) {
+    const earned = input.mastery >= tier.n;
     creds.push({
-      id: `mastery:${t.n}`,
+      id: `mastery:${tier.n}`,
       group: "mastery",
-      title: t.title,
-      requirement: `Hold ${t.n} skill${t.n === 1 ? "" : "s"} in proven retention`,
+      title: t(`credentialsUi.tiers.mastery.${tier.n}`),
+      requirement: t("credentialsUi.masteryRequirement", { n: num(tier.n) }, tier.n),
       earned,
       evidence: earned
-        ? `${input.mastery} skill${input.mastery === 1 ? "" : "s"} in proven retention`
+        ? t("credentialsUi.masteryEvidence", { n: num(input.mastery) }, input.mastery)
         : "",
     });
   }
 
   // Consistency — longest-streak milestones.
-  for (const t of CONSISTENCY_TIERS) {
-    const earned = input.longestStreakWeeks >= t.n;
+  for (const tier of CONSISTENCY_TIERS) {
+    const earned = input.longestStreakWeeks >= tier.n;
     creds.push({
-      id: `consistency:${t.n}`,
+      id: `consistency:${tier.n}`,
       group: "consistency",
-      title: t.title,
-      requirement: `Practice ${t.n} weeks in a row`,
+      title: t(`credentialsUi.tiers.consistency.${tier.n}`),
+      requirement: t("credentialsUi.consistencyRequirement", { n: num(tier.n) }, tier.n),
       earned,
-      evidence: earned ? `A ${input.longestStreakWeeks}-week streak` : "",
+      evidence: earned
+        ? t(
+            "credentialsUi.consistencyEvidence",
+            { n: num(input.longestStreakWeeks) },
+            input.longestStreakWeeks,
+          )
+        : "",
     });
   }
 
   // Hardware — COMPLETED real-hardware runs and the shots inside them, both from
   // reconciled Braket task provenance (server aggregates, never a client tally).
-  for (const t of HARDWARE_TIERS) {
-    const value = t.metric === "shots" ? input.hardwareShots : input.hardwareRuns;
-    const earned = value >= t.n;
+  for (const tier of HARDWARE_TIERS) {
+    const value = tier.metric === "shots" ? input.hardwareShots : input.hardwareRuns;
+    const earned = value >= tier.n;
     // The shared clause: the run count is the provenance behind BOTH metrics, so a
     // shots medal still cites the runs it was sampled across ("a lab record").
-    const runs = `${input.hardwareRuns} completed run${input.hardwareRuns === 1 ? "" : "s"} on IQM Garnet`;
+    const runs = t(
+      "credentialsUi.hardwareRunsEvidence",
+      { n: num(input.hardwareRuns) },
+      input.hardwareRuns,
+    );
     creds.push({
       // id carries the metric: a runs-tier and a shots-tier can otherwise collide
       // on `n`. (Safe to change — the id is only a React key, never persisted.)
-      id: `hardware:${t.metric}:${t.n}`,
+      id: `hardware:${tier.metric}:${tier.n}`,
       group: "hardware",
-      title: t.title,
+      title: t(`credentialsUi.tiers.hardware.${tier.metric}.${tier.n}`),
+      // The metric discriminant still branches the GRAMMAR, now across two keys
+      // rather than two template literals: a shots tier must never render the
+      // runs template ("Complete 1000 runs on real hardware").
       requirement:
-        t.metric === "shots"
-          ? `Run ${t.n.toLocaleString("en-US")} total shots on real hardware`
-          : `Complete ${t.n} run${t.n === 1 ? "" : "s"} on real hardware`,
+        tier.metric === "shots"
+          ? t("credentialsUi.hardwareShotsRequirement", { n: num(tier.n) }, tier.n)
+          : t("credentialsUi.hardwareRunsRequirement", { n: num(tier.n) }, tier.n),
       earned,
       evidence: !earned
         ? ""
-        : t.metric === "shots"
-          ? `${input.hardwareShots.toLocaleString("en-US")} shots across ${runs}`
+        : tier.metric === "shots"
+          ? t(
+              "credentialsUi.hardwareShotsEvidence",
+              { n: num(input.hardwareShots), runs },
+              input.hardwareShots,
+            )
           : runs,
     });
   }

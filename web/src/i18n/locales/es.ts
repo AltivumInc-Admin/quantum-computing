@@ -489,12 +489,38 @@ export const es: TranslationDict = {
     skillsRetentionSr: "habilidades en retención comprobada",
     keptSharp: "mantenidas esta semana",
     withinReach: "Al alcance",
+    mastery: "Dominio",
     consistency: "Constancia",
     hardware: "Hardware",
     allCredentials: "Todas las credenciales de {{group}} obtenidas.",
+    allCredentialsLink: "Todas las {{n}} credenciales →",
+    rungProgress: "{{current}} de {{target}} {{unit}}",
+    // The verb agrees with the count: "falta 1" / "faltan 3". Both keys shipped as
+    // plain strings, so every track rendered "faltan 1" at its last step — and
+    // distance === 1 is reachable on all three (mastery 4→5, consistency 3→4,
+    // hardware 2→3 runs).
+    distanceToGo: {
+      one: "falta {{distance}}",
+      other: "faltan {{distance}}",
+    },
+    distanceUnitToGo: {
+      one: "falta {{distance}} {{unit}}",
+      other: "faltan {{distance}} {{unit}}",
+    },
+    unitInRetention: "en retención",
+    unitRun: {
+      one: "ejecución",
+      other: "ejecuciones",
+    },
+    unitShot: {
+      one: "disparo",
+      other: "disparos",
+    },
     checkingHardware: "Revisando tu registro de hardware…",
+    hardwareUnavailable: "Registro de hardware no disponible.",
     allHardware: "Todas las credenciales de hardware obtenidas.",
     fits: "cabe",
+    outOfAllowance: "fuera del presupuesto",
     interval: "Intervalo",
     skills: "Habilidades",
     state: "Estado",
@@ -536,6 +562,10 @@ export const es: TranslationDict = {
   },
   credentialsUi: {
     title: "Credenciales",
+    pageTitle: "Tus credenciales",
+    pageBody:
+      "Cada medalla se gana, no se otorga — se acuña con trabajo que puedes señalar. Las medallas de dominio reflejan lo que mantienes en retención ahora mismo, así que significan exactamente lo que dicen.",
+    earnedOfTotal: "de {{total}} obtenidas",
     completion: "Finalización",
     mastery: "Dominio",
     consistency: "Constancia",
@@ -545,8 +575,99 @@ export const es: TranslationDict = {
     consistencyBlurb: "Semanas de constancia, sin interrupciones.",
     hardwareBlurb:
       "Circuitos ejecutados en una computadora cuántica real. La plataforma paga a Amazon Braket por cada una de estas ejecuciones.",
+    earned: "Obtenida",
+    locked: "Bloqueada",
     outOfReach: "Fuera de alcance",
     unverified: "Sin verificar",
+    outOfReachDetail:
+      "{{requirement}} — fuera de alcance con el presupuesto patrocinado que te queda.",
+    recordLabel: "Tu registro:",
+    recordRuns: {
+      one: "{{n}} ejecución completada",
+      other: "{{n}} ejecuciones completadas",
+    },
+    recordShots: {
+      one: "{{n}} disparo",
+      other: "{{n}} disparos",
+    },
+    recordDevice: "en IQM Garnet.",
+    allowanceLead: "Las tres caben en el presupuesto patrocinado:",
+    allowancePlan: "{{runs}} ejecuciones con un total de {{shots}} disparos — {{cost}}",
+    allowanceTail:
+      "El presupuesto es único y no se recarga, así que cómo lo gastas decide cuáles de estas puedes obtener todavía.",
+    runOnGarnet: "Ejecutar en IQM Garnet",
+    unverifiedNote:
+      "No se pudo verificar tu registro de hardware — estas medallas aparecen como sin verificar, no bloqueadas. Recarga para reintentar.",
+    unverifiedThrottledNote:
+      "Demasiadas solicitudes en poco tiempo, así que no se pudo revisar tu registro de hardware — estas medallas aparecen como sin verificar, no bloqueadas. Es un límite de solicitudes, no una interrupción del servicio; espera un minuto antes de recargar.",
+    tiers: {
+      mastery: {
+        "1": "Primera retención",
+        "5": "Con práctica",
+        "15": "Con fluidez",
+        "30": "Profundo",
+        "50": "Maestría",
+      },
+      consistency: {
+        "4": "Constante",
+        "12": "Comprometido",
+        "26": "Implacable",
+      },
+      hardware: {
+        runs: {
+          "1": "Ejecutado en hardware real",
+          "3": "Serie de ejecuciones",
+        },
+        shots: {
+          "1000": "Muestra profunda",
+        },
+      },
+    },
+    completionRequirement: "Completa el módulo {{title}}",
+    completionEvidence: "Módulo {{title}} completado",
+    masteryRequirement: {
+      one: "Mantén {{n}} habilidad en retención comprobada",
+      other: "Mantén {{n}} habilidades en retención comprobada",
+    },
+    masteryEvidence: {
+      one: "{{n}} habilidad en retención comprobada",
+      other: "{{n}} habilidades en retención comprobada",
+    },
+    consistencyRequirement: {
+      one: "Practica {{n}} semana seguida",
+      other: "Practica {{n}} semanas seguidas",
+    },
+    consistencyEvidence: {
+      one: "Una racha de {{n}} semana",
+      other: "Una racha de {{n}} semanas",
+    },
+    // "Ejecuta … disparos", never "ejecuciones": the shots tier must not demand
+    // runs in Spanish either. The verb shares a root with the runs noun but not
+    // the noun itself, which is what the regression test pins.
+    hardwareRunsRequirement: {
+      one: "Completa {{n}} ejecución en hardware real",
+      other: "Completa {{n}} ejecuciones en hardware real",
+    },
+    hardwareShotsRequirement: {
+      one: "Ejecuta {{n}} disparo en total en hardware real",
+      other: "Ejecuta {{n}} disparos en total en hardware real",
+    },
+    hardwareRunsEvidence: {
+      one: "{{n}} ejecución completada en IQM Garnet",
+      other: "{{n}} ejecuciones completadas en IQM Garnet",
+    },
+    hardwareShotsEvidence: {
+      one: "{{n}} disparo repartido en {{runs}}",
+      other: "{{n}} disparos repartidos en {{runs}}",
+    },
+  },
+  qpuUi: {
+    rateLimitedSubmit:
+      "Demasiadas solicitudes en poco tiempo — no se gastó nada del presupuesto. Espera un minuto y envía de nuevo.",
+    rateLimitedService:
+      "Demasiadas solicitudes en poco tiempo. Es un límite de solicitudes, no una interrupción del servicio — espera un minuto e inténtalo de nuevo.",
+    recordUnavailable:
+      "Tu registro de hardware no está disponible en este momento, así que no se puede mostrar el avance de las medallas. Tus ejecuciones completadas no se ven afectadas — recarga para reintentar.",
   },
   pricingUi: {
     title: "Precios",

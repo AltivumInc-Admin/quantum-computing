@@ -2,8 +2,10 @@
 
 import numpy as np
 import pytest
+from braket.circuits import Circuit
 
 from lib.ml.feature_maps import (
+    _apply_uniformly_controlled_ry,
     amplitude_encoding,
     angle_encoding,
     iqp_encoding,
@@ -198,3 +200,38 @@ def test_amplitude_encoding_rejects_zero_vector():
 def test_amplitude_encoding_rejects_negative_features():
     with pytest.raises(ValueError, match="non-negative"):
         amplitude_encoding(np.array([1.0, -1.0, 1.0, 1.0]))
+
+
+# ---------------------------------------------------------------------------
+# _apply_uniformly_controlled_ry
+#
+# Tested directly rather than through amplitude_encoding: the 2^k-angle invariant is this
+# helper's own contract, and amplitude_encoding's level loop satisfies it by construction, so
+# no public input can reach the violating branch. Exercising the unit that owns the invariant is
+# what keeps the guard honest if a future edit to that loop ever breaks the pairing.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("n_alphas", "n_controls"),
+    [(3, 2), (5, 2), (2, 3), (1, 2)],
+    ids=["too-few", "too-many", "drops-a-control", "degenerate-single-angle"],
+)
+def test_apply_uniformly_controlled_ry_rejects_mismatched_alphas(n_alphas, n_controls):
+    # Was a bare `assert`, which `python -O` strips. Every case here except the last one then
+    # built a well-formed circuit encoding the wrong state rather than failing, which is why
+    # this has to be an exception the interpreter cannot optimize away.
+    with pytest.raises(ValueError, match=r"2\^len\(controls\)"):
+        _apply_uniformly_controlled_ry(
+            Circuit(),
+            [0.1] * n_alphas,
+            target=n_controls,
+            controls=list(range(n_controls)),
+        )
+
+
+def test_apply_uniformly_controlled_ry_accepts_matching_alphas():
+    # Positive control: the guard must not reject the length the decomposition actually uses.
+    circuit = Circuit()
+    _apply_uniformly_controlled_ry(circuit, [0.1, 0.2, 0.3, 0.4], target=2, controls=[0, 1])
+    assert circuit.qubit_count == 3

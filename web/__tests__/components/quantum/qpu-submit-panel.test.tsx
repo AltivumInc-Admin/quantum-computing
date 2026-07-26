@@ -15,13 +15,22 @@ jest.mock("@/lib/qpu-client", () => ({
   claimCredential: jest.fn(),
   submitTask: jest.fn(),
   // The REAL classifier: it is pure (navigator + instanceof), and mocking it
-  // would let these tests pass while the classification itself rotted.
+  // would let these tests pass while the classification itself rotted. Same for the
+  // two rate-limit predicates and the error class they key on — a stubbed
+  // isRateLimited would let the panel render the wait-a-minute copy for a 500.
   classifySubmitFailure: (jest.requireActual("@/lib/qpu-client") as typeof import("@/lib/qpu-client"))
     .classifySubmitFailure,
+  isRateLimited: (jest.requireActual("@/lib/qpu-client") as typeof import("@/lib/qpu-client"))
+    .isRateLimited,
+  isRateLimitedOutcome: (jest.requireActual("@/lib/qpu-client") as typeof import("@/lib/qpu-client"))
+    .isRateLimitedOutcome,
+  QpuHttpError: (jest.requireActual("@/lib/qpu-client") as typeof import("@/lib/qpu-client"))
+    .QpuHttpError,
 }));
 
 import * as client from "@/lib/qpu-client";
 import { PRICING, estimateCost } from "@/components/quantum/cost";
+import { LocaleProvider, translate } from "@/i18n";
 import {
   QpuSubmitPanel,
   IQM_TASK_MICROS,
@@ -123,6 +132,9 @@ function expectNeverSaysTheLearnerPays() {
 beforeEach(() => {
   jest.clearAllMocks();
   (m.isQpuConfigured as jest.Mock).mockReturnValue(true);
+  // The Spanish tests below store a locale preference; clear it so it cannot leak
+  // into the English assertions that make up the rest of this file.
+  localStorage.clear();
 });
 
 test("renders nothing until NEXT_PUBLIC_QPU_URL is configured", () => {
@@ -436,6 +448,10 @@ describe("an unknown hardware record (older Lambda, null counters)", () => {
     await screen.findByText("Lifetime sponsored QPU budget");
     const panel = screen.getByLabelText("Run on real quantum hardware");
     expect(panel).toHaveTextContent(/hardware record is unavailable/i);
+    // ...and the ENGLISH reading is the dictionary's, not a module constant. The
+    // sentence is unchanged for an English learner; what changed is where it comes
+    // from, which is the only reason a Spanish learner can now read it too.
+    expect(panel).toHaveTextContent(translate("en", "qpuUi.recordUnavailable"));
     expect(panel).not.toHaveTextContent(/NaN/);
     expect(panel).not.toHaveTextContent(/out of reach/i);
   });
@@ -1077,5 +1093,270 @@ describe("playground handoff", () => {
     expect(screen.queryByText(/loaded from the playground/i)).not.toBeInTheDocument();
     // consumeHandoff clears even garbage, so it can never linger across visits.
     expect(sessionStorage.getItem(HANDOFF_KEY)).toBeNull();
+  });
+});
+
+// ---- the ladder and the wall must speak ONE language --------------------------
+/**
+ * The panel's own doc comment promised that "the two surfaces cannot disagree about
+ * what the ladder is". That became false the moment the credentials wall and Z7
+ * "Within reach" were localized: LadderProgress still rendered `tier.title` (the
+ * tier's STABLE ENGLISH IDENTITY, never a label) plus hardcoded "shots"/"run(s)" and
+ * an en-US formatter. Both surfaces live on /workspace, so a Spanish learner read
+ * "Serie de ejecuciones" in one and "Run series" in the other, about the same rung.
+ *
+ * Expected Spanish comes from the DICTIONARY, keyed off the FIXTURE's tiers — so this
+ * asserts the wiring, not a copy of the wording, and a retranslation moves both sides.
+ */
+describe("the medal ladder speaks the learner's language", () => {
+  const esTitle = (tier: { n: number; metric: string }) =>
+    translate("es", `credentialsUi.tiers.hardware.${tier.metric}.${tier.n}`);
+
+  /** The single <p> that carries the whole ladder — the one holding the first rung. */
+  const ladderLine = (panel: HTMLElement) => {
+    const first = esTitle(LADDER.tiers[0]);
+    const line = Array.from(panel.querySelectorAll("p")).find((el) =>
+      el.textContent?.includes(first),
+    );
+    if (!line) throw new Error(`no ladder paragraph containing "${first}"`);
+    return line;
+  };
+
+  const drawSpanish = async (over: Record<string, unknown>) => {
+    localStorage.setItem("qc:locale", "es");
+    m.getBudget.mockResolvedValue(budget(over));
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    render(
+      <LocaleProvider>
+        <QpuSubmitPanel />
+      </LocaleProvider>,
+    );
+    // The panel's surrounding prose is still English (see the report) — this heading
+    // is a stable await point precisely because it is untranslated.
+    await screen.findByText("Lifetime sponsored QPU budget");
+    return screen.getByLabelText("Run on real quantum hardware");
+  };
+
+  it("names every rung with the wall's OWN Spanish title, never the English identity", async () => {
+    const panel = await drawSpanish({ completedRuns: 2, completedShots: 200 });
+    for (const tier of LADDER.tiers) {
+      const title = esTitle(tier);
+      expect(title).not.toBe(tier.title); // the fixture identity really is English
+      expect(panel).toHaveTextContent(title);
+      expect(panel).not.toHaveTextContent(new RegExp(`${tier.title}:`));
+    }
+  });
+
+  it("agrees the unit noun in Spanish, and with the THRESHOLD it sits beside", async () => {
+    const panel = await drawSpanish({ completedRuns: 2, completedShots: 200 });
+    // Singular threshold → singular noun; plural threshold → plural noun. The hardcoded
+    // `run${n === 1 ? "" : "s"}` could only ever get English right.
+    expect(panel).toHaveTextContent("1 de 1 ejecución");
+    expect(panel).toHaveTextContent("2 de 3 ejecuciones");
+    expect(panel).toHaveTextContent(`200 de ${DEEP_SHOTS.toLocaleString("es-MX")} disparos`);
+    // Scoped to the ladder paragraph on purpose: the REST of this panel is still
+    // English prose (listed as out of scope), so a panel-wide /runs?/ assertion would
+    // be measuring that gap instead of this fix.
+    expect(ladderLine(panel)).not.toHaveTextContent(/\bruns?\b/);
+    expect(ladderLine(panel)).not.toHaveTextContent(/\bshots?\b/);
+  });
+
+  it("renders the same unit nouns Within-reach uses — one key, not two", async () => {
+    // The nouns come from workspaceUi.unitRun / .unitShot, the keys Z7 already read.
+    // If the panel ever grows a parallel copy of these words this goes red.
+    const panel = await drawSpanish({ completedRuns: 0, completedShots: 0 });
+    expect(panel).toHaveTextContent(`0 de 1 ${translate("es", "workspaceUi.unitRun", {}, 1)}`);
+    expect(panel).toHaveTextContent(
+      `0 de ${DEEP_SHOTS.toLocaleString("es-MX")} ${translate("es", "workspaceUi.unitShot", {}, DEEP_SHOTS)}`,
+    );
+  });
+
+  it("renders the foreclosure verdict with the wall's own word", async () => {
+    // Three default runs leave too little for the 1,000-shot tier. The verdict must be
+    // the wall's chip word (credentialsUi.outOfReach), lowercased for this inline slot
+    // — not a second Spanish phrase invented here.
+    const remaining = CAP - 3 * costMicros(100);
+    const panel = await drawSpanish({
+      completedRuns: 3,
+      completedShots: 300,
+      spentMicros: CAP - remaining,
+      remainingMicros: remaining,
+    });
+    const verdict = translate("es", "credentialsUi.outOfReach").toLocaleLowerCase("es-MX");
+    expect(verdict).toBe("fuera de alcance");
+    expect(panel).toHaveTextContent(new RegExp(`${esTitle(SHOT_TIERS[0])}:.*${verdict}`, "i"));
+    expect(panel).not.toHaveTextContent(/out of reach/i);
+  });
+
+  /**
+   * The branch that fires when the ladder CANNOT be drawn at all was left behind by the
+   * i18n pass: the titles and unit nouns above were localized while this sentence stayed
+   * an English module constant (RECORD_UNAVAILABLE). Within-reach — the panel next to it
+   * on /workspace — states the same fact from workspaceUi.hardwareUnavailable, so a
+   * Spanish learner read ONE fact in TWO languages, side by side, on one page.
+   */
+  it("says the record is unavailable in SPANISH when the ladder cannot be drawn", async () => {
+    const panel = await drawSpanish({ completedRuns: null, completedShots: null });
+    const es = translate("es", "qpuUi.recordUnavailable");
+    // The dictionary really does translate it — a Spanish leaf copied from English
+    // would satisfy the assertion below while shipping the same defect.
+    expect(es).not.toBe(translate("en", "qpuUi.recordUnavailable"));
+    expect(panel).toHaveTextContent(es);
+    expect(panel).not.toHaveTextContent(/hardware record is unavailable/i);
+    // The guards the English branch already carries hold in Spanish too.
+    expect(panel).not.toHaveTextContent(/NaN/);
+    expect(panel).not.toHaveTextContent(/out of reach/i);
+  });
+
+  it("agrees with the sentence Within-reach states one panel away", async () => {
+    // Not a byte-identity claim — this surface is where the money is spent, so it keeps
+    // the two clauses Within-reach's shorter line drops (the completed runs are safe,
+    // and the retry). What must agree is the LANGUAGE and the VERDICT: both say the
+    // record is unavailable, and neither dresses an unknown as a foreclosure.
+    const panel = await drawSpanish({ completedRuns: null, completedShots: null });
+    const short = translate("es", "workspaceUi.hardwareUnavailable");
+    expect(short).toBe("Registro de hardware no disponible.");
+    expect(translate("es", "qpuUi.recordUnavailable")).toMatch(/registro de hardware/i);
+    expect(panel).toHaveTextContent(/registro de hardware no está disponible/i);
+  });
+
+  it("still reads in English exactly as the fixture's own tier words", async () => {
+    // The English dictionary titles are the same words HARDWARE_TIERS carries, so the
+    // READING is unchanged for an English learner. (Not a byte-identity claim: the unit
+    // noun moved inside the emphasis span, so the markup differs — this asserts the
+    // text, which is what a learner sees.) Asserted against the FIXTURE, so a drift in
+    // either the dictionary or the tier table lands here.
+    m.getBudget.mockResolvedValue(budget({ completedRuns: 1, completedShots: 300 }));
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    render(<QpuSubmitPanel />);
+    await screen.findByText("Lifetime sponsored QPU budget");
+    const panel = screen.getByLabelText("Run on real quantum hardware");
+    for (const tier of LADDER.tiers) {
+      const value = tier.metric === "shots" ? 300 : 1;
+      const unit = tier.metric === "shots" ? "shots" : `run${tier.n === 1 ? "" : "s"}`;
+      expect(panel).toHaveTextContent(
+        new RegExp(
+          `${tier.title}:\\s*${Math.min(value, tier.n).toLocaleString("en-US")} of ${tier.n.toLocaleString("en-US")}\\s*${unit}`,
+        ),
+      );
+    }
+  });
+});
+
+// ---- the WAF's 429, all the way to the learner --------------------------------
+/**
+ * lambda/qpu/edge.yaml now answers a throttled request with 429 and
+ * {"error":"rate_limited"} instead of a bare 403. Nothing client-side read it: the
+ * submit path fell through to the generic 4xx sentence ("That run couldn't be
+ * submitted. No budget was spent.") — TRUE, since WAF blocks before the Lambda
+ * reserves anything, but silent about the one thing the learner can act on.
+ */
+describe("a rate-limited hardware surface says WAIT, not 'broken'", () => {
+  const submitOnce = async () => {
+    render(<QpuSubmitPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+    });
+    return screen.findByRole("alert");
+  };
+
+  it("tells the learner to wait a minute — and still that nothing was spent", async () => {
+    m.getBudget.mockResolvedValue(budget());
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    m.submitTask.mockResolvedValue({ ok: false, status: 429, error: "rate_limited" });
+    const alert = await submitOnce();
+    expect(alert).toHaveTextContent(/wait a minute/i);
+    expect(alert).toHaveTextContent(/no budget was spent/i);
+    // NOT the generic 4xx sentence, which is the whole defect.
+    expect(alert).not.toHaveTextContent(/that run couldn't be submitted/i);
+    expectNeverSaysTheLearnerPays();
+  });
+
+  it("matches on the STATUS alone, for an edge that sent no JSON token", async () => {
+    // The pre-deploy/partial shape: 429 with a body qpu-client could not parse, so
+    // `error` is the synthesised "submit failed (429)". Keying only on the token would
+    // miss this — and keying only on the token would in fact be dead code today.
+    m.getBudget.mockResolvedValue(budget());
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    m.submitTask.mockResolvedValue({ ok: false, status: 429, error: "submit failed (429)" });
+    expect(await submitOnce()).toHaveTextContent(/wait a minute/i);
+  });
+
+  it("does NOT hijack a 403 — that status is also an edge-secret mismatch here", async () => {
+    // Unlike the tutor path, 403 on the QPU path is ambiguous (qpu-core.mjs returns it
+    // for a secret mismatch), which is exactly why edge.yaml was changed to 429. Until
+    // that distribution ships a throttle still reads as the generic rejection: this
+    // under-claims rather than telling a learner to wait out a misconfiguration.
+    m.getBudget.mockResolvedValue(budget());
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    m.submitTask.mockResolvedValue({ ok: false, status: 403, error: "submit failed (403)" });
+    const alert = await submitOnce();
+    expect(alert).toHaveTextContent(/that run couldn't be submitted/i);
+    expect(alert).not.toHaveTextContent(/wait a minute/i);
+  });
+
+  it("says it in Spanish", async () => {
+    localStorage.setItem("qc:locale", "es");
+    m.getBudget.mockResolvedValue(budget());
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+    m.submitTask.mockResolvedValue({ ok: false, status: 429, error: "rate_limited" });
+    render(
+      <LocaleProvider>
+        <QpuSubmitPanel />
+      </LocaleProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(translate("es", "qpuUi.rateLimitedSubmit"));
+    expect(alert).toHaveTextContent(/espera un minuto/i);
+  });
+
+  it("a throttled BUDGET READ does not render as an outage", async () => {
+    // getBudget/getCredentialChallenge threw `new Error("budget failed (429)")`, so a
+    // throttled workspace showed "Couldn't reach the hardware service" — a dead-service
+    // claim for a wait-a-minute condition.
+    const throttled = new client.QpuHttpError("budget", 429);
+    m.getBudget.mockRejectedValue(throttled);
+    m.getCredentialChallenge.mockRejectedValue(throttled);
+    render(<QpuSubmitPanel />);
+    const note = await screen.findByRole("status");
+    expect(note).toHaveTextContent(/rate limit, not an outage/i);
+    expect(note).toHaveTextContent(/wait a minute/i);
+    expect(screen.queryByText(/couldn't reach the hardware service/i)).not.toBeInTheDocument();
+    // The who-pays banner is device fact, not user state — it must survive this branch.
+    expect(screen.getByText(/the platform pays for these runs/i)).toBeInTheDocument();
+    expectNeverSaysTheLearnerPays();
+  });
+
+  it("still reports a REAL outage as an outage", async () => {
+    m.getBudget.mockRejectedValue(new client.QpuHttpError("budget", 500));
+    m.getCredentialChallenge.mockRejectedValue(new client.QpuHttpError("credential status", 500));
+    render(<QpuSubmitPanel />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /couldn't reach the hardware service/i,
+    );
+    expect(screen.queryByText(/rate limit, not an outage/i)).not.toBeInTheDocument();
+  });
+
+  it("a throttled credential CLAIM is not reported as a dead service", async () => {
+    m.getBudget.mockResolvedValue(budget({ credentialed: false }));
+    m.getCredentialChallenge.mockResolvedValue(challenge({ credentialed: false }));
+    m.claimCredential.mockRejectedValue(new client.QpuHttpError("credential claim", 429));
+    render(<QpuSubmitPanel />);
+    fireEvent.change(await screen.findByLabelText(/estimated cost in dollars/i), {
+      target: { value: "0.74" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /unlock hardware access/i }));
+    });
+    const note = await screen.findByRole("status");
+    expect(note).toHaveTextContent(/rate limit, not an outage/i);
+    expect(screen.queryByText(/couldn't reach the hardware service/i)).not.toBeInTheDocument();
+    // And it is NOT scored as a wrong answer — the recompute hint must stay away.
+    expect(screen.queryByText(/not quite\. recompute/i)).not.toBeInTheDocument();
   });
 });

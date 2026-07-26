@@ -9,10 +9,14 @@ import {
   submitTask,
   NotSignedInError,
   classifySubmitFailure,
+  isRateLimited,
+  isRateLimitedOutcome,
   type Budget,
   type CredentialChallenge,
 } from "@/lib/qpu-client";
 import { HARDWARE_TIERS } from "@/lib/credentials";
+import { useLocale, localeCode } from "@/i18n";
+import type { TFunction } from "@/i18n";
 import { consumeHandoff } from "@/lib/qpu-handoff";
 import {
   IQM_TASK_MICROS,
@@ -115,10 +119,6 @@ const reachOf = (b: Budget): HardwareReach | null =>
         remainingMicros: b.remainingMicros,
       };
 
-/** The one sentence every surface here says when the hardware record is missing. */
-const RECORD_UNAVAILABLE =
-  "Your hardware record is unavailable right now, so medal progress can't be shown. Your completed runs are unaffected — reload to retry.";
-
 /** A budget with too little left for even a 1-shot run is SPENT — not "low". */
 const isSpent = (b: Budget) => b.remainingMicros < costMicros(1);
 
@@ -140,9 +140,13 @@ export function QpuSubmitPanel({ className }: { className?: string }) {
   return <Panel className={className} />;
 }
 
-type Load = "loading" | "signed-out" | "error" | "ready";
+// "throttled" is NOT a flavour of "error": the service is up, the learner simply
+// asked too often, and the only correct instruction is to wait. Collapsing it into
+// "error" is what made the edge's 429 (lambda/qpu/edge.yaml) invisible to learners.
+type Load = "loading" | "signed-out" | "error" | "throttled" | "ready";
 
 function Panel({ className }: { className?: string }) {
+  const { t } = useLocale();
   const [load, setLoad] = useState<Load>("loading");
   const [budget, setBudget] = useState<Budget | null>(null);
   const [challenge, setChallenge] = useState<CredentialChallenge | null>(null);
@@ -154,7 +158,9 @@ function Panel({ className }: { className?: string }) {
       setChallenge(c);
       setLoad("ready");
     } catch (e) {
-      setLoad(e instanceof NotSignedInError ? "signed-out" : "error");
+      setLoad(
+        e instanceof NotSignedInError ? "signed-out" : isRateLimited(e) ? "throttled" : "error",
+      );
     }
   }, []);
 
@@ -191,6 +197,14 @@ function Panel({ className }: { className?: string }) {
       {load === "error" && (
         <p role="alert" className={`mt-4 ${card} px-5 py-4 text-sm text-(--mut)`}>
           Couldn&apos;t reach the hardware service. Please try again.
+        </p>
+      )}
+      {/* role="status", not "alert": nothing is broken and nothing is lost — this is
+          an advisory with a wait in it, the same register as the within-reach panel's
+          unavailable-record line. */}
+      {load === "throttled" && (
+        <p role="status" className={`mt-4 ${card} px-5 py-4 text-sm text-(--mut)`}>
+          {t("qpuUi.rateLimitedService")}
         </p>
       )}
 
@@ -321,12 +335,20 @@ function BudgetBar({ budget }: { budget: Budget }) {
  *
  * Without it the shot-frontier caption above is uninterpretable — "enough for 1,310
  * more shots" means nothing to a learner who cannot see that 1,000 of them is a medal.
- * Every threshold and title comes from HARDWARE_TIERS (the wall's own source), so the
- * two surfaces cannot disagree about what the ladder is, and a tier edit moves both.
- * A tier the remaining budget can no longer reach says so here too — the same verdict
- * the wall renders, never a silently unreachable counter ticking toward nothing.
+ * Every THRESHOLD comes from HARDWARE_TIERS (the wall's own source) and every DISPLAY
+ * TITLE from the wall's own dictionary keys, so the two surfaces cannot disagree about
+ * what the ladder is, and a tier edit moves both. A tier the remaining budget can no
+ * longer reach says so here too — the same verdict the wall renders, never a silently
+ * unreachable counter ticking toward nothing.
+ *
+ * That claim was briefly FALSE. This read `tier.title` — the tier's stable ENGLISH
+ * identity, never its label (credentials.ts:74) — and hardcoded "shots"/"run(s)" and
+ * an en-US formatter, while the wall and Within-reach were localized. A Spanish
+ * learner saw "Serie de ejecuciones" in Within-reach and "Run series" HERE, on the
+ * same /workspace page, describing the same rung.
  */
 function LadderProgress({ budget }: { budget: Budget }) {
+  const { t, locale } = useLocale();
   const reach = reachOf(budget);
   // No record, no counters, no claims. The old code walked straight into the
   // arithmetic here and printed "NaN of 1 run — out of reach" on the founder's own
@@ -334,27 +356,58 @@ function LadderProgress({ budget }: { budget: Budget }) {
   if (reach === null) {
     return (
       <p role="status" className="mt-2 text-xs leading-relaxed text-warm-dark dark:text-warm-light">
-        {RECORD_UNAVAILABLE}
+        {/* From the dictionary, not a module constant. This branch describes the SAME
+            fact Within-reach reports one panel away on /workspace, and that panel is
+            localized — so an English literal here put one fact on screen in two
+            languages at once for a Spanish learner. (The ladder's own titles and unit
+            nouns were fixed for exactly this reason; the branch that fires when the
+            ladder cannot be drawn at all was left behind.) */}
+        {t("qpuUi.recordUnavailable")}
       </p>
     );
   }
   return (
     <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs tabular-nums text-caption">
-      {HARDWARE_TIERS.map((t, i) => {
-        const value = t.metric === "shots" ? reach.completedShots : reach.completedRuns;
-        const earned = value >= t.n;
-        const unit = t.metric === "shots" ? "shots" : `run${t.n === 1 ? "" : "s"}`;
-        const lost = !earned && !tierReachable(t, reach);
+      {/* `tier`, not `t` — the translator owns that name in this scope now. */}
+      {HARDWARE_TIERS.map((tier, i) => {
+        const value = tier.metric === "shots" ? reach.completedShots : reach.completedRuns;
+        const earned = value >= tier.n;
+        // The unit noun agrees with the THRESHOLD, the number it sits beside
+        // ("0 of 1 run", "0 of 3 runs") — the same keys and the same agreement the
+        // Within-reach rung uses, so the two readouts cannot drift apart.
+        const unit = t(
+          tier.metric === "shots" ? "workspaceUi.unitShot" : "workspaceUi.unitRun",
+          {},
+          tier.n,
+        );
+        const lost = !earned && !tierReachable(tier, reach);
         return (
-          <span key={`${t.metric}:${t.n}`}>
+          <span key={`${tier.metric}:${tier.n}`}>
             {i > 0 && <span aria-hidden="true" className="mr-1.5 text-gray-300 dark:text-gray-600">·</span>}
             <span className={earned ? "text-(--mut)" : undefined}>
-              {t.title}:{" "}
+              {t(`credentialsUi.tiers.hardware.${tier.metric}.${tier.n}`)}:{" "}
+              {/* Count AND unit inside one emphasis span, because they arrive as one
+                  dictionary sentence: rungProgress owns the join ("N of M units"), and
+                  splitting it across nodes would hardcode English word order into the
+                  markup. es-MX happens to share that order; a locale that did not
+                  would silently scramble. */}
               <span className="font-medium">
-                {Math.min(value, t.n).toLocaleString("en-US")} of {t.n.toLocaleString("en-US")}
-              </span>{" "}
-              {unit}
-              {lost && <span className="text-warm-dark dark:text-warm-light"> — out of reach</span>}
+                {t("workspaceUi.rungProgress", {
+                  current: Math.min(value, tier.n).toLocaleString(localeCode(locale)),
+                  target: tier.n.toLocaleString(localeCode(locale)),
+                  unit,
+                })}
+              </span>
+              {lost && (
+                <span className="text-warm-dark dark:text-warm-light">
+                  {" — "}
+                  {/* The wall's OWN verdict word, lowercased for this inline position
+                      (the same toLocaleLowerCase idiom within-reach.tsx uses for its
+                      group noun). Reusing the chip key is what keeps one verdict from
+                      being two different words on one page. */}
+                  {t("credentialsUi.outOfReach").toLocaleLowerCase(localeCode(locale))}
+                </span>
+              )}
             </span>
           </span>
         );
@@ -616,13 +669,16 @@ function CredentialGate({
   challenge: CredentialChallenge;
   onEarned: () => void;
 }) {
+  const { t } = useLocale();
   const [value, setValue] = useState("");
   // "wrong" is reserved for the server's authoritative 200 {credentialed:false}
   // (and a locally unparseable answer) — a THROWN failure is never a wrong
   // answer, so it must not render the recompute hint (mirrors Panel.refresh()).
-  const [state, setState] = useState<"idle" | "checking" | "wrong" | "expired" | "unreachable">(
-    "idle",
-  );
+  // "throttled" is likewise not "unreachable": a rate-limited claim told the
+  // learner the service was down, so they retried immediately and stayed blocked.
+  const [state, setState] = useState<
+    "idle" | "checking" | "wrong" | "expired" | "unreachable" | "throttled"
+  >("idle");
   const shots = challenge.requiredShots;
 
   const submit = async () => {
@@ -637,7 +693,9 @@ function CredentialGate({
       if (credentialed) onEarned();
       else setState("wrong");
     } catch (e) {
-      setState(e instanceof NotSignedInError ? "expired" : "unreachable");
+      setState(
+        e instanceof NotSignedInError ? "expired" : isRateLimited(e) ? "throttled" : "unreachable",
+      );
     }
   };
 
@@ -698,11 +756,17 @@ function CredentialGate({
           Couldn&apos;t reach the hardware service. Try again.
         </p>
       )}
+      {state === "throttled" && (
+        <p role="status" className="mt-2 text-xs text-caption animate-fade-up">
+          {t("qpuUi.rateLimitedService")}
+        </p>
+      )}
     </div>
   );
 }
 
 function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () => void }) {
+  const { t } = useLocale();
   // The one-shot playground handoff, consumed HERE (form mount, not panel mount) so
   // it survives the CredentialGate detour: a first-time learner prices a run, earns
   // the credential, and the form still finds the circuit waiting when it mounts.
@@ -785,7 +849,8 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
       try {
         const fresh = await getBudget();
         if (cancelled) return;
-        const hit = fresh.tasks.find((t) => t.idempotencyKey === unresolvedKey);
+        // `row`, not `t` — the translator owns that name in this scope now.
+        const hit = fresh.tasks.find((row) => row.idempotencyKey === unresolvedKey);
         setUnresolvedKey(null);
         if (hit) {
           setOutcome({
@@ -847,7 +912,10 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         setPhase("done");
         onSubmitted();
       } else {
-        setOutcome({ ok: false, msg: outcomeMessage(res.status, res.error, budget.capMicros) });
+        setOutcome({
+          ok: false,
+          msg: outcomeMessage(res.status, res.error, budget.capMicros, t),
+        });
         setPhase("confirm"); // keep the key so a retry reuses it...
         // ...EXCEPT after braket-submit-failed: the server has already released
         // the hold and a RELEASED row now owns this key, so a same-key retry
@@ -1163,7 +1231,24 @@ function StatusChip({ status }: { status: string }) {
 // that it otherwise WOULD have been. The lifetime-budget line takes capMicros rather
 // than hardcoding it — a grandfathered learner holds a different cap and must be told
 // the truth about THEIR allowance.
-function outcomeMessage(status: number, error: string, capMicros: number): string {
+//
+// `t` is threaded in for the RATE LIMIT branch only. The other sentences are still
+// English literals like the rest of this panel — translating them is a separate,
+// larger job, and half-translating this function would have been the same mixed-locale
+// defect the ladder above just had. The rate-limit sentence has to come from the
+// dictionary because it is NEW copy: shipping it hardcoded would guarantee a Spanish
+// learner never sees it.
+function outcomeMessage(
+  status: number,
+  error: string,
+  capMicros: number,
+  t: TFunction,
+): string {
+  // Checked BEFORE the switch, and on the status as well as the token. WAF blocks at
+  // the edge — before the Lambda reserves anything — so "no budget was spent" is
+  // provable here, and the actionable half ("wait a minute") is the whole point: the
+  // default 4xx branch below is true but tells the learner nothing they can act on.
+  if (isRateLimitedOutcome(status, error)) return t("qpuUi.rateLimitedSubmit");
   switch (error) {
     case "over-lifetime-budget":
       // Deleted forever: "That's a lot of real hardware runs." False after the cap

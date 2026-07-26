@@ -28,7 +28,21 @@ Parameters:
     Type: Number
     Default: 300
     MinValue: 10
-    Description: Max requests per source IP per 60s before WAF blocks (429).
+    Description: >
+      Max NON-PREFLIGHT requests per source IP per 60s before WAF blocks with
+      HTTP 429 (see QpuWebAcl's CustomResponse). CORS preflights are excluded from
+      the count by the rule's scope-down statement; the rationale is stated there.
+      WAF's own default block status is 403, which this path already uses for an
+      edge-secret mismatch.
+  SiteOrigin:
+    Type: String
+    Default: https://quantum.altivum.ai
+    Description: >
+      The browser origin allowed to READ the 429 this WAF returns. Must stay equal
+      to the same-named parameter in template.yaml (same default on purpose): the
+      origin's CorsConfiguration and the Access-Control-Allow-Origin header on the
+      block response are one allowlist expressed in two stacks, and a drift between
+      them makes the throttle unreadable in precisely the case it exists for.
   PriceClass:
     Type: String
     Default: PriceClass_100
@@ -43,16 +57,85 @@ Resources:
       Description: Per-IP rate limit + AWS managed common rules for the QPU submit API.
       DefaultAction:
         Allow: {}
+      # A bare `Block: {}` returns WAF's default 403, and 403 is the busiest status
+      # on this path: qpu-core.mjs answers 403 {"error":"forbidden"} whenever the
+      # injected x-qpu-edge header doesn't match — the exact symptom of the
+      # us-east-1 secret replica drifting from the us-east-2 primary — and the
+      # managed rule group below blocks with 403 too. That made a throttled learner
+      # indistinguishable from a broken edge secret in the client and in the
+      # CloudFront logs alike. 429 restores the distinction: 429 = going too fast,
+      # 403 = the request never cleared the edge gate. Body shape matches the tutor
+      # edge stack so one client-side handler reads both endpoints.
+      CustomResponseBodies:
+        RateLimited:
+          ContentType: APPLICATION_JSON
+          Content: '{"error":"rate_limited","message":"Too many requests. Wait a minute and try again."}'
       Rules:
         - Name: PerIpRateLimit
           Priority: 0
           Action:
-            Block: {}
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+                CustomResponseBodyKey: RateLimited
+                # A WAF block is generated AT THE EDGE, so the request never reaches
+                # the origin and template.yaml's CorsConfiguration never runs — the
+                # 429 leaves here with no Access-Control-Allow-Origin at all. The
+                # browser is cross-origin to this distribution (NEXT_PUBLIC_QPU_URL
+                # is the domain in this stack's own Outputs), so without this header
+                # it DISCARDS the response: fetch rejects with TypeError, res.status
+                # is never observed, and qpu-client's isRateLimited /
+                # isRateLimitedOutcome 429 branches cannot fire. The learner is told
+                # the hardware service is unreachable — the outage claim for a
+                # wait-a-minute condition that the 429 was added to eliminate.
+                #
+                # This value is static, so it can name exactly ONE origin. Stated
+                # plainly: an http://localhost:3000 dev client (which template.yaml's
+                # CorsConfiguration does allow) still cannot READ a throttle — it
+                # sees the network failure instead. The production origin wins the
+                # single slot. Only Allow-Origin is needed: the client reads status
+                # and body, never a response header, and preflight-only headers
+                # (Allow-Headers/Allow-Methods/Max-Age) have no meaning here because
+                # the scope-down below keeps this response off preflights entirely.
+                ResponseHeaders:
+                  - Name: Access-Control-Allow-Origin
+                    Value: !Ref SiteOrigin
           Statement:
             RateBasedStatement:
               Limit: !Ref RateLimitPerMinute
               EvaluationWindowSec: 60
               AggregateKeyType: IP
+              # CORS preflights are exempt from this rule's count AND its block.
+              # Every qpu-client call carries an `authorization` header, which is not
+              # CORS-safelisted, so every one is preflighted; CloudFront forwards
+              # OPTIONS (AllowedMethods below), so a burst that trips the limit would
+              # otherwise block the OPTIONS too. A preflight must answer with an ok
+              # (2xx) status to succeed — 429 is not one, and no header can rescue
+              # it, so a blocked preflight fails the whole request as a network error
+              # and the Allow-Origin above would never be seen. Excluding OPTIONS is
+              # what makes that 429 reachable by a browser at all.
+              #
+              # The cost, honestly: OPTIONS is no longer rate limited per IP by this
+              # rule, so preflights become an unbounded request class on the one
+              # distribution whose job is bounding spend. API Gateway answers them
+              # itself, so there is no Lambda invoke and no Braket task and therefore
+              # no QPU spend — but CloudFront and API Gateway per-request fees DO
+              # still apply, so this is cheap, not free. The managed common rule group
+              # below still inspects them, and the money path — POST /qpu/submit —
+              # stays fully counted. The inversion fails closed: anything not EXACTLY
+              # "OPTIONS", including a lowercase spoof, still matches and is still
+              # rate limited.
+              ScopeDownStatement:
+                NotStatement:
+                  Statement:
+                    ByteMatchStatement:
+                      FieldToMatch:
+                        Method: {}
+                      PositionalConstraint: EXACTLY
+                      SearchString: OPTIONS
+                      TextTransformations:
+                        - Priority: 0
+                          Type: NONE
           VisibilityConfig:
             SampledRequestsEnabled: true
             CloudWatchMetricsEnabled: true

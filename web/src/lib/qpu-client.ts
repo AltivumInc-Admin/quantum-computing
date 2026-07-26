@@ -24,6 +24,56 @@ export class NotSignedInError extends Error {
 }
 
 /**
+ * A non-ok response from a QPU endpoint, carrying the STATUS the caller needs.
+ *
+ * The message text is unchanged from the plain `new Error("budget failed (429)")`
+ * this replaces — what changes is that the number survives as a field instead of
+ * only as digits inside a sentence no branch could read. Every caller treated a
+ * throttle exactly like a dead service, so the edge's new 429 (lambda/qpu/edge.yaml)
+ * reached the learner as "Couldn't reach the hardware service" — an outage claim for
+ * a wait-a-minute condition.
+ */
+export class QpuHttpError extends Error {
+  readonly status: number;
+  constructor(what: string, status: number) {
+    super(`${what} failed (${status})`);
+    this.name = "QpuHttpError";
+    this.status = status;
+  }
+}
+
+/**
+ * Is this failure the edge rate limit?
+ *
+ * Keyed on STATUS — and deliberately NOT on 403, which is where this differs from
+ * ask-tutor's transportErrorMessage. On the tutor path the WAF limit is the only
+ * realistic cause of either code, so the two share one sentence. Here 403 is
+ * genuinely ambiguous: qpu-core.mjs answers an edge-secret mismatch with 403, and a
+ * misconfigured origin must keep reading as a fault, not as "wait a minute". That
+ * ambiguity is the entire reason edge.yaml was changed to return 429 in the first
+ * place.
+ *
+ * Consequence, stated plainly: until that distribution ships, a throttled request
+ * still arrives as WAF's default 403 with a non-JSON body and falls through to the
+ * generic message. This under-claims before the deploy rather than mis-claiming
+ * after it.
+ */
+export function isRateLimited(e: unknown): boolean {
+  return e instanceof QpuHttpError && e.status === 429;
+}
+
+/**
+ * The same verdict for a RESOLVED submit, which returns its status instead of
+ * throwing it. Both halves matter: `status === 429` is what a deployed edge sends,
+ * and `error === "rate_limited"` is the JSON token in its body — keying on the token
+ * alone would be dead code today, because the undeployed state yields a non-JSON 403
+ * whose `error` becomes the synthesised "submit failed (403)".
+ */
+export function isRateLimitedOutcome(status: number, error: string): boolean {
+  return status === 429 || error === "rate_limited";
+}
+
+/**
  * Why a THROWN submit happened, as far as the browser can tell. This is a
  * connection-vs-service distinction, not a truth verdict — a dropped wifi link
  * can kill the request before OR after it reached the server, so the caller
@@ -145,7 +195,7 @@ function money(x: unknown): number {
 
 export async function getBudget(): Promise<Budget> {
   const res = await req("/qpu/budget");
-  if (!res.ok) throw new Error(`budget failed (${res.status})`);
+  if (!res.ok) throw new QpuHttpError("budget", res.status);
   const raw = (await res.json()) as Record<string, unknown>;
   return {
     capMicros: money(raw.capMicros),
@@ -160,7 +210,7 @@ export async function getBudget(): Promise<Budget> {
 
 export async function getCredentialChallenge(): Promise<CredentialChallenge> {
   const res = await req("/qpu/credential");
-  if (!res.ok) throw new Error(`credential status failed (${res.status})`);
+  if (!res.ok) throw new QpuHttpError("credential status", res.status);
   return (await res.json()) as CredentialChallenge;
 }
 
@@ -171,7 +221,7 @@ export async function claimCredential(answerCents: number): Promise<{ credential
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ answerCents }),
   });
-  if (!res.ok) throw new Error(`credential claim failed (${res.status})`);
+  if (!res.ok) throw new QpuHttpError("credential claim", res.status);
   return (await res.json()) as { credentialed: boolean };
 }
 

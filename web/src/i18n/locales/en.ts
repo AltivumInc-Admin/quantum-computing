@@ -491,12 +491,46 @@ export const en: TranslationDict = {
     skillsRetentionSr: "skills in proven retention",
     keptSharp: "kept sharp this week",
     withinReach: "Within reach",
+    mastery: "Mastery",
     consistency: "Consistency",
     hardware: "Hardware",
     allCredentials: "All {{group}} credentials earned.",
+    allCredentialsLink: "All {{n}} credentials →",
+    rungProgress: "{{current}} of {{target}} {{unit}}",
+    // Plural PAIRS even though English does not inflect here ("1 to go" / "3 to go").
+    // resolveLeaf() picks a form per dictionary independently, so a plain string on
+    // this side would still render — but es.ts's verb DOES inflect ("falta 1" /
+    // "faltan 3"), and these two keys shipped as plain strings in BOTH dictionaries,
+    // which is how "faltan 1" reached every track (mastery 4→5, consistency 3→4,
+    // hardware 2→3 runs all pass through distance === 1). Matching the shape is what
+    // stops the next editor copying an uninflected English leaf into a locale that
+    // needs the branch. Same deliberate idiom as credentialsUi.consistencyEvidence.
+    distanceToGo: {
+      one: "{{distance}} to go",
+      other: "{{distance}} to go",
+    },
+    distanceUnitToGo: {
+      one: "{{distance}} {{unit}} to go",
+      other: "{{distance}} {{unit}} to go",
+    },
+    // Unit nouns for the Within-reach readouts. Plural pairs, because each render
+    // site agrees the noun with a DIFFERENT number (the target in the progress
+    // readout, the distance in the "to go" line) — one baked English suffix could
+    // not serve both, and Spanish agreement makes the difference visible.
+    unitInRetention: "in retention",
+    unitRun: {
+      one: "run",
+      other: "runs",
+    },
+    unitShot: {
+      one: "shot",
+      other: "shots",
+    },
     checkingHardware: "Checking your hardware record…",
+    hardwareUnavailable: "Hardware record unavailable.",
     allHardware: "All hardware credentials earned.",
     fits: "fits",
+    outOfAllowance: "out of allowance",
     interval: "Interval",
     skills: "Skills",
     state: "State",
@@ -538,6 +572,13 @@ export const en: TranslationDict = {
   },
   credentialsUi: {
     title: "Credentials",
+    pageTitle: "Your credentials",
+    pageBody:
+      "Each medal is earned, not awarded — struck from work you can point to. Mastery medals reflect what you hold in retention right now, so they mean exactly what they say.",
+    // The earned count carries its own emphasis span, so it stays OUTSIDE this
+    // template. Both locales lead with the number, so no word order is lost —
+    // a locale that put the count last would need the whole sentence in the key.
+    earnedOfTotal: "of {{total}} earned",
     completion: "Completion",
     mastery: "Mastery",
     consistency: "Consistency",
@@ -547,8 +588,131 @@ export const en: TranslationDict = {
     consistencyBlurb: "Weeks of showing up, unbroken.",
     hardwareBlurb:
       "Circuits run on a real quantum computer. The platform pays Amazon Braket for every one of these runs.",
+    // The four medal states. Each is the medal's own chip WORD, so every one of
+    // them reaches a screen reader — translating three and leaving one English
+    // would break exactly that guarantee.
+    earned: "Earned",
+    locked: "Locked",
     outOfReach: "Out of reach",
     unverified: "Unverified",
+    outOfReachDetail: "{{requirement}} — out of reach on your remaining sponsored budget.",
+    // The lab record. The two counts keep their emphasis spans, so the line is
+    // assembled from a label, two plural clauses, and the device tail — the same
+    // order in both locales.
+    recordLabel: "Your record:",
+    recordRuns: {
+      one: "{{n}} completed run",
+      other: "{{n}} completed runs",
+    },
+    recordShots: {
+      one: "{{n}} shot",
+      other: "{{n}} shots",
+    },
+    recordDevice: "on IQM Garnet.",
+    allowanceLead: "All three fit inside the sponsored allowance:",
+    allowancePlan: "{{runs}} runs totalling {{shots}} shots — {{cost}}",
+    allowanceTail:
+      "The allowance is one-time and does not refill, so how you spend it decides which of these you can still earn.",
+    runOnGarnet: "Run on IQM Garnet",
+    unverifiedNote:
+      "Couldn't verify your hardware record — these medals show as unverified, not locked. Reload to retry.",
+    // The SAME medal state (unverified — the record is genuinely unknown, so nothing
+    // may be shown as earned or as locked), with the one explanation a throttle
+    // licenses. The generic note above ends "Reload to retry", which under a rate
+    // limit is advice that makes the situation worse: an immediate reload is another
+    // blocked request. This is also the sentence that stops one throttle reading as
+    // three different diagnoses on /workspace — it agrees with qpuUi.rateLimitedService.
+    unverifiedThrottledNote:
+      "Too many requests in a short window, so your hardware record couldn't be checked — these medals show as unverified, not locked. This is a rate limit, not an outage; wait a minute before reloading.",
+    // Tier DISPLAY titles, keyed by group (and metric) + threshold. The tier
+    // constants in lib/credentials.ts keep their English `title` as stable
+    // identity — HARDWARE_TIERS is deep-equal locked to the cross-package fixture
+    // lambda/qpu/__fixtures__/hardware-ladder.json — so a `titleKey` field on the
+    // tier objects would break that lock. The key is derived from the tier instead.
+    tiers: {
+      mastery: {
+        "1": "First retention",
+        "5": "Practiced",
+        "15": "Fluent",
+        "30": "Deep",
+        "50": "Command",
+      },
+      consistency: {
+        "4": "Consistent",
+        "12": "Committed",
+        "26": "Relentless",
+      },
+      hardware: {
+        runs: {
+          "1": "Ran on real hardware",
+          "3": "Run series",
+        },
+        shots: {
+          "1000": "Deep sample",
+        },
+      },
+    },
+    completionRequirement: "Complete the {{title}} module",
+    completionEvidence: "Completed the {{title}} module",
+    masteryRequirement: {
+      one: "Hold {{n}} skill in proven retention",
+      other: "Hold {{n}} skills in proven retention",
+    },
+    masteryEvidence: {
+      one: "{{n}} skill in proven retention",
+      other: "{{n}} skills in proven retention",
+    },
+    consistencyRequirement: {
+      one: "Practice {{n}} week in a row",
+      other: "Practice {{n}} weeks in a row",
+    },
+    consistencyEvidence: {
+      // English does not inflect here; Spanish does ("semana"/"semanas"), and the
+      // plural pair is what carries that across.
+      one: "A {{n}}-week streak",
+      other: "A {{n}}-week streak",
+    },
+    // The hardware requirement grammar BRANCHES on the tier's metric: a shots tier
+    // rendered through the runs template would read "Complete 1000 runs on real
+    // hardware". Two separate keys keep that structural guarantee inside the
+    // dictionary too — no locale can collapse them back into one sentence.
+    hardwareRunsRequirement: {
+      one: "Complete {{n}} run on real hardware",
+      other: "Complete {{n}} runs on real hardware",
+    },
+    hardwareShotsRequirement: {
+      one: "Run {{n}} total shot on real hardware",
+      other: "Run {{n}} total shots on real hardware",
+    },
+    hardwareRunsEvidence: {
+      one: "{{n}} completed run on IQM Garnet",
+      other: "{{n}} completed runs on IQM Garnet",
+    },
+    hardwareShotsEvidence: {
+      one: "{{n}} shot across {{runs}}",
+      other: "{{n}} shots across {{runs}}",
+    },
+  },
+  // The real-hardware surface. Only the sentences some branch actually renders live
+  // here: the rest of qpu-submit-panel.tsx is still English prose (see the panel's own
+  // note), and adding keys nothing reads would be dead dictionary.
+  qpuUi: {
+    // Two sentences, not one, because the two failures license different claims.
+    // A blocked SUBMIT provably spent nothing (the edge rejects before the Lambda
+    // reserves), so it says so; a blocked BUDGET READ spent nothing either but has
+    // no run to talk about, and its only job is to not read as an outage.
+    rateLimitedSubmit:
+      "Too many requests in a short window — no budget was spent. Wait a minute and submit again.",
+    rateLimitedService:
+      "Too many requests in a short window. This is a rate limit, not an outage — wait a minute and try again.",
+    // The ladder's own null-record branch (LadderProgress). It sat in the panel as an
+    // English module constant while Within-reach — the panel NEXT TO IT on /workspace —
+    // said the same thing from workspaceUi.hardwareUnavailable, so a Spanish learner
+    // read one fact in two languages side by side. Not a reuse of that key: this is the
+    // money surface, and the two clauses the short line drops (the completed runs are
+    // safe, and the retry) are exactly what a learner needs where medals are spent.
+    recordUnavailable:
+      "Your hardware record is unavailable right now, so medal progress can't be shown. Your completed runs are unaffected — reload to retry.",
   },
   pricingUi: {
     title: "Pricing",
