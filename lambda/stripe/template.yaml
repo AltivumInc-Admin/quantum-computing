@@ -212,6 +212,82 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # ---- Money paths that return 200 and therefore trip NO metric on their own ----
+  # Both filters below watch a console.error emitted inside a SUCCESSFUL request.
+  # AWS/Lambda Errors counts failed invocations and the 5xx alarm watches HTTP
+  # status, so neither can see these: without a log metric filter, a buyer can be
+  # silently uncredited and nothing pages. The FilterPattern is a quoted literal
+  # phrase pinned by template.test.mjs to a string that literally appears in
+  # index.mjs, so editing the log line reddens instead of silently disconnecting
+  # the alarm (the lambda/qpu orphaned-row idiom).
+
+  UncreditedInvoiceMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"no subscription id resolved on a subscription invoice"'
+      MetricTransformations:
+        - MetricNamespace: QuantumStripe
+          MetricName: UncreditedInvoice
+          MetricValue: "1"
+          Unit: Count
+
+  UncreditedInvoiceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-uncredited-invoice
+      AlarmDescription: >-
+        A paid subscription invoice arrived with no resolvable subscription id,
+        so its credits were NOT granted — the buyer paid and their balance did
+        not move. The route answered 200, so Stripe treats the event as
+        delivered and will never retry: this needs a manual grant. This is the
+        exact failure that shipped once already (the id moved under
+        parent.subscription_details) and went unnoticed because nothing watched
+        for it.
+      Namespace: QuantumStripe
+      MetricName: UncreditedInvoice
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      # A rare-event alarm: no traffic must not page. (Contrast the QPU
+      # reconciler's dead-man alarm, which is `breaching` precisely because
+      # silence there means the schedule stopped firing.)
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  AsyncPaymentFailedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"delayed payment failed; nothing granted"'
+      MetricTransformations:
+        - MetricNamespace: QuantumStripe
+          MetricName: AsyncPaymentFailed
+          MetricValue: "1"
+          Unit: Count
+
+  AsyncPaymentFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-async-payment-failed
+      AlarmDescription: >-
+        A delayed-notification payment (Klarna / Cash App / Amazon Pay / ACH)
+        failed after the Checkout Session completed. Nothing was granted, which
+        is correct — but a learner believes they bought something, so this is
+        the signal to check whether they need help completing the purchase. Not
+        an outage; do not treat a single occurrence as an incident.
+      Namespace: QuantumStripe
+      MetricName: AsyncPaymentFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   StripeThrottlesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
