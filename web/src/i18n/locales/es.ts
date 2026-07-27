@@ -674,25 +674,27 @@ export const es: TranslationDict = {
     eyebrow: "Precios",
     headlineBefore: "Aprender es",
     headlineFree: "gratis",
-    headlineAfter: ". El metal se mide.",
+    // Futuro a propósito — ver la nota en en.ts headlineAfter. Nada se mide todavía.
+    headlineAfter: ". El metal se medirá.",
     heroBody:
-      "Todo el currículo, el simulador y el playground son gratuitos con una cuenta gratis — para siempre. Una billetera de créditos mide solo dos cosas que cuestan dinero real: tutoría de IA de frontera y hardware cuántico real. Un crédito es un centavo, siempre.",
+      "Todo el currículo, el simulador y el playground son gratuitos con una cuenta gratis — para siempre. Una billetera de créditos medirá lo que de verdad cuesta dinero: la tutoría de IA y el cómputo en la nube de pago — hardware cuántico real y los simuladores gestionados de la tabla de tarifas. Nada de eso se mide todavía: hoy el tutor es gratis para probar y las ejecuciones de hardware del currículo están patrocinadas por la plataforma. Un crédito es un centavo, siempre.",
     creditPeg: "1 crédito = $0.01",
     topUpFrom: "Recarga desde {{amount}}",
-    lead:
-      "Todo el currículo cuántico y el simulador son gratuitos con una cuenta gratis. Una billetera de créditos anclada al dólar mide solo dos cosas que cuestan dinero real: tutoría de IA y hardware cuántico real.",
     principleLearning: "Aprender es el producto",
     principleLearningBody:
       "Las lecciones, los cuadernos y el simulador de circuitos se ejecutan en tu navegador, así que podemos mantenerlos gratis para todos, para siempre. El currículo nunca pasa detrás de la billetera.",
     principleWallet: "Una billetera, anclada al dólar",
     principleWalletBody:
-      "Un crédito es un centavo — siempre. Recarga desde {{min}}, gasta en cualquier backend o modelo de tutor, y los créditos comprados no expiran.",
+      "Un crédito es un centavo — siempre. Recarga desde {{min}}; los créditos comprados no expiran, y todavía nada los descuenta.",
     principleLine: "Una línea clara",
+    // Ver el comentario en en.ts: la tabla de tarifas de esta misma página publica SV1 y
+    // DM1 por minuto, así que la promesa absoluta de que nada más costará créditos
+    // contradice la tabla. Se nombran las tres cosas medidas.
     principleLineBody:
-      "Los créditos miden exactamente dos cosas: preguntas al tutor de IA y ejecuciones en hardware cuántico real. Si no es ninguna de esas, es gratis.",
+      "Los créditos medirán el cómputo de pago y la tutoría de pago: preguntas al tutor de IA, ejecuciones en hardware cuántico real y minutos en los simuladores gestionados en la nube — cada tarifa está publicada abajo. El currículo, el simulador del navegador y el playground siguen gratis. Hoy todavía no se mide ninguna de las tres.",
     tiersHeading: "Tres formas de fondear la billetera",
     tiersIntro:
-      "Toda cuenta es de pago por uso en el fondo: recarga cualquier monto y gástalo en lo que se mida. Plus y Pro son paquetes mensuales de créditos con modelos de tutor más potentes — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones.",
+      "Toda cuenta es de pago por uso en el fondo: recarga cualquier monto y se gastará en lo que se mida cuando se lance la medición. Plus y Pro son paquetes mensuales de créditos con una pequeña bonificación — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones.",
     bestForRegulars: "Ideal para uso regular",
     forever: "para siempre",
     perMonth: "/ mes",
@@ -702,27 +704,27 @@ export const es: TranslationDict = {
     launchingSoon: "Próximamente",
     signUpFree: "Regístrate gratis",
     signUpSoon: "Registro próximamente",
-    launchPricing: "Precios de lanzamiento:",
+    launchPricing: "Antes de comprar:",
     launchPricingBody:
-      " las billeteras ya están activas. Durante la transición, el tutor en la lección sigue siendo gratis para probar y las ejecuciones de hardware del currículo siguen patrocinadas — tus créditos miden el uso nuevo facturado a la billetera a medida que se despliega.",
+      " las billeteras ya están activas, pero todavía nada las descuenta. El tutor en la lección es gratis para probar y las ejecuciones de hardware del currículo siguen patrocinadas por la plataforma, así que un saldo que compres hoy no compra nada hoy. Los créditos no expiran y empiezan a medirse cuando se lance la facturación del tutor y del hardware.",
     earlyAccess: "Acceso anticipado:",
     earlyAccessBody:
       " la facturación aún no se ha lanzado — estos son precios de lanzamiento. Hoy el tutor es gratis para probar, y las ejecuciones de hardware dentro del currículo están patrocinadas. Cuando las billeteras estén activas, las financiares tú con una recarga o un plan.",
     estimatorHeading: "Conoce el número antes de ejecutar",
     estimatorIntro:
-      "Ninguna plataforma cuántica debería sorprenderte con una factura. Calcula aquí cualquier backend y cualquier hábito de tutor — la misma estimación bloquea cada envío real.",
+      "Ninguna plataforma cuántica debería sorprenderte con una factura. Calcula aquí cualquier backend publicado y cualquier hábito de tutor. Antes de una ejecución real de hardware, el espacio de trabajo te muestra su costo y te hace aprobarlo.",
     ratesHeading: "Todas las tarifas, publicadas",
     ratesAsOf: "Tarifas de {{date}}",
     ratesIntro:
-      "La lista completa de precios — sin velo de ventas empresariales. Las ejecuciones en QPU suman una tarifa fija de {{fee}} créditos por tarea; los simuladores gestionados se facturan por minuto; el simulador del navegador es gratis y lo será siempre.",
+      "La lista completa de precios — sin velo de ventas empresariales. Estas son las tarifas que cobrará la medición: las ejecuciones en QPU suman una tarifa fija de {{fee}} créditos por tarea, y los simuladores gestionados se facturan por minuto. El simulador del navegador es gratis y lo será siempre.",
     aiTutor: "Tutor de IA",
-    tutorTypical: "Créditos típicos por pregunta.",
+    tutorTypical:
+      "Créditos típicos por pregunta cuando se lance la medición del tutor. Hoy cada pregunta la responde gratis Claude Haiku, y el modelo no se puede elegir.",
     quantumHardware: "Hardware cuántico",
     hardwarePerShotPlusFee: "Créditos por disparo, más la tarifa de {{fee}} créditos por tarea.",
     shotRun: "Ejecución de {{n}} disparos",
     creditsPerMinute: "{{n}} créditos / minuto",
     model: "Modelo",
-    tier: "Nivel",
     credits: "Créditos",
     backend: "Backend",
     perShot: "Por disparo",
@@ -732,19 +734,19 @@ export const es: TranslationDict = {
       "Sí. El currículo completo, el simulador del navegador, el playground, el glosario y el repaso de repetición espaciada son gratis con una cuenta gratuita — correo o Google, sin tarjeta de crédito. Ese es el producto, no una prueba.",
     faqCreditsQ: "¿Qué compran los créditos?",
     faqCreditsA:
-      "Dos cosas: preguntas al tutor de IA y cómputo cuántico real (ejecuciones en QPU y simuladores en la nube gestionados). Un crédito equivale a un centavo. Antes de que se ejecute cualquier corrida de hardware, ves el costo exacto y lo apruebas — nada gasta tu saldo sin un número delante.",
+      "Nada todavía — esa es la respuesta honesta. Hoy ninguna parte de la plataforma descuenta tu billetera: el tutor de IA es gratis para probar y las ejecuciones de hardware del currículo están patrocinadas por la plataforma. Cuando se lance la medición, los créditos comprarán exactamente dos cosas: preguntas al tutor de IA y cómputo cuántico real (ejecuciones en QPU y simuladores en la nube gestionados). Un crédito equivale a un centavo. Las ejecuciones de hardware ya te muestran el costo exacto y te hacen aprobarlo antes de que algo se ejecute.",
     faqExpireQ: "¿Expiran los créditos?",
     faqExpireA:
       "Los créditos comprados no expiran. Los créditos mensuales de Plus y Pro se acumulan mientras la suscripción esté activa.",
     faqBackendsQ: "¿Por qué los backends cuestan tan distinto?",
     faqBackendsA:
-      "Porque las máquinas realmente cuestan distinto. Un disparo de iones atrapados en IonQ lista aproximadamente 180 veces un disparo superconductor en Rigetti. Publicamos la tarifa de cada backend y tú eliges la física que cabe en tu presupuesto — la estimación siempre se muestra antes de confirmar.",
+      "Porque las máquinas realmente cuestan distinto. Un disparo de iones atrapados en IonQ lista aproximadamente 180 veces un disparo superconductor en Rigetti. Publicamos la tarifa de cada backend para que el precio de la física nunca sea un misterio. Hoy todas las ejecuciones patrocinadas del currículo van a IQM Garnet; elegir tu propio backend llega con la medición de la billetera. Antes de que se ejecute una de esas corridas patrocinadas, el espacio de trabajo la cotiza en dólares de AWS desde su propia tabla y espera tu aprobación.",
     faqProviderQ: "¿Qué pasa cuando un proveedor cambia sus precios?",
     faqProviderA:
-      "Las tarifas de hardware siguen las hojas de precios publicadas de los proveedores (actualmente la revisión de {{date}}). Cuando un proveedor reprecie, nuestras tarifas en créditos lo siguen, y la estimación previa al envío siempre refleja la tarifa vigente al momento del envío.",
+      "Las tarifas de hardware siguen las hojas de precios publicadas de los proveedores (actualmente la revisión de {{date}}). Nada en esta página se consulta al proveedor: estas tarifas en créditos están compiladas en el sitio, y la comprobación previa a una ejecución de hardware lee su propia tabla aparte de tarifas en dólares de AWS, también compilada. Un cambio de precio llega a cualquiera de las dos tablas solo con una nueva versión — que es lo que registra la fecha de revisión de la tabla de tarifas.",
     faqBuyQ: "¿Cómo compro créditos?",
     faqBuyA:
-      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de $5 a $500 — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran.",
+      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de $5 a $500 — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran — y todavía nada los descuenta, así que un saldo de hoy es un saldo que espera a que se lance la medición.",
     faqWhenQ: "¿Cuándo puedo comprar créditos?",
     faqWhenA:
       "La facturación se lanza pronto; los precios de esta página son de lanzamiento. Hasta entonces, el tutor es gratis para probar y las ejecuciones de hardware dentro del currículo están patrocinadas — crea tu cuenta gratis ahora para estar listo en cuanto las billeteras se activen.",
@@ -759,23 +761,26 @@ export const es: TranslationDict = {
     thisRun: "Esta ejecución",
     perMonthLabel: "Por mes",
     perMoSuffix: " / mes",
-    tutorModel: "Modelo del tutor",
+    tutorModel: "Modelo del tutor a calcular",
+    modelToPrice: "Modelo a calcular",
+    modelNotSelectableYet:
+      "Todavía no se puede elegir — hoy cada pregunta la responde gratis Claude Haiku. Calcula aquí cualquier modelo para ver cuánto costaría con la medición.",
     presets: "Preajustes",
     priceHardware: "Precio de una ejecución de hardware",
     priceHardwareBody:
-      "La misma estimación aparece antes de cada envío real — nada se ejecuta hasta que apruebes el número.",
+      "Una proyección de la tarifa medida, no un cobro. Hoy solo IQM Garnet acepta envíos, y su comprobación previa cotiza esa ejecución patrocinada en dólares a la tarifa de lista de AWS — no la cifra en créditos que se muestra aquí. Nada se ejecuta hasta que apruebes el número que ves allí.",
     shots: "Disparos",
     shotsValue: "{{n}} disparos",
     priceTutorMonth: "Precio de un mes de tutoría",
     priceTutorBody:
-      "Preguntas típicas — las derivaciones largas cuestan proporcionalmente más, y el margen muestra el costo mientras escribes.",
+      "Preguntas típicas — las derivaciones largas cuestan proporcionalmente más. Esto es una proyección de la tarifa medida; hoy la tutoría no se cobra.",
     questionsPerMonth: "Preguntas por mes",
     questionsValue: "{{n}} preguntas por mes",
     perShotPlusTask:
       "{{perShot}} créditos por disparo + {{fee}} créditos por tarea.",
     aboutCreditsPerQ: {
-      one: "{{model}}: unos {{count}} crédito por pregunta. {{note}}",
-      other: "{{model}}: unos {{count}} créditos por pregunta. {{note}}",
+      one: "{{model}} costaría unos {{count}} crédito por pregunta cuando se lance la medición. {{note}}",
+      other: "{{model}} costaría unos {{count}} créditos por pregunta cuando se lance la medición. {{note}}",
     },
     topUpTitle: "Recarga cualquier monto",
     topUpBody:
@@ -792,21 +797,18 @@ export const es: TranslationDict = {
     freeF1: "Simulación ilimitada en el navegador — los circuitos corren en tu máquina",
     freeF2: "Playground, glosario, repaso de repetición espaciada",
     freeF3: "Progreso y circuitos guardados sincronizados entre dispositivos",
-    freeF4: "Añade créditos solo cuando uses el tutor de IA o hardware cuántico real",
-    plusTagline: "Créditos mensuales y modelos de tutor más potentes.",
+    freeF4:
+      "El tutor de IA es gratis para probar, y las ejecuciones de hardware del currículo están patrocinadas por la plataforma",
+    plusTagline: "Créditos mensuales, con una pequeña bonificación sobre pago por uso.",
     plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
     plusF0: "Todo lo de Gratis",
     plusF1: "1,890 créditos cada mes — un 5% de bonificación sobre pago por uso",
     plusF2: "Los créditos se acumulan mientras estés suscrito",
-    plusF3: "Claude Sonnet y Opus desbloqueados en el tutor",
-    plusF4: "Ejecuta en cualquier backend cuántico desde tu saldo",
-    proTagline: "La plantilla completa de modelos y prioridad en el metal.",
-    proFootnote: "Para practicantes diarios. Asientos de equipo están en el mapa de ruta.",
+    proTagline: "El paquete mensual de créditos más grande.",
+    proFootnote:
+      "Para quienes más lo usan. Cancela cuando quieras; los créditos no expiran.",
     proF0: "Todo lo de Plus",
     proF1: "6,200 créditos cada mes",
-    proF2: "Claude Fable desbloqueado — el tutor de frontera",
-    proF3: "Cola prioritaria en hardware cuántico",
-    proF4: "Acceso anticipado a nuevos backends cuando lleguen",
     techSuperconducting108: "Superconductor, 108 cúbits",
     techSuperconducting: "Superconductor",
     techNeutralAtom: "Analógico de átomos neutros",

@@ -74,9 +74,19 @@ function PresetChips({
 
 /**
  * The pricing page's interactive estimator: pick a backend and a shot count —
- * or a tutor model and a monthly question habit — and see the exact credits
- * before you ever commit to anything. The same math runs as a pre-flight
- * estimate on every real submission.
+ * or a tutor model and a monthly question habit — and see the credits before you
+ * ever commit to anything.
+ *
+ * The two panes model different things and must say so. Hardware: this is a
+ * forecast in CREDITS from lib/pricing.ts, and it is not the math a learner meets
+ * before a real submission — that pre-flight prices AWS dollars through
+ * lib/qpu-budget.ts `costMicros`, off the separate table in
+ * components/quantum/cost.ts. Different table, different currency, ~12.6% apart, so
+ * do not describe the two as one estimate (pricing-page.test.tsx bars that claim in
+ * the copy). Tutor: nothing is metered, and the deployed tutor answers on one
+ * hardcoded model that takes no parameter from the client — so the model chips are a
+ * what-if forecast, labelled and disclosed as one rather than a selector for
+ * something purchasable today.
  */
 export function CostEstimator() {
   const { t, locale } = useLocale();
@@ -203,8 +213,14 @@ export function CostEstimator() {
         <div className="mt-6 space-y-5">
           <div>
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              {t("pricingUi.model")}
+              {t("pricingUi.modelToPrice")}
             </span>
+            {/* The chips model a future bill; they buy nothing. The disclosure sits
+                above them — a buyer must meet it before the control, not a section
+                later — and the group's accessible name carries the same framing. */}
+            <p className="mb-2.5 text-xs text-caption">
+              {t("pricingUi.modelNotSelectableYet")}
+            </p>
             <div className="flex flex-wrap gap-2" role="group" aria-label={t("pricingUi.tutorModel")}>
               {TUTOR_RATES.map((r, i) => (
                 <button

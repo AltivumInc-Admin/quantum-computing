@@ -320,23 +320,141 @@ test("webhook is idempotent — a duplicate event grants nothing and still 200s"
   assert.equal(res.statusCode, 200); // swallowed, not surfaced as an error
 });
 
-test("webhook invoice.paid grants the subscription's period credits and sets tier", async () => {
+// The invoice.paid shape is the one place a stale mock cost real money: the
+// original test here pinned the RETIRED top-level `subscription` field, so it
+// stayed green for months while production granted zero subscription credits.
+// The modern shape is the contract; the legacy shape is back-compat only.
+
+/** Drive one signed webhook delivery of `event` and return { res, ddb, stripe }. */
+async function deliverWebhook(event, stripeOver = {}) {
   const ddb = stubDdb();
-  const event = { id: "evt_inv", type: "invoice.paid", data: { object: { subscription: "sub_1" } } };
-  const stripe = stubStripe({
-    event,
-    subscription: { metadata: { userId: "user-7", tier: "pro", credits: "6200" } },
-  });
+  const stripe = stubStripe({ event, ...stripeOver });
   const core = createHandlerCore({ stripe, ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   const res = await core(
     makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
   );
+  return { res, ddb, stripe };
+}
+
+/** Capture console.error for the duration of `fn` (node:test has no spy sugar). */
+async function captureConsoleError(fn) {
+  const original = console.error;
+  const lines = [];
+  console.error = (...args) => lines.push(args);
+  try {
+    await fn();
+  } finally {
+    console.error = original;
+  }
+  return lines;
+}
+
+test("webhook invoice.paid grants period credits from the CURRENT parent.subscription_details shape", async () => {
+  // This is what a modern Stripe endpoint actually sends: no top-level
+  // `subscription` property exists on Invoice in stripe 18.5.0 at all.
+  const event = {
+    id: "evt_inv_modern",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_modern",
+        billing_reason: "subscription_create",
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_1" } },
+      },
+    },
+  };
+  const { res, ddb, stripe } = await deliverWebhook(event, {
+    subscription: { metadata: { userId: "user-7", tier: "pro", credits: "6200" } },
+  });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_1"]);
   const tx = ddb.calls[0].input.TransactItems;
   assert.equal(tx[1].Update.Key.pk.S, "WALLET#user-7");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "pro");
+});
+
+test("webhook invoice.paid credits a renewal when subscription_details is expanded, not an id", async () => {
+  // parent.subscription_details.subscription is typed `string | Subscription`,
+  // so an endpoint configured to expand it must not break the grant.
+  const event = {
+    id: "evt_inv_expanded",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_expanded",
+        billing_reason: "subscription_cycle",
+        parent: { type: "subscription_details", subscription_details: { subscription: { id: "sub_exp" } } },
+      },
+    },
+  };
+  const { res, ddb, stripe } = await deliverWebhook(event, {
+    subscription: { metadata: { userId: "user-8", tier: "plus", credits: "1890" } },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(stripe.calls.subsRetrieve, ["sub_exp"]); // the id, never the object
+  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "1890");
+});
+
+test("webhook invoice.paid still credits the LEGACY top-level subscription field", async () => {
+  // Back-compat only: an endpoint pinned to an API version from before the id
+  // moved under `parent` sends this. Do NOT copy this shape into new tests.
+  const event = {
+    id: "evt_inv_legacy",
+    type: "invoice.paid",
+    data: { object: { id: "in_legacy", billing_reason: "subscription_cycle", subscription: "sub_1" } },
+  };
+  const { res, ddb, stripe } = await deliverWebhook(event, {
+    subscription: { metadata: { userId: "user-7", tier: "pro", credits: "6200" } },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(stripe.calls.subsRetrieve, ["sub_1"]);
+  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
+});
+
+test("webhook invoice.paid LOGS when a subscription invoice has no resolvable id", async () => {
+  // The failure mode that hid the bug: return early, answer 200, Stripe never
+  // retries, buyer silently uncredited. It must at least leave evidence.
+  const event = {
+    id: "evt_inv_unresolvable",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_unresolvable",
+        billing_reason: "subscription_cycle",
+        parent: { type: "subscription_details", subscription_details: null },
+      },
+    },
+  };
+  let out;
+  const lines = await captureConsoleError(async () => {
+    out = await deliverWebhook(event);
+  });
+  assert.equal(out.res.statusCode, 200); // contract unchanged: no retry storm
+  assert.equal(out.ddb.calls.length, 0); // nothing granted
+  assert.equal(out.stripe.calls.subsRetrieve.length, 0);
+  assert.equal(lines.length, 1, "an uncredited subscription invoice must be logged");
+  const logged = lines[0].join(" ");
+  assert.match(logged, /invoice\.paid/);
+  assert.match(logged, /evt_inv_unresolvable/); // the event id, for log lookup
+  assert.match(logged, /in_unresolvable/); // and the invoice id
+});
+
+test("webhook invoice.paid stays silent for a genuine one-off invoice", async () => {
+  // A manual/quote invoice has no subscription by design. Logging it would be
+  // alarm noise that trains us to ignore the real signal above.
+  const event = {
+    id: "evt_inv_manual",
+    type: "invoice.paid",
+    data: { object: { id: "in_manual", billing_reason: "manual", parent: null } },
+  };
+  let out;
+  const lines = await captureConsoleError(async () => {
+    out = await deliverWebhook(event);
+  });
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0);
+  assert.deepEqual(lines, []);
 });
 
 test("webhook customer.subscription.deleted downgrades the tier to free", async () => {
