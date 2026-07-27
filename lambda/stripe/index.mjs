@@ -504,25 +504,43 @@ export function createHandlerCore({
 // from injecting it as an environment variable.
 // ---------------------------------------------------------------------------
 
-let corePromise;
-
 async function loadSecret(secretId) {
   const sm = new SecretsManagerClient({});
   const res = await sm.send(new GetSecretValueCommand({ SecretId: secretId }));
   return JSON.parse(res.SecretString);
 }
 
-export const handler = async (event) => {
-  if (!corePromise) {
-    corePromise = loadSecret(process.env.SECRET_ID).then(({ secretKey, webhookSecret }) =>
-      createHandlerCore({
-        stripe: new Stripe(secretKey, { apiVersion: "2026-06-24.dahlia" }),
-        ddb: new DynamoDBClient({}),
-        tableName: process.env.TABLE_NAME,
-        webhookSecret,
-        siteOrigin: process.env.SITE_ORIGIN,
-      })
-    );
-  }
-  return (await corePromise)(event);
-};
+/**
+ * Build-once-per-container, but never memoize a FAILURE: if `build` rejects
+ * (a Secrets Manager throttle, an IAM hiccup, a read that raced a secret
+ * rotation), the memo is cleared before rethrowing, so the invocation that
+ * hit the fault still 500s but the next one rebuilds instead of replaying
+ * the same rejection until Lambda happens to recycle the container.
+ * Exported for tests; the retry semantics are load-bearing during webhook
+ * secret rotation.
+ */
+export function lazyCore(build) {
+  let corePromise;
+  return async (event) => {
+    if (!corePromise) {
+      corePromise = Promise.resolve()
+        .then(build)
+        .catch((err) => {
+          corePromise = undefined;
+          throw err;
+        });
+    }
+    return (await corePromise)(event);
+  };
+}
+
+export const handler = lazyCore(async () => {
+  const { secretKey, webhookSecret } = await loadSecret(process.env.SECRET_ID);
+  return createHandlerCore({
+    stripe: new Stripe(secretKey, { apiVersion: "2026-06-24.dahlia" }),
+    ddb: new DynamoDBClient({}),
+    tableName: process.env.TABLE_NAME,
+    webhookSecret,
+    siteOrigin: process.env.SITE_ORIGIN,
+  });
+});

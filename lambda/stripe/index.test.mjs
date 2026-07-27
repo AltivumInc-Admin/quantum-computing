@@ -2,7 +2,7 @@
 // both stubbed and injected into createHandlerCore, mirroring lambda/sync.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHandlerCore, CATALOG } from "./index.mjs";
+import { createHandlerCore, lazyCore, CATALOG } from "./index.mjs";
 
 const TABLE = "quantum-stripe-wallet";
 const ORIGIN = "https://quantum.altivum.ai";
@@ -588,6 +588,36 @@ test("webhook customer.subscription.deleted downgrades the tier to free", async 
   const tx = ddb.calls[0].input.TransactItems;
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "free");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":ss"].S, "canceled");
+});
+
+// ---- container lifecycle -----------------------------------------------------
+
+test("lazyCore builds once and reuses the core across invocations", async () => {
+  let builds = 0;
+  const handler = lazyCore(async () => {
+    builds++;
+    return async () => ({ statusCode: 200, body: "ok" });
+  });
+  assert.equal((await handler({})).statusCode, 200);
+  assert.equal((await handler({})).statusCode, 200);
+  assert.equal(builds, 1, "a healthy core must be built exactly once per container");
+});
+
+test("lazyCore retries the build after a failed secret load instead of poisoning the container", async () => {
+  // The failure mode: loadSecret rejects once (Secrets Manager throttle, IAM
+  // hiccup, mid-rotation read), the rejected promise is memoized, and every
+  // subsequent invocation of the warm container replays the same rejection —
+  // a permanent 500 until Lambda happens to recycle it.
+  let builds = 0;
+  const handler = lazyCore(async () => {
+    builds++;
+    if (builds === 1) throw new Error("secrets manager unavailable");
+    return async () => ({ statusCode: 200, body: "recovered" });
+  });
+  await assert.rejects(() => handler({}), /secrets manager unavailable/);
+  const res = await handler({});
+  assert.equal(res.statusCode, 200, "the next invocation must rebuild, not replay the rejection");
+  assert.equal(builds, 2);
 });
 
 test("webhook ignores unrelated event types without touching DynamoDB", async () => {
