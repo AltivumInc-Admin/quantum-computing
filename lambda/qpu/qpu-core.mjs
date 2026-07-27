@@ -379,11 +379,17 @@ export function createHandlerCore({
         // and an unconditional ADD would mint a phantom row at -N credits.
         // credits >= :need keeps the balance from ever going below zero under
         // concurrent submits — DynamoDB re-checks it inside the transaction.
+        // The clawback clause enforces the product rule that a debt must be
+        // CLEARED: a learner whose refund was reclaimed past their balance
+        // cannot spend again until a purchase pays the shortfall down to zero.
         UpdateExpression: "ADD credits :neg",
-        ConditionExpression: "attribute_exists(pk) AND credits >= :need",
+        ConditionExpression:
+          "attribute_exists(pk) AND credits >= :need AND " +
+          "(attribute_not_exists(clawbackOwedCredits) OR clawbackOwedCredits = :zero)",
         ExpressionAttributeValues: {
           ":neg": { N: String(-creditsNeeded) },
           ":need": { N: String(creditsNeeded) },
+          ":zero": { N: "0" },
         },
       },
     };

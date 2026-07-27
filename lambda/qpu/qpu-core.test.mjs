@@ -581,7 +581,11 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   assert.equal(debit.Key.pk.S, "WALLET#u1");
   assert.match(debit.UpdateExpression, /ADD credits :neg/);
   assert.equal(debit.ExpressionAttributeValues[":neg"].N, "-175");
-  assert.equal(debit.ConditionExpression, "attribute_exists(pk) AND credits >= :need");
+  // Asserted clause-by-clause rather than as one exact string: the expression
+  // grew a clawback-debt guard, and pinning the whole literal would force an
+  // unrelated edit here every time a new guard is added.
+  assert.match(debit.ConditionExpression, /attribute_exists\(pk\)/, "no phantom wallet row");
+  assert.match(debit.ConditionExpression, /credits >= :need/, "never below zero");
   assert.equal(debit.ExpressionAttributeValues[":need"].N, "175");
   // leg 1: the GLOBAL day cap still binds a wallet-funded run (real account spend)
   assert.equal(tx[1].Update.Key.pk.S, "DAY#2026-07-07");
@@ -693,4 +697,20 @@ test("no ConditionExpression uses arithmetic or if_not_exists (real DynamoDB for
     }
     assert.ok(count > 0, `${file}: expected to find ConditionExpressions to check`);
   }
+});
+
+test("a learner owing clawback credits cannot spend the wallet until it is cleared", async () => {
+  // Product rule: debt must be CLEARED. The wallet debit therefore requires
+  // no outstanding clawback, so a refunded-then-unpaid learner cannot keep
+  // spending on credits the platform has already taken back.
+  const ddb = stubDdb({ ledgerUser: SPENT_UP });
+  await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  const debit = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems[0]
+    .Update;
+  assert.match(
+    debit.ConditionExpression,
+    /attribute_not_exists\(clawbackOwedCredits\) OR clawbackOwedCredits = :zero/,
+    "the debit must refuse while a debt stands",
+  );
+  assert.equal(debit.ExpressionAttributeValues[":zero"].N, "0");
 });

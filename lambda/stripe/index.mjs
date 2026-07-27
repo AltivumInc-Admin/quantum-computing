@@ -358,6 +358,25 @@ export function createHandlerCore({
    * writes nothing, so the eventual async_payment_succeeded is the one and
    * only grant for the purchase — no double-credit window.
    */
+  /**
+   * Split a purchase between clearing debt and adding spendable credits.
+   *
+   * Product rule: an owing learner must CLEAR the debt — so money pays down
+   * `clawbackOwedCredits` before any of it becomes spendable. A purchase
+   * smaller than the debt adds nothing spendable, which is the honest outcome:
+   * the learner is buying their way back to zero, and the top-up surface says
+   * so rather than quietly crediting a balance they cannot use.
+   */
+  async function splitAgainstDebt(sub, credits) {
+    const res = await ddb.send(
+      new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
+    );
+    const owed = Number(res.Item?.clawbackOwedCredits?.N ?? 0);
+    if (!(owed > 0)) return { deltaCredits: credits, owedCredits: 0 };
+    const applied = Math.min(owed, credits);
+    return { deltaCredits: credits - applied, owedCredits: -applied };
+  }
+
   async function fulfillCheckoutSession(evt, obj) {
     const sub = obj.client_reference_id;
     if (!sub) return;
@@ -365,10 +384,11 @@ export function createHandlerCore({
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
+        const split = await splitAgainstDebt(sub, credits);
         await applyOnce({
           eventId: evt.id,
           sub,
-          deltaCredits: credits,
+          ...split,
           grantLeg: grantRowLeg(idOf(obj.payment_intent), sub, credits),
         });
       }

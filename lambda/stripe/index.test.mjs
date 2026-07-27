@@ -98,6 +98,14 @@ const mk = (over) =>
     siteOrigin: ORIGIN,
   });
 
+/** The transaction a delivery wrote, found by command NAME rather than call
+ *  index — the handler reads the wallet's debt first on grant paths, so a
+ *  positional pin silently grabs the wrong command. */
+const txItems = (ddb) =>
+  ddb.calls.find((c) => (c.constructor?.name ?? c.name) === "TransactWriteItemsCommand")?.input
+    ?.TransactItems ??
+  ddb.calls.find((c) => c.input?.TransactItems)?.input?.TransactItems;
+
 // ---- CATALOG guardrail -----------------------------------------------------
 
 test("CATALOG credit counts mirror the published pricing", () => {
@@ -289,7 +297,7 @@ test("webhook checkout.session.completed (top-up) grants credits atomically, onc
     makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
   );
   assert.equal(res.statusCode, 200);
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   // one atomic transaction: record the event id (idempotency), add the credits
   assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_1");
   assert.equal(tx[0].Put.ConditionExpression, "attribute_not_exists(pk)");
@@ -368,7 +376,7 @@ test("webhook invoice.paid grants period credits from the CURRENT parent.subscri
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_1"]);
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   assert.equal(tx[1].Update.Key.pk.S, "WALLET#user-7");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "pro");
@@ -393,7 +401,7 @@ test("webhook invoice.paid credits a renewal when subscription_details is expand
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_exp"]); // the id, never the object
-  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "1890");
+  assert.equal(txItems(ddb)[1].Update.ExpressionAttributeValues[":amt"].N, "1890");
 });
 
 test("webhook invoice.paid still credits the LEGACY top-level subscription field", async () => {
@@ -409,7 +417,7 @@ test("webhook invoice.paid still credits the LEGACY top-level subscription field
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_1"]);
-  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
+  assert.equal(txItems(ddb)[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
 });
 
 test("webhook invoice.paid LOGS when a subscription invoice has no resolvable id", async () => {
@@ -522,7 +530,7 @@ test("webhook checkout.session.completed with payment_status no_payment_required
     },
   };
   const { ddb } = await deliverWebhook(event);
-  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "500");
+  assert.equal(txItems(ddb)[1].Update.ExpressionAttributeValues[":amt"].N, "500");
 });
 
 test("webhook checkout.session.async_payment_succeeded fulfills like a paid completion", async () => {
@@ -541,7 +549,7 @@ test("webhook checkout.session.async_payment_succeeded fulfills like a paid comp
   };
   const { res, ddb } = await deliverWebhook(event);
   assert.equal(res.statusCode, 200);
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   // its OWN event id is the idempotency key — completed(unpaid) wrote nothing,
   // so this is the one and only grant for the purchase
   assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_async_ok");
@@ -585,7 +593,7 @@ test("webhook customer.subscription.deleted downgrades the tier to free", async 
   };
   const core = createHandlerCore({ stripe: stubStripe({ event }), ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   await core(makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } }));
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "free");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":ss"].S, "canceled");
 });
@@ -804,4 +812,74 @@ test("R9: the required webhook subscription list matches the switch's handled ca
   for (const c of new Set(cases)) {
     assert.ok(REQUIRED_WEBHOOK_EVENTS.includes(c), `${c} is handled but not in REQUIRED_WEBHOOK_EVENTS`);
   }
+});
+
+// ---- debt clearing ------------------------------------------------------------
+// Product decision: an owing learner MUST clear the debt. So a purchase pays
+// down clawbackOwedCredits BEFORE it adds spendable credits, and the spend
+// gates refuse while a debt stands (asserted in qpu-core/tutor suites).
+
+test("D1: a top-up pays down the debt first, then credits only the remainder", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "800" } } });
+  await deliver(ddb, {
+    id: "evt_topup_debt",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_x",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_new",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  // 2000 bought, 800 owed -> 800 clears the debt, 1200 becomes spendable
+  assert.equal(w.ExpressionAttributeValues[":amt"].N, "1200");
+  assert.equal(w.ExpressionAttributeValues[":owed"].N, "-800", "debt is paid down");
+});
+
+test("D2: a purchase smaller than the debt adds NO spendable credits", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "5000" } } });
+  await deliver(ddb, {
+    id: "evt_topup_small",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_y",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_small",
+        client_reference_id: "user-9",
+        metadata: { credits: "500" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  assert.ok(!("​:amt" in w.ExpressionAttributeValues), "no positive credit delta");
+  assert.equal(w.ExpressionAttributeValues[":amt"]?.N ?? "0", "0");
+  assert.equal(w.ExpressionAttributeValues[":owed"].N, "-500", "all of it clears debt");
+});
+
+test("D3: with no debt, a purchase behaves exactly as before", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "100" } } });
+  await deliver(ddb, {
+    id: "evt_topup_clean",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_z",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_clean",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  assert.equal(w.ExpressionAttributeValues[":amt"].N, "2000");
+  assert.equal(w.ExpressionAttributeValues[":owed"], undefined, "no debt leg at all");
 });

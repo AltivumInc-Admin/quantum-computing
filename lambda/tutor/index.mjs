@@ -368,10 +368,16 @@ function buildWallet() {
           TableName: table,
           Key: key(sub),
           UpdateExpression: "ADD credits :neg",
-          ConditionExpression: "attribute_exists(pk) AND credits >= :need",
+          // The clawback clause enforces the product rule that a debt must be
+          // CLEARED before spending resumes — same guard as the QPU debit, so
+          // one reclaimed refund cannot be spent around via the other backend.
+          ConditionExpression:
+            "attribute_exists(pk) AND credits >= :need AND " +
+            "(attribute_not_exists(clawbackOwedCredits) OR clawbackOwedCredits = :zero)",
           ExpressionAttributeValues: {
             ":neg": { N: String(-n) },
             ":need": { N: String(n) },
+            ":zero": { N: "0" },
           },
         })
       );
