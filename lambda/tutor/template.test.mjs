@@ -136,3 +136,43 @@ test("the tutor log group keeps its LITERAL name (import-compatibility)", () => 
   assert.ok(!/LogGroupName: !Sub/.test(b), "LogGroupName must NOT be a !Sub expression (breaks post-import deploys)");
   assert.match(b, /DeletionPolicy: Retain/, "imported resources require a DeletionPolicy");
 });
+
+// ---- credit metering + model roster (the paid tutor) -------------------------
+
+test("metering is env-gated: wallet + user-pool params flow into conditional env vars", () => {
+  const params = section(template, "Parameters").join("\n");
+  for (const p of ["WalletTableName:", "UserPoolId:", "UserPoolClientId:"]) {
+    assert.ok(params.includes(p), `${p} parameter missing`);
+  }
+  // Empty defaults: a deploy that says nothing keeps metering OFF.
+  const conditions = section(template, "Conditions").join("\n");
+  assert.match(conditions, /HasWalletTable: !Not \[!Equals \[!Ref WalletTableName, ""\]\]/);
+  assert.match(conditions, /HasUserPool: !Not \[!Equals \[!Ref UserPoolId, ""\]\]/);
+  const fn = body("TutorFunction");
+  assert.match(fn, /WALLET_TABLE: !If \[HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue\]/);
+  assert.match(fn, /USER_POOL_ID: !If \[HasUserPool, !Ref UserPoolId, !Ref AWS::NoValue\]/);
+  assert.match(fn, /USER_POOL_CLIENT_ID: !If \[HasUserPool, !Ref UserPoolClientId, !Ref AWS::NoValue\]/);
+});
+
+test("the wallet grant is scoped to the one table, only when metering is on", () => {
+  const fn = body("TutorFunction");
+  assert.match(fn, /table\/\$\{WalletTableName\}/, "wallet ARN grant missing");
+  // The debit/refund need exactly Get + Update — never Put/Delete/Scan.
+  const stmt = fn.slice(fn.indexOf("dynamodb:GetItem"));
+  assert.ok(!/dynamodb:(PutItem|DeleteItem|Scan|Query)/.test(stmt), "wallet grant over-broad");
+});
+
+test("the roster's paid inference profiles are invokable, scoped by model name", () => {
+  const fn = body("TutorFunction");
+  for (const m of ["claude-sonnet-5", "claude-opus-5", "claude-fable-5"]) {
+    assert.ok(fn.includes(`inference-profile/us.anthropic.${m}`), `${m} profile grant missing`);
+    assert.ok(fn.includes(`foundation-model/anthropic.${m}`), `${m} foundation-model grant missing`);
+  }
+});
+
+test("CORS allows the auth header the metered client sends", () => {
+  // The Cognito token rides x-tutor-auth because Authorization belongs to the
+  // CloudFront OAC SigV4 signature. Without this allow-header the preflight
+  // fails and every paid-model request dies in the browser.
+  assert.match(body("TutorFunction"), /- x-tutor-auth/);
+});

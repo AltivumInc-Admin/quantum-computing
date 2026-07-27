@@ -72,6 +72,33 @@ Parameters:
       Operator email for the human notification path. Receives every CloudWatch
       alarm in this stack. Each SNS email subscription must be confirmed once
       from the inbox before it delivers.
+  WalletTableName:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the quantum-stripe credit-wallet table (WALLET#<sub> rows,
+      1 credit = $0.01). Empty = tutor metering disabled: the free Haiku path
+      is untouched and any explicit paid-model request is refused in-band.
+      Set (to quantum-stripe-wallet, together with the user-pool params below)
+      to let paid tiers use the premium model roster, billed against the same
+      wallet the QPU spend fence debits.
+  UserPoolId:
+    Type: String
+    Default: ""
+    Description: >
+      The quantum-workspace Cognito user pool. The tutor is a streaming
+      Function URL — no API Gateway JWT authorizer exists in front of it — so
+      the handler verifies the caller's ID token in-process against this
+      pool's JWKS (aws-jwt-verify). Empty = paid models require sign-in and
+      always refuse; the anonymous free path never authenticates at all.
+  UserPoolClientId:
+    Type: String
+    Default: ""
+    Description: The quantum-workspace-web app client (JWT audience).
+
+Conditions:
+  HasWalletTable: !Not [!Equals [!Ref WalletTableName, ""]]
+  HasUserPool: !Not [!Equals [!Ref UserPoolId, ""]]
 
 Resources:
   TutorFunction:
@@ -97,19 +124,47 @@ Resources:
       Environment:
         Variables:
           TUTOR_MODEL_ID: !Ref ModelId
+          WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
+          USER_POOL_ID: !If [HasUserPool, !Ref UserPoolId, !Ref AWS::NoValue]
+          USER_POOL_CLIENT_ID: !If [HasUserPool, !Ref UserPoolClientId, !Ref AWS::NoValue]
       Policies:
         - Statement:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModelWithResponseStream
-              # Least privilege: only the one inference profile this function uses,
-              # plus the foundation-model ARNs it routes to (an app inference
-              # profile authorizes against both). NOT Resource "*".
+              # Least privilege on the MODEL dimension: the free tier's app
+              # inference profile + its foundation model, and the paid roster's
+              # cross-region profiles (tutor-billing.mjs PROFILE_IDS — the
+              # handler refuses anything outside the roster before invoking).
+              # Foundation-model ARNs for the roster use a region wildcard
+              # because a us.* cross-region profile may route to any US region;
+              # the ARNs stay scoped to the exact Anthropic model names.
+              # NOT Resource "*".
               Resource:
                 - !Ref ModelId
                 - !Sub "arn:aws:bedrock:us-east-1::foundation-model/${FoundationModelId}"
                 - !Sub "arn:aws:bedrock:us-east-2::foundation-model/${FoundationModelId}"
                 - !Sub "arn:aws:bedrock:us-west-2::foundation-model/${FoundationModelId}"
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-5"
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-opus-5"
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-fable-5"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5*"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-5*"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-fable-5*"
+        # The credit wallet (metering): tier read, the pre-flight debit, and the
+        # post-stream refund. When metering is off the !If collapses onto a
+        # well-formed table ARN that does not exist, so the statement grants
+        # nothing exercisable (a SAM Policies list item cannot itself be
+        # conditional; a Resource can — the lambda/qpu idiom).
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !If
+                - HasWalletTable
+                - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${WalletTableName}
+                - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/quantum-tutor-metering-disabled
       FunctionUrlConfig:
         AuthType: !Ref FunctionUrlAuthType
         InvokeMode: RESPONSE_STREAM
@@ -125,6 +180,11 @@ Resources:
           AllowHeaders:
             - content-type
             - x-amz-content-sha256
+            # The Cognito ID token for paid-model requests. It rides a custom
+            # header because Authorization is owned by the CloudFront OAC
+            # SigV4 signature; the managed AllViewerExceptHostHeader origin
+            # request policy (edge.yaml) forwards it to the origin unchanged.
+            - x-tutor-auth
           # Without MaxAge the browser falls back to a 5s preflight cache, so
           # nearly every question pays an extra cross-region OPTIONS round trip
           # before the POST. One hour is safe: this allowlist changes only on a

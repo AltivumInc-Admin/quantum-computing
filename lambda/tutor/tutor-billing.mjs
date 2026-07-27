@@ -120,6 +120,15 @@ export function creditsForUsage(model, usage, { free = false } = {}) {
   return Math.ceil(micros / MICROS_PER_CREDIT);
 }
 
+/** Conservative char→token estimate for the pre-flight reserve. English prose
+ *  runs ~4 chars/token; dividing by 3 over-estimates by ~25%, which is the
+ *  right direction — the reserve is refunded down to real usage after the
+ *  stream, so an over-estimate costs nothing, while an under-estimate would
+ *  let a generation start that the wallet cannot cover. */
+export function estimateTokens(chars) {
+  return Math.ceil(chars / 3) + 64; // +64 for message/role framing overhead
+}
+
 /**
  * The most a single generation can cost, used as the PRE-FLIGHT balance check:
  * we cannot know real usage until after the stream, so we refuse to start a
