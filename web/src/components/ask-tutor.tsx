@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
-import { MAX_QUESTION_CHARS, OUT_OF_SCOPE_MESSAGE, TUTOR_ERROR_SENTINEL } from "@/lib/tutor";
+import {
+  MAX_QUESTION_CHARS,
+  OUT_OF_SCOPE_MESSAGE,
+  TUTOR_ERROR_SENTINEL,
+  TUTOR_META_SENTINEL,
+  TUTOR_ROSTER,
+  TUTOR_MODEL_LABELS,
+} from "@/lib/tutor";
 import { sha256Hex } from "@/lib/sha256";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { DRAWER_INERT_REGION_IDS, TUTOR_TRIGGER_ID } from "@/lib/layout-regions";
@@ -81,15 +88,36 @@ function lessonSlug(pathname: string | null): string | null {
   return m ? m[1] : null;
 }
 
-export function AskTutor() {
+/** What a completed generation actually cost, parsed from the handler's
+ *  opt-in trailer. Never inferred client-side — the server is the only thing
+ *  that knows which model answered and what it debited. */
+type TutorCost = { model: string; label: string; credits: number };
+
+export type AskTutorProps = {
+  /** The signed-in learner's wallet, when metering is configured. Absent =
+   *  the free tutor exactly as before: no picker, no token, no trailer. */
+  wallet?: { tier: string; credits: number };
+  /** Cognito ID token. Rides x-tutor-auth, never Authorization — that header
+   *  belongs to the CloudFront OAC SigV4 signature in front of the Lambda. */
+  authToken?: string;
+};
+
+export function AskTutor({ wallet, authToken }: AskTutorProps = {}) {
   const { t } = useLocale();
   const url = process.env.NEXT_PUBLIC_TUTOR_URL;
   const pathname = usePathname();
   const slug = lessonSlug(pathname);
 
+  // The roster is server-authoritative (tutor-billing.mjs); this mirrors it for
+  // the picker only. The handler re-checks entitlement, so a tampered client
+  // cannot buy itself a model — the worst it achieves is an in-band refusal.
+  const models = wallet ? TUTOR_ROSTER[wallet.tier] ?? TUTOR_ROSTER.free : null;
+
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [model, setModel] = useState<string>("haiku-4-5");
+  const [cost, setCost] = useState<TutorCost | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Discrete state transitions for screen readers — see the status node below.
@@ -221,9 +249,16 @@ export function AskTutor() {
     setBusy(true);
     setError(null);
     setAnswer("");
+    setCost(null);
     setSrStatus(t("tutor.thinking"));
     try {
-      const bodyStr = JSON.stringify({ slug, question: q });
+      // Metered requests carry the model and opt into the cost trailer; a
+      // free/unauthenticated one sends exactly the legacy body, so a learner
+      // who never signs in hits byte-identical behaviour to before metering.
+      const metered = Boolean(models && authToken);
+      const bodyStr = JSON.stringify(
+        metered ? { slug, question: q, model, meta: true } : { slug, question: q },
+      );
       // CloudFront Origin Access Control requires the SHA-256 of the POST body in
       // x-amz-content-sha256 (Lambda doesn't accept unsigned payloads through OAC).
       // Guard for crypto.subtle, absent in non-secure/test contexts; the deployed
@@ -232,6 +267,9 @@ export function AskTutor() {
       if (typeof crypto !== "undefined" && crypto.subtle) {
         headers["x-amz-content-sha256"] = await sha256Hex(bodyStr);
       }
+      // Custom header, not Authorization: OAC owns Authorization for its SigV4
+      // signature, so a token there would be overwritten at the edge.
+      if (metered) headers["x-tutor-auth"] = authToken as string;
       const res = await fetch(url, {
         method: "POST",
         headers,
@@ -266,6 +304,21 @@ export function AskTutor() {
           setSrStatus("");
           await reader.cancel();
           return;
+        }
+        // The cost trailer, if the handler sent one. Split it off BEFORE
+        // rendering: it arrives mid-stream like any other chunk, and a
+        // half-received trailer must never appear as lesson prose. A malformed
+        // or truncated payload degrades to "no cost line" rather than throwing
+        // away an answer the learner already has.
+        const meta = acc.indexOf(TUTOR_META_SENTINEL);
+        if (meta !== -1) {
+          setAnswer(acc.slice(0, meta).trimEnd());
+          try {
+            setCost(JSON.parse(acc.slice(meta + TUTOR_META_SENTINEL.length)) as TutorCost);
+          } catch {
+            /* incomplete trailer — the answer stands on its own */
+          }
+          continue;
         }
         setAnswer(acc);
       }
@@ -406,6 +459,18 @@ export function AskTutor() {
                     : t("tutor.emptyHint")}
                 </p>
               )}
+              {/* What the answer actually cost, from the server's own trailer —
+                  never computed here. A free-model answer says "included"
+                  rather than "0 credits": a zero next to a currency-ish noun
+                  reads as a billing glitch, not as the funnel working. */}
+              {cost && (
+                <p className="mt-3 text-xs text-caption tabular-nums">
+                  {cost.label} ·{" "}
+                  {cost.credits > 0
+                    ? t("tutor.costCredits", { credits: cost.credits })
+                    : t("tutor.costIncluded")}
+                </p>
+              )}
               {/* Two announcements per question — "Thinking", then "Answer ready"
                   — instead of either silence or dozens of full-answer repeats. */}
               <p role="status" className="sr-only">
@@ -425,6 +490,28 @@ export function AskTutor() {
               }}
               className="border-t border-(--bd) px-5 py-4"
             >
+              {/* Only rendered when metering is configured AND the tier has a
+                  choice to make — a free learner sees no picker at all rather
+                  than a one-option control implying a locked upgrade. */}
+              {models && models.length > 1 && (
+                <div className="mb-2">
+                  <label htmlFor="ask-tutor-model" className="sr-only">
+                    {t("tutor.modelLabel")}
+                  </label>
+                  <select
+                    id="ask-tutor-model"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full rounded-control border border-(--bd) bg-transparent px-2 py-1 text-xs text-(--mut) focus-ring"
+                  >
+                    {models.map((m: string) => (
+                      <option key={m} value={m}>
+                        {TUTOR_MODEL_LABELS[m] ?? m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <label htmlFor="ask-tutor-input" className="sr-only">
                 {t("tutor.questionLabel")}
               </label>

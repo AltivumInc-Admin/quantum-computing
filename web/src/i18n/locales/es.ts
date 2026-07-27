@@ -445,6 +445,9 @@ export const es: TranslationDict = {
     noAnswer: "El tutor no envió una respuesta — inténtalo de nuevo.",
     stopped: "El tutor dejó de responder — inténtalo de nuevo.",
     unreachable: "No se pudo contactar al tutor — revisa tu conexión.",
+    modelLabel: "Modelo del tutor",
+    costCredits: "{{credits}} créditos",
+    costIncluded: "incluido",
   },
   glossaryUi: {
     searchLabel: "Buscar términos del glosario",

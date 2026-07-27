@@ -447,6 +447,11 @@ export const en: TranslationDict = {
     noAnswer: "The tutor did not send an answer — please try again.",
     stopped: "The tutor stopped responding — please try again.",
     unreachable: "Could not reach the tutor — check your connection.",
+    modelLabel: "Tutor model",
+    // "included" rather than "0 credits": a zero beside a currency-ish noun
+    // reads as a billing fault, when in fact it is the free tier working.
+    costCredits: "{{credits}} credits",
+    costIncluded: "included",
   },
   glossaryUi: {
     searchLabel: "Search glossary terms",
