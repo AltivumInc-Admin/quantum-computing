@@ -131,3 +131,112 @@ test("Errors / Throttles / 5xx alarms exist and all notify a human", () => {
   assert.match(body("AlertsTopic"), /Endpoint: !Ref AlertEmail/);
   assert.ok(ofType("AWS::CloudWatch::Alarm").length >= 3);
 });
+
+// ---- money-relevant log lines must be ALERTABLE --------------------------------
+// Both of these paths return HTTP 200 and do not throw, so neither
+// quantum-stripe-errors (AWS/Lambda Errors counts FAILED invocations) nor
+// quantum-stripe-5xx can ever see them. A console.error inside a successful
+// 200 is greppable, not alertable — which is exactly how a buyer stays
+// silently uncredited. Same idiom as lambda/qpu's orphaned-row filter: the
+// FilterPattern's literal phrase is pinned to a string that literally appears
+// in index.mjs, so editing the log line cannot silently disconnect the alarm.
+
+const handlerSrc = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+
+/** The MetricFilter producing `metricName`, plus its quoted literal phrase. */
+function filterFor(metricName) {
+  const id = ofType("AWS::Logs::MetricFilter").find((r) => body(r).includes(metricName));
+  assert.ok(id, `no metric filter produces ${metricName}`);
+  const b = body(id);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.ok(phrase, `${id}: FilterPattern must be a quoted literal phrase`);
+  return { id, b, phrase };
+}
+
+test("an uncredited subscription invoice is alertable, not just greppable", () => {
+  const { b, phrase } = filterFor("UncreditedInvoice");
+  assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
+  assert.match(b, /MetricNamespace: QuantumStripe/);
+  // The phrase must literally appear in the handler, or the alarm watches nothing.
+  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
+
+  const alarm = body("UncreditedInvoiceAlarm");
+  assert.ok(alarm, "UncreditedInvoiceAlarm missing");
+  assert.match(alarm, /Namespace: QuantumStripe/);
+  assert.match(alarm, /MetricName: UncreditedInvoice/);
+  assert.match(alarm, /Threshold: 0\b/);
+  assert.match(alarm, /ComparisonOperator: GreaterThanThreshold/);
+  // No traffic must not page — this is a rare-event alarm, not a heartbeat.
+  assert.match(alarm, /TreatMissingData: notBreaching/);
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a failed delayed payment is alertable", () => {
+  const { b, phrase } = filterFor("AsyncPaymentFailed");
+  assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
+  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
+  const alarm = body("AsyncPaymentFailedAlarm");
+  assert.ok(alarm, "AsyncPaymentFailedAlarm missing");
+  assert.match(alarm, /TreatMissingData: notBreaching/);
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("every metric filter in this stack watches the stripe log group and notifies a human", () => {
+  const filters = ofType("AWS::Logs::MetricFilter");
+  assert.ok(filters.length >= 2, `expected the money-path filters, found: ${filters}`);
+  const alarms = ofType("AWS::CloudWatch::Alarm");
+  for (const f of filters) {
+    const b = body(f);
+    assert.match(b, /LogGroupName: !Ref StripeLogGroup/, `${f}: wrong log group`);
+    const metric = b.match(/MetricName: (\S+)/)?.[1];
+    const alarm = alarms.find((a) => new RegExp(`MetricName: ${metric}\\b`).test(body(a)));
+    assert.ok(alarm, `${f}: metric ${metric} has no alarm — a filter nobody watches is decoration`);
+    assert.match(body(alarm), /AlarmActions: \[!Ref AlertsTopic\]/, `${alarm}: must notify a human`);
+  }
+});
+
+test("every unreclaimable-money branch is covered by ONE shared filter", () => {
+  const { b, phrase } = filterFor("UnreclaimedRefund");
+  assert.equal(phrase, "credits NOT reclaimed", "one phrase must cover every branch, present and future");
+  assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
+  assert.ok(handlerSrc.includes(phrase));
+  const alarm = body("UnreclaimedRefundAlarm");
+  assert.ok(alarm, "UnreclaimedRefundAlarm missing");
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a failed webhook transaction is alertable — it is the only clawback-fault signal", () => {
+  const { phrase } = filterFor("WebhookHandlerFault");
+  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs "${phrase}"`);
+  assert.match(body("WebhookHandlerFaultAlarm"), /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+// The INVERSE of the pinning test. filterFor proves filter -> code; this proves
+// code -> filter, so a console.error added later cannot ship unwatched while the
+// suite stays green. That gap is exactly how `webhook handling failed` sat
+// unmonitored until now.
+test("every console.error in the handler is covered by some metric filter", () => {
+  const phrases = ofType("AWS::Logs::MetricFilter")
+    .map((id) => body(id).match(/FilterPattern: '"([^"]+)"'/)?.[1])
+    .filter(Boolean);
+  assert.ok(phrases.length >= 4, `expected the money filters, found ${phrases.length}`);
+
+  // Deliberately unwatched, with the reason written down.
+  const UNWATCHED = [
+    // Diagnostic only: the caller ALSO emits a pinned CLAWBACK_UNRECLAIMED line
+    // when this leads to an unrefundable grant, so alarming twice on one fault
+    // would train the operator to ignore the topic.
+    "invoice.paid: could not expand payments",
+  ];
+
+  const messages = [...handlerSrc.matchAll(/console\.error\(\s*(`[^`]*`|"[^"]*")/g)].map((m) =>
+    m[1].slice(1, -1)
+  );
+  assert.ok(messages.length >= 5, `expected several console.error sites, found ${messages.length}`);
+  for (const msg of messages) {
+    // Template literals interpolate the shared phrase constant; resolve it.
+    const resolved = msg.replace(/\$\{CLAWBACK_UNRECLAIMED\}/g, "credits NOT reclaimed");
+    const covered = phrases.some((p) => resolved.includes(p)) || UNWATCHED.some((u) => resolved.includes(u));
+    assert.ok(covered, `console.error("${resolved}") is watched by no metric filter and is not on UNWATCHED`);
+  }
+});
