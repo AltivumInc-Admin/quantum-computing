@@ -80,6 +80,90 @@ cd ../lambda/stripe && npm test
 
 Commit, push, open PR, run the CI ritual, squash-merge.
 
+### 1.1b Deploy `quantum-stripe` — the fix only exists in git until you do
+
+**This is the step whose absence closed the storefront twice over.** PR #188
+merged on 2026-07-27; the deployed function was last modified 2026-07-25 and is
+**byte-identical to `fc4d20b^`** (verified by unzipping the live artifact and
+hashing it — `sha256 e4951eb0…` on both). Merging is not shipping: there is no
+deploy automation for any Lambda in this repo.
+
+```bash
+cd /Users/cperez/dev/altivum-dev/quantum/lambda/stripe
+npm ci && npm test                 # 33/33
+sam build
+sam deploy --stack-name quantum-stripe --region us-east-2 \
+  --capabilities CAPABILITY_IAM --resolve-s3 \
+  --parameter-overrides \
+    StripeSecretName=quantum-stripe \
+    SiteOrigin=https://quantum.altivum.ai \
+    AlertEmail=christian.perez@altivum.io
+```
+
+**Prove it landed** — compare the deployed bytes against HEAD, don't trust the
+stack event:
+
+```bash
+url=$(aws lambda get-function --function-name quantum-stripe --region us-east-2 \
+  --query 'Code.Location' --output text)
+curl -s "$url" -o /tmp/fn.zip && unzip -o -q /tmp/fn.zip -d /tmp/fn
+diff /tmp/fn/index.mjs lambda/stripe/index.mjs && echo "DEPLOYED == HEAD"
+```
+
+`grep -c invoiceSubscriptionId /tmp/fn/index.mjs` must be non-zero; if it is 0
+the old code is still live regardless of what CloudFormation reported.
+
+### 1.1c Recreate the webhook endpoint with a pinned `api_version`
+
+A webhook endpoint's API version is **creation-only** — there is no update
+path, which is why the live endpoint sits at `api_version: null` and therefore
+renders events at whatever the *account default* happens to be. That default is
+what moved `invoice.subscription` under `parent.subscription_details` and broke
+credit granting in the first place. Pinning it stops the payload shape being a
+moving target under a deployed handler.
+
+Zero live traffic (0 charges, 0 invoices, 0 subscriptions as of 2026-07-27), so
+there is no missed-event window — but do it in this order anyway:
+
+1. Create the replacement endpoint (Dashboard → Developers → Webhooks → Add
+   endpoint), URL `https://bfiloz43aa.execute-api.us-east-2.amazonaws.com/webhook`,
+   **pin the API version**, and subscribe to **six** events:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `invoice.paid`,
+   `customer.subscription.updated`, `customer.subscription.deleted`.
+   The two async events are load-bearing: Klarna / Cash App / Amazon Pay / ACH
+   are all active on this account, and those methods complete the session with
+   `payment_status: "unpaid"` before any money settles.
+2. Copy the new signing secret and rotate it into Secrets Manager. Re-read the
+   key from 1Password in the same command so no plaintext reaches shell history:
+
+   ```bash
+   aws secretsmanager put-secret-value --secret-id quantum-stripe --region us-east-2 \
+     --secret-string "$(jq -nc \
+       --arg sk "$(op read 'op://Quantum Learner/Stripe/add more/Secret Key')" \
+       --arg wh 'whsec_NEW_SIGNING_SECRET' \
+       '{secretKey:$sk, webhookSecret:$wh}')"
+   ```
+
+   The running function reads the secret at cold start. `lazyCore` no longer
+   memoizes a failed read, so a container that raced the rotation recovers on
+   its next invocation instead of serving a permanent 500.
+3. Only then disable (do not delete) the old endpoint, so a rollback is a
+   single toggle.
+
+### 1.1d Verify the tutor metering rate table
+
+`lambda/tutor/tutor-billing.mjs` `RATES` currently holds **Anthropic
+first-party list prices as a documented placeholder**. Bedrock is
+partner-priced and the AWS Price List API returns no entries for these model
+names, so they could not be read programmatically. The tests assert presence
+and ordering only — they cannot know the numbers are right.
+
+Confirm each against <https://aws.amazon.com/bedrock/pricing/> and correct the
+table before any real money meters through it. Charging at cost is deliberate
+(margin is the subscription, not a markup on inference), which is exactly what
+makes the basis load-bearing.
+
 ### 1.2 Re-open the storefront
 
 `update-app --environment-variables` **REPLACES the whole map.** Round-trip every
@@ -151,6 +235,30 @@ Current parameters to preserve: `AlertEmail=christian.perez@altivum.io`,
 `AllowedOrigin=https://quantum.altivum.ai`,
 `FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0`,
 `ModelId=arn:aws:bedrock:us-east-2:205930636302:application-inference-profile/q050egz0q4mb`.
+
+**New in this deploy — tutor credit metering.** Three parameters turn it on;
+leaving them empty keeps the free Haiku tutor exactly as it is today and makes
+every paid-model request refuse in-band, so the deploy is safe to land before
+the storefront reopens:
+
+```
+WalletTableName=quantum-stripe-wallet
+UserPoolId=us-east-2_aRydPmAjj
+UserPoolClientId=2sg8nejrf2j8p28j6khjil99ir
+```
+
+Deploy with them **empty first** if you want the CORS/MaxAge fix without
+metering; add them in a second deploy once §1.1d's rate verification is done.
+The `x-tutor-auth` CORS header and the roster's Bedrock grants land either way.
+
+**Verify metering specifically** (a wallet-less deploy is indistinguishable
+from a broken one without this):
+
+```bash
+aws lambda get-function-configuration --function-name quantum-tutor \
+  --region us-east-2 --query 'Environment.Variables' --output json
+# WALLET_TABLE / USER_POOL_ID / USER_POOL_CLIENT_ID present == metering on
+```
 
 **Verify before proceeding:**
 ```bash
@@ -250,6 +358,16 @@ prior balances. Decide before 2.3, not after.
 
 ## Known-open at time of writing
 
+- **The Bedrock rate table is unverified.** `tutor-billing.mjs` `RATES` holds
+  first-party list prices as a placeholder (see §1.1d). Metering is arithmetically
+  correct against whatever numbers are in that table; whether those numbers match
+  what AWS actually bills is the open question. **Blocks re-opening the storefront.**
+- **The tutor's pre-flight reserve is conservative by design.** It bounds a
+  generation at the full system prompt in + `maxTokens` out, so a wallet can be
+  told "not enough credits" for a generation that would in fact have fit. The
+  alternative — start, then discover the wallet is short — means either eating
+  the cost or clawing back after delivering an answer. Revisit only with a real
+  usage distribution to size it against.
 - **No refund clawback.** A Stripe refund does not remove granted credits. Manual.
 - **A permanently-failing reconciler row** holds a learner's charge with no
   automatic recovery. It throws and logs every tick with `sub` and
