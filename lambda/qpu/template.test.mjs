@@ -122,6 +122,29 @@ test("the orphaned-money metric filter exists and matches reconcile.mjs's exact 
   assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 
+test("credit metering is env-gated: WalletTableName param + conditional env + scoped wallet grant", () => {
+  const params = blocks(section(template, "Parameters"));
+  const p = (params.WalletTableName ?? []).join("\n");
+  assert.ok(p, "WalletTableName parameter missing");
+  assert.match(p, /Default: ""/, "metering must default OFF (empty table name)");
+
+  const conditions = section(template, "Conditions").join("\n");
+  assert.match(conditions, /HasWalletTable: !Not \[!Equals \[!Ref WalletTableName, ""\]\]/);
+
+  // Both the submit function (debit + release) and the reconciler (refund of a
+  // wallet-funded FAILED run) need the env var and a grant scoped to that ONE
+  // table — and neither may exist when metering is off.
+  for (const fn of ["QpuFunction", "ReconcileFunction"]) {
+    const b = body(fn);
+    assert.match(
+      b,
+      /WALLET_TABLE: !If \[HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue\]/,
+      `${fn}: WALLET_TABLE env must be conditional on HasWalletTable`,
+    );
+    assert.match(b, /table\/\$\{WalletTableName\}/, `${fn}: wallet grant must name the wallet table ARN`);
+  }
+});
+
 test("the budget resource declares no fixed BudgetName (subscriber changes force replacement)", () => {
   // NotificationsWithSubscribers updates REPLACE the budget, and CloudFormation
   // creates the replacement before deleting the old one; a fixed name would

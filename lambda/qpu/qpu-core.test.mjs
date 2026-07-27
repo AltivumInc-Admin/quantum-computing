@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   costMicros,
+  creditsForMicros,
   utcDay,
   validateSubmitBody,
   createHandlerCore,
@@ -20,6 +21,7 @@ import {
   LIFETIME_CAP_MICROS,
   DAILY_CAP_MICROS,
   MAX_SHOTS,
+  MICROS_PER_CREDIT,
   IQM_PER_TASK_MICROS,
   IQM_PER_SHOT_MICROS,
 } from "./qpu-core.mjs";
@@ -45,9 +47,12 @@ const R = (i) => {
 };
 
 // A DynamoDB stub. Ledger GetItems are routed by pk prefix: CRED# (the
-// credential), USER# (the budget row). Other commands by name; records calls.
-function stubDdb({ credentialed = true, transact, existingTask, ledgerUser, tasks, failUpdate } = {}) {
+// credential), USER# (the budget row); the wallet table by name. Other commands
+// by name; records calls. `transact` may be an ARRAY of outcomes consumed in
+// order (Error = throw, anything else = success) for allowance→wallet fallback.
+function stubDdb({ credentialed = true, transact, existingTask, ledgerUser, tasks, failUpdate, wallet } = {}) {
   const calls = [];
+  const transactQueue = Array.isArray(transact) ? [...transact] : undefined;
   return {
     calls,
     async send(cmd) {
@@ -61,11 +66,13 @@ function stubDdb({ credentialed = true, transact, existingTask, ledgerUser, task
           return {};
         }
         if (cmd.input.TableName === "tasks") return existingTask ? { Item: existingTask } : {};
+        if (cmd.input.TableName === "wallet") return wallet ? { Item: wallet } : {};
         return {};
       }
       if (name === "QueryCommand") return { Items: tasks ?? [] };
       if (name === "TransactWriteItemsCommand") {
-        if (transact instanceof Error) throw transact;
+        const outcome = transactQueue ? transactQueue.shift() : transact;
+        if (outcome instanceof Error) throw outcome;
         return {};
       }
       if (name === "PutItemCommand") return {};
@@ -529,6 +536,138 @@ test("a refunded run earns nothing: only COMPLETED rows tally toward a medal", a
 });
 
 // A DynamoDB ConditionExpression allows NEITHER arithmetic NOR if_not_exists.
+// ---- credit-wallet funding (metering) ---------------------------------------
+// Beyond the sponsored allowance, a run can be funded by the learner's PAID
+// credit wallet (quantum-stripe-wallet, 1 credit = $0.01 = 10,000 micros).
+// Policy: allowance first (free funnel unchanged); a run that no longer fits
+// the allowance debits the wallet ATOMICALLY in the same style of reservation
+// transaction; the global day cap and kill-switch bind BOTH funding sources.
+
+const walletCore = (ddb, braket) =>
+  createHandlerCore({
+    ddb,
+    braket,
+    ledgerTable: "ledger",
+    tasksTable: "tasks",
+    walletTable: "wallet",
+    resultsBucket: "amazon-braket-eu-north-1-x",
+    now: () => NOW,
+  });
+
+// A user whose sponsored allowance is exhausted for a 1000-shot ($1.75) run.
+const SPENT_UP = { capMicros: { N: String(LIFETIME_CAP_MICROS) }, spentMicros: { N: "2000000" } };
+
+test("creditsForMicros converts at the $0.01 peg, rounding UP to a whole credit", () => {
+  assert.equal(MICROS_PER_CREDIT, 10_000);
+  assert.equal(creditsForMicros(1_750_000), 175); // exact: $1.75
+  assert.equal(creditsForMicros(445_000), 45); // $0.445 → 45 credits, never 44
+  assert.equal(creditsForMicros(1), 1);
+});
+
+test("an over-allowance run is funded by the wallet: atomic debit, day cap and kill-switch still bind", async () => {
+  const ddb = stubDdb({ ledgerUser: SPENT_UP });
+  const braket = stubBraket();
+  const res = await walletCore(ddb, braket)(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 202);
+  const body = JSON.parse(res.body);
+  assert.equal(body.fundedBy, "wallet");
+  assert.equal(body.creditsCharged, 175);
+
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  assert.equal(tx.length, 4);
+  // leg 0: the wallet debit — conditional, never below zero, never a phantom row
+  const debit = tx[0].Update;
+  assert.equal(debit.TableName, "wallet");
+  assert.equal(debit.Key.pk.S, "WALLET#u1");
+  assert.match(debit.UpdateExpression, /ADD credits :neg/);
+  assert.equal(debit.ExpressionAttributeValues[":neg"].N, "-175");
+  assert.equal(debit.ConditionExpression, "attribute_exists(pk) AND credits >= :need");
+  assert.equal(debit.ExpressionAttributeValues[":need"].N, "175");
+  // leg 1: the GLOBAL day cap still binds a wallet-funded run (real account spend)
+  assert.equal(tx[1].Update.Key.pk.S, "DAY#2026-07-07");
+  // leg 2: task row records funding provenance for release/reconcile
+  assert.equal(tx[2].Put.Item.fundedBy.S, "wallet");
+  assert.equal(tx[2].Put.Item.creditsCharged.N, "175");
+  // leg 3: kill-switch
+  assert.equal(tx[3].ConditionCheck.Key.pk.S, "KILL");
+  // the sponsored ledger row is NOT charged for a wallet-funded run
+  assert.ok(!tx.some((l) => l.Update?.Key?.pk?.S === "USER#u1"));
+});
+
+test("a wallet-funded run within the allowance never touches the wallet (allowance first)", async () => {
+  const ddb = stubDdb({ ledgerUser: { capMicros: { N: String(LIFETIME_CAP_MICROS) }, spentMicros: { N: "0" } } });
+  const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 202);
+  assert.equal(JSON.parse(res.body).fundedBy, "allowance");
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  assert.ok(!tx.some((l) => l.Update?.TableName === "wallet"));
+  assert.equal(tx[0].Update.Key.pk.S, "USER#u1"); // the sponsored ledger, as today
+});
+
+test("insufficient wallet credits → 402 insufficient-credits with the shortfall named", async () => {
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, transact: canceled(R(0)) });
+  const braket = stubBraket();
+  const res = await walletCore(ddb, braket)(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 402);
+  const body = JSON.parse(res.body);
+  assert.equal(body.error, "insufficient-credits");
+  assert.equal(body.creditsNeeded, 175);
+  assert.equal(braket.calls.length, 0, "no Braket call without a committed reservation");
+});
+
+test("without a wallet table an over-allowance run still 402s over-lifetime-budget (behavior pinned)", async () => {
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, transact: canceled(R(0)) });
+  const res = await core(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 402);
+  assert.equal(JSON.parse(res.body).error, "over-lifetime-budget");
+});
+
+test("an allowance race falls back to the wallet exactly once", async () => {
+  // Pre-read said the run fits, but a concurrent submit consumed the allowance:
+  // the allowance transaction cancels on the cap leg, and the core retries as a
+  // wallet-funded reservation instead of bouncing a payable run with a 402.
+  const ddb = stubDdb({
+    ledgerUser: { capMicros: { N: String(LIFETIME_CAP_MICROS) }, spentMicros: { N: "0" } },
+    transact: [canceled(R(0)), {}],
+  });
+  const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 202);
+  assert.equal(JSON.parse(res.body).fundedBy, "wallet");
+  const txs = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
+  assert.equal(txs.length, 2);
+  assert.equal(txs[1].input.TransactItems[0].Update.TableName, "wallet");
+});
+
+test("a Braket failure on a wallet-funded run refunds the CREDITS, not the sponsored ledger", async () => {
+  const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
+  const ddb = stubDdb({ ledgerUser: SPENT_UP });
+  const res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 502);
+  const txs = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
+  assert.equal(txs.length, 2, "reservation + compensating release");
+  const release = txs[1].input.TransactItems;
+  const refund = release[0].Update;
+  assert.equal(refund.TableName, "wallet");
+  assert.equal(refund.Key.pk.S, "WALLET#u1");
+  assert.equal(refund.ExpressionAttributeValues[":pos"].N, "175");
+  // the release is still guarded on the task row being RESERVED (idempotent)
+  const guard = release.find((l) => l.Update?.TableName === "tasks").Update;
+  assert.match(guard.ConditionExpression, /:reserved/);
+  assert.ok(!release.some((l) => l.Update?.Key?.pk?.S === "USER#u1"));
+});
+
+test("GET /qpu/budget reports the wallet balance when metering is configured", async () => {
+  const ddb = stubDdb({ wallet: { pk: { S: "WALLET#u1" }, credits: { N: "300" } } });
+  const event = {
+    requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } },
+  };
+  const res = await walletCore(ddb, stubBraket())(event);
+  assert.equal(JSON.parse(res.body).walletCredits, 300);
+
+  const bare = await core(stubDdb({}), stubBraket())(event);
+  assert.equal(JSON.parse(bare.body).walletCredits, null, "unconfigured metering reports null, not 0");
+});
+
 // The reserve transaction originally used both ("if_not_exists(spent,:z)+:cost
 // <= if_not_exists(cap,:cap)"); the stub never evaluates the expression, so all
 // tests passed while every REAL submit failed with a ValidationException. This

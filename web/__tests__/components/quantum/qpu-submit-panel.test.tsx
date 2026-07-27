@@ -1027,6 +1027,77 @@ test("a 402 names the learner's OWN cap and re-fetches so the panel isn't a dead
   expectNeverSaysTheLearnerPays();
 });
 
+// ---- credit metering ------------------------------------------------------------
+
+test("a 402 insufficient-credits names the shortfall and points at the wallet", async () => {
+  m.getBudget.mockResolvedValue(budget({ walletCredits: 40 }));
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  m.submitTask.mockResolvedValue({
+    ok: false,
+    status: 402,
+    error: "insufficient-credits",
+    creditsNeeded: 175,
+  });
+  render(<QpuSubmitPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /submit to real hardware/i }));
+  });
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/175 credits/i);
+  expect(alert).toHaveTextContent(/nothing was submitted/i);
+  // A metering 402 re-fetches too — the balance shown must not go stale.
+  await waitFor(() => expect(m.getBudget).toHaveBeenCalledTimes(2));
+});
+
+test("the budget readout shows the wallet balance when the server reports one", async () => {
+  m.getBudget.mockResolvedValue(budget({ walletCredits: 300 }));
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  render(<QpuSubmitPanel />);
+  expect(await screen.findByText(/wallet: 300 credits/i)).toBeInTheDocument();
+});
+
+test("no wallet line when the server does not report a balance (pre-metering Lambda)", async () => {
+  m.getBudget.mockResolvedValue(budget()); // no walletCredits field at all
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  render(<QpuSubmitPanel />);
+  await screen.findByRole("button", { name: /review this run/i });
+  expect(screen.queryByText(/wallet:/i)).not.toBeInTheDocument();
+});
+
+test("a spent allowance with wallet credits keeps the FORM — metering must be reachable", async () => {
+  // The terminal "Sponsored budget spent" card replaced the form whenever the
+  // allowance ran dry — which would make wallet-funded runs unreachable from
+  // the UI, i.e. sellable but unusable credits.
+  m.getBudget.mockResolvedValue(
+    budget({ spentMicros: CAP, remainingMicros: 0, walletCredits: 300 }),
+  );
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  render(<QpuSubmitPanel />);
+  expect(await screen.findByRole("button", { name: /review this run/i })).toBeInTheDocument();
+  expect(screen.queryByText(/sponsored budget spent/i)).not.toBeInTheDocument();
+});
+
+test("a spent allowance with ZERO credits shows the terminal card WITH a top-up pointer", async () => {
+  m.getBudget.mockResolvedValue(budget({ spentMicros: CAP, remainingMicros: 0, walletCredits: 0 }));
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  render(<QpuSubmitPanel />);
+  expect(await screen.findByText(/sponsored budget spent/i)).toBeInTheDocument();
+  expect(screen.getByText(/top up/i)).toBeInTheDocument();
+});
+
+test("the confirm step discloses wallet funding BEFORE the money is committed", async () => {
+  m.getBudget.mockResolvedValue(
+    budget({ spentMicros: CAP, remainingMicros: 0, walletCredits: 300 }),
+  );
+  m.getCredentialChallenge.mockResolvedValue(challenge());
+  render(<QpuSubmitPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: /review this run/i }));
+  // default shots = 100 → costMicros(100) = 445,000 → ceil to 45 credits
+  expect(await screen.findByText(/funded by your wallet/i)).toBeInTheDocument();
+  expect(screen.getByText(/45 credits/i)).toBeInTheDocument();
+});
+
 // ---- the playground handoff ---------------------------------------------------
 // The playground writes a one-shot circuit to sessionStorage (qpu-handoff.ts, key
 // qcp:handoff:v1) and routes to /workspace#hardware; SubmitForm consumes it in its

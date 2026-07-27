@@ -40,6 +40,51 @@ const stubBraket = (statusByArn) => ({
 const core = (ddb, braket) =>
   createReconcileCore({ ddb, braket, ledgerTable: "ledger", tasksTable: "tasks", now: () => NOW });
 
+const walletAwareCore = (ddb, braket) =>
+  createReconcileCore({
+    ddb,
+    braket,
+    ledgerTable: "ledger",
+    tasksTable: "tasks",
+    walletTable: "wallet",
+    now: () => NOW,
+  });
+
+test("a FAILED wallet-funded task refunds CREDITS to the wallet, not the sponsored ledger", async () => {
+  const ddb = stubDdb([
+    task({ fundedBy: { S: "wallet" }, creditsCharged: { N: "45" } }),
+  ]);
+  const summary = await walletAwareCore(
+    ddb,
+    stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }),
+  )();
+  assert.equal(summary.failed, 1);
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  // Leg 0 — the wallet gets its exact creditsCharged back, from the ROW's own
+  // provenance (never re-derived from estMicros, which could reprice).
+  assert.equal(tx[0].Update.TableName, "wallet");
+  assert.equal(tx[0].Update.Key.pk.S, "WALLET#u1");
+  assert.equal(tx[0].Update.ExpressionAttributeValues[":pos"].N, "45");
+  // Leg 1 — the global day bucket is released as usual.
+  assert.match(tx[1].Update.UpdateExpression, /ADD dayMicros :neg/);
+  // The sponsored ledger row is untouched: this money was never allowance.
+  assert.ok(!tx.some((l) => l.Update?.Key?.pk?.S === "USER#u1"));
+  // Still guarded on SUBMITTED so a re-delivery can't double-refund.
+  const guard = tx.find((l) => l.Update?.TableName === "tasks").Update;
+  assert.equal(guard.ConditionExpression, "#s = :submitted");
+});
+
+test("a COMPLETED wallet-funded run still lights the medal counters (a paid run is a real run)", async () => {
+  const ddb = stubDdb([task({ fundedBy: { S: "wallet" }, creditsCharged: { N: "45" } })]);
+  const summary = await walletAwareCore(
+    ddb,
+    stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }),
+  )();
+  assert.equal(summary.completed, 1);
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  assert.match(tx[1].Update.UpdateExpression, /ADD completedRuns :one/);
+});
+
 test("a COMPLETED task is recorded (charge kept) AND credits the medal counters", async () => {
   const ddb = stubDdb([task()]);
   const summary = await core(ddb, stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "COMPLETED" }))();

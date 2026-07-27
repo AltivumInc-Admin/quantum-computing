@@ -52,6 +52,22 @@ export const IQM_PER_TASK_MICROS = 300_000; // $0.30
 export const IQM_PER_SHOT_MICROS = 1_450; // $0.00145
 export const KILL_KEY = "KILL";
 
+// ---- Credit-wallet metering (the paid tier of the same spend fence) ---------
+// 1 credit = $0.01 = 10,000 micro-dollars — the dollar peg quantum-stripe sells
+// at (CATALOG in lambda/stripe/index.mjs; creditsToUsd in web/src/lib/pricing.ts).
+// Policy: the sponsored allowance funds a run first (the free funnel is
+// untouched); a run that no longer fits the allowance is debited from the
+// learner's PAID wallet, atomically, under the same day-cap + kill-switch. No
+// split funding — a run is entirely allowance or entirely wallet.
+export const MICROS_PER_CREDIT = 10_000;
+
+/** Whole credits for a micro-dollar cost — rounded UP, so a fraction of a cent
+ *  can never be dispensed free. Worst case the learner pays 1 credit ($0.01)
+ *  above the metered price; the response names the exact creditsCharged. */
+export function creditsForMicros(micros) {
+  return Math.ceil(micros / MICROS_PER_CREDIT);
+}
+
 /** Total committed cost of a run, in micro-dollars (integer). */
 export function costMicros(shots) {
   return IQM_PER_TASK_MICROS + IQM_PER_SHOT_MICROS * shots;
@@ -167,6 +183,10 @@ function taskSummary(item) {
     taskArn: item.taskArn?.S ?? null,
     circuitHash: item.circuitHash?.S ?? null,
     createdAt: Number(item.createdAt?.N ?? 0),
+    // Funding provenance. Rows from before metering have no attribute — they
+    // were all sponsored, so "allowance" is the honest default.
+    fundedBy: item.fundedBy?.S ?? "allowance",
+    creditsCharged: Number(item.creditsCharged?.N ?? 0),
   };
 }
 
@@ -175,6 +195,10 @@ export function createHandlerCore({
   braket,
   ledgerTable,
   tasksTable,
+  // The quantum-stripe wallet table (WALLET#<sub> rows). Unset = metering
+  // disabled: over-allowance runs 402 exactly as before, env-gated like every
+  // other integration in this repo.
+  walletTable,
   resultsBucket,
   // When set, every request must carry this secret in the x-qpu-edge header —
   // CloudFront (which fronts the WAF) injects it, so a direct hit on the public
@@ -236,7 +260,7 @@ export function createHandlerCore({
   }
 
   async function budget(sub) {
-    const [ledger, tasks, credentialed] = await Promise.all([
+    const [ledger, tasks, credentialed, wallet] = await Promise.all([
       ddb.send(new GetItemCommand({ TableName: ledgerTable, Key: { pk: { S: `USER#${sub}` } } })),
       ddb.send(
         new QueryCommand({
@@ -249,6 +273,9 @@ export function createHandlerCore({
         }),
       ),
       isCredentialed(sub),
+      walletTable
+        ? ddb.send(new GetItemCommand({ TableName: walletTable, Key: { pk: { S: `WALLET#${sub}` } } }))
+        : Promise.resolve(null),
     ]);
     const capMicros = Number(ledger.Item?.capMicros?.N ?? LIFETIME_CAP_MICROS);
     const spentMicros = Number(ledger.Item?.spentMicros?.N ?? 0);
@@ -269,6 +296,9 @@ export function createHandlerCore({
       credentialed,
       completedRuns: Number(ledger.Item?.completedRuns?.N ?? 0),
       completedShots: Number(ledger.Item?.completedShots?.N ?? 0),
+      // null = metering not configured (the panel hides the balance line);
+      // 0 = configured but this learner holds no credits.
+      walletCredits: walletTable ? Number(wallet?.Item?.credits?.N ?? 0) : null,
       tasks: (tasks.Items ?? []).map(taskSummary),
     });
   }
@@ -306,114 +336,167 @@ export function createHandlerCore({
       new GetItemCommand({ TableName: ledgerTable, Key: { pk: { S: `USER#${sub}` } } }),
     );
     const effectiveCap = Number(userRow.Item?.capMicros?.N ?? LIFETIME_CAP_MICROS);
+    const alreadySpent = Number(userRow.Item?.spentMicros?.N ?? 0);
     const userThreshold = effectiveCap - cost;
     const dayThreshold = DAILY_CAP_MICROS - cost;
 
-    // --- The atomic reservation: cap + daily + idempotency + kill, all-or-none.
-    try {
-      await ddb.send(
-        new TransactWriteItemsCommand({
-          TransactItems: [
-            {
-              Update: {
-                TableName: ledgerTable,
-                Key: { pk: { S: `USER#${sub}` } },
-                // if_not_exists STAMPS the cap on the row at first submit and never
-                // rewrites it. That is deliberate GRANDFATHERING: a learner who was
-                // promised a $5.00 allowance by name keeps it forever, even though
-                // LIFETIME_CAP_MICROS is now $2.50. Never write a cap-lowering
-                // migration — retracting an allowance the UI already named would be
-                // the one unforgivable lie in the one product whose differentiator
-                // is honesty about money. (Corollary, enforced in the web copy: no
-                // UI string may hardcode the cap — every figure derives from the
-                // capMicros this row returns.)
-                UpdateExpression:
-                  "SET capMicros = if_not_exists(capMicros, :cap) ADD spentMicros :cost",
-                // `spent <= cap - cost`, threshold precomputed. A ConditionExpression
-                // allows NEITHER arithmetic NOR if_not_exists (both are the original
-                // bug), so the missing-attribute case is spelled out: a first submit
-                // has no spentMicros and passes; an existing row must be within
-                // threshold. :capMinusCost carries the grandfathered cap - cost (> 0).
-                ConditionExpression:
-                  "attribute_not_exists(spentMicros) OR spentMicros <= :capMinusCost",
-                ExpressionAttributeValues: {
-                  ":cap": { N: String(LIFETIME_CAP_MICROS) },
-                  ":cost": { N: String(cost) },
-                  ":capMinusCost": { N: String(userThreshold) },
-                },
-              },
-            },
-            {
-              Update: {
-                TableName: ledgerTable,
-                Key: { pk: { S: `DAY#${day}` } },
-                UpdateExpression: "ADD dayMicros :cost SET expiresAt = :ttl",
-                // `dayMicros <= daily - cost`, threshold precomputed; missing-attribute
-                // spelled out (no arithmetic, no if_not_exists in a condition).
-                ConditionExpression:
-                  "attribute_not_exists(dayMicros) OR dayMicros <= :dayMinusCost",
-                ExpressionAttributeValues: {
-                  ":cost": { N: String(cost) },
-                  ":dayMinusCost": { N: String(dayThreshold) },
-                  ":ttl": { N: String(dayTtl) },
-                },
-              },
-            },
-            {
-              Put: {
+    // Funding legs. leg 0 is the funding source (sponsored ledger OR paid
+    // wallet); legs 1-3 (day cap, idempotency put, kill-switch) are shared, so
+    // the cancellation-reason indexes mean the same thing on either path.
+    const allowanceLeg = {
+      Update: {
+        TableName: ledgerTable,
+        Key: { pk: { S: `USER#${sub}` } },
+        // if_not_exists STAMPS the cap on the row at first submit and never
+        // rewrites it. That is deliberate GRANDFATHERING: a learner who was
+        // promised a $5.00 allowance by name keeps it forever, even though
+        // LIFETIME_CAP_MICROS is now $2.50. Never write a cap-lowering
+        // migration — retracting an allowance the UI already named would be
+        // the one unforgivable lie in the one product whose differentiator
+        // is honesty about money. (Corollary, enforced in the web copy: no
+        // UI string may hardcode the cap — every figure derives from the
+        // capMicros this row returns.)
+        UpdateExpression: "SET capMicros = if_not_exists(capMicros, :cap) ADD spentMicros :cost",
+        // `spent <= cap - cost`, threshold precomputed. A ConditionExpression
+        // allows NEITHER arithmetic NOR if_not_exists (both are the original
+        // bug), so the missing-attribute case is spelled out: a first submit
+        // has no spentMicros and passes; an existing row must be within
+        // threshold. :capMinusCost carries the grandfathered cap - cost (> 0).
+        ConditionExpression: "attribute_not_exists(spentMicros) OR spentMicros <= :capMinusCost",
+        ExpressionAttributeValues: {
+          ":cap": { N: String(LIFETIME_CAP_MICROS) },
+          ":cost": { N: String(cost) },
+          ":capMinusCost": { N: String(userThreshold) },
+        },
+      },
+    };
+    const creditsNeeded = creditsForMicros(cost);
+    const walletLeg = {
+      Update: {
+        TableName: walletTable,
+        Key: { pk: { S: `WALLET#${sub}` } },
+        // attribute_exists(pk): a learner who never purchased has no wallet row,
+        // and an unconditional ADD would mint a phantom row at -N credits.
+        // credits >= :need keeps the balance from ever going below zero under
+        // concurrent submits — DynamoDB re-checks it inside the transaction.
+        UpdateExpression: "ADD credits :neg",
+        ConditionExpression: "attribute_exists(pk) AND credits >= :need",
+        ExpressionAttributeValues: {
+          ":neg": { N: String(-creditsNeeded) },
+          ":need": { N: String(creditsNeeded) },
+        },
+      },
+    };
+    const sharedLegs = (fundedBy) => [
+      {
+        Update: {
+          TableName: ledgerTable,
+          Key: { pk: { S: `DAY#${day}` } },
+          UpdateExpression: "ADD dayMicros :cost SET expiresAt = :ttl",
+          // `dayMicros <= daily - cost`, threshold precomputed; missing-attribute
+          // spelled out (no arithmetic, no if_not_exists in a condition). The
+          // GLOBAL day cap binds wallet-funded runs too: the platform still
+          // fronts the Braket bill either way, so this is the account-level
+          // spend brake, not a fairness rule.
+          ConditionExpression: "attribute_not_exists(dayMicros) OR dayMicros <= :dayMinusCost",
+          ExpressionAttributeValues: {
+            ":cost": { N: String(cost) },
+            ":dayMinusCost": { N: String(dayThreshold) },
+            ":ttl": { N: String(dayTtl) },
+          },
+        },
+      },
+      {
+        Put: {
+          TableName: tasksTable,
+          Item: {
+            idempotencyKey: { S: idempotencyKey },
+            userId: { S: sub },
+            device: { S: DEVICE },
+            shots: { N: String(shots) },
+            estMicros: { N: String(cost) },
+            circuitHash: { S: hash },
+            status: { S: "RESERVED" },
+            createdAt: { N: String(ts) },
+            // Funding provenance: the release path and the reconciler refund
+            // whichever source actually paid, so it must live on the row.
+            fundedBy: { S: fundedBy },
+            ...(fundedBy === "wallet" ? { creditsCharged: { N: String(creditsNeeded) } } : {}),
+          },
+          ConditionExpression: "attribute_not_exists(idempotencyKey)",
+        },
+      },
+      {
+        ConditionCheck: {
+          TableName: ledgerTable,
+          Key: { pk: { S: KILL_KEY } },
+          ConditionExpression: "attribute_not_exists(disabled) OR disabled = :false",
+          ExpressionAttributeValues: { ":false": { BOOL: false } },
+        },
+      },
+    ];
+
+    // --- The atomic reservation: funding + daily + idempotency + kill, all-or-
+    // none. Attempt one funding source; the ONLY cross-path retry is the
+    // allowance→wallet fallback on a cap race, and it runs at most once.
+    const attemptReservation = async (source) => {
+      try {
+        await ddb.send(
+          new TransactWriteItemsCommand({
+            TransactItems: [source === "wallet" ? walletLeg : allowanceLeg, ...sharedLegs(source)],
+          }),
+        );
+        return { committed: source };
+      } catch (err) {
+        if (err?.name === "TransactionCanceledException") {
+          const r = err.CancellationReasons ?? [];
+          const failed = (i) => r[i]?.Code === "ConditionalCheckFailed";
+          // Idempotency FIRST: a retry of an already-accepted request must return
+          // the cached task, never a spurious over-cap 402 (its cost is already
+          // committed to the ledger from the first call).
+          if (failed(2)) {
+            const existing = await ddb.send(
+              new GetItemCommand({
                 TableName: tasksTable,
-                Item: {
-                  idempotencyKey: { S: idempotencyKey },
-                  userId: { S: sub },
-                  device: { S: DEVICE },
-                  shots: { N: String(shots) },
-                  estMicros: { N: String(cost) },
-                  circuitHash: { S: hash },
-                  status: { S: "RESERVED" },
-                  createdAt: { N: String(ts) },
-                },
-                ConditionExpression: "attribute_not_exists(idempotencyKey)",
-              },
-            },
-            {
-              ConditionCheck: {
-                TableName: ledgerTable,
-                Key: { pk: { S: KILL_KEY } },
-                ConditionExpression: "attribute_not_exists(disabled) OR disabled = :false",
-                ExpressionAttributeValues: { ":false": { BOOL: false } },
-              },
-            },
-          ],
-        }),
-      );
-    } catch (err) {
-      if (err?.name === "TransactionCanceledException") {
-        const r = err.CancellationReasons ?? [];
-        const failed = (i) => r[i]?.Code === "ConditionalCheckFailed";
-        // Idempotency FIRST: a retry of an already-accepted request must return
-        // the cached task, never a spurious over-cap 402 (its cost is already
-        // committed to the ledger from the first call).
-        if (failed(2)) {
-          const existing = await ddb.send(
-            new GetItemCommand({
-              TableName: tasksTable,
-              Key: { idempotencyKey: { S: idempotencyKey } },
-            }),
-          );
-          // The idempotency key is a GLOBAL, caller-supplied namespace, so only
-          // return the cached task to its OWNER — never disclose another user's
-          // task metadata (taskArn/hash) to whoever guesses/collides on the key.
-          if (existing.Item && existing.Item.userId?.S === sub) {
-            return json(200, { duplicate: true, task: taskSummary(existing.Item) });
+                Key: { idempotencyKey: { S: idempotencyKey } },
+              }),
+            );
+            // The idempotency key is a GLOBAL, caller-supplied namespace, so only
+            // return the cached task to its OWNER — never disclose another user's
+            // task metadata (taskArn/hash) to whoever guesses/collides on the key.
+            if (existing.Item && existing.Item.userId?.S === sub) {
+              return { response: json(200, { duplicate: true, task: taskSummary(existing.Item) }) };
+            }
+            return { response: json(409, { error: "idempotency-conflict" }) };
           }
-          return json(409, { error: "idempotency-conflict" });
+          if (failed(3)) return { response: json(503, { error: "qpu-disabled" }) }; // kill-switch
+          if (failed(1)) return { response: json(503, { error: "over-daily-budget" }) };
+          if (failed(0)) {
+            if (source === "wallet") {
+              return { response: json(402, { error: "insufficient-credits", creditsNeeded }) };
+            }
+            // The pre-read said the run fits the allowance but a concurrent
+            // submit consumed it. With a wallet configured, a payable run must
+            // not bounce on a race — retry once, wallet-funded.
+            if (walletTable) return { fallback: true };
+            return { response: json(402, { error: "over-lifetime-budget" }) };
+          }
         }
-        if (failed(3)) return json(503, { error: "qpu-disabled" }); // kill-switch tripped
-        if (failed(0)) return json(402, { error: "over-lifetime-budget" });
-        if (failed(1)) return json(503, { error: "over-daily-budget" });
+        throw err;
       }
-      throw err;
+    };
+
+    // Allowance first — the free funnel is untouched by metering. A run that no
+    // longer fits goes straight to the wallet (no split funding: a run is
+    // entirely one source, so refunds are exact and provenance is one word).
+    const fitsAllowance = alreadySpent + cost <= effectiveCap;
+    let funding = walletTable && !fitsAllowance ? "wallet" : "allowance";
+    let outcome = await attemptReservation(funding);
+    if (outcome.fallback) {
+      funding = "wallet";
+      outcome = await attemptReservation(funding);
     }
+    if (outcome.response) return outcome.response;
 
     // --- Reservation held. ONLY a CreateQuantumTask failure means no task was
     // created and the reservation must be refunded. A failure AFTER the task
@@ -452,8 +535,8 @@ export function createHandlerCore({
       });
       // Do NOT swallow a failed refund either: log it so a burned reservation is
       // visible/alarmable (the durable reconciler covers a mid-flight death).
-      await releaseReservation(sub, day, cost, idempotencyKey).catch((e) =>
-        console.error("qpu-release-failed", { sub, idempotencyKey, day, cost, err: e?.name }),
+      await releaseReservation(sub, day, cost, idempotencyKey, funding).catch((e) =>
+        console.error("qpu-release-failed", { sub, idempotencyKey, day, cost, funding, err: e?.name }),
       );
       return json(502, { error: "braket-submit-failed" });
     }
@@ -473,21 +556,40 @@ export function createHandlerCore({
         }),
       )
       .catch((e) => console.error("qpu-status-write-failed", { idempotencyKey, taskArn, err: e?.name }));
-    return json(202, { taskArn, estMicros: cost, circuitHash: hash });
+    return json(202, {
+      taskArn,
+      estMicros: cost,
+      circuitHash: hash,
+      fundedBy: funding,
+      creditsCharged: funding === "wallet" ? creditsForMicros(cost) : 0,
+    });
   }
 
-  async function releaseReservation(sub, day, cost, idempotencyKey) {
-    await ddb.send(
-      new TransactWriteItemsCommand({
-        TransactItems: [
-          {
+  async function releaseReservation(sub, day, cost, idempotencyKey, funding = "allowance") {
+    // Refund whichever source actually paid. The task-row RESERVED→RELEASED
+    // guard below makes the WHOLE release idempotent for both shapes.
+    const refundLeg =
+      funding === "wallet"
+        ? {
+            Update: {
+              TableName: walletTable,
+              Key: { pk: { S: `WALLET#${sub}` } },
+              UpdateExpression: "ADD credits :pos",
+              ExpressionAttributeValues: { ":pos": { N: String(creditsForMicros(cost)) } },
+            },
+          }
+        : {
             Update: {
               TableName: ledgerTable,
               Key: { pk: { S: `USER#${sub}` } },
               UpdateExpression: "ADD spentMicros :neg",
               ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
             },
-          },
+          };
+    await ddb.send(
+      new TransactWriteItemsCommand({
+        TransactItems: [
+          refundLeg,
           {
             Update: {
               TableName: ledgerTable,

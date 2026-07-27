@@ -60,6 +60,20 @@ Parameters:
       crossings, kill-switch trips, and every CloudWatch alarm in this stack.
       Each SNS email subscription must be confirmed once from the inbox before
       it delivers.
+  WalletTableName:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the quantum-stripe credit-wallet table (WALLET#<sub> rows,
+      1 credit = $0.01). Empty = metering disabled: an over-allowance submit is
+      refused (402) exactly as before. Set (to quantum-stripe-wallet) it lets a
+      run that no longer fits the sponsored allowance be funded by the
+      learner's PAID credits — debited atomically in the same reservation
+      transaction, refunded by the same compensating paths. Both functions get
+      a Get/Update grant scoped to this ONE table, only when set.
+
+Conditions:
+  HasWalletTable: !Not [!Equals [!Ref WalletTableName, ""]]
 
 Resources:
   # Spend ledger: USER#<sub> rows (cap/spent), DAY#<date> rows (global daily
@@ -158,6 +172,7 @@ Resources:
           TASKS_TABLE: !Ref TasksTable
           RESULTS_BUCKET: !Ref ResultsBucket
           EDGE_SECRET: !Sub "{{resolve:secretsmanager:${EdgeSecretName}:SecretString}}"
+          WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
       Policies:
         # The spend ledger (USER#/DAY#/KILL/CRED# rows) + tasks table.
         # TransactWriteItems is authorized via its constituent item actions
@@ -174,6 +189,20 @@ Resources:
                 - !GetAtt LedgerTable.Arn
                 - !GetAtt TasksTable.Arn
                 - !Sub ${TasksTable.Arn}/index/userId-index
+        # The credit wallet (metering): balance read for /budget, the atomic
+        # debit leg, and the compensating refund. When metering is disabled the
+        # !If collapses this statement's resource onto the ledger table the
+        # function can already Get/Update — i.e. it grants nothing new (a SAM
+        # Policies list item cannot itself be conditional, a Resource can).
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !If
+                - HasWalletTable
+                - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${WalletTableName}
+                - !GetAtt LedgerTable.Arn
         # Submit ONLY to IQM Garnet, and read back the resulting tasks.
         - Statement:
             - Effect: Allow
@@ -253,6 +282,7 @@ Resources:
         Variables:
           LEDGER_TABLE: !Ref LedgerTable
           TASKS_TABLE: !Ref TasksTable
+          WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
       Policies:
         # Scan the tasks table; the refund/mark updates (incl. the TransactWriteItems,
         # which authorizes per-item as UpdateItem) touch both tables.
@@ -264,6 +294,16 @@ Resources:
               Resource:
                 - !GetAtt LedgerTable.Arn
                 - !GetAtt TasksTable.Arn
+        # Refund a wallet-funded FAILED/CANCELLED run to the credit wallet.
+        # Same disabled-branch collapse as QpuFunction's wallet statement.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !If
+                - HasWalletTable
+                - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${WalletTableName}
+                - !GetAtt LedgerTable.Arn
         - Statement:
             - Effect: Allow
               Action: braket:GetQuantumTask
