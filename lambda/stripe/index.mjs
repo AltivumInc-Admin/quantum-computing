@@ -186,6 +186,52 @@ export function createHandlerCore({
     }
   }
 
+  // Where the subscription id lives on an Invoice, across API versions.
+  //
+  // The shape of evt.data.object is decided by the API version pinned on the
+  // WEBHOOK ENDPOINT in the Stripe Dashboard, NOT by the SDK's apiVersion at the
+  // bottom of this file: that pin only shapes our outbound REST calls, while the
+  // event object is parsed verbatim out of the raw request body. So this handler
+  // can be handed either shape at any time and must read both.
+  //
+  // Modern (the vendored stripe 18.5.0 Invoice type in
+  // node_modules/stripe/types/Invoices.d.ts): there is NO top-level
+  // `subscription` property at all; the id moved to
+  // parent.subscription_details.subscription. Reading only the retired
+  // top-level field is exactly what made every subscription credit grant fail
+  // silently: the id came back undefined, the handler returned early, and the
+  // route still answered 200.
+  //
+  // Legacy (an endpoint still pinned to an API version from before the move):
+  // obj.subscription.
+  //
+  // Either form may be an expanded Subscription object instead of a bare id
+  // string (the type is `string | Stripe.Subscription`), so normalize to the id.
+  function invoiceSubscriptionId(invoice) {
+    const raw = invoice.parent?.subscription_details?.subscription ?? invoice.subscription;
+    if (typeof raw === "string") return raw;
+    return typeof raw?.id === "string" ? raw.id : undefined;
+  }
+
+  // Does this invoice claim to have come from a subscription? Used ONLY to
+  // decide whether an unresolvable subscription id is worth shouting about. A
+  // genuine one-off invoice (billing_reason "manual", parent.type
+  // "quote_details", or no parent at all) legitimately has no subscription and
+  // must stay quiet, or the noise trains us to ignore the signal.
+  //
+  // billing_reason is checked as well as parent.type because it is the field
+  // that would survive ANOTHER relocation of the id: if Stripe moves the
+  // subscription reference a second time, `parent` may be gone too, but
+  // billing_reason "subscription_cycle" still tells us a renewal just went
+  // uncredited.
+  function looksSubscriptionInvoice(invoice) {
+    return (
+      invoice.parent?.type === "subscription_details" ||
+      (typeof invoice.billing_reason === "string" &&
+        invoice.billing_reason.startsWith("subscription"))
+    );
+  }
+
   async function handleEvent(evt) {
     const obj = evt.data?.object ?? {};
     switch (evt.type) {
@@ -215,8 +261,32 @@ export function createHandlerCore({
       // twice (distinct event ids dodge idempotency), so we handle invoice.paid
       // alone — first period and every renewal.
       case "invoice.paid": {
-        const subId = obj.subscription;
-        if (!subId) return; // not a subscription invoice
+        const subId = invoiceSubscriptionId(obj);
+        if (!subId) {
+          // An invoice that says it came from a subscription but carries no
+          // resolvable subscription id is a silently withheld credit grant: we
+          // answer 200, Stripe treats the event as delivered and never retries,
+          // and the buyer's balance never moves for that period. Leave evidence
+          // in the log group instead of returning into the void.
+          //
+          // NOTE: this console.error does NOT by itself trip quantum-stripe-errors
+          // (that alarm watches AWS/Lambda Errors, which counts FAILED
+          // invocations) or quantum-stripe-5xx (this path still returns 200).
+          // Turning it into a page needs a log metric filter on this message in
+          // template.yaml. Throwing here would trip both alarms, but it would
+          // also make Stripe retry for days an invoice we can never handle, so
+          // the retry storm buys nothing.
+          if (looksSubscriptionInvoice(obj)) {
+            console.error(
+              "invoice.paid: no subscription id resolved on a subscription invoice; credits NOT granted",
+              evt.id,
+              obj.id,
+              obj.billing_reason,
+              obj.parent?.type
+            );
+          }
+          return; // otherwise a genuine one-off invoice: nothing to grant
+        }
         const subscription = await stripe.subscriptions.retrieve(subId);
         const sub = subscription.metadata?.userId;
         if (!sub) return;

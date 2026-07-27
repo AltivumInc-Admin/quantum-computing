@@ -719,25 +719,33 @@ export const en: TranslationDict = {
     eyebrow: "Pricing",
     headlineBefore: "The learning is",
     headlineFree: "free",
-    headlineAfter: ". The metal is metered.",
+    // FUTURE TENSE ON PURPOSE. Nothing is metered yet: the tutor answers free and
+    // curriculum hardware runs are platform-sponsored (lambda/qpu LIFETIME_CAP_MICROS).
+    // This said "is metered" through five rounds of copy audit — the largest text on
+    // the page asserting the one thing the page was being corrected for, invisible
+    // because the suite pinned the exact string. Flip back to "is metered" in the same
+    // commit that lands wallet billing, not before.
+    headlineAfter: ". The metal will be metered.",
     heroBody:
-      "The entire curriculum, simulator, and playground are free with a free account — forever. One credit wallet meters the only two things that cost real money: frontier AI tutoring and real quantum hardware. One credit is one cent, always.",
+      "The entire curriculum, simulator, and playground are free with a free account — forever. One credit wallet will meter what actually costs real money: AI tutoring and paid cloud compute — real quantum hardware and the managed simulators in the rate table below. None of it is metered yet: today the tutor is free to try and curriculum hardware runs are platform-sponsored. One credit is one cent, always.",
     creditPeg: "1 credit = $0.01",
     topUpFrom: "Top up from {{amount}}",
-    lead:
-      "The entire quantum curriculum and simulator are free with a free account. One dollar-pegged credit wallet meters the only two things that cost real money: AI tutoring and real quantum hardware.",
     principleLearning: "Learning is the product",
     principleLearningBody:
       "Lessons, notebooks, and the circuit simulator run in your browser, so we can keep them free for everyone, forever. The curriculum never moves behind the wallet.",
     principleWallet: "One wallet, pegged to the dollar",
     principleWalletBody:
-      "One credit is one cent — always. Top up from {{min}}, spend on any backend or any tutor model, and purchased credits never expire.",
+      "One credit is one cent — always. Top up from {{min}}; purchased credits never expire, and nothing debits them yet.",
     principleLine: "A clear line",
+    // The line has to match the rate table on the same page: SIMULATOR_RATES publishes
+    // SV1 and DM1 at credits per minute, so a two-item list closed by an absolute
+    // "nothing else will ever cost credits" is a free promise this page's own table
+    // contradicts. Name all three metered things, and keep the free side concrete.
     principleLineBody:
-      "Credits meter exactly two things: questions to the AI tutor and runs on real quantum hardware. If it is neither of those, it is free.",
+      "Credits will meter paid compute and paid tutoring: questions to the AI tutor, runs on real quantum hardware, and minutes on the managed cloud simulators — every rate published below. The curriculum, the browser simulator, and the playground stay free. Today none of the three is metered yet.",
     tiersHeading: "Three ways to fund the wallet",
     tiersIntro:
-      "Every account is pay-as-you-go at heart: top up any amount, spend it on anything metered. Plus and Pro are monthly credit bundles with stronger tutor models — never an all-you-can-eat plan, so the deal stays honest in both directions.",
+      "Every account is pay-as-you-go at heart: top up any amount, and it will spend on anything metered once metering ships. Plus and Pro are monthly credit bundles at a small bonus — never an all-you-can-eat plan, so the deal stays honest in both directions.",
     bestForRegulars: "Best for regulars",
     forever: "forever",
     perMonth: "/ month",
@@ -747,27 +755,27 @@ export const en: TranslationDict = {
     launchingSoon: "Launching soon",
     signUpFree: "Sign up free",
     signUpSoon: "Sign-up coming soon",
-    launchPricing: "Launch pricing:",
+    launchPricing: "Before you buy:",
     launchPricingBody:
-      " wallets are live. During the transition, the in-lesson tutor remains free to try and existing curriculum hardware runs stay sponsored — your credits meter new wallet-billed usage as it rolls out.",
+      " wallets are live, but nothing draws them down yet. The in-lesson tutor is free to try and curriculum hardware runs stay platform-sponsored, so a balance you buy today buys nothing today. Credits never expire and start metering when tutor and hardware billing ship.",
     earlyAccess: "Early access:",
     earlyAccessBody:
       " billing has not launched yet — these are launch prices. Today the tutor is free to try, and hardware runs inside the curriculum are sponsored. When wallets go live, you fund your own from a top-up or a plan.",
     estimatorHeading: "Know the number before you run",
     estimatorIntro:
-      "No quantum platform should surprise you with a bill. Price any backend and any tutor habit here — the identical estimate gates every real submission.",
+      "No quantum platform should surprise you with a bill. Price any published backend and any tutor habit here. Before a real hardware run, the workspace shows you its cost and makes you approve it.",
     ratesHeading: "Every rate, published",
     ratesAsOf: "{{date}} rates",
     ratesIntro:
-      "The full price list — no enterprise-sales veil. QPU runs add a flat {{fee}}-credit task fee; managed simulators bill by the minute; the browser simulator is free and always will be.",
+      "The full price list — no enterprise-sales veil. These are the rates metering will charge: QPU runs add a flat {{fee}}-credit task fee, and managed simulators bill by the minute. The browser simulator is free and always will be.",
     aiTutor: "AI tutor",
-    tutorTypical: "Typical credits per question.",
+    tutorTypical:
+      "Typical credits per question once tutor metering ships. Today every question is answered free by Claude Haiku, and the model is not selectable.",
     quantumHardware: "Quantum hardware",
     hardwarePerShotPlusFee: "Credits per shot, plus the {{fee}}-credit task fee.",
     shotRun: "{{n}}-shot run",
     creditsPerMinute: "{{n}} credits / minute",
     model: "Model",
-    tier: "Tier",
     credits: "Credits",
     backend: "Backend",
     perShot: "Per shot",
@@ -777,19 +785,19 @@ export const en: TranslationDict = {
       "Yes. The full curriculum, the browser simulator, the playground, the glossary, and spaced-repetition review are free with a free account — email or Google, no credit card. That is the product, not a trial.",
     faqCreditsQ: "What do credits buy?",
     faqCreditsA:
-      "Two things: AI tutor questions and real quantum compute (QPU runs and managed cloud simulators). One credit equals one cent. Before any hardware run executes, you see the exact cost and approve it — nothing spends your balance without a number in front of you.",
+      "Nothing yet — that is the honest answer. No part of the platform debits your wallet today: the AI tutor is free to try and curriculum hardware runs are platform-sponsored. When metering ships, credits will buy exactly two things: AI tutor questions and real quantum compute (QPU runs and managed cloud simulators). One credit equals one cent. Hardware runs already show you the exact cost and make you approve it before anything executes.",
     faqExpireQ: "Do credits expire?",
     faqExpireA:
       "Purchased credits never expire. Monthly Plus and Pro credits roll over for as long as the subscription is active.",
     faqBackendsQ: "Why do backends cost such different amounts?",
     faqBackendsA:
-      "Because the machines really do. A trapped-ion shot on IonQ lists at roughly 180 times a superconducting shot on Rigetti. We publish every backend's rate and let you choose the physics your budget wants — the estimate is always shown before you commit.",
+      "Because the machines really do. A trapped-ion shot on IonQ lists at roughly 180 times a superconducting shot on Rigetti. We publish every backend's rate so the price of the physics is never a mystery. Today the curriculum's sponsored runs all go to IQM Garnet; choosing your own backend arrives with wallet metering. Before one of those sponsored runs executes, the workspace quotes it in AWS dollars from its own table and waits for your approval.",
     faqProviderQ: "What happens when a provider changes its prices?",
     faqProviderA:
-      "Hardware rates track the providers' published price sheets (currently the {{date}} revision). When a provider reprices, our credit rates follow, and the pre-flight estimate always reflects the live rate at submission time.",
+      "Hardware rates track the providers' published price sheets (currently the {{date}} revision). Nothing on this page is fetched from a provider: these credit rates are compiled into the site, and the pre-flight check before a hardware run reads its own separate table of AWS dollar rates, also compiled in. A reprice reaches either table only through a new release — which is what the revision date on the rate table records.",
     faqBuyQ: "How do I buy credits?",
     faqBuyA:
-      "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire.",
+      "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire — and nothing draws them down yet, so a balance today is a balance waiting for metering to ship.",
     faqWhenQ: "When can I buy credits?",
     faqWhenA:
       "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create your free account now so you are ready the moment wallets go live.",
@@ -804,23 +812,33 @@ export const en: TranslationDict = {
     thisRun: "This run",
     perMonthLabel: "Per month",
     perMoSuffix: " / mo",
-    tutorModel: "Tutor model",
+    tutorModel: "Tutor model to price",
+    modelToPrice: "Model to price",
+    // Renders directly above the model chips: the chips are a forecasting control,
+    // not an entitlement you can buy. The tutor takes no model parameter today.
+    modelNotSelectableYet:
+      "Not selectable yet — every question today is answered free by Claude Haiku. Price any model here to see what metering would cost.",
     presets: "Presets",
     priceHardware: "Price a hardware run",
+    // A forecast, and only a forecast. This pane prices eight backends in credits;
+    // exactly one of them (IQM Garnet) accepts a submission today, and its pre-flight
+    // quotes AWS dollars from a different table, so it does NOT show this number.
+    // Claiming "the same estimate appears before every real submission" was false twice
+    // over. The approval gate is real and stays.
     priceHardwareBody:
-      "The same estimate appears before every real submission — nothing runs until you approve the number.",
+      "A forecast of metered pricing, not a charge. Only IQM Garnet accepts submissions today, and its pre-flight quotes that sponsored run in dollars at the AWS list rate — not the credit figure shown here. Nothing runs until you approve the number you are shown there.",
     shots: "Shots",
     shotsValue: "{{n}} shots",
     priceTutorMonth: "Price a month of tutoring",
     priceTutorBody:
-      "Typical questions — long derivations cost proportionally more, and the margin shows the cost as you type.",
+      "Typical questions — long derivations cost proportionally more. This is a forecast of metered pricing; tutoring is not charged today.",
     questionsPerMonth: "Questions per month",
     questionsValue: "{{n}} questions per month",
     perShotPlusTask:
       "{{perShot}} credits per shot + {{fee}} credits per task.",
     aboutCreditsPerQ: {
-      one: "{{model}}: about {{count}} credit per question. {{note}}",
-      other: "{{model}}: about {{count}} credits per question. {{note}}",
+      one: "{{model}} would cost about {{count}} credit per question once metering ships. {{note}}",
+      other: "{{model}} would cost about {{count}} credits per question once metering ships. {{note}}",
     },
     topUpTitle: "Top up any amount",
     topUpBody:
@@ -831,28 +849,28 @@ export const en: TranslationDict = {
     topUpFootnote:
       "Purchased credits never expire. You will see the exact amount on the Stripe checkout page before paying.",
     checkoutFailed: "Could not start checkout. Please try again.",
-    // Tier marketing (names Free/Plus/Pro stay English product names).
+    // Tier marketing (names Free/Plus/Pro stay English product names). Every bullet
+    // here must be true of the deployed system TODAY — the tier cards are the point of
+    // sale, so a roadmap item a buyer could read as included belongs nowhere in them.
+    // The not-yet-metered status is carried by launchPricingBody/earlyAccessBody, which
+    // render directly ABOVE the cards in both billing states — a buyer meets it on the
+    // way to every purchase control, not after all three of them.
     freeTagline: "The entire learning platform. No card, no clock.",
     freeFootnote: "Free forever. Learning never moves behind the wallet.",
     freeF0: "Full curriculum — every section, every notebook",
     freeF1: "Unlimited browser simulation — circuits run on your machine",
     freeF2: "Playground, glossary, spaced-repetition review",
     freeF3: "Progress and saved circuits synced across devices",
-    freeF4: "Add credits only when you use the AI tutor or real quantum hardware",
-    plusTagline: "Monthly credits and stronger tutor models.",
+    freeF4: "The AI tutor is free to try, and curriculum hardware runs are platform-sponsored",
+    plusTagline: "Monthly credits, at a small bonus over pay-as-you-go.",
     plusFootnote: "Cancel anytime. Purchased credits never expire.",
     plusF0: "Everything in Free",
     plusF1: "1,890 credits every month — a 5% bonus over pay-as-you-go",
     plusF2: "Credits roll over while you are subscribed",
-    plusF3: "Claude Sonnet and Opus unlocked in the tutor",
-    plusF4: "Run on any quantum backend from your balance",
-    proTagline: "The full model roster and first in line for metal.",
-    proFootnote: "For daily practitioners. Team seats are on the roadmap.",
+    proTagline: "The largest monthly credit bundle.",
+    proFootnote: "For the heaviest users. Cancel anytime; credits never expire.",
     proF0: "Everything in Plus",
     proF1: "6,200 credits every month",
-    proF2: "Claude Fable unlocked — the frontier tutor",
-    proF3: "Priority queue on quantum hardware",
-    proF4: "Early access to new backends as they land",
     // Hardware technology descriptors for rate table
     techSuperconducting108: "Superconducting, 108 qubits",
     techSuperconducting: "Superconducting",

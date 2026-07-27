@@ -4,6 +4,7 @@ import Link from "next/link";
 import { isAuthConfigured } from "@/lib/auth-config";
 import {
   TIERS,
+  type Tier,
   TUTOR_RATES,
   HARDWARE_RATES,
   SIMULATOR_RATES,
@@ -35,12 +36,18 @@ const SIM_DESC_KEY: Record<string, string> = {
   "Density-matrix (noise) simulator, up to 17 qubits": "pricingUi.simDm1",
 };
 
-function tierCopy(t: TFunction, id: "free" | "plus" | "pro") {
-  const prefix = id === "free" ? "free" : id;
+/**
+ * Resolve a tier's copy from the keys the tier itself carries. The keys used to be
+ * rebuilt here from the tier id with a hardcoded five-bullet range, which silently
+ * required every tier to have exactly five features and let lib/pricing.ts's own
+ * feature strings drift out of sight. Reading Tier.featureKeys means the card renders
+ * exactly what the data says, at whatever length the data says.
+ */
+function tierCopy(t: TFunction, tier: Tier) {
   return {
-    tagline: t(`pricingUi.${prefix}Tagline`),
-    footnote: t(`pricingUi.${prefix}Footnote`),
-    features: [0, 1, 2, 3, 4].map((i) => t(`pricingUi.${prefix}F${i}`)),
+    tagline: t(tier.taglineKey),
+    footnote: t(tier.footnoteKey),
+    features: tier.featureKeys.map((key) => t(key)),
   };
 }
 
@@ -156,12 +163,34 @@ export function PricingPageContent() {
             </h2>
             <div className="flex-1 h-px bg-gradient-to-r from-(--bd) to-transparent" />
           </div>
-          <p className="max-w-3xl text-base text-(--mut) mb-12">{t("pricingUi.tiersIntro")}</p>
+          <p className="max-w-3xl text-base text-(--mut) mb-6">{t("pricingUi.tiersIntro")}</p>
+
+          {/* The not-yet-metered disclosure renders ABOVE the tier grid and the top-up,
+              because every purchase control on this page is below it: two checkout
+              buttons in the grid and the top-up's buy button. It used to sit after all
+              three, which was survivable while its label read "Launch pricing:" and
+              actively misleading once the label became "Before you buy:". Renaming a
+              label does not move it. The structural assertion in pricing-page.test.tsx
+              compares document position against every purchase control, so this cannot
+              drift back silently. */}
+          <div className="mb-12 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-(--mut)">
+            {billingLive ? (
+              <>
+                <span className="font-semibold">{t("pricingUi.launchPricing")}</span>
+                {t("pricingUi.launchPricingBody")}
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">{t("pricingUi.earlyAccess")}</span>
+                {t("pricingUi.earlyAccessBody")}
+              </>
+            )}
+          </div>
 
           <div className="grid gap-5 lg:grid-cols-3 items-start">
             {TIERS.map((tier) => {
               const featured = tier.id === "plus";
-              const copy = tierCopy(t, tier.id);
+              const copy = tierCopy(t, tier);
               const displayName =
                 tier.id === "free" ? t("pricingUi.free") : tier.name;
               return (
@@ -259,18 +288,6 @@ export function PricingPageContent() {
               <TopUp />
             </div>
           )}
-
-          {billingLive ? (
-            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-(--mut)">
-              <span className="font-semibold">{t("pricingUi.launchPricing")}</span>
-              {t("pricingUi.launchPricingBody")}
-            </div>
-          ) : (
-            <div className="mt-8 rounded-card border border-warm/30 bg-warm/5 px-5 py-4 text-sm text-(--mut)">
-              <span className="font-semibold">{t("pricingUi.earlyAccess")}</span>
-              {t("pricingUi.earlyAccessBody")}
-            </div>
-          )}
         </section>
 
         <section aria-labelledby="estimator-heading" className="mt-24 reveal">
@@ -313,12 +330,14 @@ export function PricingPageContent() {
               </p>
               <table className="w-full text-sm">
                 <thead>
+                  {/* No "Tier" column. It rendered a plus/pro chip beside Sonnet, Opus,
+                      and Fable, which reads as "this tier unlocks this model" — an unlock
+                      nothing in the codebase performs (the tutor lambda binds one model
+                      id and takes no model parameter). The column returns with the
+                      feature, not before it. */}
                   <tr className="border-t border-(--bd) text-left">
                     <th scope="col" className="px-6 py-2.5 font-medium text-caption">
                       {t("pricingUi.model")}
-                    </th>
-                    <th scope="col" className="px-3 py-2.5 font-medium text-caption">
-                      {t("pricingUi.tier")}
                     </th>
                     <th
                       scope="col"
@@ -332,11 +351,6 @@ export function PricingPageContent() {
                   {TUTOR_RATES.map((r) => (
                     <tr key={r.model} className="border-t border-(--bd)">
                       <td className="px-6 py-3 font-medium text-(--ink)">{r.model}</td>
-                      <td className="px-3 py-3">
-                        <span className="inline-flex items-center rounded-chip bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent-dark dark:text-accent-light capitalize">
-                          {r.tier === "free" ? t("pricingUi.free") : r.tier}
-                        </span>
-                      </td>
                       <td className="px-6 py-3 text-right tabular-nums text-(--mut)">
                         ~{r.typicalCreditsPerQuestion}
                       </td>

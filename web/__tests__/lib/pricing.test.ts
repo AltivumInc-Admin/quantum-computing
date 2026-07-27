@@ -17,6 +17,7 @@ import {
   formatUsd,
 } from "@/lib/pricing";
 import { PRICING } from "@/components/quantum/cost";
+import { translate } from "@/i18n";
 
 describe("pricing peg and helpers", () => {
   it("pegs one credit to one cent", () => {
@@ -88,20 +89,40 @@ describe("tiers", () => {
     }
   });
 
-  it("Free costs nothing, includes no monthly credits, and carries no grant", () => {
+  it("Free costs nothing and includes no monthly credits", () => {
     const free = TIERS[0];
     expect(free.priceUsdPerMonth).toBe(0);
     expect(free.monthlyCredits).toBe(0);
-    const copy = free.features.join(" ").toLowerCase();
-    expect(copy).not.toContain("grant");
-    expect(copy).toContain("add credits only when you use");
   });
 
-  it("every tutor model maps to a real tier", () => {
-    const ids = new Set(TIERS.map((t) => t.id));
+  it("every tutor rate is a positive per-question figure", () => {
     for (const r of TUTOR_RATES) {
-      expect(ids.has(r.tier)).toBe(true);
       expect(r.typicalCreditsPerQuestion).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * Tier copy lives in the dictionaries, not in this module. The card used to carry a
+   * second, English-only copy of every bullet here that rendered NOWHERE — the page
+   * resolved `pricingUi.{tier}F{i}` instead — so the copy-honesty assertions written
+   * against it passed no matter what shipped. These rows now check the wiring (keys
+   * exist, resolve, and are not the raw key echoed back); the claims themselves are
+   * checked against rendered DOM in __tests__/app/pricing-page.test.tsx.
+   */
+  it("every tier's copy keys resolve to real text in both locales", () => {
+    for (const tier of TIERS) {
+      expect(tier.featureKeys.length).toBeGreaterThan(0);
+      const keys = [tier.taglineKey, tier.footnoteKey, ...tier.featureKeys];
+      // A key can only be rendered once, and only from this array — duplicates would
+      // silently repeat a bullet on the card.
+      expect(new Set(tier.featureKeys).size).toBe(tier.featureKeys.length);
+      for (const key of keys) {
+        for (const locale of ["en", "es"] as const) {
+          const text = translate(locale, key);
+          expect(text).not.toBe(key); // translate() echoes the key when it misses
+          expect(text.trim().length).toBeGreaterThan(0);
+        }
+      }
     }
   });
 });
