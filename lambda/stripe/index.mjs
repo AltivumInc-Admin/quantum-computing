@@ -232,27 +232,62 @@ export function createHandlerCore({
     );
   }
 
+  /**
+   * Fulfill a Checkout Session: credits for a top-up, tier light-up for a
+   * subscription. Shared by checkout.session.completed and
+   * checkout.session.async_payment_succeeded — for delayed-notification
+   * methods (Klarna, Cash App, Amazon Pay, ACH) the session "completes" with
+   * payment_status "unpaid" BEFORE any money moves, and the money outcome
+   * arrives later as async_payment_succeeded/failed. Stripe's fulfillment
+   * contract: fulfill when payment_status != "unpaid" ("no_payment_required",
+   * e.g. a 100%-off promotion, still fulfills); an unpaid session fulfills
+   * nothing and waits. Idempotency is per EVENT id, and the unpaid completion
+   * writes nothing, so the eventual async_payment_succeeded is the one and
+   * only grant for the purchase — no double-credit window.
+   */
+  async function fulfillCheckoutSession(evt, obj) {
+    const sub = obj.client_reference_id;
+    if (!sub) return;
+    if (obj.payment_status === "unpaid") return; // money not settled yet
+    if (obj.mode === "payment") {
+      const credits = Number(obj.metadata?.credits);
+      if (Number.isFinite(credits) && credits > 0) {
+        await applyOnce({ eventId: evt.id, sub, addCredits: credits });
+      }
+    } else if (obj.mode === "subscription") {
+      // Credits for the period arrive on invoice.paid; here we only light up
+      // the tier immediately so the UI reflects the purchase without waiting.
+      await applyOnce({
+        eventId: evt.id,
+        sub,
+        setTier: obj.metadata?.tier,
+        setSubStatus: "active",
+      });
+    }
+  }
+
   async function handleEvent(evt) {
     const obj = evt.data?.object ?? {};
     switch (evt.type) {
-      case "checkout.session.completed": {
-        const sub = obj.client_reference_id;
-        if (!sub) return;
-        if (obj.mode === "payment") {
-          const credits = Number(obj.metadata?.credits);
-          if (Number.isFinite(credits) && credits > 0) {
-            await applyOnce({ eventId: evt.id, sub, addCredits: credits });
-          }
-        } else if (obj.mode === "subscription") {
-          // Credits for the period arrive on invoice.paid; here we only light up
-          // the tier immediately so the UI reflects the purchase without waiting.
-          await applyOnce({
-            eventId: evt.id,
-            sub,
-            setTier: obj.metadata?.tier,
-            setSubStatus: "active",
-          });
-        }
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        await fulfillCheckoutSession(evt, obj);
+        return;
+      }
+
+      case "checkout.session.async_payment_failed": {
+        // The delayed payment fell through: the buyer was told at checkout,
+        // Stripe emails them (dashboard setting), and no credits were ever
+        // granted (the unpaid completion wrote nothing). Nothing to unwind —
+        // but leave loud evidence, because a buyer who insists they paid will
+        // be looked up by session id. Same alertability caveat as the
+        // invoice.paid log below: console.error inside a 200 trips no alarm.
+        console.error(
+          "checkout.session.async_payment_failed: delayed payment failed; nothing granted",
+          evt.id,
+          obj.id,
+          obj.client_reference_id
+        );
         return;
       }
 
