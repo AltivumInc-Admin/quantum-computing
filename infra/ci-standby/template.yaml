@@ -159,10 +159,11 @@ Resources:
                 - cd "$CODEBUILD_SRC_DIR/web" && npm ci
                 - cd "$CODEBUILD_SRC_DIR/web" && npm run lint
                 - cd "$CODEBUILD_SRC_DIR/web" && npm test
-                # --- Lambda tests (tutor, qpu, sync, review-email) ---
+                # --- Lambda tests (every directory under lambda/ — keep in
+                # sync with ci.yml's matrix; stripe guards the credit wallet) ---
                 - |
                   cd "$CODEBUILD_SRC_DIR"
-                  for d in tutor qpu sync review-email; do
+                  for d in tutor qpu sync review-email stripe; do
                     echo "=== lambda/$d ==="
                     (cd "lambda/$d" && npm ci && npm test) || exit 1
                   done

@@ -2,7 +2,7 @@
 // both stubbed and injected into createHandlerCore, mirroring lambda/sync.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHandlerCore, CATALOG } from "./index.mjs";
+import { createHandlerCore, lazyCore, CATALOG } from "./index.mjs";
 
 const TABLE = "quantum-stripe-wallet";
 const ORIGIN = "https://quantum.altivum.ai";
@@ -457,6 +457,125 @@ test("webhook invoice.paid stays silent for a genuine one-off invoice", async ()
   assert.deepEqual(lines, []);
 });
 
+// ---- delayed-notification payment methods ----------------------------------
+// Klarna / Cash App / Amazon Pay / ACH complete the Checkout Session BEFORE the
+// money settles: checkout.session.completed arrives with payment_status
+// "unpaid", and the money outcome arrives later as async_payment_succeeded or
+// async_payment_failed. Fulfilling on `completed` alone hands out credits for
+// payments that then fail. Stripe's fulfillment contract: fulfill when
+// payment_status != "unpaid"; otherwise wait for async_payment_succeeded.
+
+test("webhook checkout.session.completed with payment_status unpaid grants NOTHING", async () => {
+  const event = {
+    id: "evt_unpaid",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_unpaid",
+        mode: "payment",
+        payment_status: "unpaid", // Klarna et al: session done, money not
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  };
+  const { res, ddb } = await deliverWebhook(event);
+  assert.equal(res.statusCode, 200);
+  assert.equal(ddb.calls.length, 0, "an unpaid session must not touch the wallet");
+});
+
+test("webhook checkout.session.completed (subscription) with payment_status unpaid defers the tier", async () => {
+  // The tier light-up must wait too: invoice.paid sets tier + credits when the
+  // delayed payment actually settles.
+  const event = {
+    id: "evt_sub_unpaid",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_sub_unpaid",
+        mode: "subscription",
+        payment_status: "unpaid",
+        client_reference_id: "user-9",
+        metadata: { tier: "plus" },
+      },
+    },
+  };
+  const { res, ddb } = await deliverWebhook(event);
+  assert.equal(res.statusCode, 200);
+  assert.equal(ddb.calls.length, 0);
+});
+
+test("webhook checkout.session.completed with payment_status no_payment_required still fulfills", async () => {
+  // A 100%-off promotion settles nothing but IS complete; Stripe's contract is
+  // fulfill on anything except "unpaid". Pins the gate at the right boundary.
+  const event = {
+    id: "evt_npr",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_npr",
+        mode: "payment",
+        payment_status: "no_payment_required",
+        client_reference_id: "user-9",
+        metadata: { credits: "500" },
+      },
+    },
+  };
+  const { ddb } = await deliverWebhook(event);
+  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "500");
+});
+
+test("webhook checkout.session.async_payment_succeeded fulfills like a paid completion", async () => {
+  const event = {
+    id: "evt_async_ok",
+    type: "checkout.session.async_payment_succeeded",
+    data: {
+      object: {
+        id: "cs_async",
+        mode: "payment",
+        payment_status: "paid",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  };
+  const { res, ddb } = await deliverWebhook(event);
+  assert.equal(res.statusCode, 200);
+  const tx = ddb.calls[0].input.TransactItems;
+  // its OWN event id is the idempotency key — completed(unpaid) wrote nothing,
+  // so this is the one and only grant for the purchase
+  assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_async_ok");
+  assert.equal(tx[1].Update.Key.pk.S, "WALLET#user-9");
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"].N, "2000");
+});
+
+test("webhook checkout.session.async_payment_failed grants nothing and leaves loud evidence", async () => {
+  const event = {
+    id: "evt_async_fail",
+    type: "checkout.session.async_payment_failed",
+    data: {
+      object: {
+        id: "cs_failed",
+        mode: "payment",
+        payment_status: "unpaid",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  };
+  let out;
+  const lines = await captureConsoleError(async () => {
+    out = await deliverWebhook(event);
+  });
+  assert.equal(out.res.statusCode, 200); // nothing to retry — the payment failed
+  assert.equal(out.ddb.calls.length, 0, "a failed payment must never touch the wallet");
+  assert.equal(lines.length, 1, "a failed async payment must be logged");
+  const logged = lines[0].join(" ");
+  assert.match(logged, /async_payment_failed/);
+  assert.match(logged, /evt_async_fail/);
+  assert.match(logged, /cs_failed/);
+});
+
 test("webhook customer.subscription.deleted downgrades the tier to free", async () => {
   const ddb = stubDdb();
   const event = {
@@ -469,6 +588,36 @@ test("webhook customer.subscription.deleted downgrades the tier to free", async 
   const tx = ddb.calls[0].input.TransactItems;
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "free");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":ss"].S, "canceled");
+});
+
+// ---- container lifecycle -----------------------------------------------------
+
+test("lazyCore builds once and reuses the core across invocations", async () => {
+  let builds = 0;
+  const handler = lazyCore(async () => {
+    builds++;
+    return async () => ({ statusCode: 200, body: "ok" });
+  });
+  assert.equal((await handler({})).statusCode, 200);
+  assert.equal((await handler({})).statusCode, 200);
+  assert.equal(builds, 1, "a healthy core must be built exactly once per container");
+});
+
+test("lazyCore retries the build after a failed secret load instead of poisoning the container", async () => {
+  // The failure mode: loadSecret rejects once (Secrets Manager throttle, IAM
+  // hiccup, mid-rotation read), the rejected promise is memoized, and every
+  // subsequent invocation of the warm container replays the same rejection —
+  // a permanent 500 until Lambda happens to recycle it.
+  let builds = 0;
+  const handler = lazyCore(async () => {
+    builds++;
+    if (builds === 1) throw new Error("secrets manager unavailable");
+    return async () => ({ statusCode: 200, body: "recovered" });
+  });
+  await assert.rejects(() => handler({}), /secrets manager unavailable/);
+  const res = await handler({});
+  assert.equal(res.statusCode, 200, "the next invocation must rebuild, not replay the rejection");
+  assert.equal(builds, 2);
 });
 
 test("webhook ignores unrelated event types without touching DynamoDB", async () => {

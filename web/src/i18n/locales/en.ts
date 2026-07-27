@@ -447,6 +447,11 @@ export const en: TranslationDict = {
     noAnswer: "The tutor did not send an answer — please try again.",
     stopped: "The tutor stopped responding — please try again.",
     unreachable: "Could not reach the tutor — check your connection.",
+    modelLabel: "Tutor model",
+    // "included" rather than "0 credits": a zero beside a currency-ish noun
+    // reads as a billing fault, when in fact it is the free tier working.
+    costCredits: "{{credits}} credits",
+    costIncluded: "included",
   },
   glossaryUi: {
     searchLabel: "Search glossary terms",
@@ -713,6 +718,12 @@ export const en: TranslationDict = {
     // safe, and the retry) are exactly what a learner needs where medals are spent.
     recordUnavailable:
       "Your hardware record is unavailable right now, so medal progress can't be shown. Your completed runs are unaffected — reload to retry.",
+    // Credit metering (wallet-funded runs beyond the sponsored allowance).
+    // "no credits were taken" is deliberate: the reservation was refused before
+    // any debit, and the panel's copy contract bans unqualified "charged".
+    walletBalance: "Wallet: {{credits}} credits",
+    insufficientCredits:
+      "This run needs {{credits}} credits and your wallet doesn't cover it. Nothing was submitted and no credits were taken — top up on the Pricing page to run beyond the sponsored allowance.",
   },
   pricingUi: {
     title: "Pricing",

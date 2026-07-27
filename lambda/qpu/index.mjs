@@ -10,6 +10,8 @@ const core = createHandlerCore({
   braket: new BraketClient({ region: DEVICE_REGION }),
   ledgerTable: process.env.LEDGER_TABLE,
   tasksTable: process.env.TASKS_TABLE,
+  // Unset = credit metering disabled (over-allowance runs 402 as before).
+  walletTable: process.env.WALLET_TABLE || undefined,
   resultsBucket: process.env.RESULTS_BUCKET,
   edgeSecret: process.env.EDGE_SECRET || undefined,
 });

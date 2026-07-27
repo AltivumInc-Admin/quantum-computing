@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   isQpuConfigured,
   getBudget,
@@ -25,6 +26,7 @@ import {
   DEEP_SAMPLE_SHOTS,
   DEEP_SAMPLE_TITLE,
   costMicros,
+  creditsForMicros,
   usd,
   maxShotsAffordable,
   deepSampleReachable,
@@ -121,6 +123,10 @@ const reachOf = (b: Budget): HardwareReach | null =>
 
 /** A budget with too little left for even a 1-shot run is SPENT — not "low". */
 const isSpent = (b: Budget) => b.remainingMicros < costMicros(1);
+/** Can the PAID wallet fund at least the cheapest possible run? (null = metering
+ *  not reported by the server → no.) */
+const walletCanFund = (b: Budget) =>
+  b.walletCredits != null && b.walletCredits >= creditsForMicros(costMicros(1));
 
 const PRESETS: { name: string; qasm: string }[] = [
   {
@@ -223,7 +229,10 @@ function Panel({ className }: { className?: string }) {
           </div>
           <div className="flex flex-col gap-4">
             {budget.credentialed ? (
-              isSpent(budget) ? (
+              // The terminal card only when NEITHER funding source can pay: a
+              // spent allowance with wallet credits keeps the live form, or the
+              // credits the pricing page sells would be unusable by construction.
+              isSpent(budget) && !walletCanFund(budget) ? (
                 <BudgetSpent budget={budget} />
               ) : (
                 <SubmitForm budget={budget} onSubmitted={refresh} />
@@ -270,6 +279,7 @@ function SponsorNote() {
 }
 
 function BudgetBar({ budget }: { budget: Budget }) {
+  const { t } = useLocale();
   const pct = budget.capMicros > 0 ? Math.min(100, (budget.spentMicros / budget.capMicros) * 100) : 0;
   // The live frontier. The old caption ("The platform funds real-hardware access…")
   // buried the who-pays fact in 12px — it now leads the SponsorNote instead — and,
@@ -325,6 +335,16 @@ function BudgetBar({ budget }: { budget: Budget }) {
           </>
         )}
       </p>
+      {/* The PAID wallet, only when the server reports one (null = pre-metering
+          Lambda or metering not configured — an invented "0 credits" would tell a
+          paying learner their balance vanished). Rendered on the same card as the
+          sponsored budget because they are the two funding sources of one run:
+          allowance first, then credits. */}
+      {budget.walletCredits != null && (
+        <p className="mt-1 text-xs text-caption tabular-nums">
+          {t("qpuUi.walletBalance", { credits: budget.walletCredits })}
+        </p>
+      )}
       <LadderProgress budget={budget} />
     </div>
   );
@@ -658,6 +678,19 @@ function BudgetSpent({ budget }: { budget: Budget }) {
       <p className="mt-2 text-xs text-caption">
         <span className="font-mono">make setup</span>
       </p>
+      {/* The second continuation path, shown only where it is real: metering is
+          configured (walletCredits reported) but this learner has too few credits
+          to fund a run. Without this the card offers exactly one way forward and
+          silently omits the one the pricing page sells. */}
+      {budget.walletCredits != null && !walletCanFund(budget) && (
+        <p className="mt-3 text-sm leading-relaxed text-(--mut)">
+          Or keep running here: top up your credit wallet on the{" "}
+          <Link href="/pricing" className="link-underline">
+            Pricing page
+          </Link>{" "}
+          — credits fund runs beyond the sponsored allowance at the same Braket rates.
+        </p>
+      )}
     </div>
   );
 }
@@ -784,8 +817,15 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
 
   const micros = useMemo(() => costMicros(shots), [shots]);
   const overBudget = micros > budget.remainingMicros;
+  // Funding, decided the same way the server decides it: allowance first, then
+  // the PAID wallet. A run the allowance can't cover is not blocked when the
+  // wallet can pay for it — it is DISCLOSED as wallet-funded at the confirm step.
+  const runCredits = creditsForMicros(micros);
+  const walletFunded = overBudget && budget.walletCredits != null;
+  const walletCovers = walletFunded && (budget.walletCredits ?? 0) >= runCredits;
   const validShots = Number.isInteger(shots) && shots >= 1 && shots <= MAX_SHOTS;
-  const canSubmit = validShots && qasm.trim() !== "" && !overBudget;
+  const canSubmit =
+    validShots && qasm.trim() !== "" && (!overBudget || walletCovers);
   // What the budget still buys AFTER this run — the cliff, made visible before the click.
   const afterMicros = Math.max(0, budget.remainingMicros - micros);
   const afterShots = maxShotsAffordable(afterMicros);
@@ -914,7 +954,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
       } else {
         setOutcome({
           ok: false,
-          msg: outcomeMessage(res.status, res.error, budget.capMicros, t),
+          msg: outcomeMessage(res.status, res.error, budget.capMicros, t, res.creditsNeeded),
         });
         setPhase("confirm"); // keep the key so a retry reuses it...
         // ...EXCEPT after braket-submit-failed: the server has already released
@@ -1097,25 +1137,45 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           role="status"
           className="mt-4 rounded-control border border-accent/40 bg-accent/[0.06] px-4 py-3 animate-fade-up"
         >
-          <p className="text-sm text-(--ink)">
-            This spends <span className="font-semibold tabular-nums">{usd(micros)}</span> of your{" "}
-            <span className="tabular-nums">{usd(budget.remainingMicros)}</span> sponsored budget on a
-            real, irreversible run on the physical device. It cannot be undone once submitted.
-          </p>
+          {/* WHICH money is about to move. The sponsored allowance and the paid
+              wallet are different money with different consequences, so the
+              disclosure names the source before the irreversible click — never
+              a generic "this spends" that lets a learner think their purchased
+              credits are the platform's allowance. */}
+          {walletFunded ? (
+            <p className="text-sm text-(--ink)">
+              Your sponsored budget is spent, so this run is{" "}
+              <span className="font-semibold">funded by your wallet</span>:{" "}
+              <span className="font-semibold tabular-nums">{runCredits} credits</span> (
+              {usd(micros)}) of your{" "}
+              <span className="tabular-nums">{budget.walletCredits ?? 0}</span>. This is a real,
+              irreversible run on the physical device. It cannot be undone once submitted.
+            </p>
+          ) : (
+            <p className="text-sm text-(--ink)">
+              This spends <span className="font-semibold tabular-nums">{usd(micros)}</span> of your{" "}
+              <span className="tabular-nums">{usd(budget.remainingMicros)}</span> sponsored budget on a
+              real, irreversible run on the physical device. It cannot be undone once submitted.
+            </p>
+          )}
           {/* The foresight line — the frontier, quoted BEFORE the click. This is what
               stops a learner walking off the cliff: three thoughtless 100-shot default
-              runs foreclose the top medal, and this is where they can see it coming. */}
-          <p className="mt-1.5 text-sm tabular-nums text-(--mut)">
-            {afterShots > 0 ? (
-              <>
-                After this run: {usd(afterMicros)} left — enough for{" "}
-                {afterShots.toLocaleString("en-US")} more shots.
-              </>
-            ) : (
-              <>After this run: {usd(afterMicros)} left — not enough for another run.</>
-            )}
-          </p>
-          {deepSampleForeclosed && (
+              runs foreclose the top medal, and this is where they can see it coming.
+              A wallet-funded run leaves the allowance untouched, so the allowance
+              frontier is unchanged and quoting it would be noise. */}
+          {!walletFunded && (
+            <p className="mt-1.5 text-sm tabular-nums text-(--mut)">
+              {afterShots > 0 ? (
+                <>
+                  After this run: {usd(afterMicros)} left — enough for{" "}
+                  {afterShots.toLocaleString("en-US")} more shots.
+                </>
+              ) : (
+                <>After this run: {usd(afterMicros)} left — not enough for another run.</>
+              )}
+            </p>
+          )}
+          {!walletFunded && deepSampleForeclosed && (
             // The consequence, stated before the money moves — not blocked, not softened.
             <p className="mt-1.5 text-sm leading-relaxed text-warm-dark dark:text-warm-light">
               This run closes off the{" "}
@@ -1243,6 +1303,7 @@ function outcomeMessage(
   error: string,
   capMicros: number,
   t: TFunction,
+  creditsNeeded?: number,
 ): string {
   // Checked BEFORE the switch, and on the status as well as the token. WAF blocks at
   // the edge — before the Lambda reserves anything — so "no budget was spent" is
@@ -1250,6 +1311,10 @@ function outcomeMessage(
   // default 4xx branch below is true but tells the learner nothing they can act on.
   if (isRateLimitedOutcome(status, error)) return t("qpuUi.rateLimitedSubmit");
   switch (error) {
+    case "insufficient-credits":
+      // The server names the price of the run it refused to fund; quote THAT,
+      // never a locally recomputed figure that could disagree with the debit.
+      return t("qpuUi.insufficientCredits", { credits: creditsNeeded ?? 0 });
     case "over-lifetime-budget":
       // Deleted forever: "That's a lot of real hardware runs." False after the cap
       // change (it buys 2-5 runs) and a register violation regardless.

@@ -130,6 +130,11 @@ export interface Budget {
   /** Total shots across COMPLETED runs — what the "Deep sample" medal reads. `null`
    *  when the server did not report it (see completedRuns). */
   completedShots: number | null;
+  /** PAID credit-wallet balance (1 credit = $0.01), with the same honesty
+   *  contract as the medal counters: `null` means the server did not report it
+   *  (a pre-metering Lambda, or metering not configured) — never an invented 0,
+   *  which would tell a paying learner their balance vanished. */
+  walletCredits: number | null;
   tasks: QpuTask[];
 }
 
@@ -142,7 +147,9 @@ export interface CredentialChallenge {
 
 export type SubmitOutcome =
   | { ok: true; duplicate?: boolean; taskArn: string | null; estMicros: number; circuitHash?: string }
-  | { ok: false; status: number; error: string };
+  // creditsNeeded is present exactly when error === "insufficient-credits":
+  // the server names the whole-credit price of the run it refused to fund.
+  | { ok: false; status: number; error: string; creditsNeeded?: number };
 
 async function auth(): Promise<string> {
   const { fetchAuthSession } = await import("aws-amplify/auth");
@@ -204,6 +211,7 @@ export async function getBudget(): Promise<Budget> {
     credentialed: raw.credentialed === true,
     completedRuns: counter(raw.completedRuns),
     completedShots: counter(raw.completedShots),
+    walletCredits: counter(raw.walletCredits),
     tasks: Array.isArray(raw.tasks) ? (raw.tasks as QpuTask[]) : [],
   };
 }
@@ -251,5 +259,12 @@ export async function submitTask(
       circuitHash: (body.circuitHash ?? task?.circuitHash) as string | undefined,
     };
   }
-  return { ok: false, status: res.status, error: String(body.error ?? `submit failed (${res.status})`) };
+  return {
+    ok: false,
+    status: res.status,
+    error: String(body.error ?? `submit failed (${res.status})`),
+    ...(typeof body.creditsNeeded === "number" && Number.isFinite(body.creditsNeeded)
+      ? { creditsNeeded: body.creditsNeeded }
+      : {}),
+  };
 }

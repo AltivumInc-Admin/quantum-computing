@@ -5,10 +5,13 @@ name: CI
 # (python, web, lambdas, build-smoke) as required status checks, so Amplify
 # only ever auto-builds a commit that has already passed CI.
 #
-# The lambdas job matrixes over every Lambda in lambda/ and runs its own
-# node --test suite. This is load-bearing: the qpu Lambda's tests guard the
-# real-money spend ledger (costMicros, the cap demux, the compensating-refund
-# split) and nothing else in CI executes them.
+# The lambdas job matrixes over every Lambda in lambda/ (keep the matrix list
+# AND the ci-standby mirror in sync with `ls lambda/` — nothing derives it) and
+# runs each one's node --test suite. This is load-bearing: the qpu Lambda's
+# tests guard the real-money spend ledger (costMicros, the cap demux, the
+# compensating-refund split) and the stripe Lambda's tests guard the credit
+# wallet (exactly-once grants, the public-but-signed webhook route, Secrets
+# Manager key handling) — nothing else in CI executes either.
 #
 # Version pinning: keep PYTHON_VERSION / NODE_VERSION aligned with the Amplify
 # build image (Amplify console -> App settings -> Build settings / build logs).
@@ -102,7 +105,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [tutor, qpu, sync, review-email]
+        # EVERY directory under lambda/ must be listed here AND in the standby
+        # mirror (infra/ci-standby/template.yaml buildspec loop). The stripe
+        # entry was missed for three weeks after lambda/stripe landed — the one
+        # Lambda that moves real money merged ungated the whole time.
+        dir: [tutor, qpu, sync, review-email, stripe]
     defaults:
       run:
         working-directory: lambda/${{ matrix.dir }}

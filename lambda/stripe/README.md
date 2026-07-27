@@ -89,9 +89,15 @@ Note the stack outputs — `BillingUrl` and `WebhookUrl`.
 **Phase 2 — wire the webhook and finish the secret:**
 
 1. In the Stripe Dashboard (**Developers → Webhooks → Add endpoint**), register
-   the `WebhookUrl` output. Subscribe to exactly these events:
-   `checkout.session.completed`, `invoice.paid`,
+   the `WebhookUrl` output **with a pinned API version** (creation-only — it
+   cannot be set later; unpinned means the account default, which moves).
+   Subscribe to exactly these events:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `invoice.paid`,
    `customer.subscription.updated`, `customer.subscription.deleted`.
+   The async pair is load-bearing: delayed-notification methods (Klarna, Cash
+   App, Amazon Pay, ACH) complete the session with `payment_status: "unpaid"`,
+   and the handler fulfills nothing until `async_payment_succeeded` lands.
 2. Copy the endpoint's **Signing secret** (`whsec_…`).
 3. Replace the placeholder with the real signing secret (re-reading the key from
    1Password so the plaintext still never lands in the shell history):

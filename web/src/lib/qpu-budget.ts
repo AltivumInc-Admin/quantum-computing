@@ -25,6 +25,14 @@ export const IQM_SHOT_MICROS = Math.round(PRICING.IQM.perShot * 1_000_000);
 export const costMicros = (shots: number) => IQM_TASK_MICROS + IQM_SHOT_MICROS * shots;
 export const usd = (micros: number) => `$${(Math.round(micros / 10_000) / 100).toFixed(2)}`;
 
+/** 1 credit = $0.01 = 10,000 micro-dollars — the quantum-stripe wallet peg
+ *  (mirrors qpu-core.mjs MICROS_PER_CREDIT). */
+export const MICROS_PER_CREDIT = 10_000;
+/** Whole credits for a run cost, rounded UP (mirrors qpu-core.mjs
+ *  creditsForMicros) — the figure the wallet-funded confirm step quotes MUST
+ *  be the figure the server debits, so both round the same direction. */
+export const creditsForMicros = (micros: number) => Math.ceil(micros / MICROS_PER_CREDIT);
+
 /** The server's hard per-run shot ceiling (qpu-core.mjs MAX_SHOTS). The fixture locks
  *  it equal to the "Deep sample" threshold; the panel suite asserts that from the
  *  fixture side, so this constant cannot drift away from the server's in silence. */

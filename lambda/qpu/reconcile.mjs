@@ -61,7 +61,17 @@ function isAlreadyTerminal(e, guardLeg) {
   );
 }
 
-export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now = () => Date.now(), log = () => {} }) {
+export function createReconcileCore({
+  ddb,
+  braket,
+  ledgerTable,
+  tasksTable,
+  // The quantum-stripe wallet table — needed to refund a wallet-funded run.
+  // Unset = metering disabled; no wallet-funded rows can exist to refund.
+  walletTable,
+  now = () => Date.now(),
+  log = () => {},
+}) {
   // COMPLETED — the task ran and Braket billed; keep the charge, record it, and
   // credit the learner's monotonic medal counters in the SAME all-or-none
   // transaction. The counters are what the Hardware medals read (a truncation-proof
@@ -117,19 +127,33 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
 
   // FAILED/CANCELLED — refund the reservation. The all-or-none transaction only
   // fires while the row is still SUBMITTED, so re-delivery can't double-refund.
-  async function refund(idempotencyKey, sub, day, estMicros) {
+  // The refund goes to whichever source FUNDED the run (the row's own
+  // provenance): a wallet-funded run gets its exact creditsCharged back —
+  // never re-derived from estMicros, which could reprice under it.
+  async function refund(idempotencyKey, sub, day, estMicros, funding) {
+    const refundLeg =
+      funding?.fundedBy === "wallet"
+        ? {
+            Update: {
+              TableName: walletTable,
+              Key: { pk: { S: `WALLET#${sub}` } },
+              UpdateExpression: "ADD credits :pos",
+              ExpressionAttributeValues: { ":pos": { N: String(funding.creditsCharged) } },
+            },
+          }
+        : {
+            Update: {
+              TableName: ledgerTable,
+              Key: { pk: { S: `USER#${sub}` } },
+              UpdateExpression: "ADD spentMicros :neg",
+              ExpressionAttributeValues: { ":neg": { N: String(-estMicros) } },
+            },
+          };
     await ddb
       .send(
         new TransactWriteItemsCommand({
           TransactItems: [
-            {
-              Update: {
-                TableName: ledgerTable,
-                Key: { pk: { S: `USER#${sub}` } },
-                UpdateExpression: "ADD spentMicros :neg",
-                ExpressionAttributeValues: { ":neg": { N: String(-estMicros) } },
-              },
-            },
+            refundLeg,
             {
               Update: {
                 TableName: ledgerTable,
@@ -178,7 +202,10 @@ export function createReconcileCore({ ddb, braket, ledgerTable, tasksTable, now 
         await markCompleted(idempotencyKey, row.userId.S, Number(row.shots?.N ?? 0));
         summary.completed++;
       } else if (status === "FAILED" || status === "CANCELLED") {
-        await refund(idempotencyKey, row.userId.S, utcDay(Number(row.createdAt.N)), Number(row.estMicros.N));
+        await refund(idempotencyKey, row.userId.S, utcDay(Number(row.createdAt.N)), Number(row.estMicros.N), {
+          fundedBy: row.fundedBy?.S,
+          creditsCharged: Number(row.creditsCharged?.N ?? 0),
+        });
         summary.failed++;
       } else {
         summary.pending++; // QUEUED / RUNNING / CANCELLING — check again next tick
@@ -194,5 +221,6 @@ export const handler = createReconcileCore({
   braket: new BraketClient({ region: DEVICE_REGION }),
   ledgerTable: process.env.LEDGER_TABLE,
   tasksTable: process.env.TASKS_TABLE,
+  walletTable: process.env.WALLET_TABLE || undefined,
   log: console.log,
 });

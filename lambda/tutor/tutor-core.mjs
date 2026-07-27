@@ -41,6 +41,16 @@ export const SECTION_CHAR_CAP = 24_000;
 export const TUTOR_ERROR_SENTINEL = "<<TUTOR-STREAM-ERROR>>";
 
 /**
+ * In-band metadata trailer marker. When a request opts in ({meta: true}), the
+ * handler appends this sentinel AFTER the answer text, followed by one JSON
+ * object: { model, label, credits } — which model actually answered and what
+ * it cost in credits (0 on the free model). Opt-in is what keeps the wire
+ * format backward compatible: a legacy request never receives these bytes, so
+ * clients deployed before metering render exactly what they always did.
+ */
+export const TUTOR_META_SENTINEL = "<<TUTOR-META>>";
+
+/**
  * Longest question the handler will accept. Single-sourced here because both
  * runtimes need it: the handler slices to it, and the panel's textarea caps at it
  * so a long paste is stopped at the keyboard rather than silently amputated

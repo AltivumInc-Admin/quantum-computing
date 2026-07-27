@@ -249,3 +249,272 @@ test("F3: a healthy stream is never cut by the deadline guard", async () => {
   );
   assert.equal(stream.text(), "Hello");
 });
+
+// ---- credit metering + model tiering (the paid tutor) -----------------------
+// The wallet and the JWT verifier are INJECTED like everything else, so every
+// money branch runs offline. The wire contract under test:
+//   - a legacy request ({slug, question}) behaves byte-identically to today
+//   - the Cognito token rides x-tutor-auth (Authorization belongs to OAC SigV4)
+//   - haiku-4-5 is free for EVERYONE; paid models reserve -> stream -> settle
+//   - {meta: true} opts into a trailing TUTOR_META_SENTINEL + JSON
+
+import { TUTOR_META_SENTINEL } from "./tutor-core.mjs";
+import {
+  INSUFFICIENT_CREDITS_MESSAGE,
+  SIGN_IN_REQUIRED_MESSAGE,
+  NOT_IN_PLAN_MESSAGE,
+} from "./index.mjs";
+import { PROFILE_IDS, MODEL_LABELS, creditsForUsage } from "./tutor-billing.mjs";
+
+/** Bedrock stub that also emits the usage metadata event, like the real
+ *  ConverseStream does after the last delta. */
+function meteredClient({ inputTokens = 6_000, outputTokens = 400 } = {}) {
+  const sent = [];
+  return {
+    sent,
+    send: async (command) => {
+      sent.push(command);
+      return {
+        stream: (async function* () {
+          yield { contentBlockDelta: { delta: { text: "Answer." } } };
+          yield { metadata: { usage: { inputTokens, outputTokens } } };
+        })(),
+      };
+    },
+  };
+}
+
+/** In-memory wallet double recording debits/credits; tier + balance settable. */
+function stubWallet({ tier = "pro", credits = 1_000, debitFails = false } = {}) {
+  const calls = { reads: [], debits: [], credits: [] };
+  return {
+    calls,
+    readTier: async (sub) => {
+      calls.reads.push(sub);
+      return tier;
+    },
+    debit: async (sub, n) => {
+      calls.debits.push({ sub, n });
+      if (debitFails) {
+        const e = new Error("conditional failed");
+        e.name = "ConditionalCheckFailedException";
+        throw e;
+      }
+    },
+    credit: async (sub, n) => {
+      calls.credits.push({ sub, n });
+    },
+  };
+}
+
+const okVerifier = { verify: async () => ({ sub: "user-1" }) };
+const badVerifier = {
+  verify: async () => {
+    throw new Error("expired");
+  },
+};
+
+const paidEvent = (over = {}) => ({
+  headers: { "x-tutor-auth": "idtok" },
+  body: JSON.stringify({ slug: "00-prereqs", question: "hi", model: "opus-5", meta: true, ...over }),
+});
+
+test("M1: a legacy request is byte-identical — no wallet, no verifier, no trailer", async () => {
+  const client = okClient();
+  const wallet = stubWallet();
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "app-profile-arn",
+    verifier: okVerifier,
+    wallet,
+  })({ body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) }, stream);
+  assert.equal(stream.text(), "Hello"); // exactly today's bytes
+  assert.equal(client.sent[0].input.modelId, "app-profile-arn"); // env default model
+  assert.equal(wallet.calls.reads.length + wallet.calls.debits.length, 0, "wallet untouched");
+});
+
+test("M2: a Pro caller on a paid model reserves, streams, settles, and gets the meta trailer", async () => {
+  // Usage sized BELOW the fixture prompt's worst-case reserve, so the settle
+  // has a real (non-zero) refund to make. Expectations are computed from the
+  // billing kernel rather than hardcoded, so a rate change cannot silently
+  // turn this into the overshoot case (that case is M9's).
+  const usage = { inputTokens: 200, outputTokens: 400 };
+  const actual = creditsForUsage("opus-5", usage);
+  const client = meteredClient(usage);
+  const wallet = stubWallet({ tier: "pro", credits: 1_000 });
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "app-profile-arn",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent(), stream);
+
+  // the paid model was actually invoked (its inference profile, not the default)
+  assert.equal(client.sent[0].input.modelId, PROFILE_IDS["opus-5"]);
+
+  // reserve happened BEFORE the model call, against the verified sub
+  assert.equal(wallet.calls.debits.length, 1);
+  assert.equal(wallet.calls.debits[0].sub, "user-1");
+  const reserved = wallet.calls.debits[0].n;
+  assert.ok(reserved > actual, "fixture must exercise the refund path (reserve > actual)");
+
+  // settle refunded exactly the difference between worst case and REAL usage
+  assert.equal(wallet.calls.credits.length, 1);
+  assert.equal(wallet.calls.credits[0].n, reserved - actual);
+
+  // the trailer carries what actually happened
+  const out = stream.text();
+  const at = out.indexOf(TUTOR_META_SENTINEL);
+  assert.ok(at > 0, "meta trailer present after the answer");
+  assert.equal(out.slice(0, at), "Answer.");
+  const meta = JSON.parse(out.slice(at + TUTOR_META_SENTINEL.length));
+  assert.equal(meta.model, "opus-5");
+  assert.equal(meta.credits, actual);
+  assert.equal(meta.label, MODEL_LABELS["opus-5"]);
+});
+
+test("M3: insufficient credits refuses BEFORE any model call, with the exact message", async () => {
+  const client = meteredClient();
+  const wallet = stubWallet({ tier: "pro", debitFails: true });
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent(), stream);
+  assert.equal(client.sent.length, 0, "no paid generation without a committed reserve");
+  assert.ok(stream.text().includes(TUTOR_ERROR_SENTINEL));
+  assert.ok(stream.text().includes(INSUFFICIENT_CREDITS_MESSAGE));
+  assert.equal(wallet.calls.credits.length, 0, "nothing to refund — nothing was reserved");
+});
+
+test("M4: a paid-model request without a valid token is refused, never silently downgraded", async () => {
+  const client = meteredClient();
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: badVerifier,
+    wallet: stubWallet(),
+  })(paidEvent(), stream);
+  assert.equal(client.sent.length, 0);
+  assert.ok(stream.text().includes(SIGN_IN_REQUIRED_MESSAGE));
+
+  // same for a request with NO token at all
+  const stream2 = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    wallet: stubWallet(),
+  })({ body: paidEvent().body }, stream2);
+  assert.ok(stream2.text().includes(SIGN_IN_REQUIRED_MESSAGE));
+});
+
+test("M5: a tier explicitly asking for a model above it is refused, not substituted", async () => {
+  // The UI only offers allowed models, so this is defense — but an explicit,
+  // known, unauthorized ask must never be quietly served by a different model.
+  const client = meteredClient();
+  const wallet = stubWallet({ tier: "plus" });
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent({ model: "fable-5" }), stream);
+  assert.equal(client.sent.length, 0);
+  assert.ok(stream.text().includes(NOT_IN_PLAN_MESSAGE));
+  assert.equal(wallet.calls.debits.length, 0);
+});
+
+test("M6: haiku is free for a signed-in caller — answered, metered at zero, no debit", async () => {
+  const client = meteredClient();
+  const wallet = stubWallet({ tier: "pro" });
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "app-profile-arn",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent({ model: "haiku-4-5" }), stream);
+  assert.equal(client.sent[0].input.modelId, "app-profile-arn", "haiku keeps the app profile");
+  assert.equal(wallet.calls.debits.length, 0, "the funnel model never debits");
+  const out = stream.text();
+  const meta = JSON.parse(out.slice(out.indexOf(TUTOR_META_SENTINEL) + TUTOR_META_SENTINEL.length));
+  assert.equal(meta.credits, 0);
+});
+
+test("M7: a mid-stream failure settles at zero — the reserve is fully refunded", async () => {
+  const client = {
+    send: async () => ({
+      stream: (async function* () {
+        yield { contentBlockDelta: { delta: { text: "par" } } };
+        throw new Error("boom"); // dies before the usage metadata event
+      })(),
+    }),
+  };
+  const wallet = stubWallet({ tier: "pro" });
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent(), stream);
+  assert.ok(stream.text().includes(TUTOR_ERROR_SENTINEL));
+  assert.equal(wallet.calls.debits.length, 1);
+  assert.equal(wallet.calls.credits.length, 1);
+  // no usage report -> charged 0 -> the WHOLE reserve comes back
+  assert.equal(wallet.calls.credits[0].n, wallet.calls.debits[0].n);
+});
+
+test("M8: without a configured wallet, a paid-model request is refused up front", async () => {
+  const client = meteredClient();
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    // no wallet injected — metering not deployed
+  })(paidEvent(), stream);
+  assert.equal(client.sent.length, 0);
+  assert.ok(stream.text().includes(TUTOR_ERROR_SENTINEL));
+});
+
+test("M9: the settle never charges more than the reserve, even if usage overshoots the estimate", async () => {
+  // Real input tokens can exceed the char-based estimate. The doctrine is
+  // fail-toward-undercharging: charged = min(actual, reserved), never a
+  // negative "refund" that would push a wallet below zero.
+  const client = meteredClient({ inputTokens: 500_000, outputTokens: 800 });
+  const wallet = stubWallet({ tier: "pro" });
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent(), stream);
+  const reserved = wallet.calls.debits[0].n;
+  // charged is capped at the reserve, so there is nothing to refund — and a
+  // zero refund is never written to the wallet (no pointless DDB call, and no
+  // negative "refund" that could drain a balance).
+  assert.equal(wallet.calls.credits.length, 0);
+  // the trailer reports exactly the reserve — the most this generation can cost
+  const out = stream.text();
+  const meta = JSON.parse(out.slice(out.indexOf(TUTOR_META_SENTINEL) + TUTOR_META_SENTINEL.length));
+  assert.equal(meta.credits, reserved);
+});

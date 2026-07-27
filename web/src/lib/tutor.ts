@@ -23,7 +23,24 @@
  */
 export {
   TUTOR_ERROR_SENTINEL,
+  TUTOR_META_SENTINEL,
   OUT_OF_SCOPE_MESSAGE,
   MAX_QUESTION_CHARS,
   stripGuideForTutor,
 } from "./tutor-core.generated";
+
+/**
+ * The model roster + labels, mirrored from lambda/tutor/tutor-billing.mjs by
+ * the same generator. The picker MUST offer exactly what the server allows:
+ * the handler re-checks entitlement and refuses in-band, so a drift here shows
+ * up to the learner as a model that errors instead of answering.
+ */
+import { ROSTER, MODEL_LABELS } from "./tutor-billing.generated";
+
+// Widened to an index signature at this boundary. The generated module is
+// `@ts-nocheck`, so its literals infer as exact object shapes that a runtime
+// `string` (the wallet's tier, the model id) cannot index. Declaring the
+// lookup shape here keeps the widening in ONE place instead of scattering
+// casts through every consumer.
+export const TUTOR_ROSTER: Record<string, string[] | undefined> = ROSTER;
+export const TUTOR_MODEL_LABELS: Record<string, string | undefined> = MODEL_LABELS;

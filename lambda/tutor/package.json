@@ -8,6 +8,7 @@
   "files": [
     "index.mjs",
     "tutor-core.mjs",
+    "tutor-billing.mjs",
     "corpus.json"
   ],
   "scripts": {
@@ -17,6 +18,8 @@
     "deploy": "sam build && sam deploy"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.700.0"
+    "@aws-sdk/client-bedrock-runtime": "^3.700.0",
+    "@aws-sdk/client-dynamodb": "^3.1095.0",
+    "aws-jwt-verify": "^5.2.1"
   }
 }

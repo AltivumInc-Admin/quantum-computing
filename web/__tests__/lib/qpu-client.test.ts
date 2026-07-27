@@ -11,6 +11,7 @@ import {
   claimCredential,
   isRateLimited,
   isRateLimitedOutcome,
+  submitTask,
   QpuHttpError,
 } from "@/lib/qpu-client";
 
@@ -116,6 +117,57 @@ describe("getBudget normalizes an untrusted budget body", () => {
     respond({ ...MONEY });
     const b = await getBudget();
     expect(b.tasks).toEqual([]);
+  });
+
+  // Credit metering: walletCredits is a counter with the SAME honesty contract as
+  // the medal counters — null means "the server did not report it" (a pre-metering
+  // Lambda, or metering not configured), never a fabricated zero.
+  it("passes walletCredits through, including a legitimate zero", async () => {
+    respond({ ...MONEY, walletCredits: 300, tasks: [] });
+    expect((await getBudget()).walletCredits).toBe(300);
+    respond({ ...MONEY, walletCredits: 0, tasks: [] });
+    expect((await getBudget()).walletCredits).toBe(0);
+  });
+
+  it("maps an absent or malformed walletCredits to null (pre-metering Lambda shape)", async () => {
+    respond({ ...MONEY, tasks: [] });
+    expect((await getBudget()).walletCredits).toBeNull();
+    respond({ ...MONEY, walletCredits: "300", tasks: [] });
+    expect((await getBudget()).walletCredits).toBeNull();
+  });
+});
+
+describe("submitTask carries the metering shortfall through a 402", () => {
+  const OLD = process.env.NEXT_PUBLIC_QPU_URL;
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_QPU_URL = "https://edge.example.net";
+  });
+  afterEach(() => {
+    process.env.NEXT_PUBLIC_QPU_URL = OLD;
+  });
+
+  it("exposes creditsNeeded on an insufficient-credits outcome", async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 402,
+      json: async () => ({ error: "insufficient-credits", creditsNeeded: 175 }),
+    })) as unknown as typeof fetch;
+    const out = await submitTask(1000, "OPENQASM 3.0;", "key-12345678");
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.error).toBe("insufficient-credits");
+      expect(out.creditsNeeded).toBe(175);
+    }
+  });
+
+  it("leaves creditsNeeded undefined on a non-metering failure", async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 402,
+      json: async () => ({ error: "over-lifetime-budget" }),
+    })) as unknown as typeof fetch;
+    const out = await submitTask(1000, "OPENQASM 3.0;", "key-12345678");
+    if (!out.ok) expect(out.creditsNeeded).toBeUndefined();
   });
 });
 

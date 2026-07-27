@@ -3,6 +3,8 @@ import path from "path";
 import {
   IQM_TASK_MICROS,
   IQM_SHOT_MICROS,
+  MICROS_PER_CREDIT,
+  creditsForMicros,
   MAX_SHOTS,
   LADDER_RUNS,
   DEEP_SAMPLE_SHOTS,
@@ -163,5 +165,19 @@ describe("remainingLadderPlan — the plan quoted from where the learner stands"
       if (!plan.fits) continue;
       expect(maxShotsAffordable(rem)).toBeGreaterThanOrEqual(plan.shots);
     }
+  });
+});
+
+// Credit metering: the client mirror of qpu-core.mjs's peg. Whole credits,
+// rounded UP — a fraction of a cent is never dispensed free, and the panel's
+// wallet-funded disclosure must quote the same figure the server will debit.
+describe("creditsForMicros mirrors the server peg", () => {
+  it("is the $0.01 peg", () => {
+    expect(MICROS_PER_CREDIT).toBe(10_000);
+  });
+  it("rounds UP to a whole credit", () => {
+    expect(creditsForMicros(1_750_000)).toBe(175); // 1000 shots, exact
+    expect(creditsForMicros(costMicros(100))).toBe(45); // $0.445 → 45, never 44
+    expect(creditsForMicros(1)).toBe(1);
   });
 });

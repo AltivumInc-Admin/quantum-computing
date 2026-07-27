@@ -327,3 +327,129 @@ describe("AskTutor", () => {
     expect(trigger).toHaveFocus();
   });
 });
+
+// ---- model tiering + credit metering ----------------------------------------
+// The panel is the surface where "Sonnet and Opus in the tutor" becomes true.
+// It must offer exactly what the signed-in learner's tier includes, report what
+// a generation actually cost, and never imply a charge that didn't happen.
+
+describe("the model picker", () => {
+  beforeEach(() => {
+    mockPathname = "/learn/03-algorithms";
+    process.env.NEXT_PUBLIC_TUTOR_URL = URL;
+  });
+
+  it("is hidden entirely when metering is not configured", () => {
+    render(<AskTutor />);
+    fireEvent.click(screen.getByLabelText("Ask about this lesson"));
+    expect(screen.queryByLabelText(/tutor model/i)).not.toBeInTheDocument();
+  });
+
+  it("offers only the models the learner's tier includes", () => {
+    render(<AskTutor wallet={{ tier: "plus", credits: 500 }} />);
+    fireEvent.click(screen.getByLabelText("Ask about this lesson"));
+    const picker = screen.getByLabelText(/tutor model/i);
+    const values = Array.from(picker.querySelectorAll("option")).map((o) => o.getAttribute("value"));
+    expect(values).toEqual(["haiku-4-5", "sonnet-5"]);
+    // Pro-only models must not be selectable — not merely disabled.
+    expect(values).not.toContain("opus-5");
+    expect(values).not.toContain("fable-5");
+  });
+
+  it("gives a Pro learner the full roster including Fable", () => {
+    render(<AskTutor wallet={{ tier: "pro", credits: 500 }} />);
+    fireEvent.click(screen.getByLabelText("Ask about this lesson"));
+    const values = Array.from(
+      screen.getByLabelText(/tutor model/i).querySelectorAll("option"),
+    ).map((o) => o.getAttribute("value"));
+    expect(values).toEqual(["haiku-4-5", "sonnet-5", "opus-5", "fable-5"]);
+  });
+
+  it("sends the chosen model and the auth token, and opts into the meta trailer", async () => {
+    const fetchMock = jest.fn(async () => streamResponse(["ok"]));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(
+      <AskTutor
+        wallet={{ tier: "pro", credits: 500 }}
+        authToken="idtok-123"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Ask about this lesson"));
+    fireEvent.change(screen.getByLabelText(/tutor model/i), { target: { value: "opus-5" } });
+    const input = screen.getByLabelText("Your question");
+    fireEvent.change(input, { target: { value: "why?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByText("ok");
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({ model: "opus-5", meta: true });
+    // the token rides the custom header, NOT Authorization (OAC owns that)
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-tutor-auth"]).toBe("idtok-123");
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it("never sends a token or a model on the free path", async () => {
+    const fetchMock = jest.fn(async () => streamResponse(["ok"]));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<AskTutor />);
+    askQuestion();
+    await screen.findByText("ok");
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBeUndefined();
+    expect(body.meta).toBeUndefined();
+    expect((init.headers as Record<string, string>)["x-tutor-auth"]).toBeUndefined();
+  });
+});
+
+describe("the cost trailer", () => {
+  beforeEach(() => {
+    mockPathname = "/learn/03-algorithms";
+    process.env.NEXT_PUBLIC_TUTOR_URL = URL;
+  });
+
+  it("strips the trailer from the answer and reports what the generation cost", async () => {
+    global.fetch = jest.fn(async () =>
+      streamResponse([
+        "The Z-string acts on lower modes.",
+        `<<TUTOR-META>>{"model":"opus-5","label":"Claude Opus 5","credits":4}`,
+      ]),
+    ) as unknown as typeof fetch;
+    render(<AskTutor wallet={{ tier: "pro", credits: 500 }} authToken="t" />);
+    askQuestion();
+    // the trailer must never render as part of the answer
+    const answer = await screen.findByText("The Z-string acts on lower modes.");
+    expect(answer.textContent).not.toContain("TUTOR-META");
+    // Scope to the cost line: the model name also appears in the picker's
+    // <option>, so a bare text query would match two nodes.
+    const costLine = screen.getByText(/4 credits/i).closest("p");
+    expect(costLine).toHaveTextContent("Claude Opus 5");
+  });
+
+  it("says a free answer cost nothing rather than showing '0 credits'", async () => {
+    global.fetch = jest.fn(async () =>
+      streamResponse([
+        "Short answer.",
+        `<<TUTOR-META>>{"model":"haiku-4-5","label":"Claude Haiku 4.5","credits":0}`,
+      ]),
+    ) as unknown as typeof fetch;
+    render(<AskTutor wallet={{ tier: "pro", credits: 500 }} authToken="t" />);
+    askQuestion();
+    await screen.findByText("Short answer.");
+    expect(screen.getByText(/included/i)).toBeInTheDocument();
+    expect(screen.queryByText(/0 credits/)).not.toBeInTheDocument();
+  });
+
+  it("a truncated trailer degrades to no cost line, never a broken answer", async () => {
+    // A stream cut mid-trailer must not render JSON fragments as lesson prose.
+    global.fetch = jest.fn(async () =>
+      streamResponse(["Answer text.", `<<TUTOR-META>>{"model":"opus-5","cred`]),
+    ) as unknown as typeof fetch;
+    render(<AskTutor wallet={{ tier: "pro", credits: 500 }} authToken="t" />);
+    askQuestion();
+    const answer = await screen.findByText("Answer text.");
+    expect(answer.textContent).not.toContain("{");
+    expect(screen.queryByText(/credits/i)).not.toBeInTheDocument();
+  });
+});
