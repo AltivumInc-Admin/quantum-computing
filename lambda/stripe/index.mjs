@@ -44,6 +44,49 @@ const json = (statusCode, body) => ({
 
 const walletKey = (sub) => ({ pk: { S: `WALLET#${sub}` } });
 const eventKey = (id) => ({ pk: { S: `EVENT#${id}` } });
+/**
+ * The durable record of one grant, keyed by PaymentIntent id — the ONLY link
+ * that survives from a Charge back to what it bought. `Charge.invoice` was
+ * removed in the Basil relocation (the same wave that moved the subscription
+ * id under `Invoice.parent` and silently broke every credit grant), so a
+ * refund cannot re-derive its grant from Stripe's object graph. This row has
+ * no TTL: Stripe's dispute window outlives the 30-day EVENT# marker.
+ */
+const grantKey = (pi) => ({ pk: { S: `GRANT#${pi}` } });
+
+// Transaction leg positions. EVENT and WALLET keep their historical indexes so
+// the reason-code contract stays stable; GRANT is appended.
+const EVENT_LEG = 0;
+const WALLET_LEG = 1;
+const GRANT_LEG = 2;
+
+/** applyOnce's third outcome: the GRANT row moved under us, re-read and retry. */
+export const CLAWBACK_RETRY = Symbol("clawback-retry");
+
+/**
+ * The ONE literal phrase every unreclaimable-money branch ends with. A single
+ * CloudWatch metric filter pins this string, so a branch added later is
+ * covered for free — the deliberate mirror of "credits NOT granted".
+ */
+export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
+
+/**
+ * Exactly the event types this handler acts on. Exported so a test can assert
+ * it matches the switch's cases, and so the Dashboard subscription in the
+ * runbook has a single source of truth to be checked against. A type we handle
+ * but never receive is dead code; one we receive but ignore is silent loss.
+ */
+export const REQUIRED_WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
+  "invoice.paid",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "charge.refunded",
+  "charge.dispute.funds_withdrawn",
+  "charge.dispute.funds_reinstated",
+];
 
 // The published catalog's lookup keys -> what checking out each one means.
 // A /checkout request may name ONLY these keys, so a caller can never coerce an
@@ -92,13 +135,32 @@ export function createHandlerCore({
    * the attribute_not_exists condition, the whole transaction cancels, and the
    * balance is left alone. Returns false when the event was already applied.
    */
-  async function applyOnce({ eventId, sub, addCredits = 0, setTier, setSubStatus }) {
+  async function applyOnce({
+    eventId,
+    sub,
+    // SIGNED. A clawback passes a negative value; the old `addCredits > 0`
+    // guard silently dropped it while still burning the idempotency key, so
+    // the event could never be reprocessed and the credits never moved.
+    deltaCredits = 0,
+    setTier,
+    setSubStatus,
+    owedCredits = 0,
+    // Optional third leg: the durable GRANT row that makes a refund findable.
+    // ALWAYS APPENDED at index GRANT_LEG so EVENT_LEG/WALLET_LEG keep their
+    // positions — the catch below and the suite's positional pins both depend
+    // on the reason indexes not shifting.
+    grantLeg,
+  }) {
     const sets = ["updatedAt = :now"];
     const adds = [];
     const values = { ":now": { N: String(Date.now()) } };
-    if (addCredits > 0) {
+    if (deltaCredits !== 0) {
       adds.push("credits :amt");
-      values[":amt"] = { N: String(addCredits) };
+      values[":amt"] = { N: String(deltaCredits) };
+    }
+    if (owedCredits !== 0) {
+      adds.push("clawbackOwedCredits :owed");
+      values[":owed"] = { N: String(owedCredits) };
     }
     if (setTier) {
       sets.push("tier = :tier");
@@ -135,17 +197,21 @@ export function createHandlerCore({
                 ExpressionAttributeValues: values,
               },
             },
+            ...(grantLeg ? [grantLeg] : []),
           ],
         })
       );
       return true;
     } catch (err) {
-      // Only the event-id condition can cancel this transaction; a cancellation
-      // whose first reason is a failed condition means the event was already
-      // processed. Anything else is a real fault — throw so Stripe retries.
+      // Branch PER LEG by name, never on "the first reason" — with the GRANT
+      // leg present, more than one condition can cancel this transaction and
+      // conflating them would read an OCC loss as a replay (silently dropping
+      // a clawback) or a replay as a fault (a pointless Stripe retry storm).
       if (err?.name === "TransactionCanceledException") {
         const reasons = err.CancellationReasons ?? [];
-        if (reasons[0]?.Code === "ConditionalCheckFailed") return false;
+        const failed = (i) => reasons[i]?.Code === "ConditionalCheckFailed";
+        if (failed(EVENT_LEG)) return false; // already processed
+        if (grantLeg && failed(GRANT_LEG)) return CLAWBACK_RETRY; // lost update
       }
       throw err;
     }
@@ -207,6 +273,53 @@ export function createHandlerCore({
   //
   // Either form may be an expanded Subscription object instead of a bare id
   // string (the type is `string | Stripe.Subscription`), so normalize to the id.
+  /** Normalize `string | Object | null` to an id — every Stripe reference may
+   *  arrive expanded depending on the endpoint's configuration. */
+  function idOf(ref) {
+    if (typeof ref === "string") return ref;
+    return typeof ref?.id === "string" ? ref.id : undefined;
+  }
+
+  /**
+   * The PaymentIntent behind a paid invoice. `Invoice.charge` and
+   * `Invoice.payment_intent` were BOTH removed in Basil; the surviving link is
+   * `payments[].payment.payment_intent`, and `payments` is not expanded on the
+   * raw webhook payload, so the invoice must be re-retrieved. Guarded the same
+   * way invoiceSubscriptionId is: an unresolvable id is logged, never guessed.
+   */
+  async function invoicePaymentIntent(invoiceId) {
+    try {
+      const full = await stripe.invoices.retrieve(invoiceId, { expand: ["payments"] });
+      for (const p of full?.payments?.data ?? []) {
+        const pi = idOf(p?.payment?.payment_intent);
+        if (pi) return pi;
+      }
+    } catch (err) {
+      console.error("invoice.paid: could not expand payments", invoiceId, err?.name);
+    }
+    return undefined;
+  }
+
+  /** The durable grant record a future refund will look up. Only built when the
+   *  key is a real PaymentIntent — a falsy key would merge unrelated users'
+   *  grants under one row (e.g. a 100%-off session, which has no PI at all). */
+  function grantRowLeg(paymentIntent, sub, credits) {
+    if (!paymentIntent || !(credits > 0)) return undefined;
+    return {
+      Put: {
+        TableName: tableName,
+        Item: {
+          ...grantKey(paymentIntent),
+          sub: { S: sub },
+          grantedCredits: { N: String(credits) },
+          refundedCredits: { N: "0" },
+          disputedCredits: { N: "0" },
+          createdAt: { N: String(Date.now()) },
+        },
+      },
+    };
+  }
+
   function invoiceSubscriptionId(invoice) {
     const raw = invoice.parent?.subscription_details?.subscription ?? invoice.subscription;
     if (typeof raw === "string") return raw;
@@ -252,7 +365,12 @@ export function createHandlerCore({
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
-        await applyOnce({ eventId: evt.id, sub, addCredits: credits });
+        await applyOnce({
+          eventId: evt.id,
+          sub,
+          deltaCredits: credits,
+          grantLeg: grantRowLeg(idOf(obj.payment_intent), sub, credits),
+        });
       }
     } else if (obj.mode === "subscription") {
       // Credits for the period arrive on invoice.paid; here we only light up
@@ -264,6 +382,100 @@ export function createHandlerCore({
         setSubStatus: "active",
       });
     }
+  }
+
+  /**
+   * Reclaim credits for money that went back to the customer.
+   *
+   * The arithmetic is ABSOLUTE, not incremental: Stripe's `amount_refunded` is
+   * cumulative, so we compute a target ("this grant should be reclaimed to N")
+   * and move only `target - alreadyReclaimed`. That makes a replayed, stale, or
+   * out-of-order delivery a no-op rather than a double-clawback, and — because
+   * the target is recomputed from live Stripe state — it stays correct even
+   * after the 30-day EVENT# idempotency marker has expired, which matters
+   * because Stripe's dispute window is longer than that.
+   *
+   * `field` is which counter this kind of clawback owns. Refunds and disputes
+   * keep SEPARATE counters so their numerators can never interact: a partial
+   * refund arriving after a dispute must not look like a reduction and hand
+   * credits back.
+   */
+  async function reclaim({ eventId, paymentIntent, field, fraction, restore = false, label }) {
+    if (!paymentIntent) {
+      console.error(`${label}: no payment_intent on the charge; ${CLAWBACK_UNRECLAIMED}`, eventId);
+      return;
+    }
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const got = await ddb.send(
+        new GetItemCommand({ TableName: tableName, Key: grantKey(paymentIntent) })
+      );
+      const row = got.Item;
+      if (!row) {
+        // Not ours (a Dashboard-created charge, or one predating this feature).
+        // 200 rather than throw: a retry storm cannot conjure a grant that was
+        // never written, and Stripe would hammer us for days.
+        console.error(
+          `${label}: no grant row for this payment_intent; ${CLAWBACK_UNRECLAIMED}`,
+          eventId,
+          paymentIntent
+        );
+        return;
+      }
+      const sub = row.sub?.S;
+      const granted = Number(row.grantedCredits?.N ?? 0);
+      const seen = Number(row[field]?.N ?? 0);
+      if (!sub || !Number.isFinite(granted)) {
+        console.error(`${label}: grant row is malformed; ${CLAWBACK_UNRECLAIMED}`, eventId, paymentIntent);
+        return;
+      }
+
+      // Never reclaim more than was granted, and never let a stale event push
+      // the counter backwards into a re-grant. `floor` so a rounding edge
+      // always favours the customer.
+      const target = restore ? 0 : Math.min(granted, Math.floor(granted * fraction));
+      const move = target - seen;
+      if (move === 0) return; // nothing owed — no write at all
+      if (move < 0 && !restore) return; // stale/out-of-order: never re-grant
+
+      // Floor the balance at zero and record any shortfall separately. A
+      // negative `credits` would read as "metering unconfigured" to the
+      // client's counter() and hide the top-up path exactly when the learner
+      // needs it; debt belongs in its own field, as an explicit decision.
+      const walletRes = await ddb.send(
+        new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
+      );
+      const balance = Number(walletRes.Item?.credits?.N ?? 0);
+      const applied = move > 0 ? Math.min(move, Math.max(0, balance)) : move;
+      const unrecovered = move > 0 ? move - applied : 0;
+
+      const outcome = await applyOnce({
+        eventId,
+        sub,
+        deltaCredits: -applied,
+        owedCredits: unrecovered,
+        grantLeg: {
+          Update: {
+            TableName: tableName,
+            Key: grantKey(paymentIntent),
+            // ABSOLUTE set guarded by the value we read — the optimistic
+            // concurrency token. TransactWriteItems has no read leg, so the
+            // GetItem above is outside the transaction and this condition is
+            // the only thing closing the lost-update window.
+            UpdateExpression: `SET ${field} = :target`,
+            ConditionExpression: `attribute_exists(pk) AND ${field} = :seen`,
+            ExpressionAttributeValues: {
+              ":target": { N: String(target) },
+              ":seen": { N: String(seen) },
+            },
+          },
+        },
+      });
+      if (outcome !== CLAWBACK_RETRY) return; // committed, or a replay
+      // Lost the race: loop, re-read, recompute against fresh state.
+    }
+    // Contended past the retry budget. Throw so Stripe retries the delivery —
+    // this is real money and dropping it silently is the one unacceptable end.
+    throw new Error(`${label}: contended past retry budget for ${paymentIntent}`);
   }
 
   async function handleEvent(evt) {
@@ -326,12 +538,27 @@ export function createHandlerCore({
         const sub = subscription.metadata?.userId;
         if (!sub) return;
         const credits = Number(subscription.metadata?.credits);
+        const granted = Number.isFinite(credits) && credits > 0 ? credits : 0;
+        // Resolve the PaymentIntent NOW, while the invoice is in hand — at
+        // refund time the charge carries no link back to it.
+        const pi = granted > 0 ? await invoicePaymentIntent(obj.id) : undefined;
+        if (granted > 0 && !pi) {
+          // The grant still happens (the buyer paid), but it will not be
+          // refundable automatically. Same pinned phrase, so the one filter
+          // covers it and a human can reconcile.
+          console.error(
+            `invoice.paid: no payment_intent resolved, grant will not be auto-refundable; ${CLAWBACK_UNRECLAIMED}`,
+            evt.id,
+            obj.id
+          );
+        }
         await applyOnce({
           eventId: evt.id,
           sub,
-          addCredits: Number.isFinite(credits) && credits > 0 ? credits : 0,
+          deltaCredits: granted,
           setTier: subscription.metadata?.tier,
           setSubStatus: "active",
+          grantLeg: grantRowLeg(pi, sub, granted),
         });
         return;
       }
@@ -350,8 +577,67 @@ export function createHandlerCore({
         return;
       }
 
+      // Money going back to the customer takes its credits with it.
+      case "charge.refunded": {
+        const c = evt.data.object;
+        const amount = Number(c.amount ?? 0);
+        const refunded = Number(c.amount_refunded ?? 0);
+        if (!(amount > 0)) return;
+        // amount_refunded is CUMULATIVE, so this fraction is absolute: the
+        // target it produces is "what this grant should total", not a delta.
+        await reclaim({
+          eventId: evt.id,
+          paymentIntent: idOf(c.payment_intent),
+          field: "refundedCredits",
+          fraction: refunded / amount,
+          label: "charge.refunded",
+        });
+        return;
+      }
+
+      // Disputes: act on the FUNDS-MOVEMENT events, never charge.dispute.created
+      // — that also fires for inquiries where Stripe withdraws nothing, and
+      // clawing back there would zero a paying customer's wallet for free.
+      case "charge.dispute.funds_withdrawn": {
+        const d = evt.data.object;
+        await reclaim({
+          eventId: evt.id,
+          paymentIntent: idOf(d.payment_intent),
+          field: "disputedCredits",
+          // A funds-withdrawn dispute takes the whole charge, so the whole
+          // grant goes with it. Tracked on its own counter, so a later partial
+          // refund's arithmetic cannot read this as a reduction and re-grant.
+          fraction: 1,
+          label: "charge.dispute.funds_withdrawn",
+        });
+        return;
+      }
+
+      case "charge.dispute.funds_reinstated": {
+        const d = evt.data.object;
+        await reclaim({
+          eventId: evt.id,
+          paymentIntent: idOf(d.payment_intent),
+          field: "disputedCredits",
+          fraction: 0,
+          restore: true,
+          label: "charge.dispute.funds_reinstated",
+        });
+        return;
+      }
+
       default:
-        return; // every other event type is intentionally ignored
+        // A money-shaped event we do not handle is indistinguishable from a
+        // quiet day unless it says so. Same pinned phrase, so the existing
+        // filter covers it with no new resource.
+        if (/^(charge|refund|payout|radar)\./.test(evt.type)) {
+          console.error(
+            `stripe-webhook: unhandled money event type; ${CLAWBACK_UNRECLAIMED}`,
+            evt.type,
+            evt.id
+          );
+        }
+        return;
     }
   }
 

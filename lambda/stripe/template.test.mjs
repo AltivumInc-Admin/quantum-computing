@@ -194,3 +194,49 @@ test("every metric filter in this stack watches the stripe log group and notifie
     assert.match(body(alarm), /AlarmActions: \[!Ref AlertsTopic\]/, `${alarm}: must notify a human`);
   }
 });
+
+test("every unreclaimable-money branch is covered by ONE shared filter", () => {
+  const { b, phrase } = filterFor("UnreclaimedRefund");
+  assert.equal(phrase, "credits NOT reclaimed", "one phrase must cover every branch, present and future");
+  assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
+  assert.ok(handlerSrc.includes(phrase));
+  const alarm = body("UnreclaimedRefundAlarm");
+  assert.ok(alarm, "UnreclaimedRefundAlarm missing");
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a failed webhook transaction is alertable — it is the only clawback-fault signal", () => {
+  const { phrase } = filterFor("WebhookHandlerFault");
+  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs "${phrase}"`);
+  assert.match(body("WebhookHandlerFaultAlarm"), /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+// The INVERSE of the pinning test. filterFor proves filter -> code; this proves
+// code -> filter, so a console.error added later cannot ship unwatched while the
+// suite stays green. That gap is exactly how `webhook handling failed` sat
+// unmonitored until now.
+test("every console.error in the handler is covered by some metric filter", () => {
+  const phrases = ofType("AWS::Logs::MetricFilter")
+    .map((id) => body(id).match(/FilterPattern: '"([^"]+)"'/)?.[1])
+    .filter(Boolean);
+  assert.ok(phrases.length >= 4, `expected the money filters, found ${phrases.length}`);
+
+  // Deliberately unwatched, with the reason written down.
+  const UNWATCHED = [
+    // Diagnostic only: the caller ALSO emits a pinned CLAWBACK_UNRECLAIMED line
+    // when this leads to an unrefundable grant, so alarming twice on one fault
+    // would train the operator to ignore the topic.
+    "invoice.paid: could not expand payments",
+  ];
+
+  const messages = [...handlerSrc.matchAll(/console\.error\(\s*(`[^`]*`|"[^"]*")/g)].map((m) =>
+    m[1].slice(1, -1)
+  );
+  assert.ok(messages.length >= 5, `expected several console.error sites, found ${messages.length}`);
+  for (const msg of messages) {
+    // Template literals interpolate the shared phrase constant; resolve it.
+    const resolved = msg.replace(/\$\{CLAWBACK_UNRECLAIMED\}/g, "credits NOT reclaimed");
+    const covered = phrases.some((p) => resolved.includes(p)) || UNWATCHED.some((u) => resolved.includes(u));
+    assert.ok(covered, `console.error("${resolved}") is watched by no metric filter and is not on UNWATCHED`);
+  }
+});

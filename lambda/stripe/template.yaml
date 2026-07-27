@@ -288,6 +288,75 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # ONE filter for every branch where money went back to the customer but the
+  # credits could not be reclaimed — a missing/malformed grant row, an
+  # unresolvable payment_intent, an unhandled money-shaped event type. All of
+  # them end their message with the same literal phrase, so a branch added
+  # later is covered without touching this template.
+  UnreclaimedRefundMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"credits NOT reclaimed"'
+      MetricTransformations:
+        - MetricNamespace: QuantumStripe
+          MetricName: UnreclaimedRefund
+          MetricValue: "1"
+          Unit: Count
+
+  UnreclaimedRefundAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-unreclaimed-refund
+      AlarmDescription: >-
+        Money went back to a customer (refund or lost dispute) but the credits
+        it bought could NOT be reclaimed automatically — most likely a charge
+        with no grant row, or a subscription whose PaymentIntent never
+        resolved. The learner keeps credits the platform has refunded. Find the
+        payment_intent on the log line and adjust the wallet by hand.
+      Namespace: QuantumStripe
+      MetricName: UnreclaimedRefund
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # The catch-all fault. For a GRANT this self-heals (Stripe retries), but a
+  # CLAWBACK fault that outlives Stripe's retry window is permanent money loss,
+  # so this needs eyes even though it looks like a generic 500.
+  WebhookHandlerFaultMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"webhook handling failed"'
+      MetricTransformations:
+        - MetricNamespace: QuantumStripe
+          MetricName: WebhookHandlerFault
+          MetricValue: "1"
+          Unit: Count
+
+  WebhookHandlerFaultAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-stripe-webhook-fault
+      AlarmDescription: >-
+        The webhook handler threw. Stripe will retry, so a single occurrence on
+        a GRANT path usually self-heals — but check the event type on the log
+        line: a CLAWBACK fault that persists past Stripe's retry window is
+        permanent, because nothing else will ever reclaim those credits.
+      Namespace: QuantumStripe
+      MetricName: WebhookHandlerFault
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   StripeThrottlesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

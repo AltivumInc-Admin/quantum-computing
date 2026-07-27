@@ -127,13 +127,27 @@ there is no missed-event window — but do it in this order anyway:
 
 1. Create the replacement endpoint (Dashboard → Developers → Webhooks → Add
    endpoint), URL `https://bfiloz43aa.execute-api.us-east-2.amazonaws.com/webhook`,
-   **pin the API version**, and subscribe to **six** events:
-   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed`, `invoice.paid`,
-   `customer.subscription.updated`, `customer.subscription.deleted`.
-   The two async events are load-bearing: Klarna / Cash App / Amazon Pay / ACH
-   are all active on this account, and those methods complete the session with
-   `payment_status: "unpaid"` before any money settles.
+   **pin the API version**, and subscribe to **all nine** events. Do not retype
+   them — print the list from the code so the Dashboard cannot drift:
+
+   ```bash
+   node -e "import('./lambda/stripe/index.mjs').then(m=>console.log(m.REQUIRED_WEBHOOK_EVENTS.join('\n')))"
+   ```
+
+   `index.test.mjs` asserts that list matches the handler's `switch` cases
+   exactly, so a type handled but never delivered (dead code) or delivered but
+   ignored (silent loss) reddens instead of shipping.
+
+   Two groups are load-bearing and easy to skip:
+   - **`async_payment_succeeded` / `async_payment_failed`** — Klarna / Cash App /
+     Amazon Pay / ACH are all active on this account and complete the session
+     with `payment_status: "unpaid"` before any money settles; nothing is
+     fulfilled until the async success lands.
+   - **`charge.refunded`, `charge.dispute.funds_withdrawn`,
+     `charge.dispute.funds_reinstated`** — the clawback path. Deliberately NOT
+     `charge.dispute.created`: that also fires for inquiries where Stripe
+     withdraws no funds, so clawing back there would zero a paying customer's
+     wallet for free.
 2. Copy the new signing secret and rotate it into Secrets Manager. Re-read the
    key from 1Password in the same command so no plaintext reaches shell history:
 
@@ -368,7 +382,18 @@ prior balances. Decide before 2.3, not after.
   alternative — start, then discover the wallet is short — means either eating
   the cost or clawing back after delivering an answer. Revisit only with a real
   usage distribution to size it against.
-- **No refund clawback.** A Stripe refund does not remove granted credits. Manual.
+- **Clawback covers refunds and disputes, but only for grants written AFTER it
+  ships.** A refund reclaims credits by looking up a `GRANT#<payment_intent>`
+  row written at grant time — `Charge.invoice` was removed in Basil, so there is
+  no way to re-derive the link for a historical charge. Any grant predating this
+  deploy is unreclaimable and logs `credits NOT reclaimed` for manual handling.
+  (Live volume is zero, so today this set is empty.)
+- **A clawback can leave a learner "owing".** The wallet floors at 0 and the
+  shortfall lands in `clawbackOwedCredits` — deliberately NOT a negative
+  `credits`, which the client's `counter()` would read as "metering
+  unconfigured" and use to hide the top-up path. Nothing yet spends or displays
+  that field: deciding whether to write it off or require clearing it is an open
+  product decision, not a bug.
 - **A permanently-failing reconciler row** holds a learner's charge with no
   automatic recovery. It throws and logs every tick with `sub` and
   `chargeMilliCredits`, but the errors alarm pins in ALARM and CloudWatch only
