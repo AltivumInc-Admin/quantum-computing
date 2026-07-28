@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./auth-provider";
 import { resetLocalDeletions, wipeLocalProgress } from "@/lib/progress-merge";
 import { isReviewPrefsConfigured, deleteReminderPrefs } from "@/lib/review-prefs-client";
+import { hasUserPoolAdminScope } from "@/lib/auth-session";
 import { useLocale } from "@/i18n";
 
 const CONFIRM_WORD = "delete";
@@ -66,6 +67,22 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
   const handleDelete = async () => {
     setBusy(true);
     setError(null);
+
+    // 0. Can this session finish what it is about to start? The ordering below
+    //    only "can never strand data" if the LAST step is capable of succeeding.
+    //    deleteUser() is cognito-idp DeleteUser, gated on a scope a Google session
+    //    can never carry — so without this check a federated user's progress and
+    //    email preference were destroyed first and the account delete then failed
+    //    every single time, leaving them told to "Try again" forever. Refuse
+    //    before touching anything, and say why.
+    if (!(await hasUserPoolAdminScope())) {
+      setError(
+        "Accounts created with Google can't be deleted from here yet, and nothing was deleted. " +
+          "Email support and we'll remove it for you.",
+      );
+      setBusy(false);
+      return;
+    }
 
     // 1. Server progress (the sync snapshot, including the stored email claim).
     if (syncConfigured) {

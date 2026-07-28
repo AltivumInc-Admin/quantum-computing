@@ -399,6 +399,10 @@ export const es: TranslationDict = {
       invalidPassword:
         "La contraseña debe tener al menos 8 caracteres con mayúscula, minúscula y un número.",
       tooManyAttempts: "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+      resetRequired:
+        "Debes establecer una contraseña nueva antes de iniciar sesión: solicita un código de restablecimiento.",
+      googleSessionActive:
+        "Ya has iniciado sesión con Google. Recarga esta página para continuar.",
       generic: "Algo salió mal. Inténtalo de nuevo.",
     },
   },

@@ -401,6 +401,10 @@ export const en: TranslationDict = {
       invalidPassword:
         "Password must be at least 8 characters with upper, lower, and a number.",
       tooManyAttempts: "Too many attempts. Please wait a moment and try again.",
+      resetRequired:
+        "You need to set a new password before signing in — request a reset code.",
+      googleSessionActive:
+        "You're already signed in with Google. Reload this page to continue.",
       generic: "Something went wrong. Please try again.",
     },
   },

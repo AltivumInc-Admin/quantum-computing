@@ -12,7 +12,13 @@ import {
   resetPassword,
   confirmResetPassword,
 } from "aws-amplify/auth";
-import { mapAuthError, type AuthView } from "@/lib/auth-errors";
+import {
+  mapAuthError,
+  HOSTED_UI_SESSION_ACTIVE,
+  SIGN_IN_INCOMPLETE,
+  type AuthView,
+} from "@/lib/auth-errors";
+import { hasUserPoolAdminScope } from "@/lib/auth-session";
 import { allCriteriaMet } from "@/lib/password-policy";
 import { PasswordField } from "./password-field";
 import { PasswordChecklist } from "./password-checklist";
@@ -101,24 +107,48 @@ export function AuthForm() {
     }
   };
 
+  const named = (name: string) => Object.assign(new Error(name), { name });
+
+  // A resolved signIn is NOT a successful signIn. aws-amplify catches
+  // UserNotConfirmedException / PasswordResetRequiredException inside
+  // signInWithSRP and RESOLVES them as {isSignedIn:false, nextStep} — so treating
+  // "did not throw" as "signed in" routed those users to /workspace, where the auth
+  // wall bounced them back to /login with no error and no way forward. Convert each
+  // incomplete outcome into the error name that already drives the right view, and
+  // never let an unrecognized step fall through to a navigation.
+  const assertSignedIn = (out: { isSignedIn?: boolean; nextStep?: { signInStep?: string } }) => {
+    if (out?.isSignedIn) return;
+    const step = out?.nextStep?.signInStep;
+    if (step === "CONFIRM_SIGN_UP") throw named("UserNotConfirmedException");
+    if (step === "RESET_PASSWORD") throw named("PasswordResetRequiredException");
+    throw named(SIGN_IN_INCOMPLETE);
+  };
+
   // signIn that survives a session already squatting in this tab. Amplify throws
-  // UserAlreadyAuthenticatedException rather than switching users — and a "failed"
+  // UserAlreadyAuthenticatedException rather than switching users, and a "failed"
   // Google round-trip can leave exactly such a session behind (the token exchange
-  // succeeds even when the UI reports failure), which used to make every
-  // email/password attempt in that tab die with a generic error. The user asked to
-  // be THIS identity, so honor it: drop the squatter and sign in fresh.
+  // succeeds even when the UI reports failure).
+  //
+  // The recovery differs by session kind, because signOut() is not a local token
+  // clear here: loginWith.oauth is always configured, so for a HOSTED-UI session
+  // Amplify redirects the whole page to the Cognito /logout endpoint. Awaiting a
+  // retry after that awaits a document that is already unloading — the user would
+  // land on the home page, signed out, with their password silently discarded. So
+  // only the native squatter gets the sign-out-and-retry; for a Google one we say
+  // what is actually true and let them reload into the session they already have.
   const signInFresh = async () => {
     try {
-      await signIn({ username: email, password });
+      return await signIn({ username: email, password });
     } catch (err) {
       if ((err as { name?: string })?.name !== "UserAlreadyAuthenticatedException") throw err;
+      if (!(await hasUserPoolAdminScope())) throw named(HOSTED_UI_SESSION_ACTIVE);
       await signOut();
-      await signIn({ username: email, password });
+      return await signIn({ username: email, password });
     }
   };
 
   const doSignIn = handle(async () => {
-    await signInFresh();
+    assertSignedIn(await signInFresh());
     router.replace("/workspace");
   });
   const doSignUp = handle(async () => {
@@ -127,7 +157,7 @@ export function AuthForm() {
   });
   const doConfirm = handle(async () => {
     await confirmSignUp({ username: email, confirmationCode: code });
-    await signInFresh();
+    assertSignedIn(await signInFresh());
     router.replace("/workspace");
   });
   const doForgot = handle(async () => {
@@ -138,8 +168,28 @@ export function AuthForm() {
     await confirmResetPassword({ username: email, confirmationCode: code, newPassword });
     setView("signIn");
   });
-  const doGoogle = () => {
-    void signInWithRedirect({ provider: "Google" });
+  // signInWithRedirect runs the same assertUserNotAuthenticated guard as signIn, so
+  // it rejects under exactly the squatting-session state the ?error=google banner
+  // invites the user to retry from. Firing it as `void` discarded that rejection:
+  // the button did nothing, on every click, with no feedback whatsoever. Here the
+  // hosted-UI sign-out redirect is the DESIRED outcome — it hands the user to
+  // Cognito's /logout and back — so unlike signInFresh this path may sign out.
+  const doGoogle = async () => {
+    setError(null);
+    try {
+      await signInWithRedirect({ provider: "Google" });
+    } catch (err) {
+      if ((err as { name?: string })?.name === "UserAlreadyAuthenticatedException") {
+        try {
+          await signOut();
+          await signInWithRedirect({ provider: "Google" });
+          return;
+        } catch {
+          /* fall through to the banner below */
+        }
+      }
+      setError(t(mapAuthError(err).messageKey));
+    }
   };
   const resend = async () => {
     if (resendState === "sending" || resendCooldown > 0) return; // guard double-click + cooldown
@@ -216,7 +266,7 @@ export function AuthForm() {
               {t("auth.createAccount")}
             </button>
           </div>
-          <GoogleBlock onClick={doGoogle} />
+          <GoogleBlock onClick={() => void doGoogle()} />
         </form>
       )}
 
@@ -255,7 +305,7 @@ export function AuthForm() {
               {t("auth.alreadyHaveAccount")}
             </button>
           </div>
-          <GoogleBlock onClick={doGoogle} />
+          <GoogleBlock onClick={() => void doGoogle()} />
         </form>
       )}
 
