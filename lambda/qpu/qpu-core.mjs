@@ -34,7 +34,17 @@ export const MAX_SHOTS = 1000; // hard ceiling → $1.75 max per run on IQM Garn
 // shots); the two must stay equal. Every hardware medal must be co-earnable inside
 // this cap (3 runs + 1,000 shots = $2.35) — see the feasibility lock in
 // qpu-core.test.mjs, which fails if a tier is ever made unearnable.
-export const LIFETIME_CAP_MICROS = 2_500_000; // $2.50 per user, forever
+// WITHDRAWN 2026-07-28. The platform no longer sponsors hardware runs: nothing
+// is given away, so a new learner's default allowance is ZERO and every run is
+// funded from purchased credits.
+//
+// This is a DEFAULT, not a migration. Learners already stamped with a cap keep
+// it — `capMicros` is read off the row and only falls back to this constant
+// when the row has none. Retracting an allowance the UI already named to a
+// specific person is the one lie this product cannot tell, so the withdrawal
+// applies going forward and never reaches backwards. One production row is
+// grandfathered this way at the time of writing.
+export const LIFETIME_CAP_MICROS = 0;
 export const DAILY_CAP_MICROS = 15_000_000; // $15.00/day GLOBAL kill-switch
 // Entitlement: a valid JWT is authentication, not authorization to spend. On top
 // of a verified email we require a SERVER-MINTED "cost-estimate" credential — the
@@ -379,11 +389,17 @@ export function createHandlerCore({
         // and an unconditional ADD would mint a phantom row at -N credits.
         // credits >= :need keeps the balance from ever going below zero under
         // concurrent submits — DynamoDB re-checks it inside the transaction.
+        // The clawback clause enforces the product rule that a debt must be
+        // CLEARED: a learner whose refund was reclaimed past their balance
+        // cannot spend again until a purchase pays the shortfall down to zero.
         UpdateExpression: "ADD credits :neg",
-        ConditionExpression: "attribute_exists(pk) AND credits >= :need",
+        ConditionExpression:
+          "attribute_exists(pk) AND credits >= :need AND " +
+          "(attribute_not_exists(clawbackOwedCredits) OR clawbackOwedCredits = :zero)",
         ExpressionAttributeValues: {
           ":neg": { N: String(-creditsNeeded) },
           ":need": { N: String(creditsNeeded) },
+          ":zero": { N: "0" },
         },
       },
     };
@@ -489,8 +505,20 @@ export function createHandlerCore({
     // Allowance first — the free funnel is untouched by metering. A run that no
     // longer fits goes straight to the wallet (no split funding: a run is
     // entirely one source, so refunds are exact and provenance is one word).
-    const fitsAllowance = alreadySpent + cost <= effectiveCap;
-    let funding = walletTable && !fitsAllowance ? "wallet" : "allowance";
+    // An allowance can only fund a run if the learner actually HAS one — a
+    // grandfathered cap with headroom. With the programme withdrawn,
+    // effectiveCap is 0 for everyone else, so this is false and the run is
+    // paid. Guarding on `effectiveCap > 0` matters independently of the
+    // arithmetic: the allowance leg's condition permits a first submit via
+    // `attribute_not_exists(spentMicros)`, so a cap-0 learner routed down that
+    // path would receive one real-money run for free.
+    const fitsAllowance = effectiveCap > 0 && alreadySpent + cost <= effectiveCap;
+    if (!fitsAllowance && !walletTable) {
+      // No allowance and nowhere to charge it: refuse, rather than fall through
+      // to the allowance leg, which would pass and hand out a free run.
+      return json(402, { error: "over-lifetime-budget" });
+    }
+    let funding = fitsAllowance ? "allowance" : "wallet";
     let outcome = await attemptReservation(funding);
     if (outcome.fallback) {
       funding = "wallet";

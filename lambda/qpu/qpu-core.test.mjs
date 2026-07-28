@@ -103,6 +103,19 @@ const core = (ddb, braket) =>
     braket,
     ledgerTable: "ledger",
     tasksTable: "tasks",
+    walletTable: "wallet",
+    resultsBucket: "amazon-braket-eu-north-1-x",
+    now: () => NOW,
+  });
+
+/** Metering not configured — no wallet to charge. Only for the tests that
+ *  assert a run is REFUSED rather than given away when nothing can pay. */
+const coreNoMetering = (ddb, braket) =>
+  createHandlerCore({
+    ddb,
+    braket,
+    ledgerTable: "ledger",
+    tasksTable: "tasks",
     resultsBucket: "amazon-braket-eu-north-1-x",
     now: () => NOW,
   });
@@ -184,9 +197,11 @@ test("a verified user WITHOUT the server-minted credential cannot spend — 403"
 
 // ---- caps + kill-switch ----------------------------------------------------
 test("over the lifetime cap → 402, and Braket is never called", async () => {
-  const ddb = stubDdb({ transact: canceled(R(0)) });
+  // A GRANDFATHERED learner who has exhausted their stamped cap, with no
+  // wallet to fall back on.
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, transact: canceled(R(0)) });
   const braket = stubBraket();
-  const res = await core(ddb, braket)(submitEvent(goodClaims, goodBody));
+  const res = await coreNoMetering(ddb, braket)(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 402);
   assert.match(JSON.parse(res.body).error, /lifetime/);
   assert.equal(braket.calls.length, 0);
@@ -232,7 +247,10 @@ test("a duplicate idempotency key returns the cached task, never a double-charge
 
 // ---- compensating release + the critical "never refund a real task" fix ----
 test("a Braket submit failure releases the reservation and returns 502", async () => {
-  const ddb = stubDdb();
+  // A GRANDFATHERED learner, so this pins the ALLOWANCE release shape; the
+  // wallet-funded release has its own test ("refunds the CREDITS, not the
+  // sponsored ledger").
+  const ddb = stubDdb({ ledgerUser: { capMicros: { N: "2500000" }, spentMicros: { N: "0" } } });
   const braket = stubBraket(undefined, Object.assign(new Error("boom"), { name: "ServiceError" }));
   const res = await core(ddb, braket)(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 502);
@@ -471,13 +489,21 @@ test("no verified sub → 401; unknown route → 405; bad JSON → 400", async (
 // The most important test in this file. The Hardware medals are advertised under
 // "Each medal is earned, not awarded — struck from work you can point to." The
 // ladder this replaced (1/5/20 runs) broke that promise with arithmetic: a 20-run
-// medal costs $8.90 at the panel's default 100 shots, and $6.03 even at 1 shot per
-// run — both over the $5.00 cap that was live at the time. The platform shipped a
-// medal its own budget made mathematically impossible to earn. These tests make
-// that class of bug unshippable.
+// medal costs $8.90 at the panel's default 100 shots, over the $5.00 cap live at
+// the time — a medal the platform's own budget made impossible to earn.
+//
+// The sponsored allowance is now WITHDRAWN, so the ladder is bought rather than
+// granted, and the lock changes shape with it: the question is no longer "does
+// this fit inside a free cap" but "is the price we advertise the real price, and
+// is the ladder physically placeable at all". A wrong price on a thing a learner
+// pays for is the same broken promise wearing different clothes.
 
 test("the ladder fixture still matches the REAL money constants (no drift)", () => {
-  assert.equal(LADDER.lifetimeCapMicros, LIFETIME_CAP_MICROS);
+  // NOT compared to LIFETIME_CAP_MICROS: that is 0 now. grandfatheredCapMicros
+  // records what pre-existing learners were stamped with, which no live constant
+  // reproduces — it exists only on their ledger rows.
+  assert.equal(LADDER.grandfatheredCapMicros, 2_500_000);
+  assert.equal(LIFETIME_CAP_MICROS, 0, "no new learner is granted an allowance");
   assert.equal(LADDER.dailyCapMicros, DAILY_CAP_MICROS);
   assert.equal(LADDER.perTaskMicros, IQM_PER_TASK_MICROS);
   assert.equal(LADDER.perShotMicros, IQM_PER_SHOT_MICROS);
@@ -492,7 +518,7 @@ test("MAX_SHOTS IS the Deep sample threshold — the two must stay equal", () =>
   assert.equal(shotsTier.n, MAX_SHOTS);
 });
 
-test("EVERY hardware medal is co-earnable within the lifetime cap", () => {
+test("the ladder's ADVERTISED price is the true cheapest price, and is placeable", () => {
   // The binding tiers: the most runs any run-tier demands, and the most shots any
   // shots-tier demands. A learner must be able to hold ALL medals AT ONCE.
   const runs = Math.max(...LADDER.tiers.filter((t) => t.metric === "runs").map((t) => t.n));
@@ -508,14 +534,11 @@ test("EVERY hardware medal is co-earnable within the lifetime cap", () => {
     shots <= MAX_SHOTS * runs,
     `${shots} shots cannot fit in ${runs} runs of at most ${MAX_SHOTS} — an unplaceable medal`,
   );
-  assert.ok(
-    need <= LIFETIME_CAP_MICROS,
-    `the ladder costs ${need} micros > the ${LIFETIME_CAP_MICROS} cap — an UNEARNABLE medal`,
-  );
-  // And it is exactly the path the fixture advertises to the learner.
+  // The fixture's advertised path must BE that cheapest path — this is the number
+  // the learner is quoted, so a drift here overcharges or undercharges them.
   assert.equal(need, LADDER.cheapestPath.costMicros);
-  assert.equal(need, costMicros(0) * runs + IQM_PER_SHOT_MICROS * shots - 0); // = 3 tasks + 1000 shots
-  assert.equal(need, 2_350_000); // $2.35, with $0.15 of the $2.50 allowance to spare
+  // And it must be expressible in whole credits without losing money.
+  assert.equal(creditsForMicros(need), Math.ceil(need / MICROS_PER_CREDIT));
 });
 
 test("a refunded run earns nothing: only COMPLETED rows tally toward a medal", async () => {
@@ -555,7 +578,9 @@ const walletCore = (ddb, braket) =>
   });
 
 // A user whose sponsored allowance is exhausted for a 1000-shot ($1.75) run.
-const SPENT_UP = { capMicros: { N: String(LIFETIME_CAP_MICROS) }, spentMicros: { N: "2000000" } };
+// A GRANDFATHERED learner whose stamped allowance no longer covers a 1000-shot
+// run. New learners have no cap at all — see the W-series tests.
+const SPENT_UP = { capMicros: { N: "2500000" }, spentMicros: { N: "2000000" } };
 
 test("creditsForMicros converts at the $0.01 peg, rounding UP to a whole credit", () => {
   assert.equal(MICROS_PER_CREDIT, 10_000);
@@ -581,7 +606,11 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   assert.equal(debit.Key.pk.S, "WALLET#u1");
   assert.match(debit.UpdateExpression, /ADD credits :neg/);
   assert.equal(debit.ExpressionAttributeValues[":neg"].N, "-175");
-  assert.equal(debit.ConditionExpression, "attribute_exists(pk) AND credits >= :need");
+  // Asserted clause-by-clause rather than as one exact string: the expression
+  // grew a clawback-debt guard, and pinning the whole literal would force an
+  // unrelated edit here every time a new guard is added.
+  assert.match(debit.ConditionExpression, /attribute_exists\(pk\)/, "no phantom wallet row");
+  assert.match(debit.ConditionExpression, /credits >= :need/, "never below zero");
   assert.equal(debit.ExpressionAttributeValues[":need"].N, "175");
   // leg 1: the GLOBAL day cap still binds a wallet-funded run (real account spend)
   assert.equal(tx[1].Update.Key.pk.S, "DAY#2026-07-07");
@@ -594,8 +623,8 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   assert.ok(!tx.some((l) => l.Update?.Key?.pk?.S === "USER#u1"));
 });
 
-test("a wallet-funded run within the allowance never touches the wallet (allowance first)", async () => {
-  const ddb = stubDdb({ ledgerUser: { capMicros: { N: String(LIFETIME_CAP_MICROS) }, spentMicros: { N: "0" } } });
+test("a GRANDFATHERED run within the stamped allowance never touches the wallet", async () => {
+  const ddb = stubDdb({ ledgerUser: { capMicros: { N: "2500000" }, spentMicros: { N: "0" } } });
   const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 202);
   assert.equal(JSON.parse(res.body).fundedBy, "allowance");
@@ -617,7 +646,7 @@ test("insufficient wallet credits → 402 insufficient-credits with the shortfal
 
 test("without a wallet table an over-allowance run still 402s over-lifetime-budget (behavior pinned)", async () => {
   const ddb = stubDdb({ ledgerUser: SPENT_UP, transact: canceled(R(0)) });
-  const res = await core(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  const res = await coreNoMetering(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 402);
   assert.equal(JSON.parse(res.body).error, "over-lifetime-budget");
 });
@@ -627,7 +656,7 @@ test("an allowance race falls back to the wallet exactly once", async () => {
   // the allowance transaction cancels on the cap leg, and the core retries as a
   // wallet-funded reservation instead of bouncing a payable run with a 402.
   const ddb = stubDdb({
-    ledgerUser: { capMicros: { N: String(LIFETIME_CAP_MICROS) }, spentMicros: { N: "0" } },
+    ledgerUser: { capMicros: { N: "2500000" }, spentMicros: { N: "0" } },
     transact: [canceled(R(0)), {}],
   });
   const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
@@ -664,7 +693,7 @@ test("GET /qpu/budget reports the wallet balance when metering is configured", a
   const res = await walletCore(ddb, stubBraket())(event);
   assert.equal(JSON.parse(res.body).walletCredits, 300);
 
-  const bare = await core(stubDdb({}), stubBraket())(event);
+  const bare = await coreNoMetering(stubDdb({}), stubBraket())(event);
   assert.equal(JSON.parse(bare.body).walletCredits, null, "unconfigured metering reports null, not 0");
 });
 
@@ -692,5 +721,85 @@ test("no ConditionExpression uses arithmetic or if_not_exists (real DynamoDB for
       );
     }
     assert.ok(count > 0, `${file}: expected to find ConditionExpressions to check`);
+  }
+});
+
+test("a learner owing clawback credits cannot spend the wallet until it is cleared", async () => {
+  // Product rule: debt must be CLEARED. The wallet debit therefore requires
+  // no outstanding clawback, so a refunded-then-unpaid learner cannot keep
+  // spending on credits the platform has already taken back.
+  const ddb = stubDdb({ ledgerUser: SPENT_UP });
+  await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  const debit = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems[0]
+    .Update;
+  assert.match(
+    debit.ConditionExpression,
+    /attribute_not_exists\(clawbackOwedCredits\) OR clawbackOwedCredits = :zero/,
+    "the debit must refuse while a debt stands",
+  );
+  assert.equal(debit.ExpressionAttributeValues[":zero"].N, "0");
+});
+
+// ---- the sponsored allowance is withdrawn -------------------------------------
+// Hardware is paid-only now. Two invariants matter and pull against each other:
+// a NEW learner gets nothing free, while a learner who was already STAMPED with
+// a cap keeps it — retracting an allowance the UI already named is the one lie
+// this product cannot tell.
+
+test("W1: a new learner gets NO allowance — the run is wallet-funded", async () => {
+  const ddb = stubDdb({}); // no ledger row at all
+  const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 202);
+  assert.equal(JSON.parse(res.body).fundedBy, "wallet");
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  assert.equal(tx[0].Update.TableName, "wallet", "funded from the paid wallet, not the ledger");
+});
+
+test("W2: a new learner with no wallet configured is refused, never given a free run", async () => {
+  // The dangerous shape: with cap 0, the allowance leg's
+  // `attribute_not_exists(spentMicros)` clause would otherwise PASS and hand out
+  // a real-money run for free.
+  const ddb = stubDdb({});
+  const braket = stubBraket();
+  const res = await coreNoMetering(ddb, braket)(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 402);
+  assert.equal(JSON.parse(res.body).error, "over-lifetime-budget");
+  assert.equal(braket.calls.length, 0, "no free hardware run");
+  assert.ok(
+    !ddb.calls.some((c) => c.name === "TransactWriteItemsCommand"),
+    "nothing reserved",
+  );
+});
+
+test("W3: a learner already STAMPED with a cap keeps it — no retroactive retraction", async () => {
+  // christian.perez@altivum.ai holds capMicros=2500000, spentMicros=1335000 in
+  // production. That allowance was named in the UI and must survive.
+  const ddb = stubDdb({
+    ledgerUser: { capMicros: { N: "2500000" }, spentMicros: { N: "1335000" } },
+  });
+  const res = await walletCore(ddb, stubBraket())(
+    submitEvent(goodClaims, { ...goodBody, shots: 100 }), // $0.445, fits the $1.165 left
+  );
+  assert.equal(res.statusCode, 202);
+  assert.equal(JSON.parse(res.body).fundedBy, "allowance");
+});
+
+test("W4: a stamped learner past their cap falls through to the wallet", async () => {
+  const ddb = stubDdb({
+    ledgerUser: { capMicros: { N: "2500000" }, spentMicros: { N: "2500000" } },
+  });
+  const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
+  assert.equal(JSON.parse(res.body).fundedBy, "wallet");
+});
+
+test("W5: no NEW cap is ever stamped onto a ledger row", async () => {
+  // The if_not_exists stamp is what created the grandfathered allowances. With
+  // the programme withdrawn it must never write a non-zero cap again.
+  const src = readFileSync(new URL("./qpu-core.mjs", import.meta.url), "utf8");
+  assert.equal(LIFETIME_CAP_MICROS, 0, "the default allowance is withdrawn");
+  const stamp = src.match(/capMicros = if_not_exists\(capMicros, :cap\)/);
+  if (stamp) {
+    // If the stamp survives it must stamp ZERO, so a new row grants nothing.
+    assert.match(src, /":cap": \{ N: String\(LIFETIME_CAP_MICROS\) \}/);
   }
 });

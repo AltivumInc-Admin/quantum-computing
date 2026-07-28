@@ -47,10 +47,14 @@ def _aws_device_cls():
 #                  DEVICE_REGION constants and hard-rejects any other device, so those three
 #                  must move with the allowlist. tests/test_qpu_devices.py::
 #                  test_lambda_device_identity_matches_the_single_source fails if they don't.
-#                  NOTE: the real spend boundary is the ledger's hard caps ($2.50 lifetime per
-#                  user, $15/day globally), not the client-authored progress gate — see
-#                  LIFETIME_CAP_MICROS / DAILY_CAP_MICROS in lambda/qpu/qpu-core.mjs. (The
-#                  platform pays those dollars; the learner never does.)
+#                  NOTE: the real spend boundary is the ledger's hard caps, not the
+#                  client-authored progress gate — see LIFETIME_CAP_MICROS /
+#                  DAILY_CAP_MICROS in lambda/qpu/qpu-core.mjs. The $2.50 per-user
+#                  lifetime allowance was WITHDRAWN on 2026-07-28: learners now fund
+#                  hardware runs from their own credit wallet, so the surviving hard cap
+#                  is the $15/day global one. Accounts that already hold a stamped cap
+#                  keep it (if_not_exists), which is why the figure still appears in
+#                  lambda/qpu/__fixtures__/hardware-ladder.json.
 #
 # min_shots / max_shots are the SERVICE's per-task shot bounds, from the Braket quotas
 # page ("Additional quotas and limits", read 2026-07-20:

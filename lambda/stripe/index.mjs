@@ -18,9 +18,14 @@
 // count for each purchase is set server-side from CATALOG (never trusted from
 // the client) and carried in Stripe metadata to the webhook.
 //
-// One table, qpu-style pk-prefixed rows: WALLET#<sub> (never expires) and
+// One table, qpu-style pk-prefixed rows: WALLET#<sub> (never expires),
 // EVENT#<stripeEventId> (TTL'd — idempotency only needs to outlive Stripe's
-// retry window). DI-core like lambda/sync + lambda/qpu: createHandlerCore(deps)
+// retry window), and RECEIPT#<paymentIntentId> (never expires — a refund may
+// arrive long after the EVENT marker has aged out). NOTHING here ever adds
+// credits a learner did not pay for: there are no free, promotional, or
+// starter credits, and every positive wallet delta is a completed purchase or
+// the return of the learner's own unused reserve.
+// DI-core like lambda/sync + lambda/qpu: createHandlerCore(deps)
 // unit-tests under node --test with stubbed Stripe + DynamoDB; the production
 // handler lazily builds the real deps from env on first invocation.
 
@@ -45,22 +50,30 @@ const json = (statusCode, body) => ({
 const walletKey = (sub) => ({ pk: { S: `WALLET#${sub}` } });
 const eventKey = (id) => ({ pk: { S: `EVENT#${id}` } });
 /**
- * The durable record of one grant, keyed by PaymentIntent id — the ONLY link
- * that survives from a Charge back to what it bought. `Charge.invoice` was
- * removed in the Basil relocation (the same wave that moved the subscription
- * id under `Invoice.parent` and silently broke every credit grant), so a
- * refund cannot re-derive its grant from Stripe's object graph. This row has
- * no TTL: Stripe's dispute window outlives the 30-day EVENT# marker.
+ * A PURCHASE RECEIPT — "PaymentIntent pi_X bought N credits for user Y".
+ *
+ * NOT a gift. Nothing in this platform ever adds credits a learner did not pay
+ * for: every positive wallet delta is either a completed Stripe purchase or the
+ * return of the learner's own unused reserve (lambda/qpu releaseReservation,
+ * lambda/tutor settle). This row exists solely so a REFUND can reverse exactly
+ * what a specific payment bought.
+ *
+ * Keyed by PaymentIntent id because that is the only link surviving from a
+ * Charge back to what it bought: `Charge.invoice` was removed in the Basil
+ * relocation — the same wave that moved the subscription id under
+ * `Invoice.parent` and silently broke every credit purchase — so a refund
+ * cannot re-derive the purchase from Stripe's object graph. No TTL: Stripe's
+ * dispute window outlives the 30-day EVENT# marker.
  */
-const grantKey = (pi) => ({ pk: { S: `GRANT#${pi}` } });
+const receiptKey = (pi) => ({ pk: { S: `RECEIPT#${pi}` } });
 
 // Transaction leg positions. EVENT and WALLET keep their historical indexes so
-// the reason-code contract stays stable; GRANT is appended.
+// the reason-code contract stays stable; RECEIPT is appended.
 const EVENT_LEG = 0;
 const WALLET_LEG = 1;
-const GRANT_LEG = 2;
+const RECEIPT_LEG = 2;
 
-/** applyOnce's third outcome: the GRANT row moved under us, re-read and retry. */
+/** applyOnce's third outcome: the RECEIPT row moved under us — re-read, retry. */
 export const CLAWBACK_RETRY = Symbol("clawback-retry");
 
 /**
@@ -145,11 +158,11 @@ export function createHandlerCore({
     setTier,
     setSubStatus,
     owedCredits = 0,
-    // Optional third leg: the durable GRANT row that makes a refund findable.
-    // ALWAYS APPENDED at index GRANT_LEG so EVENT_LEG/WALLET_LEG keep their
+    // Optional third leg: the purchase receipt that makes a refund findable.
+    // ALWAYS APPENDED at index RECEIPT_LEG so EVENT_LEG/WALLET_LEG keep their
     // positions — the catch below and the suite's positional pins both depend
     // on the reason indexes not shifting.
-    grantLeg,
+    receiptLeg,
   }) {
     const sets = ["updatedAt = :now"];
     const adds = [];
@@ -197,7 +210,7 @@ export function createHandlerCore({
                 ExpressionAttributeValues: values,
               },
             },
-            ...(grantLeg ? [grantLeg] : []),
+            ...(receiptLeg ? [receiptLeg] : []),
           ],
         })
       );
@@ -211,7 +224,7 @@ export function createHandlerCore({
         const reasons = err.CancellationReasons ?? [];
         const failed = (i) => reasons[i]?.Code === "ConditionalCheckFailed";
         if (failed(EVENT_LEG)) return false; // already processed
-        if (grantLeg && failed(GRANT_LEG)) return CLAWBACK_RETRY; // lost update
+        if (receiptLeg && failed(RECEIPT_LEG)) return CLAWBACK_RETRY; // lost update
       }
       throw err;
     }
@@ -300,18 +313,18 @@ export function createHandlerCore({
     return undefined;
   }
 
-  /** The durable grant record a future refund will look up. Only built when the
+  /** The durable purchase receipt a future refund will look up. Only built when the
    *  key is a real PaymentIntent — a falsy key would merge unrelated users'
-   *  grants under one row (e.g. a 100%-off session, which has no PI at all). */
-  function grantRowLeg(paymentIntent, sub, credits) {
+   *  purchases under one row (e.g. a 100%-off session, which has no PI at all). */
+  function receiptRowLeg(paymentIntent, sub, credits) {
     if (!paymentIntent || !(credits > 0)) return undefined;
     return {
       Put: {
         TableName: tableName,
         Item: {
-          ...grantKey(paymentIntent),
+          ...receiptKey(paymentIntent),
           sub: { S: sub },
-          grantedCredits: { N: String(credits) },
+          purchasedCredits: { N: String(credits) },
           refundedCredits: { N: "0" },
           disputedCredits: { N: "0" },
           createdAt: { N: String(Date.now()) },
@@ -358,6 +371,25 @@ export function createHandlerCore({
    * writes nothing, so the eventual async_payment_succeeded is the one and
    * only grant for the purchase — no double-credit window.
    */
+  /**
+   * Split a purchase between clearing debt and adding spendable credits.
+   *
+   * Product rule: an owing learner must CLEAR the debt — so money pays down
+   * `clawbackOwedCredits` before any of it becomes spendable. A purchase
+   * smaller than the debt adds nothing spendable, which is the honest outcome:
+   * the learner is buying their way back to zero, and the top-up surface says
+   * so rather than quietly crediting a balance they cannot use.
+   */
+  async function splitAgainstDebt(sub, credits) {
+    const res = await ddb.send(
+      new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
+    );
+    const owed = Number(res.Item?.clawbackOwedCredits?.N ?? 0);
+    if (!(owed > 0)) return { deltaCredits: credits, owedCredits: 0 };
+    const applied = Math.min(owed, credits);
+    return { deltaCredits: credits - applied, owedCredits: -applied };
+  }
+
   async function fulfillCheckoutSession(evt, obj) {
     const sub = obj.client_reference_id;
     if (!sub) return;
@@ -365,11 +397,12 @@ export function createHandlerCore({
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
+        const split = await splitAgainstDebt(sub, credits);
         await applyOnce({
           eventId: evt.id,
           sub,
-          deltaCredits: credits,
-          grantLeg: grantRowLeg(idOf(obj.payment_intent), sub, credits),
+          ...split,
+          receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits),
         });
       }
     } else if (obj.mode === "subscription") {
@@ -388,7 +421,7 @@ export function createHandlerCore({
    * Reclaim credits for money that went back to the customer.
    *
    * The arithmetic is ABSOLUTE, not incremental: Stripe's `amount_refunded` is
-   * cumulative, so we compute a target ("this grant should be reclaimed to N")
+   * cumulative, so we compute a target ("this purchase should be reclaimed to N")
    * and move only `target - alreadyReclaimed`. That makes a replayed, stale, or
    * out-of-order delivery a no-op rather than a double-clawback, and — because
    * the target is recomputed from live Stripe state — it stays correct even
@@ -407,32 +440,32 @@ export function createHandlerCore({
     }
     for (let attempt = 0; attempt < 4; attempt++) {
       const got = await ddb.send(
-        new GetItemCommand({ TableName: tableName, Key: grantKey(paymentIntent) })
+        new GetItemCommand({ TableName: tableName, Key: receiptKey(paymentIntent) })
       );
       const row = got.Item;
       if (!row) {
         // Not ours (a Dashboard-created charge, or one predating this feature).
-        // 200 rather than throw: a retry storm cannot conjure a grant that was
+        // 200 rather than throw: a retry storm cannot conjure a receipt that was
         // never written, and Stripe would hammer us for days.
         console.error(
-          `${label}: no grant row for this payment_intent; ${CLAWBACK_UNRECLAIMED}`,
+          `${label}: no purchase receipt for this payment_intent; ${CLAWBACK_UNRECLAIMED}`,
           eventId,
           paymentIntent
         );
         return;
       }
       const sub = row.sub?.S;
-      const granted = Number(row.grantedCredits?.N ?? 0);
+      const purchased = Number(row.purchasedCredits?.N ?? 0);
       const seen = Number(row[field]?.N ?? 0);
-      if (!sub || !Number.isFinite(granted)) {
-        console.error(`${label}: grant row is malformed; ${CLAWBACK_UNRECLAIMED}`, eventId, paymentIntent);
+      if (!sub || !Number.isFinite(purchased)) {
+        console.error(`${label}: purchase receipt is malformed; ${CLAWBACK_UNRECLAIMED}`, eventId, paymentIntent);
         return;
       }
 
-      // Never reclaim more than was granted, and never let a stale event push
+      // Never reclaim more than was purchased, and never let a stale event push
       // the counter backwards into a re-grant. `floor` so a rounding edge
       // always favours the customer.
-      const target = restore ? 0 : Math.min(granted, Math.floor(granted * fraction));
+      const target = restore ? 0 : Math.min(purchased, Math.floor(purchased * fraction));
       const move = target - seen;
       if (move === 0) return; // nothing owed — no write at all
       if (move < 0 && !restore) return; // stale/out-of-order: never re-grant
@@ -453,10 +486,10 @@ export function createHandlerCore({
         sub,
         deltaCredits: -applied,
         owedCredits: unrecovered,
-        grantLeg: {
+        receiptLeg: {
           Update: {
             TableName: tableName,
-            Key: grantKey(paymentIntent),
+            Key: receiptKey(paymentIntent),
             // ABSOLUTE set guarded by the value we read — the optimistic
             // concurrency token. TransactWriteItems has no read leg, so the
             // GetItem above is outside the transaction and this condition is
@@ -558,7 +591,7 @@ export function createHandlerCore({
           deltaCredits: granted,
           setTier: subscription.metadata?.tier,
           setSubStatus: "active",
-          grantLeg: grantRowLeg(pi, sub, granted),
+          receiptLeg: receiptRowLeg(pi, sub, granted),
         });
         return;
       }

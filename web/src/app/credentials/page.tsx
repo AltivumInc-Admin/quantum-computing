@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: `Credentials — ${SITE_NAME}`,
   robots: { index: false, follow: false },
   description:
-    "Software-verified credentials: medals for modules completed, skills held in proven retention, weeks of unbroken practice, and circuits run on a real quantum computer — sponsored, so you never pay.",
+    "Software-verified credentials: medals for modules completed, skills held in proven retention, weeks of unbroken practice, and circuits run on a real quantum computer.",
 };
 
 // Static route (no params) — prerendered as an inert shell under output:"export";

@@ -98,6 +98,14 @@ const mk = (over) =>
     siteOrigin: ORIGIN,
   });
 
+/** The transaction a delivery wrote, found by command NAME rather than call
+ *  index — the handler reads the wallet's debt first on grant paths, so a
+ *  positional pin silently grabs the wrong command. */
+const txItems = (ddb) =>
+  ddb.calls.find((c) => (c.constructor?.name ?? c.name) === "TransactWriteItemsCommand")?.input
+    ?.TransactItems ??
+  ddb.calls.find((c) => c.input?.TransactItems)?.input?.TransactItems;
+
 // ---- CATALOG guardrail -----------------------------------------------------
 
 test("CATALOG credit counts mirror the published pricing", () => {
@@ -289,7 +297,7 @@ test("webhook checkout.session.completed (top-up) grants credits atomically, onc
     makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
   );
   assert.equal(res.statusCode, 200);
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   // one atomic transaction: record the event id (idempotency), add the credits
   assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_1");
   assert.equal(tx[0].Put.ConditionExpression, "attribute_not_exists(pk)");
@@ -368,7 +376,7 @@ test("webhook invoice.paid grants period credits from the CURRENT parent.subscri
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_1"]);
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   assert.equal(tx[1].Update.Key.pk.S, "WALLET#user-7");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "pro");
@@ -393,7 +401,7 @@ test("webhook invoice.paid credits a renewal when subscription_details is expand
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_exp"]); // the id, never the object
-  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "1890");
+  assert.equal(txItems(ddb)[1].Update.ExpressionAttributeValues[":amt"].N, "1890");
 });
 
 test("webhook invoice.paid still credits the LEGACY top-level subscription field", async () => {
@@ -409,7 +417,7 @@ test("webhook invoice.paid still credits the LEGACY top-level subscription field
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(stripe.calls.subsRetrieve, ["sub_1"]);
-  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
+  assert.equal(txItems(ddb)[1].Update.ExpressionAttributeValues[":amt"].N, "6200");
 });
 
 test("webhook invoice.paid LOGS when a subscription invoice has no resolvable id", async () => {
@@ -522,7 +530,7 @@ test("webhook checkout.session.completed with payment_status no_payment_required
     },
   };
   const { ddb } = await deliverWebhook(event);
-  assert.equal(ddb.calls[0].input.TransactItems[1].Update.ExpressionAttributeValues[":amt"].N, "500");
+  assert.equal(txItems(ddb)[1].Update.ExpressionAttributeValues[":amt"].N, "500");
 });
 
 test("webhook checkout.session.async_payment_succeeded fulfills like a paid completion", async () => {
@@ -541,7 +549,7 @@ test("webhook checkout.session.async_payment_succeeded fulfills like a paid comp
   };
   const { res, ddb } = await deliverWebhook(event);
   assert.equal(res.statusCode, 200);
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   // its OWN event id is the idempotency key — completed(unpaid) wrote nothing,
   // so this is the one and only grant for the purchase
   assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_async_ok");
@@ -585,7 +593,7 @@ test("webhook customer.subscription.deleted downgrades the tier to free", async 
   };
   const core = createHandlerCore({ stripe: stubStripe({ event }), ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   await core(makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } }));
-  const tx = ddb.calls[0].input.TransactItems;
+  const tx = txItems(ddb);
   assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "free");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":ss"].S, "canceled");
 });
@@ -647,7 +655,7 @@ function walletDdb({ grant, wallet, transactOutcomes } = {}) {
       calls.push({ name, input: cmd.input });
       if (name === "GetItemCommand") {
         const pk = cmd.input.Key.pk.S;
-        if (pk.startsWith("GRANT#")) return grant ? { Item: grant } : {};
+        if (pk.startsWith("RECEIPT#")) return grant ? { Item: grant } : {};
         if (pk.startsWith("WALLET#")) return wallet ? { Item: wallet } : {};
         return {};
       }
@@ -681,10 +689,10 @@ const refundEvt = (over = {}) => ({
   data: { object: { id: "ch_1", payment_intent: "pi_1", amount: 2000, amount_refunded: 2000, ...over } },
 });
 
-const GRANT_ROW = {
-  pk: { S: "GRANT#pi_1" },
+const RECEIPT_ROW = {
+  pk: { S: "RECEIPT#pi_1" },
   sub: { S: "user-9" },
-  grantedCredits: { N: "2000" },
+  purchasedCredits: { N: "2000" },
   refundedCredits: { N: "0" },
 };
 const txOf = (ddb) => ddb.calls.find((c) => c.name === "TransactWriteItemsCommand")?.input.TransactItems;
@@ -692,10 +700,10 @@ const txOf = (ddb) => ddb.calls.find((c) => c.name === "TransactWriteItemsComman
 test("R1: a full refund claws back against the PaymentIntent key, with a NEGATIVE wallet delta", async () => {
   // charge.invoice was REMOVED in Basil (the same relocation that broke
   // invoice.paid), so payment_intent is the only surviving Charge->grant link.
-  const ddb = walletDdb({ grant: GRANT_ROW, wallet: { credits: { N: "5000" } } });
+  const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } } });
   const res = await deliver(ddb, refundEvt());
   assert.equal(res.statusCode, 200);
-  assert.ok(ddb.calls.some((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "GRANT#pi_1"));
+  assert.ok(ddb.calls.some((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1"));
   const tx = txOf(ddb);
   // EVENT# stays leg 0 and WALLET# stays leg 1 — GRANT is APPENDED, so the
   // existing reason-index contract and the suite's positional pins still hold.
@@ -703,14 +711,14 @@ test("R1: a full refund claws back against the PaymentIntent key, with a NEGATIV
   assert.equal(tx[1].Update.Key.pk.S, "WALLET#user-9");
   assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"].N, "-2000");
   const g = tx[2].Update;
-  assert.equal(g.Key.pk.S, "GRANT#pi_1");
+  assert.equal(g.Key.pk.S, "RECEIPT#pi_1");
   assert.match(g.UpdateExpression, /SET refundedCredits = :target/);
   assert.equal(g.ExpressionAttributeValues[":target"].N, "2000");
   assert.match(g.ConditionExpression, /refundedCredits = :seen/);
 });
 
 test("R2: a partial refund is proportional; a second partial moves only the delta", async () => {
-  const ddb = walletDdb({ grant: { ...GRANT_ROW, refundedCredits: { N: "500" } }, wallet: { credits: { N: "5000" } } });
+  const ddb = walletDdb({ grant: { ...RECEIPT_ROW, refundedCredits: { N: "500" } }, wallet: { credits: { N: "5000" } } });
   await deliver(ddb, refundEvt({ amount_refunded: 1500 }));
   const tx = txOf(ddb);
   assert.equal(tx[2].Update.ExpressionAttributeValues[":target"].N, "1500");
@@ -718,7 +726,7 @@ test("R2: a partial refund is proportional; a second partial moves only the delt
 });
 
 test("R3: a stale/out-of-order event never RE-GRANTS credits", async () => {
-  const ddb = walletDdb({ grant: { ...GRANT_ROW, refundedCredits: { N: "2000" } }, wallet: { credits: { N: "5000" } } });
+  const ddb = walletDdb({ grant: { ...RECEIPT_ROW, refundedCredits: { N: "2000" } }, wallet: { credits: { N: "5000" } } });
   const res = await deliver(ddb, refundEvt({ amount_refunded: 500 }));
   assert.equal(res.statusCode, 200);
   assert.equal(txOf(ddb), undefined, "nothing owed -> no write at all");
@@ -727,7 +735,7 @@ test("R3: a stale/out-of-order event never RE-GRANTS credits", async () => {
 test("R4: the wallet floors at zero; the shortfall is recorded, never a negative balance", async () => {
   // A negative `credits` makes counter() in qpu-client.ts read the wallet as
   // UNCONFIGURED, hiding the top-up path exactly when it is needed.
-  const ddb = walletDdb({ grant: GRANT_ROW, wallet: { credits: { N: "300" } } });
+  const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "300" } } });
   await deliver(ddb, refundEvt());
   const w = txOf(ddb)[1].Update;
   assert.equal(w.ExpressionAttributeValues[":amt"].N, "-300");
@@ -737,18 +745,18 @@ test("R4: the wallet floors at zero; the shortfall is recorded, never a negative
 
 test("R5: a lost-update race retries in-process against freshly read state", async () => {
   const ddb = walletDdb({
-    grant: GRANT_ROW,
+    grant: RECEIPT_ROW,
     wallet: { credits: { N: "5000" } },
     transactOutcomes: [cancelledAt(2), {}],
   });
   const res = await deliver(ddb, refundEvt());
   assert.equal(res.statusCode, 200);
   assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 2);
-  assert.ok(ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "GRANT#pi_1").length >= 2);
+  assert.ok(ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length >= 2);
 });
 
 test("R6: a replayed refund is a no-op that still 200s and does not retry", async () => {
-  const ddb = walletDdb({ grant: GRANT_ROW, wallet: { credits: { N: "5000" } }, transactOutcomes: [cancelledAt(0)] });
+  const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } }, transactOutcomes: [cancelledAt(0)] });
   const res = await deliver(ddb, refundEvt());
   assert.equal(res.statusCode, 200);
   assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 1);
@@ -770,7 +778,7 @@ test("R7: a missing grant row logs the shared pinned phrase and does NOT throw",
 test("R8: dispute clawback uses funds_withdrawn; funds_reinstated restores it", async () => {
   // charge.dispute.created ALSO fires for inquiries where Stripe withdraws
   // nothing — clawing back there would zero a paying customer for free.
-  const ddb = walletDdb({ grant: GRANT_ROW, wallet: { credits: { N: "5000" } } });
+  const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } } });
   await deliver(ddb, {
     id: "evt_dw",
     type: "charge.dispute.funds_withdrawn",
@@ -782,7 +790,7 @@ test("R8: dispute clawback uses funds_withdrawn; funds_reinstated restores it", 
   assert.match(tx[2].Update.UpdateExpression, /disputedCredits/);
 
   const ddb2 = walletDdb({
-    grant: { ...GRANT_ROW, disputedCredits: { N: "2000" } },
+    grant: { ...RECEIPT_ROW, disputedCredits: { N: "2000" } },
     wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "0" } },
   });
   await deliver(ddb2, {
@@ -804,4 +812,74 @@ test("R9: the required webhook subscription list matches the switch's handled ca
   for (const c of new Set(cases)) {
     assert.ok(REQUIRED_WEBHOOK_EVENTS.includes(c), `${c} is handled but not in REQUIRED_WEBHOOK_EVENTS`);
   }
+});
+
+// ---- debt clearing ------------------------------------------------------------
+// Product decision: an owing learner MUST clear the debt. So a purchase pays
+// down clawbackOwedCredits BEFORE it adds spendable credits, and the spend
+// gates refuse while a debt stands (asserted in qpu-core/tutor suites).
+
+test("D1: a top-up pays down the debt first, then credits only the remainder", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "800" } } });
+  await deliver(ddb, {
+    id: "evt_topup_debt",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_x",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_new",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  // 2000 bought, 800 owed -> 800 clears the debt, 1200 becomes spendable
+  assert.equal(w.ExpressionAttributeValues[":amt"].N, "1200");
+  assert.equal(w.ExpressionAttributeValues[":owed"].N, "-800", "debt is paid down");
+});
+
+test("D2: a purchase smaller than the debt adds NO spendable credits", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "5000" } } });
+  await deliver(ddb, {
+    id: "evt_topup_small",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_y",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_small",
+        client_reference_id: "user-9",
+        metadata: { credits: "500" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  assert.ok(!("​:amt" in w.ExpressionAttributeValues), "no positive credit delta");
+  assert.equal(w.ExpressionAttributeValues[":amt"]?.N ?? "0", "0");
+  assert.equal(w.ExpressionAttributeValues[":owed"].N, "-500", "all of it clears debt");
+});
+
+test("D3: with no debt, a purchase behaves exactly as before", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "100" } } });
+  await deliver(ddb, {
+    id: "evt_topup_clean",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_z",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_clean",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  assert.equal(w.ExpressionAttributeValues[":amt"].N, "2000");
+  assert.equal(w.ExpressionAttributeValues[":owed"], undefined, "no debt leg at all");
 });

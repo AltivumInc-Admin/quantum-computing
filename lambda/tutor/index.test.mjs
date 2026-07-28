@@ -518,3 +518,29 @@ test("M9: the settle never charges more than the reserve, even if usage overshoo
   const meta = JSON.parse(out.slice(out.indexOf(TUTOR_META_SENTINEL) + TUTOR_META_SENTINEL.length));
   assert.equal(meta.credits, reserved);
 });
+
+test("M10: a learner owing clawback credits cannot spend on a paid model", async () => {
+  // Same product rule as the QPU debit: debt must be CLEARED first.
+  const calls = [];
+  const wallet = {
+    readTier: async () => "pro",
+    debit: async (s, n) => {
+      calls.push({ s, n });
+      const e = new Error("condition failed");
+      e.name = "ConditionalCheckFailedException";
+      throw e;
+    },
+    credit: async () => {},
+  };
+  const client = meteredClient();
+  const stream = makeStream();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    modelId: "m",
+    verifier: okVerifier,
+    wallet,
+  })(paidEvent(), stream);
+  assert.equal(client.sent.length, 0, "no paid generation while a debt stands");
+  assert.ok(stream.text().includes(INSUFFICIENT_CREDITS_MESSAGE));
+});

@@ -85,6 +85,21 @@ export interface HardwareReach {
   completedRuns: number;
   completedShots: number;
   remainingMicros: number;
+  /**
+   * Can this learner buy more hardware time than `remainingMicros` allows — i.e. do
+   * they fund runs from a wallet they can top up, rather than a one-time allowance?
+   *
+   * This exists because "out of reach" has exactly one honest cause: a non-refilling
+   * allowance that can no longer buy the tier. When the sponsored allowance was
+   * withdrawn (2026-07-28) every learner started reading `remainingMicros === 0`, and
+   * without this flag that state generalised into "foreclosed for everyone" — the
+   * wall would have told a learner who can top up that the 1,000-shot medal was gone
+   * forever. A wallet has no ceiling; only an allowance does.
+   *
+   * Optional, and absent means `false`, so the grandfathered allowance-holders this
+   * state was written for keep the exact behaviour they had.
+   */
+  topUpAvailable?: boolean;
 }
 
 /**
@@ -102,14 +117,25 @@ export function tierReachable(
   tier: { n: number; metric: "runs" | "shots" },
   reach: HardwareReach,
 ): boolean {
+  // A toppable wallet forecloses nothing: the ceiling is the learner's willingness to
+  // pay, which this module cannot and must not guess at.
+  if (reach.topUpAvailable) return true;
   return tier.metric === "shots"
     ? reach.completedShots + maxShotsAffordable(reach.remainingMicros) >= tier.n
     : reach.completedRuns + maxRunsAffordable(reach.remainingMicros) >= tier.n;
 }
 
-/** Total shots the learner can ever hold: banked + everything still buyable. */
+/**
+ * Total shots the learner can ever hold: banked + everything still buyable.
+ *
+ * Unbounded for a toppable wallet — "everything still buyable" has no ceiling when
+ * the learner can add funds. Only `deepSampleReachable` consumes this, so Infinity
+ * never reaches a number formatter; if that changes, clamp at the call site.
+ */
 export const shotsStillReachable = (reach: HardwareReach) =>
-  reach.completedShots + maxShotsAffordable(reach.remainingMicros);
+  reach.topUpAvailable
+    ? Number.POSITIVE_INFINITY
+    : reach.completedShots + maxShotsAffordable(reach.remainingMicros);
 
 /** Is the top (shots) medal still reachable at all? */
 export const deepSampleReachable = (reach: HardwareReach) =>

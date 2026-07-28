@@ -723,7 +723,7 @@ export const en: TranslationDict = {
     // any debit, and the panel's copy contract bans unqualified "charged".
     walletBalance: "Wallet: {{credits}} credits",
     insufficientCredits:
-      "This run needs {{credits}} credits and your wallet doesn't cover it. Nothing was submitted and no credits were taken — top up on the Pricing page to run beyond the sponsored allowance.",
+      "This run needs {{credits}} credits and your wallet doesn't cover it. Nothing was submitted and no credits were taken — top up on the Pricing page to run on hardware.",
   },
   pricingUi: {
     title: "Pricing",

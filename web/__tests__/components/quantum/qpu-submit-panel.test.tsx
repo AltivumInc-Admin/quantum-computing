@@ -62,13 +62,13 @@ const LADDER = JSON.parse(
     "utf8",
   ),
 ) as {
-  lifetimeCapMicros: number;
+  grandfatheredCapMicros: number;
   maxShots: number;
   tiers: { n: number; title: string; metric: "runs" | "shots" }[];
   cheapestPath: { runs: number; shots: number; costMicros: number };
 };
 
-const CAP = LADDER.lifetimeCapMicros; // $2.50 today — derived, so a cap change lands here
+const CAP = LADDER.grandfatheredCapMicros; // $2.50 today — derived, so a cap change lands here
 const MAX_SHOTS = LADDER.maxShots; // 1,000 — and it IS the Deep sample threshold
 const RUN_TIERS = LADDER.tiers.filter((t) => t.metric === "runs");
 const SHOT_TIERS = LADDER.tiers.filter((t) => t.metric === "shots");
@@ -201,14 +201,21 @@ test("states plainly that the PLATFORM pays and the learner is never charged", a
   expectNeverSaysTheLearnerPays();
 });
 
-test("NEVER tells the learner they pay — in the signed-out state", async () => {
+test("tells a SIGNED-OUT visitor they pay, because the allowance is withdrawn", async () => {
+  // This test used to assert the opposite, and it was right to: under the sponsored
+  // programme the note was a device/pricing fact, true for everyone. With the
+  // allowance withdrawn it became user state, and signed-out is precisely the state
+  // where we cannot know. So it fails CLOSED — promising free hardware to a visitor
+  // who will in fact be charged is the expensive direction to be wrong in.
   m.getBudget.mockRejectedValue(new client.NotSignedInError());
   m.getCredentialChallenge.mockRejectedValue(new client.NotSignedInError());
   render(<QpuSubmitPanel />);
   await screen.findByText(/sign in to your workspace/i);
-  // The SponsorNote is device/pricing fact, not user state — it renders here too.
-  expect(screen.getByText(/the platform pays for these runs/i)).toBeInTheDocument();
-  expectNeverSaysTheLearnerPays();
+  expect(screen.getByText(/you pay for these runs at cost/i)).toBeInTheDocument();
+  expect(screen.queryByText(/you are never charged/i)).not.toBeInTheDocument();
+  // The at-cost, no-markup promise is true under BOTH funding models and must survive
+  // the switch — it is the part a paying learner has most reason to care about.
+  expect(screen.getByText(/no markup/i)).toBeInTheDocument();
 });
 
 test("NEVER tells the learner they pay — in the uncredentialed gate state", async () => {
@@ -267,12 +274,12 @@ test("the budget guide teaches the flat-fee lesson with derived, honest figures"
   m.getBudget.mockResolvedValue(budget());
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  expect(await screen.findByText(/how the sponsored budget works/i)).toBeInTheDocument();
+  expect(await screen.findByText(/how hardware runs are priced/i)).toBeInTheDocument();
 
   // The teaching identity: the SAME 1,000 shots, bought two ways.
   const concentrated = usd(costMicros(MAX_SHOTS)); // $1.75
   const split = usd(10 * costMicros(MAX_SHOTS / 10)); // $4.45 — ten 100-shot runs
-  const guide = screen.getByText(/how the sponsored budget works/i).closest("details")!;
+  const guide = screen.getByText(/how hardware runs are priced/i).closest("details")!;
   expect(guide).toHaveTextContent(concentrated);
   expect(guide).toHaveTextContent(split);
   expect(guide).toHaveTextContent(usd(CAP)); // and the learner's own budget, adjacent
@@ -289,7 +296,7 @@ test("the guide STATES its killer fact and is OPEN until the learner has run", a
   m.getBudget.mockResolvedValue(budget());
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  const guide = (await screen.findByText(/how the sponsored budget works/i)).closest("details")!;
+  const guide = (await screen.findByText(/how hardware runs are priced/i)).closest("details")!;
   expect(guide).toHaveAttribute("open");
   expect(guide).toHaveTextContent(
     new RegExp(
@@ -305,7 +312,7 @@ test("the guide collapses once the learner has completed a run", async () => {
   );
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  const guide = (await screen.findByText(/how the sponsored budget works/i)).closest("details")!;
+  const guide = (await screen.findByText(/how hardware runs are priced/i)).closest("details")!;
   expect(guide).not.toHaveAttribute("open");
 });
 
@@ -317,7 +324,7 @@ test("a GRANDFATHERED learner is never told $4.45 is 'more than your budget' —
   );
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  const guide = (await screen.findByText(/how the sponsored budget works/i)).closest("details")!;
+  const guide = (await screen.findByText(/how hardware runs are priced/i)).closest("details")!;
   expect(10 * costMicros(100)).toBeLessThan(OLD_CAP); // the premise
   expect(guide).toHaveTextContent(
     new RegExp(`Ten 100-shot runs cost \\${usd(10 * costMicros(100))} of your \\$5\\.00 lifetime budget`, "i"),
@@ -331,7 +338,7 @@ test("the guide's plan is the DERIVED ladder plan, from where the learner stands
   m.getBudget.mockResolvedValue(budget());
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  const guide = (await screen.findByText(/how the sponsored budget works/i)).closest("details")!;
+  const guide = (await screen.findByText(/how hardware runs are priced/i)).closest("details")!;
   expect(guide).toHaveTextContent(
     new RegExp(
       `A plan that fits: ${LADDER_RUNS} runs totalling ${DEEP_SHOTS.toLocaleString("en-US")} shots — \\${usd(LADDER_MICROS)}`,
@@ -356,23 +363,24 @@ test("the guide STOPS advertising a plan the learner can no longer afford", asyn
   );
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  const guide = (await screen.findByText(/how the sponsored budget works/i)).closest("details")!;
+  const guide = (await screen.findByText(/how hardware runs are priced/i)).closest("details")!;
   expect(guide).toHaveTextContent(/All three medals no longer fit your remaining budget/i);
   expect(guide).toHaveTextContent(usd(remaining)); // and names what IS left
   expect(guide).not.toHaveTextContent(/A plan that fits/i);
 });
 
-test("the guide's table has column headers and a caption describing ALL THREE rows", async () => {
+test("the guide's table has column headers and a caption describing the price rows", async () => {
   m.getBudget.mockResolvedValue(budget());
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  await screen.findByText(/how the sponsored budget works/i);
+  await screen.findByText(/how hardware runs are priced/i);
   const headers = screen.getAllByRole("columnheader");
   expect(headers.map((h) => h.textContent)).toEqual(["How the shots are bought", "Cost"]);
-  // The old caption ("Cost of 1,000 shots, bought two ways") described 2 of 3 rows —
-  // and the third row is the punchline (your whole budget).
+  // The caption describes the two price rows. The third row — the learner's own
+  // budget — is now conditional on actually holding an allowance, so the caption
+  // no longer claims it unconditionally.
   expect(screen.getByRole("table")).toHaveAccessibleName(
-    /against your whole lifetime sponsored budget/i,
+    /bought as one run and as ten 100-shot runs/i,
   );
 });
 
@@ -470,7 +478,7 @@ describe("an unknown hardware record (older Lambda, null counters)", () => {
     );
     m.getCredentialChallenge.mockResolvedValue(challenge());
     render(<QpuSubmitPanel />);
-    const spent = await screen.findByText(/sponsored budget spent/i);
+    const spent = await screen.findByText(/hardware budget spent/i);
     const card = spent.closest("div")!;
     expect(card).toHaveTextContent(/your completed runs stay on your record/i);
     expect(card).not.toHaveTextContent(/NaN/);
@@ -651,7 +659,7 @@ test("a spent budget renders the terminal card with a graduation path, not a dea
   );
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  expect(await screen.findByText(/sponsored budget spent/i)).toBeInTheDocument();
+  expect(await screen.findByText(/hardware budget spent/i)).toBeInTheDocument();
   // The record survives, stated from the SERVER aggregates (truncation-proof). The
   // counts sit in tabular-nums spans, so assert across descendants.
   const panel = screen.getByLabelText("Run on real quantum hardware");
@@ -676,7 +684,7 @@ test("the graduation path describes what the repo ACTUALLY supports — not a QA
   );
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  await screen.findByText(/sponsored budget spent/i);
+  await screen.findByText(/hardware budget spent/i);
   const panel = screen.getByLabelText("Run on real quantum hardware");
   expect(panel).not.toHaveTextContent(/same circuits, unmodified/i);
   expect(panel).toHaveTextContent(/Braket Python SDK, not the OpenQASM above/i);
@@ -1018,7 +1026,7 @@ test("a 402 names the learner's OWN cap and re-fetches so the panel isn't a dead
   });
   expect(
     await screen.findByText(
-      new RegExp(`sponsored lifetime budget \\(\\${usd(CAP)}\\) is spent`, "i"),
+      new RegExp(`hardware budget \\(\\${usd(CAP)}\\) is spent`, "i"),
     ),
   ).toBeInTheDocument();
   // The 402 must re-fetch the budget (getBudget is called again) so the panel can
@@ -1075,14 +1083,14 @@ test("a spent allowance with wallet credits keeps the FORM — metering must be 
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
   expect(await screen.findByRole("button", { name: /review this run/i })).toBeInTheDocument();
-  expect(screen.queryByText(/sponsored budget spent/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/hardware budget spent/i)).not.toBeInTheDocument();
 });
 
 test("a spent allowance with ZERO credits shows the terminal card WITH a top-up pointer", async () => {
   m.getBudget.mockResolvedValue(budget({ spentMicros: CAP, remainingMicros: 0, walletCredits: 0 }));
   m.getCredentialChallenge.mockResolvedValue(challenge());
   render(<QpuSubmitPanel />);
-  expect(await screen.findByText(/sponsored budget spent/i)).toBeInTheDocument();
+  expect(await screen.findByText(/hardware budget spent/i)).toBeInTheDocument();
   expect(screen.getByText(/top up/i)).toBeInTheDocument();
 });
 
@@ -1398,9 +1406,12 @@ describe("a rate-limited hardware surface says WAIT, not 'broken'", () => {
     expect(note).toHaveTextContent(/rate limit, not an outage/i);
     expect(note).toHaveTextContent(/wait a minute/i);
     expect(screen.queryByText(/couldn't reach the hardware service/i)).not.toBeInTheDocument();
-    // The who-pays banner is device fact, not user state — it must survive this branch.
-    expect(screen.getByText(/the platform pays for these runs/i)).toBeInTheDocument();
-    expectNeverSaysTheLearnerPays();
+    // The who-pays banner must survive this branch — a throttle must not blank the
+    // trust surface. It now fails closed on the funding line (the budget read is the
+    // thing that just failed, so sponsorship is exactly what we cannot confirm), but
+    // the at-cost pricing fact is unconditional and must still be there.
+    expect(screen.getByText(/you pay for these runs at cost/i)).toBeInTheDocument();
+    expect(screen.getByText(/no markup/i)).toBeInTheDocument();
   });
 
   it("still reports a REAL outage as an outage", async () => {
@@ -1429,5 +1440,82 @@ describe("a rate-limited hardware surface says WAIT, not 'broken'", () => {
     expect(screen.queryByText(/couldn't reach the hardware service/i)).not.toBeInTheDocument();
     // And it is NOT scored as a wrong answer — the recompute hint must stay away.
     expect(screen.queryByText(/not quite\. recompute/i)).not.toBeInTheDocument();
+  });
+});
+
+// ---- the sponsored allowance is withdrawn -------------------------------------
+// Hardware is paid now. A learner with no stamped allowance must never be shown
+// a "sponsored budget" — that promise no longer exists for them.
+
+describe("with the sponsored allowance withdrawn", () => {
+  beforeEach(() => {
+    m.getCredentialChallenge.mockResolvedValue(challenge());
+  });
+
+  it("shows a learner with NO allowance their credit wallet, not a sponsored budget", async () => {
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 0, spentMicros: 0, remainingMicros: 0, walletCredits: 400 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    expect(screen.queryAllByText(/sponsored/i)).toHaveLength(0);
+    expect(screen.getByText(/400 credits/i)).toBeInTheDocument();
+  });
+
+  it("does not tell a learner who pays for their own runs that they are never charged", async () => {
+    // The word "sponsored" is not the only way to promise sponsorship. The banner
+    // above the bar said "The platform pays for these runs. You are never charged."
+    // in the largest text in the note, unconditionally — so the /sponsored/i sweep
+    // two tests up passed while the strongest form of the withdrawn promise was
+    // still on screen. Assert the CLAIM, not the vocabulary.
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 0, spentMicros: 0, remainingMicros: 0, walletCredits: 400 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    expect(screen.queryByText(/you are never charged/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/the platform pays for these runs/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/an allowance we fund/i)).not.toBeInTheDocument();
+  });
+
+  it("still tells a GRANDFATHERED learner the platform pays, because it does", async () => {
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 2_500_000, spentMicros: 1_335_000, remainingMicros: 1_165_000 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    expect(screen.getByText(/you are never charged/i)).toBeInTheDocument();
+  });
+
+  it("never renders a $0.00 of $0.00 budget bar", async () => {
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 0, spentMicros: 0, remainingMicros: 0, walletCredits: 400 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    expect(screen.queryByText(/\$0\.00 of \$0\.00/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar", { name: /budget/i })).not.toBeInTheDocument();
+  });
+
+  it("still honours a GRANDFATHERED learner's stamped allowance", async () => {
+    // christian.perez@altivum.ai holds $2.50 with $1.165 unspent in production.
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 2_500_000, spentMicros: 1_335_000, remainingMicros: 1_165_000 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByText(/Lifetime sponsored QPU budget/i);
+    expect(screen.getByRole("progressbar", { name: /budget/i })).toBeInTheDocument();
+  });
+
+  it("a learner with neither allowance nor credits is told to top up, not that a budget is spent", async () => {
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 0, spentMicros: 0, remainingMicros: 0, walletCredits: 0 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    // At least one top-up affordance, and NOT the spent-budget card — that card
+    // describes an allowance this learner never had.
+    expect(screen.getAllByText(/top up/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/hardware budget spent/i)).not.toBeInTheDocument();
   });
 });
