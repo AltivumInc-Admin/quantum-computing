@@ -123,6 +123,16 @@ const reachOf = (b: Budget): HardwareReach | null =>
 
 /** A budget with too little left for even a 1-shot run is SPENT — not "low". */
 const isSpent = (b: Budget) => b.remainingMicros < costMicros(1);
+/**
+ * Does this learner hold a sponsored allowance at all?
+ *
+ * The programme was WITHDRAWN on 2026-07-28 — nothing is given away, and a new
+ * learner's cap is 0. Learners stamped before then keep theirs, so the surface
+ * has to branch rather than assume: showing "$0.00 of $0.00 left" under the
+ * heading "Lifetime sponsored QPU budget" would be advertising a programme that
+ * no longer exists, which is the same lie as the copy this panel already fought.
+ */
+const hasAllowance = (b: Budget) => b.capMicros > 0;
 /** Can the PAID wallet fund at least the cheapest possible run? (null = metering
  *  not reported by the server → no.) */
 const walletCanFund = (b: Budget) =>
@@ -189,8 +199,13 @@ function Panel({ className }: { className?: string }) {
         </h2>
       </header>
 
-      {/* Who pays — always visible, in every load state. The trust centerpiece. */}
-      <SponsorNote />
+      {/* Who pays — always visible, in every load state. The trust centerpiece.
+          Fails CLOSED: while the budget is still loading (or the learner is signed
+          out) `budget` is null and we do NOT claim sponsorship. Guessing wrong in
+          that direction promises free hardware to someone who will be charged;
+          guessing wrong the other way merely under-promises to the handful of
+          grandfathered learners, who see the correct line a moment later. */}
+      <SponsorNote sponsored={budget !== null && hasAllowance(budget)} />
 
       {load === "loading" && (
         <div aria-hidden className={`mt-4 h-28 ${card} animate-pulse motion-reduce:animate-none`} />
@@ -221,7 +236,11 @@ function Panel({ className }: { className?: string }) {
         // so reading order and focus order never diverge from the visual.
         <div className="mt-4 animate-fade-up grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="flex flex-col gap-4">
-            <BudgetBar budget={budget} />
+            {/* The sponsored bar ONLY for learners who actually hold an
+                allowance. Everyone else buys their runs, so the funding surface
+                is their credit wallet — showing them a $0.00 sponsored budget
+                would advertise a withdrawn programme. */}
+            {hasAllowance(budget) ? <BudgetBar budget={budget} /> : <WalletBar budget={budget} />}
             {/* The plan surface: the cost model is the only thing that lets a learner
                 plan a path to all three medals BEFORE spending. OPEN until they have
                 spent anything — a learner who has never run has everything to lose. */}
@@ -229,10 +248,13 @@ function Panel({ className }: { className?: string }) {
           </div>
           <div className="flex flex-col gap-4">
             {budget.credentialed ? (
-              // The terminal card only when NEITHER funding source can pay: a
-              // spent allowance with wallet credits keeps the live form, or the
-              // credits the pricing page sells would be unusable by construction.
-              isSpent(budget) && !walletCanFund(budget) ? (
+              // The terminal "budget spent" card belongs ONLY to a learner who
+              // actually HAD an allowance and exhausted it. A learner who never
+              // held one has nothing to have spent — telling them their budget
+              // is gone describes a programme they were never part of. They get
+              // the live form instead, with submit disabled and the wallet card
+              // above it explaining that runs need credits.
+              hasAllowance(budget) && isSpent(budget) && !walletCanFund(budget) ? (
                 <BudgetSpent budget={budget} />
               ) : (
                 <SubmitForm budget={budget} onSubmitted={refresh} />
@@ -255,14 +277,32 @@ function Panel({ className }: { className?: string }) {
  * setup line for the lie. Both are deleted forever. Rates stay derived from PRICING,
  * so a reprice can never strand this prose.
  */
-function SponsorNote() {
+/**
+ * Who pays, said in the learner's own terms. The sponsored allowance was withdrawn
+ * on 2026-07-28, so the lead sentence is now CONDITIONAL: only a learner who still
+ * holds a stamped allowance is told the platform pays.
+ *
+ * The unconditional version survived the /sponsored/i sweep because it never used
+ * the word — "The platform pays for these runs. You are never charged." is the
+ * promise in its strongest form and its plainest English. A vocabulary check cannot
+ * catch a claim phrased without the vocabulary, which is why the test that guards
+ * this asserts the sentence.
+ *
+ * What does NOT change between the two branches: the at-cost, no-markup pricing and
+ * the hardware description. Those are true either way, and they are the part that
+ * earns trust — a learner paying their own way has more reason to care that the
+ * price is unmarked-up, not less.
+ */
+function SponsorNote({ sponsored }: { sponsored: boolean }) {
   return (
     <div className="rounded-card border border-accent/30 bg-accent/[0.06] px-5 py-4">
       {/* Cap the reading measure: the banner spans the full-width band, but the prose
           stays near 70ch so it never becomes an unreadable wide line. */}
       <p className="max-w-[70ch] text-sm leading-relaxed text-(--mut)">
         <span className="font-semibold text-(--ink)">
-          The platform pays for these runs. You are never charged.
+          {sponsored
+            ? "The platform pays for these runs. You are never charged."
+            : "You pay for these runs at cost. We add nothing on top."}
         </span>{" "}
         IQM Garnet is a 20-qubit superconducting quantum processor in Amazon&apos;s{" "}
         <span className="tabular-nums">eu-north-1</span> region. Every run bills the
@@ -270,10 +310,57 @@ function SponsorNote() {
         <span className="tabular-nums font-medium">
           {PER_TASK_USD} per task + {PER_SHOT_USD} per shot
         </span>{" "}
-        — with no markup. The budget below is an allowance we fund, not an invoice: one lifetime
-        allowance per learner, not a monthly credit. It does not refill. Nothing here is a
-        subscription or a simulation.
+        — with no markup.{" "}
+        {sponsored
+          ? "The budget below is an allowance we fund, not an invoice: one lifetime allowance per learner, not a monthly credit. It does not refill."
+          : "That exact figure is what comes out of your wallet — the credit cost below is the AWS price converted at $0.01 per credit, and it is charged only when a run is submitted."}{" "}
+        Nothing here is a subscription or a simulation.
       </p>
+    </div>
+  );
+}
+
+/**
+ * The funding surface for a learner who buys their runs — i.e. everyone, now
+ * that the sponsored allowance is withdrawn. Deliberately NOT a progress bar:
+ * a wallet has no ceiling to be a fraction of, and drawing one would invent a
+ * budget the learner does not have.
+ */
+function WalletBar({ budget }: { budget: Budget }) {
+  const { t } = useLocale();
+  const credits = budget.walletCredits;
+  const runCost = creditsForMicros(costMicros(100));
+  return (
+    <div className={`${card} px-5 py-4`}>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-(--ink)">Hardware credits</p>
+        <p className="shrink-0 text-sm tabular-nums text-(--mut)">
+          {credits == null ? (
+            <span className="text-caption">unavailable</span>
+          ) : (
+            <span className="font-semibold">{t("qpuUi.walletBalance", { credits })}</span>
+          )}
+        </p>
+      </div>
+      <p className="mt-2 text-xs text-caption">
+        {credits != null && credits >= runCost ? (
+          <>
+            Runs are billed at the Amazon Braket price with no markup — a 100-shot run
+            costs <span className="tabular-nums">{runCost}</span> credits.
+          </>
+        ) : (
+          <>
+            You need credits to run on real hardware. A 100-shot run costs{" "}
+            <span className="tabular-nums">{runCost}</span> credits, billed at the
+            Amazon Braket price with no markup.{" "}
+            <Link href="/pricing" className="link-underline">
+              Top up
+            </Link>
+            .
+          </>
+        )}
+      </p>
+      <LadderProgress budget={budget} />
     </div>
   );
 }
@@ -476,14 +563,18 @@ function BudgetGuide({ budget }: { budget: Budget }) {
       className={`${card} group px-5 py-4`}
     >
       <summary className="cursor-pointer list-item text-sm font-medium text-(--ink) interactive focus-ring rounded-control">
-        How the sponsored budget works
+        How hardware runs are priced
       </summary>
       <div className="mt-3 space-y-3 text-sm leading-relaxed text-(--mut)">
         <p>
           <span className="font-medium text-(--ink)">
             Ten <span className="tabular-nums">100</span>-shot runs cost{" "}
             <span className="tabular-nums">{usd(SPLIT_MICROS)}</span>
-            {splitOverCap ? (
+            {capMicros <= 0 ? (
+              // No allowance: there is no budget to be a fraction of, so the
+              // figure stands on its own as a price.
+              <>.</>
+            ) : splitOverCap ? (
               <>
                 {" "}
                 — more than your entire <span className="tabular-nums">{usd(capMicros)}</span>{" "}
@@ -513,7 +604,7 @@ function BudgetGuide({ budget }: { budget: Budget }) {
           <table className="w-full text-sm">
             <caption className="sr-only">
               What {MAX_SHOTS.toLocaleString("en-US")} shots cost bought as one run and as ten
-              100-shot runs, against your whole lifetime sponsored budget
+              100-shot runs
             </caption>
             <thead>
               <tr>
@@ -544,12 +635,16 @@ function BudgetGuide({ budget }: { budget: Budget }) {
                   {usd(SPLIT_MICROS)}
                 </td>
               </tr>
-              <tr>
-                <td className="py-1.5 pr-4">your whole lifetime sponsored budget</td>
-                <td className="py-1.5 text-right font-semibold tabular-nums text-(--ink)">
-                  {usd(capMicros)}
-                </td>
-              </tr>
+              {/* Only a learner who HOLDS an allowance has a budget to compare
+                  against; for everyone else the prices above stand alone. */}
+              {capMicros > 0 && (
+                <tr>
+                  <td className="py-1.5 pr-4">your whole lifetime budget</td>
+                  <td className="py-1.5 text-right font-semibold tabular-nums text-(--ink)">
+                    {usd(capMicros)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -630,9 +725,9 @@ function BudgetSpent({ budget }: { budget: Budget }) {
       : null;
   return (
     <div className={`${card} px-5 py-4`}>
-      <h3 className="text-sm font-semibold text-(--ink)">Sponsored budget spent</h3>
+      <h3 className="text-sm font-semibold text-(--ink)">Hardware budget spent</h3>
       <p className="mt-2 text-sm leading-relaxed text-(--mut)">
-        Your <span className="tabular-nums font-medium">{usd(budget.capMicros)}</span> sponsored
+        Your <span className="tabular-nums font-medium">{usd(budget.capMicros)}</span> hardware
         budget is spent
         {record ? (
           <>
@@ -688,7 +783,7 @@ function BudgetSpent({ budget }: { budget: Budget }) {
           <Link href="/pricing" className="link-underline">
             Pricing page
           </Link>{" "}
-          — credits fund runs beyond the sponsored allowance at the same Braket rates.
+          — credits fund every run at the same Braket rates, with no markup.
         </p>
       )}
     </div>
@@ -1144,7 +1239,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
               credits are the platform's allowance. */}
           {walletFunded ? (
             <p className="text-sm text-(--ink)">
-              Your sponsored budget is spent, so this run is{" "}
+              This run is{" "}
               <span className="font-semibold">funded by your wallet</span>:{" "}
               <span className="font-semibold tabular-nums">{runCredits} credits</span> (
               {usd(micros)}) of your{" "}
@@ -1154,7 +1249,7 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
           ) : (
             <p className="text-sm text-(--ink)">
               This spends <span className="font-semibold tabular-nums">{usd(micros)}</span> of your{" "}
-              <span className="tabular-nums">{usd(budget.remainingMicros)}</span> sponsored budget on a
+              <span className="tabular-nums">{usd(budget.remainingMicros)}</span> hardware budget on a
               real, irreversible run on the physical device. It cannot be undone once submitted.
             </p>
           )}
@@ -1318,7 +1413,7 @@ function outcomeMessage(
     case "over-lifetime-budget":
       // Deleted forever: "That's a lot of real hardware runs." False after the cap
       // change (it buys 2-5 runs) and a register violation regardless.
-      return `Your sponsored lifetime budget (${usd(capMicros)}) is spent. This run was not submitted.`;
+      return `Your hardware budget (${usd(capMicros)}) is spent. This run was not submitted.`;
     case "over-daily-budget":
       return "The daily hardware budget across all learners is reached. It resets at 00:00 UTC — try again tomorrow.";
     case "qpu-disabled":

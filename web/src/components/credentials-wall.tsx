@@ -161,6 +161,7 @@ export function CredentialsWall() {
     runs: 0,
     shots: 0,
     remainingMicros: 0,
+    topUpAvailable: false,
     known: false,
   });
   // Signed out / QPU surface off is an HONEST zero (locked). A failed fetch is
@@ -183,6 +184,11 @@ export function CredentialsWall() {
           runs: b.completedRuns,
           shots: b.completedShots,
           remainingMicros: b.remainingMicros,
+          // A learner with no stamped allowance funds runs from a wallet, and a wallet
+          // can be topped up — so no tier is foreclosed for them. Without this, the
+          // withdrawal of the allowance (2026-07-28) would have turned every unearned
+          // hardware medal "out of reach", i.e. permanently lost, for every new learner.
+          topUpAvailable: b.capMicros === 0,
           known: true,
         });
         setUnverifiedCause(null);
@@ -241,6 +247,7 @@ export function CredentialsWall() {
       completedRuns: hardware.runs,
       completedShots: hardware.shots,
       remainingMicros: hardware.remainingMicros,
+      topUpAvailable: hardware.topUpAvailable,
     };
     // Without a budget (signed out, QPU surface off, fetch in flight) reachability is
     // unknowable — and an unknown must never be reported as a foreclosure.

@@ -25,7 +25,7 @@ const LADDER = JSON.parse(
     "utf8",
   ),
 ) as {
-  lifetimeCapMicros: number;
+  grandfatheredCapMicros: number;
   perTaskMicros: number;
   perShotMicros: number;
   maxShots: number;
@@ -103,7 +103,7 @@ describe("computeCredentials", () => {
     const shots = Math.max(...HARDWARE_TIERS.filter((t) => t.metric === "shots").map((t) => t.n));
     const need = LADDER.perTaskMicros * runs + LADDER.perShotMicros * shots;
     expect(shots).toBeLessThanOrEqual(LADDER.maxShots * runs); // the shots are placeable
-    expect(need).toBeLessThanOrEqual(LADDER.lifetimeCapMicros); // and affordable
+    expect(need).toBe(LADDER.cheapestPath.costMicros); // the advertised price IS the real one
     expect(need).toBe(LADDER.cheapestPath.costMicros); // exactly the plan we advertise
   });
 

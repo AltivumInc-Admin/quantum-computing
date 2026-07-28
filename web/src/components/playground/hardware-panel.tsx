@@ -116,7 +116,7 @@ export function HardwarePanel({
             </p>
           )}
           <p className="mt-3 text-xs leading-relaxed text-caption">
-            Runs on IQM Garnet ({costLabel("IQM")}) — the platform pays for sponsored runs.
+            Runs on IQM Garnet ({costLabel("IQM")}) — billed to your credits at cost, no markup.
             Signing in, and a one-time cost-estimate credential, may come first on the
             workspace.
           </p>

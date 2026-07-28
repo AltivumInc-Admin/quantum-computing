@@ -29,7 +29,7 @@ import {
 const LADDER = JSON.parse(
   readFileSync(path.join(__dirname, "../../../lambda/qpu/__fixtures__/hardware-ladder.json"), "utf8"),
 ) as {
-  lifetimeCapMicros: number;
+  grandfatheredCapMicros: number;
   perTaskMicros: number;
   perShotMicros: number;
   maxShots: number;
@@ -37,7 +37,7 @@ const LADDER = JSON.parse(
   cheapestPath: { runs: number; shots: number; costMicros: number };
 };
 
-const CAP = LADDER.lifetimeCapMicros;
+const CAP = LADDER.grandfatheredCapMicros;
 const DEEP = Math.max(...LADDER.tiers.filter((t) => t.metric === "shots").map((t) => t.n));
 const RUNS = Math.max(...LADDER.tiers.filter((t) => t.metric === "runs").map((t) => t.n));
 const fresh = (remainingMicros = CAP) => ({
@@ -179,5 +179,36 @@ describe("creditsForMicros mirrors the server peg", () => {
     expect(creditsForMicros(1_750_000)).toBe(175); // 1000 shots, exact
     expect(creditsForMicros(costMicros(100))).toBe(45); // $0.445 → 45, never 44
     expect(creditsForMicros(1)).toBe(1);
+  });
+});
+
+describe("reachability once the sponsored allowance is withdrawn", () => {
+  // "Out of reach" was coined for ONE cause: a non-refilling allowance that can no
+  // longer buy the tier. With the allowance withdrawn every learner reads
+  // remainingMicros === 0, so that state silently generalised into "foreclosed for
+  // everyone" — telling a learner who can top up their wallet that the 1,000-shot
+  // medal is gone forever. A wallet has no ceiling; only an allowance does.
+  it("treats every tier as reachable for a learner who can top up", () => {
+    const reach = {
+      completedRuns: 0,
+      completedShots: 0,
+      remainingMicros: 0,
+      topUpAvailable: true,
+    };
+    expect(tierReachable({ metric: "shots", n: DEEP_SAMPLE_SHOTS }, reach)).toBe(true);
+    expect(tierReachable({ metric: "runs", n: 12 }, reach)).toBe(true);
+    expect(deepSampleReachable(reach)).toBe(true);
+  });
+
+  it("still forecloses a tier for a GRANDFATHERED learner on a spent allowance", () => {
+    // The state must keep working for the population it was written for.
+    const reach = {
+      completedRuns: 3,
+      completedShots: 300,
+      remainingMicros: 0,
+      topUpAvailable: false,
+    };
+    expect(tierReachable({ metric: "shots", n: DEEP_SAMPLE_SHOTS }, reach)).toBe(false);
+    expect(deepSampleReachable(reach)).toBe(false);
   });
 });

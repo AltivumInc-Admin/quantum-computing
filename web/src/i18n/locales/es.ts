@@ -673,7 +673,7 @@ export const es: TranslationDict = {
       "Tu registro de hardware no está disponible en este momento, así que no se puede mostrar el avance de las medallas. Tus ejecuciones completadas no se ven afectadas — recarga para reintentar.",
     walletBalance: "Cartera: {{credits}} créditos",
     insufficientCredits:
-      "Esta ejecución necesita {{credits}} créditos y tu cartera no los cubre. No se envió nada y no se tomaron créditos — recarga en la página de Precios para ejecutar más allá de la asignación patrocinada.",
+      "Esta ejecución necesita {{credits}} créditos y tu cartera no los cubre. No se envió nada y no se tomaron créditos — recarga en la página de Precios para ejecutar en hardware.",
   },
   pricingUi: {
     title: "Precios",
