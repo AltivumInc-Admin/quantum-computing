@@ -13,6 +13,8 @@ export type AuthErrorKey =
   | "auth.errors.codeExpired"
   | "auth.errors.invalidPassword"
   | "auth.errors.tooManyAttempts"
+  | "auth.errors.resetRequired"
+  | "auth.errors.googleSessionActive"
   | "auth.errors.generic";
 
 export interface MappedError {
@@ -34,8 +36,17 @@ const EN_FALLBACK: Record<AuthErrorKey, string> = {
     "Password must be at least 8 characters with upper, lower, and a number.",
   "auth.errors.tooManyAttempts":
     "Too many attempts. Please wait a moment and try again.",
+  "auth.errors.resetRequired":
+    "You need to set a new password before signing in — request a reset code.",
+  "auth.errors.googleSessionActive":
+    "You're already signed in with Google. Reload this page to continue.",
   "auth.errors.generic": "Something went wrong. Please try again.",
 };
+
+/** Synthetic error names this app raises itself, for sign-in outcomes the SDK
+ *  reports as a RESOLVED result rather than a throw (see auth-form's signInFresh). */
+export const SIGN_IN_INCOMPLETE = "SignInIncomplete";
+export const HOSTED_UI_SESSION_ACTIVE = "HostedUiSessionActive";
 
 function errorName(err: unknown): string {
   if (err && typeof err === "object" && "name" in err) {
@@ -66,6 +77,13 @@ export function mapAuthError(err: unknown): MappedError {
     case "LimitExceededException":
     case "TooManyRequestsException":
       return mapped("auth.errors.tooManyAttempts");
+    // Cognito answers a reset-required sign-in with a RESOLVED nextStep, not a
+    // throw; auth-form converts it to this name so the user reaches the reset flow
+    // instead of being routed to a workspace they cannot enter.
+    case "PasswordResetRequiredException":
+      return mapped("auth.errors.resetRequired", "forgot");
+    case HOSTED_UI_SESSION_ACTIVE:
+      return mapped("auth.errors.googleSessionActive");
     default:
       return mapped("auth.errors.generic");
   }

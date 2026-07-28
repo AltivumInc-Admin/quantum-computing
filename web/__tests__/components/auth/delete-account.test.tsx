@@ -26,7 +26,21 @@ jest.mock("@/lib/review-prefs-client", () => ({
 }));
 
 const deleteUser = jest.fn();
-jest.mock("aws-amplify/auth", () => ({ deleteUser: (...a: unknown[]) => deleteUser(...a) }));
+const fetchAuthSession = jest.fn();
+jest.mock("aws-amplify/auth", () => ({
+  deleteUser: (...a: unknown[]) => deleteUser(...a),
+  fetchAuthSession: (...a: unknown[]) => fetchAuthSession(...a),
+}));
+
+/** deleteUser() is cognito-idp DeleteUser, gated on aws.cognito.signin.user.admin.
+ *  A native SRP session carries that scope; a hosted-UI (Google) session cannot —
+ *  the live app client grants only openid/email/profile. */
+const nativeSession = () => ({
+  tokens: { accessToken: { payload: { scope: "aws.cognito.signin.user.admin" } } },
+});
+const hostedUiSession = () => ({
+  tokens: { accessToken: { payload: { scope: "openid email profile" } } },
+});
 
 import { DeleteAccount } from "@/components/auth/delete-account";
 // Real module (only sync-client is mocked): the tombstone reset under test.
@@ -47,7 +61,24 @@ describe("DeleteAccount", () => {
     deleteProgress.mockResolvedValue(undefined);
     deleteReminderPrefs.mockResolvedValue(undefined);
     deleteUser.mockResolvedValue(undefined);
+    fetchAuthSession.mockResolvedValue(nativeSession());
     signOut.mockResolvedValue(undefined);
+  });
+
+  // The "order that can never strand data" only holds if the final step CAN
+  // succeed. For a Google-federated session deleteUser() is guaranteed to fail on
+  // scope — so running the two irreversible server deletes first destroyed the
+  // user's progress and prefs, left the account alive, and told them to "Try
+  // again" on an operation that can never succeed. Refuse before touching data.
+  it("deletes nothing when the session cannot complete the account delete", async () => {
+    fetchAuthSession.mockResolvedValue(hostedUiSession());
+    render(<DeleteAccount />);
+    await openAndConfirm();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(deleteProgress).not.toHaveBeenCalled();
+    expect(deleteReminderPrefs).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_SYNC_URL;

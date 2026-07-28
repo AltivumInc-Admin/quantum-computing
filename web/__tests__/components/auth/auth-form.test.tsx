@@ -13,6 +13,7 @@ const signInWithRedirect = jest.fn();
 const resetPassword = jest.fn();
 const confirmResetPassword = jest.fn();
 const amplifySignOut = jest.fn();
+const fetchAuthSession = jest.fn();
 jest.mock("aws-amplify/auth", () => ({
   signUp: (...a: unknown[]) => signUp(...a),
   confirmSignUp: (...a: unknown[]) => confirmSignUp(...a),
@@ -22,7 +23,19 @@ jest.mock("aws-amplify/auth", () => ({
   resetPassword: (...a: unknown[]) => resetPassword(...a),
   confirmResetPassword: (...a: unknown[]) => confirmResetPassword(...a),
   signOut: (...a: unknown[]) => amplifySignOut(...a),
+  fetchAuthSession: (...a: unknown[]) => fetchAuthSession(...a),
 }));
+
+/** Access-token scope for a native SRP sign-in — Cognito grants the user-pool
+ *  admin scope on the non-OAuth flows, so signOut() is a local token clear. */
+const nativeSession = () => ({
+  tokens: { accessToken: { payload: { scope: "aws.cognito.signin.user.admin" } } },
+});
+/** …and for a hosted-UI (Google) sign-in, which can only ever carry what the app
+ *  client grants: openid/email/profile. Verified against the live app client. */
+const hostedUiSession = () => ({
+  tokens: { accessToken: { payload: { scope: "openid email profile" } } },
+});
 
 /** The exact error Amplify v6 throws when a session already sits in this tab —
  *  e.g. a Google redirect whose token exchange succeeded even though the UI
@@ -48,9 +61,11 @@ function fill(label: string, value: string) {
 
 describe("AuthForm", () => {
   beforeEach(() => {
-    [signUp, confirmSignUp, resendSignUpCode, signIn, signInWithRedirect, resetPassword, confirmResetPassword, amplifySignOut, replace].forEach(
+    [signUp, confirmSignUp, resendSignUpCode, signIn, signInWithRedirect, resetPassword, confirmResetPassword, amplifySignOut, fetchAuthSession, replace].forEach(
       (m) => m.mockReset()
     );
+    // Default to a native session: signOut() is a local token clear on that path.
+    fetchAuthSession.mockResolvedValue(nativeSession());
     mockSearch = "";
   });
 
@@ -137,8 +152,15 @@ describe("AuthForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/incorrect email or password/i);
   });
 
+  // THE SignInOutput CONTRACT, pinned to what aws-amplify 6.18 actually does.
+  // signInWithSRP does NOT throw for an unconfirmed or reset-required user: it
+  // catches the service error and getSignInResultFromError RESOLVES it into
+  // {isSignedIn:false, nextStep} (signInHelpers.mjs). The previous test mocked a
+  // REJECTION the SDK never produces, so the suite was green over a sign-in that
+  // routed to /workspace on a resolved failure — where the auth wall bounced the
+  // user straight back to /login with no error, forever.
   it("jumps to the confirm view (and resends a code) for an unconfirmed user", async () => {
-    signIn.mockRejectedValue({ name: "UserNotConfirmedException" });
+    signIn.mockResolvedValue({ isSignedIn: false, nextStep: { signInStep: "CONFIRM_SIGN_UP" } });
     resendSignUpCode.mockResolvedValue({});
     render(<AuthForm />);
     fill("Email", "a@b.com");
@@ -146,6 +168,49 @@ describe("AuthForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("button", { name: /confirm/i })).toBeInTheDocument();
     await waitFor(() => expect(resendSignUpCode).toHaveBeenCalledWith({ username: "a@b.com" }));
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("sends a reset-required user to the reset flow, not to /workspace", async () => {
+    signIn.mockResolvedValue({ isSignedIn: false, nextStep: { signInStep: "RESET_PASSWORD" } });
+    render(<AuthForm />);
+    fill("Email", "a@b.com");
+    fill("Password", "Password1");
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    expect(await screen.findByRole("button", { name: /send reset code/i })).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("never claims success for an incomplete sign-in step it does not handle", async () => {
+    // MFA is not enabled on this pool today, so this is latent — but a silent
+    // navigation to /workspace on a tokenless result must never be the fallback.
+    signIn.mockResolvedValue({
+      isSignedIn: false,
+      nextStep: { signInStep: "CONFIRM_SIGN_IN_WITH_TOTP_CODE" },
+    });
+    render(<AuthForm />);
+    fill("Email", "a@b.com");
+    fill("Password", "Password1");
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("does not route to /workspace when the post-confirmation sign-in is incomplete", async () => {
+    mockSearch = "mode=signup";
+    signUp.mockResolvedValue({});
+    confirmSignUp.mockResolvedValue({});
+    signIn.mockResolvedValue({ isSignedIn: false, nextStep: { signInStep: "RESET_PASSWORD" } });
+    render(<AuthForm />);
+    fill("Email", "new@user.com");
+    fill("Password", "Str0ng!Enough");
+    fill("Confirm password", "Str0ng!Enough");
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+    await waitFor(() => expect(screen.getByLabelText(/confirmation code/i)).toBeInTheDocument());
+    fill("Confirmation code", "123456");
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    await waitFor(() => expect(confirmSignUp).toHaveBeenCalled());
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("gates sign-up until the criteria pass AND the confirm matches", () => {
@@ -211,6 +276,45 @@ describe("AuthForm", () => {
     render(<AuthForm />);
     fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
     expect(signInWithRedirect).toHaveBeenCalledWith({ provider: "Google" });
+  });
+
+  // signInWithRedirect shares signIn's guard (assertUserNotAuthenticated), so it
+  // rejects under exactly the squatting-session condition the error banner invites
+  // the user to retry from. Firing it as `void signInWithRedirect(...)` discarded
+  // that rejection: the button did nothing at all, on every click, with no feedback.
+  it("clears a squatting session and retries rather than dying silently", async () => {
+    signInWithRedirect.mockRejectedValueOnce(alreadySignedIn()).mockResolvedValueOnce(undefined);
+    amplifySignOut.mockResolvedValue(undefined);
+    render(<AuthForm />);
+    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await waitFor(() => expect(signInWithRedirect).toHaveBeenCalledTimes(2));
+    expect(amplifySignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces an error when the Google redirect fails for any other reason", async () => {
+    signInWithRedirect.mockRejectedValue({ name: "AuthTokenConfigException" });
+    render(<AuthForm />);
+    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  // signOut() is NOT a local token clear here. loginWith.oauth is always configured,
+  // so it takes the OAuth branch; for a hosted-UI session handleOAuthSignOut sets
+  // window.location.href to the Cognito /logout endpoint. Awaiting a retry after
+  // that awaits a document that is already unloading — the retry never lands and
+  // the user is bounced to the home page with no message. So for a hosted-UI
+  // squatter we must not pretend an in-page retry is possible.
+  it("does not attempt an in-page retry for a hosted-UI squatter — signOut would navigate away", async () => {
+    signIn.mockRejectedValue(alreadySignedIn());
+    fetchAuthSession.mockResolvedValue(hostedUiSession());
+    render(<AuthForm />);
+    fill("Email", "a@b.com");
+    fill("Password", "pw");
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(amplifySignOut).not.toHaveBeenCalled();
+    expect(signIn).toHaveBeenCalledTimes(1);
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("runs forgot -> reset and gates the reset submit until valid", async () => {
