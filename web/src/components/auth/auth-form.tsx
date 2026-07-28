@@ -8,6 +8,7 @@ import {
   resendSignUpCode,
   signIn,
   signInWithRedirect,
+  signOut,
   resetPassword,
   confirmResetPassword,
 } from "aws-amplify/auth";
@@ -100,8 +101,24 @@ export function AuthForm() {
     }
   };
 
+  // signIn that survives a session already squatting in this tab. Amplify throws
+  // UserAlreadyAuthenticatedException rather than switching users — and a "failed"
+  // Google round-trip can leave exactly such a session behind (the token exchange
+  // succeeds even when the UI reports failure), which used to make every
+  // email/password attempt in that tab die with a generic error. The user asked to
+  // be THIS identity, so honor it: drop the squatter and sign in fresh.
+  const signInFresh = async () => {
+    try {
+      await signIn({ username: email, password });
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "UserAlreadyAuthenticatedException") throw err;
+      await signOut();
+      await signIn({ username: email, password });
+    }
+  };
+
   const doSignIn = handle(async () => {
-    await signIn({ username: email, password });
+    await signInFresh();
     router.replace("/workspace");
   });
   const doSignUp = handle(async () => {
@@ -110,7 +127,7 @@ export function AuthForm() {
   });
   const doConfirm = handle(async () => {
     await confirmSignUp({ username: email, confirmationCode: code });
-    await signIn({ username: email, password });
+    await signInFresh();
     router.replace("/workspace");
   });
   const doForgot = handle(async () => {

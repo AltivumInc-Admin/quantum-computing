@@ -5,7 +5,7 @@ import { Amplify } from "aws-amplify";
 import { Hub, sessionStorage as amplifyTokenStorage } from "aws-amplify/utils";
 import {
   getCurrentUser,
-  fetchUserAttributes,
+  fetchAuthSession,
   signOut as amplifySignOut,
 } from "aws-amplify/auth";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
@@ -35,9 +35,20 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
     const seq = ++seqRef.current;
     try {
       await getCurrentUser();
-      const attrs = await fetchUserAttributes();
+      // The email comes from the ID token's claim, NEVER from fetchUserAttributes:
+      // that call is a GetUser request to cognito-idp, which requires the
+      // aws.cognito.signin.user.admin scope — a scope Google-federated (hosted-UI)
+      // access tokens do not carry (the app client grants openid/email/profile).
+      // Depending on it meant every Google sign-in exchanged tokens successfully
+      // and was then reported "unauthenticated": the callback page hung 15s into a
+      // "didn't complete" banner while a live session sat in sessionStorage — which
+      // in turn made a follow-up email/password sign-in in the same tab throw
+      // UserAlreadyAuthenticatedException (see auth-form's signInFresh). Both token
+      // kinds carry the email claim, so this path is also one network call cheaper.
+      const session = await fetchAuthSession();
+      const claim = session.tokens?.idToken?.payload?.email;
       if (seq !== seqRef.current) return; // superseded by a newer hydrate / sign-out
-      onEmail(attrs.email ?? null);
+      onEmail(typeof claim === "string" ? claim : null);
       onStatus("authenticated");
     } catch {
       if (seq !== seqRef.current) return;
