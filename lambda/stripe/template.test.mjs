@@ -43,7 +43,10 @@ function blocks(sectionLines) {
 }
 
 const resources = blocks(section(template, "Resources"));
+const parameters = blocks(section(template, "Parameters"));
 const body = (id) => (resources[id] ?? []).join("\n");
+const paramDefault = (id) =>
+  (parameters[id] ?? []).join("\n").match(/^\s+Default:\s*(.+?)\s*$/m)?.[1];
 const typeOf = (id) => body(id).match(/^\s+Type:\s+(\S+)/m)?.[1];
 const ofType = (t) => Object.keys(resources).filter((id) => typeOf(id) === t);
 
@@ -132,6 +135,84 @@ test("Errors / Throttles / 5xx alarms exist and all notify a human", () => {
   assert.ok(ofType("AWS::CloudWatch::Alarm").length >= 3);
 });
 
+// ---- the stack must be deployable TWICE in one account -------------------------
+// A sandbox stack is how payment and credit-issuance changes get exercised before
+// they touch real money, and it has to live in the SAME account and region as live
+// (that is where the Cognito pool and the deploy role are). CloudFormation fails a
+// second stack with AlreadyExists on any hardcoded physical name, so every one of
+// them must derive from a parameter. The README claimed for months that
+// `--parameter-overrides StripeSecretName=...` was enough; it was not, and nothing
+// tested the claim.
+
+/** Properties whose value becomes a physical, account-unique name. */
+const PHYSICAL_NAME_PROPS = ["TableName", "FunctionName", "TopicName", "AlarmName", "MetricNamespace"];
+
+/** Every `Prop: value` in the whole Resources section for the naming props. */
+function physicalNames() {
+  const out = [];
+  for (const id of Object.keys(resources)) {
+    for (const line of resources[id]) {
+      const m = line.match(new RegExp(`^\\s+(${PHYSICAL_NAME_PROPS.join("|")}):\\s*(.+?)\\s*$`));
+      if (m) out.push({ id, prop: m[1], value: m[2] });
+    }
+  }
+  return out;
+}
+
+test("no physical resource name is hardcoded — a sandbox stack can coexist with live", () => {
+  const found = physicalNames();
+  assert.ok(found.length >= 10, `expected the table+function+topic+alarms, found ${found.length}`);
+  for (const { id, prop, value } of found) {
+    assert.doesNotMatch(
+      value,
+      /^["']?(quantum-stripe|QuantumStripe)/,
+      `${id}.${prop} = ${value} is a hardcoded name; deploying a second stack in this ` +
+        `account would fail with AlreadyExists. Derive it from !Ref NamePrefix / !Ref MetricNamespace.`
+    );
+    assert.match(
+      value,
+      /!Ref |!Sub /,
+      `${id}.${prop} = ${value} must derive from a parameter`
+    );
+  }
+});
+
+test("the parameter defaults reproduce today's LIVE names exactly (a zero-diff update)", () => {
+  // Renaming a live resource is not a rename — CloudFormation REPLACES it. For the
+  // wallet table that would strand every purchased balance in a retained orphan
+  // while the stack quietly served a new, empty one. These defaults are the only
+  // thing standing between the parameterization above and that outcome, so they are
+  // pinned to the exact strings deployed today (verified against the live stack).
+  assert.equal(paramDefault("NamePrefix"), "quantum-stripe");
+  assert.equal(paramDefault("MetricNamespace"), "QuantumStripe");
+
+  const resolve = (v) =>
+    v
+      .replace(/^!Sub\s+/, "")
+      .replace(/^["']|["']$/g, "")
+      .replace(/\$\{NamePrefix\}/g, "quantum-stripe")
+      .replace(/^!Ref NamePrefix$/, "quantum-stripe")
+      .replace(/^!Ref MetricNamespace$/, "QuantumStripe");
+
+  const resolved = new Set(physicalNames().map(({ value }) => resolve(value)));
+  // Exactly what `aws cloudformation describe-stack-resources` reports today.
+  for (const live of [
+    "quantum-stripe-wallet",
+    "quantum-stripe",
+    "quantum-stripe-alerts",
+    "quantum-stripe-errors",
+    "quantum-stripe-uncredited-invoice",
+    "quantum-stripe-async-payment-failed",
+    "quantum-stripe-unreclaimed-refund",
+    "quantum-stripe-webhook-fault",
+    "quantum-stripe-throttles",
+    "quantum-stripe-5xx",
+    "QuantumStripe",
+  ]) {
+    assert.ok(resolved.has(live), `default parameters no longer produce the live name "${live}"`);
+  }
+});
+
 // ---- money-relevant log lines must be ALERTABLE --------------------------------
 // Both of these paths return HTTP 200 and do not throw, so neither
 // quantum-stripe-errors (AWS/Lambda Errors counts FAILED invocations) nor
@@ -156,13 +237,15 @@ function filterFor(metricName) {
 test("an uncredited subscription invoice is alertable, not just greppable", () => {
   const { b, phrase } = filterFor("UncreditedInvoice");
   assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
-  assert.match(b, /MetricNamespace: QuantumStripe/);
+  // The literal namespace moved to a parameter so a sandbox stack cannot page on
+  // live money; "the default is still QuantumStripe" is pinned by the zero-diff test.
+  assert.match(b, /MetricNamespace: !Ref MetricNamespace/);
   // The phrase must literally appear in the handler, or the alarm watches nothing.
   assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
 
   const alarm = body("UncreditedInvoiceAlarm");
   assert.ok(alarm, "UncreditedInvoiceAlarm missing");
-  assert.match(alarm, /Namespace: QuantumStripe/);
+  assert.match(alarm, /Namespace: !Ref MetricNamespace/);
   assert.match(alarm, /MetricName: UncreditedInvoice/);
   assert.match(alarm, /Threshold: 0\b/);
   assert.match(alarm, /ComparisonOperator: GreaterThanThreshold/);
