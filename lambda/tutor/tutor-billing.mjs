@@ -54,8 +54,10 @@ export const TIER_DEFAULT = {
 // every roster model HAS a rate and that the ordering is sane — it cannot know
 // whether the numbers are right. The storefront stays closed until they are.
 //
-// Charging at cost is deliberate: the platform's margin is the subscription and
-// the bundled credit grant, not a markup on inference.
+// Charging at cost is deliberate: the platform's margin is the subscription, not
+// a markup on inference. There is no bundled credit grant and no free credits —
+// every credit in a wallet was paid for. (An earlier draft of this comment said
+// otherwise; the product decision is no grants, full stop.)
 export const RATES = {
   "haiku-4-5": { in: 1_000_000, out: 5_000_000 },
   "sonnet-5": { in: 3_000_000, out: 15_000_000 },
