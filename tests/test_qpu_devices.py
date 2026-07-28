@@ -92,12 +92,21 @@ def test_lambda_micro_dollar_constants_match_cost_pricing():
     iqm = PRICING["IQM"]
     assert const("IQM_PER_TASK_MICROS") == round(iqm["per_task"] * 1_000_000)
     assert const("IQM_PER_SHOT_MICROS") == round(iqm["per_shot"] * 1_000_000)
-    # And the launch-posture caps are exactly the user-approved dollar figures.
-    # $2.50 is the SPONSORED lifetime allowance: the platform pays Braket for every
-    # learner run, and $2.50 is what the hardware medal ladder (1 run / 3 runs /
-    # 1,000 shots) costs to complete -- 3 runs totalling 1,000 shots = $2.35. The
-    # ladder and this cap are locked together in lambda/qpu/__fixtures__/
-    # hardware-ladder.json; a change on either side must keep every medal earnable.
-    assert const("LIFETIME_CAP_MICROS") == 2_500_000  # $2.50
+    # The sponsored lifetime allowance was WITHDRAWN on 2026-07-28. It used to be
+    # $2.50 -- the cost of completing the hardware medal ladder (3 runs totalling
+    # 1,000 shots = $2.35) -- and this assertion locked it to that ladder so a
+    # change on either side kept every medal earnable. Learners now fund hardware
+    # from their credit wallet, so the cap is 0 and the ladder is priced, not
+    # sponsored (see lambda/qpu/__fixtures__/hardware-ladder.json, where the figure
+    # survives as grandfatheredCapMicros for the accounts that hold a stamped cap).
+    #
+    # Asserted as EXACTLY 0, not "<= 2_500_000": a nonzero cap is a standing offer to
+    # pay real Braket charges for every account that signs up, so it must never
+    # reappear silently. Note that 0 alone does not close that door -- the allowance
+    # transaction leg is conditioned on attribute_not_exists(spentMicros), which a
+    # first-time learner satisfies, so qpu-core.mjs also needs its `effectiveCap > 0`
+    # guard to stop exactly one free real-money run per new account.
+    assert const("LIFETIME_CAP_MICROS") == 0
+    assert "effectiveCap > 0" in src, "the zero cap must still be guarded at the transaction leg"
     assert const("DAILY_CAP_MICROS") == 15_000_000  # $15.00
     assert const("MAX_SHOTS") == 1000
