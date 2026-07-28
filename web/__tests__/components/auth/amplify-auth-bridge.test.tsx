@@ -28,13 +28,19 @@ jest.mock("aws-amplify/auth/cognito", () => ({
 }));
 
 const getCurrentUser = jest.fn();
-const fetchUserAttributes = jest.fn();
+const fetchAuthSession = jest.fn();
 const amplifySignOut = jest.fn();
 jest.mock("aws-amplify/auth", () => ({
   getCurrentUser: () => getCurrentUser(),
-  fetchUserAttributes: () => fetchUserAttributes(),
+  fetchAuthSession: () => fetchAuthSession(),
   signOut: () => amplifySignOut(),
 }));
+
+/** A session whose ID token carries the given email claim — the shape BOTH a
+ *  native-SRP and a Google-federated sign-in produce. */
+const sessionWithEmail = (email: string) => ({
+  tokens: { idToken: { payload: { email } } },
+});
 
 jest.mock("@/lib/auth-config", () => ({ amplifyAuthConfig: () => ({ Auth: { Cognito: {} } }) }));
 
@@ -63,13 +69,13 @@ describe("AmplifyAuthBridge", () => {
     setKeyValueStorage.mockClear();
     hubUnsub.mockClear();
     getCurrentUser.mockReset();
-    fetchUserAttributes.mockReset();
+    fetchAuthSession.mockReset();
     amplifySignOut.mockReset();
   });
 
   it("configures Amplify and scopes Cognito tokens to sessionStorage", async () => {
     getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("a@b.com"));
     await act(async () => {
       setup();
     });
@@ -88,13 +94,45 @@ describe("AmplifyAuthBridge", () => {
 
   it("hydrates to authenticated with the user email", async () => {
     getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("a@b.com"));
     let h!: ReturnType<typeof setup>;
     await act(async () => {
       h = setup();
     });
     expect(lastStatus(h.onStatus)).toBe("authenticated");
     expect(lastEmail(h.onEmail)).toBe("a@b.com");
+  });
+
+  // THE 2026-07-28 OUTAGE, pinned. The old hydrate called fetchUserAttributes,
+  // which is a GetUser network call requiring the aws.cognito.signin.user.admin
+  // scope — a scope Google-federated (hosted-UI) access tokens do not carry, so
+  // every Google sign-in exchanged tokens successfully and was then reported
+  // "unauthenticated" (three cognito-idp 400s, a 15s hang, and a "didn't
+  // complete" banner — with a live session squatting in sessionStorage). Hydrate
+  // must therefore never depend on a scope-gated attributes API: the email comes
+  // from the ID token's claim, which both token kinds carry.
+  it("never calls a scope-gated attributes API — a session alone authenticates (the Google-token outage)", async () => {
+    getCurrentUser.mockResolvedValue({ userId: "google_123" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("gadiel@example.com"));
+    let h!: ReturnType<typeof setup>;
+    await act(async () => {
+      h = setup();
+    });
+    expect(lastStatus(h.onStatus)).toBe("authenticated");
+    expect(lastEmail(h.onEmail)).toBe("gadiel@example.com");
+  });
+
+  it("still authenticates (email null) when the session has no readable email claim", async () => {
+    // A malformed/empty payload must degrade to a nameless session, never to
+    // "unauthenticated" — that lie is exactly what locked Google users out.
+    getCurrentUser.mockResolvedValue({ userId: "u1" });
+    fetchAuthSession.mockResolvedValue({ tokens: { idToken: { payload: {} } } });
+    let h!: ReturnType<typeof setup>;
+    await act(async () => {
+      h = setup();
+    });
+    expect(lastStatus(h.onStatus)).toBe("authenticated");
+    expect(lastEmail(h.onEmail)).toBe(null);
   });
 
   it("resolves unauthenticated when there is no current user", async () => {
@@ -115,7 +153,7 @@ describe("AmplifyAuthBridge", () => {
     expect(lastStatus(h.onStatus)).toBe("unauthenticated");
 
     getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "c@d.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("c@d.com"));
     await act(async () => {
       hubCb!({ payload: { event: "signedIn" } });
     });
@@ -131,7 +169,7 @@ describe("AmplifyAuthBridge", () => {
 
   it("clears authenticated state on a tokenRefresh_failure event", async () => {
     getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("a@b.com"));
     let h!: ReturnType<typeof setup>;
     await act(async () => {
       h = setup();
@@ -158,7 +196,7 @@ describe("AmplifyAuthBridge", () => {
         release = res;
       })
     );
-    fetchUserAttributes.mockResolvedValue({ email: "late@x.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("late@x.com"));
 
     await act(async () => {
       hubCb!({ payload: { event: "signedIn" } });
@@ -176,7 +214,7 @@ describe("AmplifyAuthBridge", () => {
 
   it("registers a signOut that settles to unauthenticated even when amplify rejects", async () => {
     getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("a@b.com"));
     amplifySignOut.mockRejectedValue(new Error("network"));
     let h!: ReturnType<typeof setup>;
     await act(async () => {
@@ -191,7 +229,7 @@ describe("AmplifyAuthBridge", () => {
 
   it("unsubscribes the Hub listener on unmount", async () => {
     getCurrentUser.mockResolvedValue({ userId: "u1" });
-    fetchUserAttributes.mockResolvedValue({ email: "a@b.com" });
+    fetchAuthSession.mockResolvedValue(sessionWithEmail("a@b.com"));
     let h!: ReturnType<typeof setup>;
     await act(async () => {
       h = setup();

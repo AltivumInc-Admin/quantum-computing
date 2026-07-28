@@ -12,6 +12,7 @@ const signIn = jest.fn();
 const signInWithRedirect = jest.fn();
 const resetPassword = jest.fn();
 const confirmResetPassword = jest.fn();
+const amplifySignOut = jest.fn();
 jest.mock("aws-amplify/auth", () => ({
   signUp: (...a: unknown[]) => signUp(...a),
   confirmSignUp: (...a: unknown[]) => confirmSignUp(...a),
@@ -20,7 +21,16 @@ jest.mock("aws-amplify/auth", () => ({
   signInWithRedirect: (...a: unknown[]) => signInWithRedirect(...a),
   resetPassword: (...a: unknown[]) => resetPassword(...a),
   confirmResetPassword: (...a: unknown[]) => confirmResetPassword(...a),
+  signOut: (...a: unknown[]) => amplifySignOut(...a),
 }));
+
+/** The exact error Amplify v6 throws when a session already sits in this tab —
+ *  e.g. a Google redirect whose token exchange succeeded even though the UI
+ *  reported failure (the 2026-07-28 outage's second face). */
+const alreadySignedIn = () =>
+  Object.assign(new Error("There is already a signed in user."), {
+    name: "UserAlreadyAuthenticatedException",
+  });
 
 const replace = jest.fn();
 let mockSearch = "";
@@ -38,7 +48,7 @@ function fill(label: string, value: string) {
 
 describe("AuthForm", () => {
   beforeEach(() => {
-    [signUp, confirmSignUp, resendSignUpCode, signIn, signInWithRedirect, resetPassword, confirmResetPassword, replace].forEach(
+    [signUp, confirmSignUp, resendSignUpCode, signIn, signInWithRedirect, resetPassword, confirmResetPassword, amplifySignOut, replace].forEach(
       (m) => m.mockReset()
     );
     mockSearch = "";
@@ -65,6 +75,41 @@ describe("AuthForm", () => {
     fireEvent.click(btn);
     await waitFor(() => expect(signIn).toHaveBeenCalledWith({ username: "a@b.com", password: "weak" }));
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/workspace"));
+  });
+
+  it("replaces a squatting session instead of dying on UserAlreadyAuthenticatedException", async () => {
+    // First attempt hits the stale session; after the sign-out, the retry must
+    // sign in as the identity the user actually asked for.
+    signIn.mockRejectedValueOnce(alreadySignedIn()).mockResolvedValueOnce({ isSignedIn: true });
+    amplifySignOut.mockResolvedValue(undefined);
+    render(<AuthForm />);
+    fill("Email", "a@b.com");
+    fill("Password", "pw");
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/workspace"));
+    expect(amplifySignOut).toHaveBeenCalledTimes(1);
+    expect(signIn).toHaveBeenCalledTimes(2);
+    expect(signIn).toHaveBeenLastCalledWith({ username: "a@b.com", password: "pw" });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("confirm-then-sign-in also survives a squatting session", async () => {
+    mockSearch = "mode=signup";
+    confirmSignUp.mockResolvedValue({});
+    signIn.mockRejectedValueOnce(alreadySignedIn()).mockResolvedValueOnce({ isSignedIn: true });
+    amplifySignOut.mockResolvedValue(undefined);
+    signUp.mockResolvedValue({});
+    render(<AuthForm />);
+    fill("Email", "new@user.com");
+    fill("Password", "Str0ng!Enough");
+    fill("Confirm password", "Str0ng!Enough");
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+    await waitFor(() => expect(screen.getByLabelText(/confirmation code/i)).toBeInTheDocument());
+    fill("Confirmation code", "123456");
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/workspace"));
+    expect(amplifySignOut).toHaveBeenCalledTimes(1);
+    expect(signIn).toHaveBeenCalledTimes(2);
   });
 
   it("shows the password checklist on sign-in once the field has content", () => {
