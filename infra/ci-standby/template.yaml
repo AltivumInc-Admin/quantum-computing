@@ -93,6 +93,17 @@ Resources:
                   - codestar-connections:GetConnectionToken
                   - codestar-connections:UseConnection
                 Resource: !Ref ConnectionArn
+        - PolicyName: founding-ten-verify
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # scripts/verify-founding-ten.mjs reads live Cognito users to
+              # confirm every issued badge still resolves — read-only, scoped
+              # to the single quantum-workspace user pool it checks against.
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsers
+                Resource: !Sub arn:aws:cognito-idp:us-east-2:${AWS::AccountId}:userpool/us-east-2_aRydPmAjj
 
   Project:
     Type: AWS::CodeBuild::Project
@@ -159,6 +170,11 @@ Resources:
                 - cd "$CODEBUILD_SRC_DIR/web" && npm ci
                 - cd "$CODEBUILD_SRC_DIR/web" && npm run lint
                 - cd "$CODEBUILD_SRC_DIR/web" && npm test
+                # Live gate: fails the build if an issued Founding Ten badge no
+                # longer matches an enabled Cognito user (see the script's own
+                # header for why — email-bound, not sub-bound). No-ops offline;
+                # here it has real AWS creds via the founding-ten-verify policy.
+                - cd "$CODEBUILD_SRC_DIR" && node scripts/verify-founding-ten.mjs
                 # --- Lambda tests (every directory under lambda/ — keep in
                 # sync with ci.yml's matrix; stripe guards the credit wallet) ---
                 - |

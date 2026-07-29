@@ -20,12 +20,14 @@ export type AuthStatus =
 export interface AuthContextValue {
   status: AuthStatus;
   email: string | null;
+  emailHash: string | null; // SHA-256 of the normalized email; see lib/founding-ten
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   status: "unconfigured",
   email: null,
+  emailHash: null,
   signOut: async () => {},
 });
 
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configured ? "configuring" : "unconfigured"
   );
   const [email, setEmail] = useState<string | null>(null);
+  const [emailHash, setEmailHash] = useState<string | null>(null);
 
   // The bridge registers the real (Amplify) sign-out; the context exposes a stable
   // indirection so consumers don't depend on the lazily-loaded module.
@@ -55,11 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ status, email, signOut }}>
+    <AuthContext.Provider value={{ status, email, emailHash, signOut }}>
       {configured && (
         <AmplifyAuthBridge
           onStatus={setStatus}
           onEmail={setEmail}
+          onEmailHash={setEmailHash}
           registerSignOut={registerSignOut}
         />
       )}

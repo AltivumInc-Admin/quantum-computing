@@ -11,11 +11,13 @@ import {
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 import { setCurrentOwner } from "@/lib/progress-owner";
 import { amplifyAuthConfig } from "@/lib/auth-config";
+import { hashEmail } from "@/lib/founding-ten";
 import type { AuthStatus } from "./auth-provider";
 
 interface Props {
   onStatus: (s: AuthStatus) => void;
   onEmail: (e: string | null) => void;
+  onEmailHash: (h: string | null) => void;
   registerSignOut: (fn: () => Promise<void>) => void;
 }
 
@@ -26,7 +28,12 @@ interface Props {
  * next/dynamic({ ssr: false }), so the ~30 KB-gz Amplify SDK lives in this
  * lazily-fetched client-only chunk instead of every page's initial shared bundle.
  */
-export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }: Props) {
+export default function AmplifyAuthBridge({
+  onStatus,
+  onEmail,
+  onEmailHash,
+  registerSignOut,
+}: Props) {
   // Monotonic guard: every hydrate captures a sequence number and only commits its
   // result if it is still the latest. A sign-out / failure event bumps the counter,
   // so a slow in-flight hydrate can never clobber the newer state.
@@ -57,13 +64,35 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
       if (typeof sub === "string") setCurrentOwner(sub);
       onEmail(typeof claim === "string" ? claim : null);
       onStatus("authenticated");
+      // Hash here, not in the view: this function is already async, so the account
+      // surface can stay synchronous. Badge binding uses the EMAIL (see
+      // lib/founding-ten) because a sub does not survive account recreation.
+      const emailClaim = typeof claim === "string" ? claim : null;
+      // Clear any PRIOR account's badge before awaiting the new digest: a re-hydrate
+      // that fires signedIn without a preceding signedOut (a federated callback
+      // landing on an already-live session) must not go on showing account A's
+      // badge under account B's email/status for the frame it takes to resolve.
+      onEmailHash(null);
+      // A cosmetic badge lookup must NEVER be able to speak for auth. This is the
+      // same bug class as the fetchUserAttributes outage documented above: a
+      // secondary call inside hydrate's try, whose failure would otherwise fall
+      // into the catch below and flip a genuinely authenticated session to
+      // "unauthenticated" (and, via setCurrentOwner(null), repoint local storage
+      // to the anonymous bucket). crypto.subtle can be unavailable (insecure
+      // context, embedded webview, a hardened enterprise browser) or the digest
+      // can simply reject — either way it must degrade to "no badge", never to
+      // "signed out".
+      const hash = emailClaim ? await hashEmail(emailClaim).catch(() => null) : null;
+      if (seq !== seqRef.current) return;
+      onEmailHash(hash);
     } catch {
       if (seq !== seqRef.current) return;
       setCurrentOwner(null);
       onEmail(null);
+      onEmailHash(null);
       onStatus("unauthenticated");
     }
-  }, [onEmail, onStatus]);
+  }, [onEmail, onEmailHash, onStatus]);
 
   useEffect(() => {
     const cfg = amplifyAuthConfig();
@@ -85,6 +114,7 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
         // simply stops being read, so nobody else on this device can see it.
         setCurrentOwner(null);
         onEmail(null);
+        onEmailHash(null);
         onStatus("unauthenticated");
       }
     });
@@ -103,12 +133,13 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
           seqRef.current++;
           setCurrentOwner(null);
           onEmail(null);
+          onEmailHash(null);
           onStatus("unauthenticated");
           break;
       }
     });
     return unsubscribe;
-  }, [hydrate, registerSignOut, onEmail, onStatus]);
+  }, [hydrate, registerSignOut, onEmail, onEmailHash, onStatus]);
 
   return null;
 }

@@ -45,6 +45,16 @@ describe("AuthWall", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it("leaves the Founding Ten proof pages public — they are third-party verifiable", () => {
+    for (const p of ["/founding-ten", "/founding-ten/charter-01"]) {
+      mockPathname = p;
+      const { unmount } = renderWall();
+      expect(screen.getByText(CHILD)).toBeInTheDocument();
+      unmount();
+    }
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("renders children when auth is unconfigured (static export / tests / local dev)", () => {
     mockStatus = "unconfigured";
     renderWall();

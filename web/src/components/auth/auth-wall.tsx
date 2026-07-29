@@ -11,9 +11,12 @@ import { useLocale } from "@/i18n";
  * loop if gated; `/privacy` is legal and must always be reachable; the
  * `/e2e-fixtures/*` pages are Playwright scaffolding. Everything else — the
  * whole learning platform — sits behind the sign-up wall.
+ *
+ * `/founding-ten/*` is proof of record: a third party verifying a holder's
+ * credential must reach it without an account, so it cannot sit behind the wall.
  */
 const PUBLIC_PATHS = new Set(["/", "/pricing", "/login", "/auth/callback", "/privacy"]);
-const PUBLIC_PREFIXES = ["/e2e-fixtures"];
+const PUBLIC_PREFIXES = ["/e2e-fixtures", "/founding-ten"];
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
