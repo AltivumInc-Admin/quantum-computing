@@ -21,12 +21,17 @@ import {
 } from "./review-schedule";
 import { PROGRESS_EVENT_NAME, subscribe } from "./progress-store";
 import { recordActivity } from "./activity-log";
+import { ownedLocalKeys, toCanonicalKey, toLocalKey } from "./progress-owner";
 
+// Canonical (server-side) prefixes. Every localStorage access goes through
+// toLocalKey, which scopes them to the signed-in owner's bucket — see
+// progress-owner. Note the two prefixes cannot collide: "qc:card-content:"
+// does not start with "qc:card:" (a hyphen follows "card", not a colon).
 const CARD_PREFIX = "qc:card:";
-const cardKey = (id: string) => `${CARD_PREFIX}${id}`;
+const cardKey = (id: string) => toLocalKey(`${CARD_PREFIX}${id}`);
 
 const CONTENT_PREFIX = "qc:card-content:";
-const contentKey = (id: string) => `${CONTENT_PREFIX}${id}`;
+const contentKey = (id: string) => toLocalKey(`${CONTENT_PREFIX}${id}`);
 
 /** The graded-Rep kinds /review can re-mount as LIVE widgets (see review-dashboard). */
 export type CardKind = "challenge" | "predict" | "bloch" | "cost" | "debug" | "expect";
@@ -135,13 +140,15 @@ export function gradeCardIfDue(id: string, rating: Rating, nowMs: number = Date.
   return gradeCard(id, rating, nowMs);
 }
 
-/** Every card id that has been reviewed at least once (has stored state). */
+/** Every card id that has been reviewed at least once (has stored state).
+ *  Scoped to the current owner's bucket: scanning all of localStorage is what
+ *  showed one learner's due cards to the next account on a shared browser. */
 export function getAllCardIds(): string[] {
   try {
     const ids: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(CARD_PREFIX)) ids.push(k.slice(CARD_PREFIX.length));
+    for (const localKey of ownedLocalKeys()) {
+      const canonical = toCanonicalKey(localKey);
+      if (canonical.startsWith(CARD_PREFIX)) ids.push(canonical.slice(CARD_PREFIX.length));
     }
     return ids;
   } catch {

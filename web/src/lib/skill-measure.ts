@@ -14,8 +14,9 @@
  * qc-progress event — its only caller (a widget on solve) already fires one.
  */
 
+import { ownedLocalKeys, toCanonicalKey, toLocalKey } from "./progress-owner";
 const MEASURE_PREFIX = "qc:measure:";
-const measureKey = (id: string) => `${MEASURE_PREFIX}${id}`;
+const measureKey = (id: string) => toLocalKey(`${MEASURE_PREFIX}${id}`);
 
 export interface Measurement {
   /**
@@ -59,11 +60,12 @@ export function getBest(id: string): Measurement | null {
 export function getAllMeasurements(): { id: string; gates: number }[] {
   try {
     const out: { id: string; gates: number }[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(MEASURE_PREFIX)) {
-        const m = getBest(k.slice(MEASURE_PREFIX.length));
-        if (m) out.push({ id: k.slice(MEASURE_PREFIX.length), gates: m.gates });
+    for (const localKey of ownedLocalKeys()) {
+      const canonical = toCanonicalKey(localKey);
+      if (canonical.startsWith(MEASURE_PREFIX)) {
+        const id = canonical.slice(MEASURE_PREFIX.length);
+        const m = getBest(id);
+        if (m) out.push({ id, gates: m.gates });
       }
     }
     return out;

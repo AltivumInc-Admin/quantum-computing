@@ -7,6 +7,7 @@ import { isQpuConfigured } from "@/lib/qpu-client";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { WorkspaceBudgetProvider } from "@/components/workspace/budget-provider";
 import { Masthead } from "@/components/workspace/masthead";
+import { ClaimAnonProgress } from "@/components/workspace/claim-anon-progress";
 import { Instrument } from "@/components/workspace/instrument";
 import { Valve } from "@/components/workspace/valve";
 import { Lab } from "@/components/workspace/lab";
@@ -103,6 +104,7 @@ function Bench({
   return (
     <Container>
       <Masthead email={authed ? email : null} />
+      {authed && <ClaimAnonProgress />}
 
       {model === null ? (
         <SkeletonGrid />

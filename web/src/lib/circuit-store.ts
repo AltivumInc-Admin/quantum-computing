@@ -19,6 +19,7 @@
 import { recordActivity } from "./activity-log";
 import { sanitizeTheta } from "./circuit-url";
 import { PROGRESS_EVENT_NAME } from "./progress-store";
+import { ownedLocalKeys, toCanonicalKey, toLocalKey } from "./progress-owner";
 
 export type SavedCircuit = {
   id: string;
@@ -37,7 +38,7 @@ export const MAX_CIRCUIT_NAME = 80;
 type StoredLive = { v: 1; name: string; src: string; theta?: number; updatedAt: number };
 type StoredTombstone = { v: 1; deleted: true; updatedAt: number };
 
-const circuitKey = (id: string) => `${CIRCUIT_KEY_PREFIX}${id}`;
+const circuitKey = (id: string) => toLocalKey(`${CIRCUIT_KEY_PREFIX}${id}`);
 
 function parseStored(raw: string): StoredLive | StoredTombstone | null {
   try {
@@ -67,15 +68,17 @@ function dispatchProgress(): void {
 export function listCircuits(): SavedCircuit[] {
   const out: SavedCircuit[] = [];
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith(CIRCUIT_KEY_PREFIX)) continue;
-      const raw = localStorage.getItem(key);
+    // Owner-scoped: saved circuits are personal work, and an unscoped scan put
+    // one learner's shelf in front of the next account on a shared browser.
+    for (const localKey of ownedLocalKeys()) {
+      const canonical = toCanonicalKey(localKey);
+      if (!canonical.startsWith(CIRCUIT_KEY_PREFIX)) continue;
+      const raw = localStorage.getItem(localKey);
       if (raw === null) continue;
       const stored = parseStored(raw);
       if (!stored || "deleted" in stored) continue;
       out.push({
-        id: key.slice(CIRCUIT_KEY_PREFIX.length),
+        id: canonical.slice(CIRCUIT_KEY_PREFIX.length),
         name: stored.name,
         src: stored.src,
         ...(stored.theta !== undefined && { theta: stored.theta }),
