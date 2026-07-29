@@ -15,8 +15,9 @@
 import { PROGRESS_EVENT_NAME } from "./progress-event";
 import { registerLocalDeletion, clearLocalDeletion } from "./progress-merge";
 import { recordActivity } from "./activity-log";
+import { toLocalKey } from "./progress-owner";
 
-const sectionKey = (slug: string) => `qc:section:${slug}`;
+const sectionKey = (slug: string) => toLocalKey(`qc:section:${slug}`);
 
 // When localStorage itself is blocked (Chrome/Safari with site data off),
 // flags land here instead, so "Mark as complete" is never a dead control:

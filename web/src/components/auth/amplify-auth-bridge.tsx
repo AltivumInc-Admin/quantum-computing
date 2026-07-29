@@ -9,6 +9,7 @@ import {
   signOut as amplifySignOut,
 } from "aws-amplify/auth";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
+import { setCurrentOwner } from "@/lib/progress-owner";
 import { amplifyAuthConfig } from "@/lib/auth-config";
 import type { AuthStatus } from "./auth-provider";
 
@@ -47,11 +48,18 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
       // kinds carry the email claim, so this path is also one network call cheaper.
       const session = await fetchAuthSession();
       const claim = session.tokens?.idToken?.payload?.email;
+      const sub = session.tokens?.idToken?.payload?.sub;
       if (seq !== seqRef.current) return; // superseded by a newer hydrate / sign-out
+      // Point local progress at THIS account's bucket before anything reads it.
+      // Storage is namespaced per owner (progress-owner), so this is what makes
+      // one learner's cards, streak and saved circuits invisible to the next
+      // account on a shared browser.
+      if (typeof sub === "string") setCurrentOwner(sub);
       onEmail(typeof claim === "string" ? claim : null);
       onStatus("authenticated");
     } catch {
       if (seq !== seqRef.current) return;
+      setCurrentOwner(null);
       onEmail(null);
       onStatus("unauthenticated");
     }
@@ -72,6 +80,10 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
       } catch {
         // Best-effort: a failed (e.g. offline) sign-out must not strand the user.
       } finally {
+        // Back to the anonymous bucket. The account's own bucket is NOT
+        // deleted — signing back in restores it instantly, even offline — it
+        // simply stops being read, so nobody else on this device can see it.
+        setCurrentOwner(null);
         onEmail(null);
         onStatus("unauthenticated");
       }
@@ -89,6 +101,7 @@ export default function AmplifyAuthBridge({ onStatus, onEmail, registerSignOut }
         case "tokenRefresh_failure":
         case "signInWithRedirect_failure":
           seqRef.current++;
+          setCurrentOwner(null);
           onEmail(null);
           onStatus("unauthenticated");
           break;

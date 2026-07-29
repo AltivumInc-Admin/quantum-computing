@@ -42,6 +42,13 @@
 
 import { PROGRESS_EVENT_NAME } from "./progress-event";
 import { epochDay, MAX_INTERVAL, parseCardState, type CardState } from "./review-schedule";
+import {
+  DEVICE_GLOBAL_SYNCED,
+  ownedLocalKeys,
+  ownerPrefix,
+  toCanonicalKey,
+  toLocalKey,
+} from "./progress-owner";
 
 export type ProgressSnapshot = Record<string, string>;
 
@@ -85,21 +92,39 @@ export function resetLocalDeletions(): void {
 export function trackCrossTabDeletions(): () => void {
   if (typeof window === "undefined") return () => {};
   const onStorage = (e: StorageEvent) => {
-    if (!e.key?.startsWith("qc:")) return;
-    if (e.newValue === null) registerLocalDeletion(e.key);
-    else clearLocalDeletion(e.key);
+    // Filter to THIS owner's bucket, then record the tombstone in canonical
+    // space. Without the owner filter a signed-in tab would tombstone deletions
+    // made in another account's bucket and suppress them from its own sync.
+    if (!e.key || !e.key.startsWith(ownerPrefix())) return;
+    const canonical = toCanonicalKey(e.key);
+    if (e.newValue === null) registerLocalDeletion(canonical);
+    else clearLocalDeletion(canonical);
   };
   window.addEventListener("storage", onStorage);
   return () => window.removeEventListener("storage", onStorage);
 }
 
-/** Every qc:* key in localStorage (qc-sync:* metadata is outside the prefix). */
+/**
+ * The CURRENT owner's progress, expressed in the CANONICAL key space the server
+ * stores ("qc:card:x"), never the local owner-scoped space ("qc:o:<sub>:card:x").
+ *
+ * Two invariants, both load-bearing:
+ *  - It FILTERS to one owner. Sweeping every qc: key would push other accounts'
+ *    buckets into this account's snapshot — the very bleed namespacing removes.
+ *  - It TRANSLATES to canonical. The wire format is frozen: three live DynamoDB
+ *    rows use it, and lambda/review-email scans those rows for "qc:card:".
+ *
+ * Device-global keys (qc:locale) are included as-is, exactly as before, so the
+ * language preference keeps syncing and existing rows stay consistent.
+ */
 export function exportSnapshot(): ProgressSnapshot {
   const snapshot: ProgressSnapshot = {};
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith("qc:")) continue;
+    for (const localKey of ownedLocalKeys()) {
+      const value = localStorage.getItem(localKey);
+      if (value !== null) snapshot[toCanonicalKey(localKey)] = value;
+    }
+    for (const key of DEVICE_GLOBAL_SYNCED) {
       const value = localStorage.getItem(key);
       if (value !== null) snapshot[key] = value;
     }
@@ -123,9 +148,11 @@ export function exportSnapshot(): ProgressSnapshot {
 export function wipeLocalProgress(alsoKeys: string[] = []): number {
   const keys: string[] = [];
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && (k.startsWith("qc:") || alsoKeys.includes(k))) keys.push(k);
+    // Only THIS owner's bucket: a wipe must never reach into another account's
+    // progress that happens to share the device.
+    keys.push(...ownedLocalKeys());
+    for (const k of alsoKeys) {
+      if (localStorage.getItem(k) !== null) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
     if (keys.length > 0) window.dispatchEvent(new Event(PROGRESS_EVENT_NAME));
@@ -291,8 +318,12 @@ export function applySnapshot(
         const card = parseCardState(value);
         if (card && !plausible(card, todayEpochDay)) continue;
       }
-      if (localStorage.getItem(key) !== value) {
-        localStorage.setItem(key, value);
+      // `merged` is CANONICAL (it came off the wire); the write target is this
+      // owner's bucket. Device-global keys pass through toLocalKey unchanged,
+      // so qc:locale still lands where the pre-hydration script reads it.
+      const target = toLocalKey(key);
+      if (localStorage.getItem(target) !== value) {
+        localStorage.setItem(target, value);
         changed++;
       }
     }

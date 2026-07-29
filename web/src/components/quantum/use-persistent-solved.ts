@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import type { CardKind } from "@/lib/review-store";
 import { PROGRESS_EVENT_NAME, subscribe } from "@/lib/progress-store";
+import { toLocalKey } from "@/lib/progress-owner";
 
 /**
  * The ONE persistent solved-flag pattern shared by all six graded Rep widgets,
@@ -28,7 +29,7 @@ import { PROGRESS_EVENT_NAME, subscribe } from "@/lib/progress-store";
 
 /** localStorage key for a Rep's set-once solved flag: `qc:<kind>:<id>`. */
 export function solvedFlagKey(kind: CardKind, id: string): string {
-  return `qc:${kind}:${id}`;
+  return toLocalKey(`qc:${kind}:${id}`);
 }
 
 export function usePersistentSolved(

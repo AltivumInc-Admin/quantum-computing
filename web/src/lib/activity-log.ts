@@ -14,9 +14,10 @@
  */
 
 import { epochDay } from "./review-schedule";
+import { ownedLocalKeys, toCanonicalKey, toLocalKey } from "./progress-owner";
 
 const ACTIVITY_PREFIX = "qc:log:day:";
-const dayKey = (day: number) => `${ACTIVITY_PREFIX}${day}`;
+const dayKey = (day: number) => toLocalKey(`${ACTIVITY_PREFIX}${day}`);
 
 /**
  * Mark today active. Idempotent (a set-once flag), guarded, and silent — the
@@ -34,10 +35,12 @@ export function recordActivity(nowMs: number = Date.now()): void {
 export function activeDays(): number[] {
   try {
     const days: number[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(ACTIVITY_PREFIX)) {
-        const day = Number(k.slice(ACTIVITY_PREFIX.length));
+    // Owner-scoped: an unscoped scan is how the previous learner's streak
+    // showed up under a brand-new account.
+    for (const localKey of ownedLocalKeys()) {
+      const canonical = toCanonicalKey(localKey);
+      if (canonical.startsWith(ACTIVITY_PREFIX)) {
+        const day = Number(canonical.slice(ACTIVITY_PREFIX.length));
         if (Number.isFinite(day)) days.push(day);
       }
     }
