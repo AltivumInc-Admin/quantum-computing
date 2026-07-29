@@ -5,7 +5,13 @@ import { SITE_URL } from "@/lib/site";
 describe("sitemap", () => {
   it("lists only the public routes, all absolute", () => {
     const urls = sitemap().map((e) => e.url);
-    expect(urls).toEqual([`${SITE_URL}`, `${SITE_URL}/pricing`, `${SITE_URL}/privacy`]);
+    expect(urls).toEqual([
+      `${SITE_URL}`,
+      `${SITE_URL}/pricing`,
+      `${SITE_URL}/privacy`,
+      `${SITE_URL}/founding-ten`,
+      `${SITE_URL}/founding-ten/charter-01`,
+    ]);
     expect(urls.every((u) => u.startsWith("https://"))).toBe(true);
   });
 
