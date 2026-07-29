@@ -29,6 +29,10 @@ export const es: TranslationDict = {
     builtWith: "Altivum Inc. — construido con Amazon Braket.",
     ariaLabel: "Pie de página",
   },
+  foundingTen: {
+    label: "Los Diez Fundadores",
+    ariaLabel: "Los Diez Fundadores: {{claimed}} de {{total}} plazas ocupadas",
+  },
   lang: {
     en: "English",
     es: "Español",

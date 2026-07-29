@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SITE_NAME } from "@/lib/site";
 import { SITE_FOOTER_ID } from "@/lib/layout-regions";
 import { useLocale } from "@/i18n";
+import { FoundingTenLink } from "@/components/founding-ten/founding-ten-link";
 
 const REPO_URL = "https://github.com/AltivumInc-Admin/quantum-computing";
 
@@ -11,16 +12,19 @@ const linkClass =
   "text-gray-600 dark:text-gray-400 hover:text-accent dark:hover:text-accent-light interactive focus-ring rounded transition-colors";
 
 export function Footer() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   return (
     <footer
       id={SITE_FOOTER_ID}
       className="mt-24 border-t border-gray-200/60 dark:border-gray-800/40"
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-caption">
-          {t("footer.tagline", { site: SITE_NAME })}
-        </p>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-caption">
+            {t("footer.tagline", { site: SITE_NAME })}
+          </p>
+          <FoundingTenLink locale={locale} />
+        </div>
         <nav
           aria-label={t("footer.ariaLabel")}
           className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-medium"
