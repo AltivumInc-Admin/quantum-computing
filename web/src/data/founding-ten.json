@@ -1,4 +1,11 @@
 {
-  "charter": [],
+  "charter": [
+    {
+      "serial": 1,
+      "holder": "Irving Salinas",
+      "issuedAt": "2026-07-29",
+      "emailHash": "8835908f8159033fa5014f2bcc2379bf349c4f085a4d63d792951ba68fe2b16f"
+    }
+  ],
   "patron": []
 }
