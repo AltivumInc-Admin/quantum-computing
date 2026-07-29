@@ -10,6 +10,7 @@ import { epochDay } from "@/lib/review-schedule";
 import { masteryCount, streak, freezesEarned } from "@/lib/runbook";
 import { isQpuConfigured, getBudget, isRateLimited } from "@/lib/qpu-client";
 import { useAuth } from "@/components/auth/auth-provider";
+import { MyFoundingBadges } from "@/components/founding-ten/my-badges";
 import {
   computeCredentials,
   type Credential,
@@ -276,6 +277,8 @@ export function CredentialsWall() {
           </p>
         )}
       </header>
+
+      <MyFoundingBadges />
 
       {data === null ? (
         <div

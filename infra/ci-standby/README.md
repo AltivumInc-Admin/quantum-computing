@@ -14,7 +14,14 @@ failure without weakening the gate.
   `.github/workflows/ci.yml` (web tests + lint, the 4 Lambda suites, python
   tests + lint + manifest drift gate, JupyterLite/Pyodide build smoke, static
   export, Playwright in-browser smoke) as a single sequential build, and
-  reports one GitHub commit status: **`CI (CodeBuild standby)`**.
+  reports one GitHub commit status: **`CI (CodeBuild standby)`**. The build
+  also runs `scripts/verify-founding-ten.mjs`, which needs
+  `cognito-idp:ListUsers` on the `quantum-workspace` user pool to check that
+  every issued badge still resolves to a live user — the `ServiceRole` carries
+  this via its `founding-ten-verify` policy, scoped to that one pool. Both of
+  these are template edits only and require a stack redeploy (see below)
+  before the live CodeBuild project actually runs the check or holds the
+  permission.
 - **`failover.sh`** — flips the merge gate between the two CI engines.
 
 **Cost profile:** $0 while idle — no webhook exists in normal operation, so the

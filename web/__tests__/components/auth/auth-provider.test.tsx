@@ -41,11 +41,12 @@ jest.mock("@/lib/auth-config", () => ({ isAuthConfigured: () => configured }));
 import { AuthProvider, useAuth } from "@/components/auth/auth-provider";
 
 function Probe() {
-  const { status, email, signOut } = useAuth();
+  const { status, email, emailHash, signOut } = useAuth();
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="email">{email ?? ""}</span>
+      <span data-testid="emailHash">{emailHash ?? ""}</span>
       <button onClick={() => void signOut()}>out</button>
     </div>
   );
@@ -99,6 +100,21 @@ describe("AuthProvider", () => {
     });
     expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
     expect(screen.getByTestId("email")).toHaveTextContent("a@b.com");
+  });
+
+  it("starts with a null emailHash and publishes the hash the bridge reports", () => {
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    // Before the bridge's async hydrate settles, the badge lookup key is unknown —
+    // never a stale or guessed value.
+    expect(screen.getByTestId("emailHash")).toHaveTextContent("");
+    act(() => {
+      bridgeProps.onEmailHash("b".repeat(64));
+    });
+    expect(screen.getByTestId("emailHash")).toHaveTextContent("b".repeat(64));
   });
 
   it("delegates signOut to the function the bridge registers", async () => {
