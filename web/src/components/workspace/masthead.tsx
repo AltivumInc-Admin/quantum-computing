@@ -82,7 +82,11 @@ function SyncReadout() {
     );
   }
 
-  if (state === "mismatch") {
+  // Also on health, not just on a manual "Sync now" that failed: the background
+  // sync hits this fence on every page load and used to swallow it, so the choice
+  // was only ever offered to someone who thought to press a button they had no
+  // reason to press — the readout was cheerfully claiming "Synced HH:MM".
+  if (state === "mismatch" || health === "mismatch") {
     return (
       <div role="alert" className="max-w-sm text-right">
         <p className="text-sm text-(--mut)">

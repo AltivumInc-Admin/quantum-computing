@@ -123,6 +123,39 @@ describe("syncNow", () => {
     expect(calls).toHaveLength(0); // nothing left the device
   });
 
+  // The 2026-07-28 report: a brand-new Google account opened /workspace and saw
+  // the PREVIOUS account's two due cards, its streak, a green dot and a recent
+  // "Synced HH:MM" — while its own snapshot had never been fetched or written
+  // (confirmed live: no DynamoDB row for that sub). A blocked sync must be a
+  // visible state, never a silent no-op wearing the last account's success.
+  it("reports a mismatch as its own health state, not as ok", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    mockFetch([]);
+    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
+    expect(getSyncHealth()).toBe("mismatch");
+  });
+
+  it("never reports the previous account's sync time as this account's", async () => {
+    resetSyncHealth(); // health is module state; start from a known "ok"
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1755000000000, sub: "user-OTHER" }));
+    expect(lastSyncedAt()).toBe(1755000000000); // before we know better
+    mockFetch([]);
+    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
+    expect(lastSyncedAt()).toBeNull(); // the timestamp belongs to user-OTHER
+  });
+
+  it("clears the mismatch state once the choice is made", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    mockFetch([]);
+    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
+    expect(getSyncHealth()).toBe("mismatch");
+
+    mockFetch([{ status: 200, body: { version: 0, data: {} } }]);
+    await syncNow({ accountChange: "reset" });
+    expect(getSyncHealth()).toBe("ok");
+    expect(lastSyncedAt()).not.toBeNull();
+  });
+
   it("binds at ATTEMPT, not success — a fully-failed sync still fences the next account", async () => {
     mockFetch([{ status: 500 }]);
     await expect(syncNow()).rejects.toThrow(/pull failed/);
@@ -363,13 +396,17 @@ describe("sync health", () => {
     expect(getSyncHealth()).toBe("ok");
   });
 
-  it("SyncAccountMismatch is an explicit choice, not a health event", async () => {
+  // A mismatch is an unanswered question, not a fault: it must never escalate to
+  // "degraded" no matter how many times the blocked sync retries. But it is also
+  // not "ok" — reporting healthy here is what let a new account see a green dot
+  // and another account's "Synced HH:MM" while its own sync was blocked forever.
+  it("SyncAccountMismatch never degrades, and never reads as healthy either", async () => {
     localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
     for (let i = 0; i < DEGRADED_AFTER; i++) {
       mockFetch([]);
       await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
     }
-    expect(getSyncHealth()).toBe("ok");
+    expect(getSyncHealth()).toBe("mismatch");
   });
 
   it("notifies subscribers on transitions only, and unsubscribes cleanly", async () => {
