@@ -8,7 +8,6 @@ import { getAllMeasurements } from "@/lib/skill-measure";
 import { getSections } from "@/lib/sections";
 import { epochDay } from "@/lib/review-schedule";
 import { readWorkspace, type WorkspaceModel } from "@/lib/workspace";
-import { progressIsForeign, subscribeSyncHealth } from "@/lib/sync-health";
 
 /**
  * The ONE external-store snapshot for /workspace, modelled exactly on
@@ -46,15 +45,9 @@ function snapshot(): string {
 /** The full workspace model, or null on the server / first paint (the inert shell). */
 export function useWorkspace(): WorkspaceModel | null {
   const snap = useSyncExternalStore(subscribe, snapshot, () => SERVER_SNAPSHOT);
-  // Everything below reads localStorage, which has no account dimension — so on a
-  // device bound to a DIFFERENT account it is another person's study history. Fall
-  // back to the inert shell rather than presenting it as this account's: the
-  // masthead concurrently renders the adopt-vs-reset choice that resolves it.
-  const foreign = useSyncExternalStore(subscribeSyncHealth, progressIsForeign, () => false);
   return useMemo(() => {
-    if (foreign) return null;
     if (snap === SERVER_SNAPSHOT) return null;
     const today = Number(snap.split("|")[0]) || 0;
     return readWorkspace(today);
-  }, [snap, foreign]);
+  }, [snap]);
 }

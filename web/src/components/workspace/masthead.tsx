@@ -31,14 +31,13 @@ export function Masthead({ email }: { email: string | null }) {
   );
 }
 
-type SyncState = "idle" | "syncing" | "error" | "mismatch";
+type SyncState = "idle" | "syncing" | "error";
 
 /**
  * The sync affordance. The sync client — and with it aws-amplify — is imported
  * dynamically on demand, preserving the auth layer's code-split contract (mirrors the
  * former SyncPanel). Without NEXT_PUBLIC_SYNC_URL it states the device-local truth,
- * honestly, with no future-tense marketing. A mismatch expands the adopt/reset choice
- * inline as an alert.
+ * honestly, with no future-tense marketing.
  */
 const OK_HEALTH: SyncHealth = "ok";
 
@@ -68,12 +67,12 @@ function SyncReadout() {
     };
   }, [configured]);
 
-  const handleSync = (accountChange?: "adopt" | "reset") => {
+  const handleSync = () => {
     setState("syncing");
     void import("@/lib/sync-client")
-      .then(({ syncNow }) => syncNow(accountChange ? { accountChange } : undefined))
+      .then(({ syncNow }) => syncNow())
       .then(() => setState("idle"))
-      .catch((e: Error) => setState(e?.name === "SyncAccountMismatch" ? "mismatch" : "error"));
+      .catch(() => setState("error"));
   };
 
   if (!configured) {
@@ -82,35 +81,6 @@ function SyncReadout() {
     );
   }
 
-  // Also on health, not just on a manual "Sync now" that failed: the background
-  // sync hits this fence on every page load and used to swallow it, so the choice
-  // was only ever offered to someone who thought to press a button they had no
-  // reason to press — the readout was cheerfully claiming "Synced HH:MM".
-  if (state === "mismatch" || health === "mismatch") {
-    return (
-      <div role="alert" className="max-w-sm text-right">
-        <p className="text-sm text-(--mut)">
-          This device holds progress synced by a different account.
-        </p>
-        <div className="mt-2 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => handleSync("adopt")}
-            className="rounded-control border border-accent/30 bg-accent/5 px-3 py-1.5 text-xs font-medium text-accent-dark dark:text-accent-light interactive focus-ring"
-          >
-            Merge this device
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSync("reset")}
-            className="rounded-control border border-(--bd) px-3 py-1.5 text-xs font-medium text-(--mut) interactive focus-ring"
-          >
-            Use account data only
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const iso = lastSynced ? new Date(lastSynced).toISOString() : undefined;
   const clock = lastSynced
