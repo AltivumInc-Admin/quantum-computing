@@ -8,6 +8,7 @@
 
 import { fetchAuthSession } from "aws-amplify/auth";
 import { isAuthConfigured } from "./auth-config";
+import { setSyncHealth as setHealth, getSyncHealth as readHealth } from "./sync-health";
 import {
   exportSnapshot,
   mergeSnapshots,
@@ -55,45 +56,19 @@ class SyncAuthError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// Sync health — a tiny external store (getSnapshot/subscribe, the same shape
-// review-store exposes) so the UI can say, quietly, that background sync has
-// stopped working. Without it a permanently failing sync (expired session,
-// server down) is invisible: progress silently stops crossing devices.
-//
-//   ok       — no signal; the last attempt succeeded (or none has run yet)
-//   degraded — repeated network/server failures; retries continue
-//   auth     — the session is unusable; only signing in again can fix it
-//
-// One transient failure on a flaky network is normal and shows nothing; the
-// degraded signal appears only after DEGRADED_AFTER consecutive failures.
-// Any successful sync resets to ok. SyncAccountMismatch is NOT a health event —
-// it has its own explicit adopt-vs-reset flow in the workspace masthead.
-// ---------------------------------------------------------------------------
-
-export type SyncHealth = "ok" | "degraded" | "auth";
+// Sync health lives in ./sync-health so the global nav can subscribe to it
+// without importing this module's aws-amplify graph. Re-exported here because
+// every existing caller and test reaches for it through sync-client.
+export {
+  getSyncHealth,
+  subscribeSyncHealth,
+  progressIsForeign,
+  type SyncHealth,
+} from "./sync-health";
 
 export const DEGRADED_AFTER = 2;
 
 let consecutiveFailures = 0;
-let health: SyncHealth = "ok";
-const healthListeners = new Set<() => void>();
-
-function setHealth(next: SyncHealth): void {
-  if (health === next) return;
-  health = next;
-  for (const listener of [...healthListeners]) listener();
-}
-
-export function getSyncHealth(): SyncHealth {
-  return health;
-}
-
-export function subscribeSyncHealth(listener: () => void): () => void {
-  healthListeners.add(listener);
-  return () => {
-    healthListeners.delete(listener);
-  };
-}
 
 /** Test hook — health is module state, like the exit-flush cache. */
 export function resetSyncHealth(): void {
@@ -107,7 +82,12 @@ function recordSyncSuccess(): void {
 }
 
 function recordSyncFailure(e: unknown): void {
-  if (e instanceof SyncAccountMismatchError) return; // an explicit choice, not a fault
+  if (e instanceof SyncAccountMismatchError) {
+    // Awaiting an explicit choice, not a fault — so it does not count toward
+    // consecutiveFailures/degraded. But it MUST be visible: see SyncHealth.
+    setHealth("mismatch");
+    return;
+  }
   consecutiveFailures += 1;
   const isAuth =
     e instanceof SyncAuthError ||
@@ -216,6 +196,12 @@ function recordSynced(sub: string): void {
 }
 
 export function lastSyncedAt(): number | null {
+  // qc-sync:meta is device-global, so its timestamp belongs to whichever account
+  // last synced HERE — not necessarily the one signed in now. Once we know the
+  // device is bound elsewhere, this account has never synced, and saying
+  // otherwise is how a new user was shown a reassuring "Synced 21:28" they had
+  // not earned while their own snapshot was never fetched at all.
+  if (readHealth() === "mismatch") return null;
   const t = readMeta().lastSyncedAt;
   return typeof t === "number" ? t : null;
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { dueCount, subscribe } from "@/lib/review-store";
+import { progressIsForeign, subscribeSyncHealth } from "@/lib/sync-health";
 import { useLocale } from "@/i18n";
 
 /**
@@ -12,7 +13,15 @@ import { useLocale } from "@/i18n";
  * "qc-progress" channel, and prerenders as 0 under static export.
  */
 export function ReviewNavBadge() {
-  const count = useSyncExternalStore(subscribe, () => dueCount(), () => 0);
+  const local = useSyncExternalStore(subscribe, () => dueCount(), () => 0);
+  // qc:card:* is device-global with no account dimension, so this count is
+  // whatever the BROWSER holds — which is not necessarily this account's. When
+  // sync has determined the device belongs to someone else, showing it puts a
+  // stranger's due count in the signed-in user's nav (reported 2026-07-28: a
+  // brand-new account greeted by "Repasar 2" it had never earned). Show nothing
+  // until the adopt-vs-reset choice resolves the ownership question.
+  const foreign = useSyncExternalStore(subscribeSyncHealth, progressIsForeign, () => false);
+  const count = foreign ? 0 : local;
   const { t } = useLocale();
 
   return (
