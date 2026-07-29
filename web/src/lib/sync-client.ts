@@ -8,33 +8,24 @@
 
 import { fetchAuthSession } from "aws-amplify/auth";
 import { isAuthConfigured } from "./auth-config";
-import { setSyncHealth as setHealth, getSyncHealth as readHealth } from "./sync-health";
+import { setSyncHealth as setHealth } from "./sync-health";
 import {
   exportSnapshot,
   mergeSnapshots,
   applySnapshot,
   resetLocalDeletions,
-  wipeLocalProgress,
   type ProgressSnapshot,
 } from "./progress-merge";
 
 export const SYNC_META_KEY = "qc-sync:meta"; // outside qc:* so it never syncs
 
 /**
- * The device's qc:* data is bound to the Cognito account it last synced as.
- * Without this, a shared computer (or one person with two accounts) silently
- * cross-contaminates both accounts' server snapshots: signing in as B would
- * merge A's device progress into B's item. On mismatch, syncNow throws this
- * and the caller must resolve with an explicit accountChange choice.
+ * The device records which account it last synced as (qc-sync:meta). Since
+ * local storage became per-owner, that binding is informational rather than a
+ * fence: each account reads and writes only its own bucket, so a changed
+ * account can simply rebind. The exit flush still consults it to avoid pushing
+ * one account's cached snapshot under another's token.
  */
-export class SyncAccountMismatchError extends Error {
-  constructor() {
-    super("this device's progress was synced by a different account");
-    this.name = "SyncAccountMismatch";
-  }
-}
-
-export type AccountChange = "adopt" | "reset";
 
 /** A sync HTTP round trip the server refused — carries the status for triage. */
 class SyncHttpError extends Error {
@@ -62,7 +53,6 @@ class SyncAuthError extends Error {
 export {
   getSyncHealth,
   subscribeSyncHealth,
-  progressIsForeign,
   type SyncHealth,
 } from "./sync-health";
 
@@ -82,12 +72,6 @@ function recordSyncSuccess(): void {
 }
 
 function recordSyncFailure(e: unknown): void {
-  if (e instanceof SyncAccountMismatchError) {
-    // Awaiting an explicit choice, not a fault — so it does not count toward
-    // consecutiveFailures/degraded. But it MUST be visible: see SyncHealth.
-    setHealth("mismatch");
-    return;
-  }
   consecutiveFailures += 1;
   const isAuth =
     e instanceof SyncAuthError ||
@@ -196,12 +180,6 @@ function recordSynced(sub: string): void {
 }
 
 export function lastSyncedAt(): number | null {
-  // qc-sync:meta is device-global, so its timestamp belongs to whichever account
-  // last synced HERE — not necessarily the one signed in now. Once we know the
-  // device is bound elsewhere, this account has never synced, and saying
-  // otherwise is how a new user was shown a reassuring "Synced 21:28" they had
-  // not earned while their own snapshot was never fetched at all.
-  if (readHealth() === "mismatch") return null;
   const t = readMeta().lastSyncedAt;
   return typeof t === "number" ? t : null;
 }
@@ -223,11 +201,11 @@ export async function deleteProgress(): Promise<void> {
   if (!res.ok) throw new Error(`sync delete failed (${res.status})`);
 }
 
-export async function syncNow(options?: { accountChange?: AccountChange }): Promise<SyncResult> {
+export async function syncNow(): Promise<SyncResult> {
   const base = syncUrl();
   if (!base || !isAuthConfigured()) throw new Error("sync not configured"); // config, not health
   try {
-    const result = await runSync(base, options);
+    const result = await runSync(base);
     recordSyncSuccess();
     return result;
   } catch (e) {
@@ -236,22 +214,24 @@ export async function syncNow(options?: { accountChange?: AccountChange }): Prom
   }
 }
 
-async function runSync(
-  base: string,
-  options?: { accountChange?: AccountChange },
-): Promise<SyncResult> {
+async function runSync(base: string): Promise<SyncResult> {
   const { auth, sub } = await session();
 
-  // Account binding: first-ever sync adopts the device's progress (the normal
-  // "studied anonymously, then signed up" flow); a CHANGED account requires an
-  // explicit choice before anything merges.
+  // Account binding used to be a user-facing fence: a CHANGED account had to
+  // choose adopt-vs-reset before anything merged, because local progress was a
+  // single flat pile that any account could contaminate. Storage is now
+  // namespaced per owner, so exportSnapshot can only ever see THIS account's
+  // bucket — there is nothing of the previous account's to contaminate, and
+  // nothing to ask. Rebinding silently is correct.
+  //
+  // Keeping the old prompt after namespacing was actively harmful: it asked a
+  // question with no meaning left, duplicated the anon-claim prompt, and (via
+  // the progressIsForeign gate) held the whole workspace on its loading
+  // skeleton indefinitely, since nothing auto-resolved it.
   const boundSub = readMeta().sub;
   if (boundSub && boundSub !== sub) {
-    // Wipe this device's qc:* progress (the "use account data only" choice).
-    if (options?.accountChange === "reset") wipeLocalProgress();
-    else if (options?.accountChange !== "adopt") throw new SyncAccountMismatchError();
-    // The old account's session tombstones must not push deletions into the
-    // NEW account's server snapshot.
+    // The old account's session tombstones are expressed in canonical space and
+    // must not suppress keys in the NEW account's snapshot.
     resetLocalDeletions();
   }
   // Bind at ATTEMPT, not success: a failed push must not leave the device

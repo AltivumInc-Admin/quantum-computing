@@ -13,7 +13,6 @@ import {
   resetLastGoodSync,
   lastSyncedAt,
   isSyncConfigured,
-  SyncAccountMismatchError,
   SYNC_META_KEY,
   KEEPALIVE_BODY_LIMIT,
   getSyncHealth,
@@ -114,47 +113,31 @@ describe("syncNow", () => {
     expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
   });
 
-  it("refuses to merge under a DIFFERENT account without an explicit choice", async () => {
-    // The cross-account bleed repro: sibling A synced this device; B signs in.
+  // Storage is namespaced per owner, so a changed account no longer needs a
+  // fence: exportSnapshot can only see THIS account's bucket, and there is
+  // nothing of the previous account's to contaminate. It simply rebinds. The
+  // old adopt-vs-reset prompt asked a question that no longer had meaning —
+  // and, via the display gate it drove, held the workspace on its skeleton.
+  it("rebinds and syncs when a DIFFERENT account signs in on this device", async () => {
     localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
-    localStorage.setItem("qc:section:a", "1");
-    const calls = mockFetch([]);
-    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
-    expect(calls).toHaveLength(0); // nothing left the device
-  });
-
-  // The 2026-07-28 report: a brand-new Google account opened /workspace and saw
-  // the PREVIOUS account's two due cards, its streak, a green dot and a recent
-  // "Synced HH:MM" — while its own snapshot had never been fetched or written
-  // (confirmed live: no DynamoDB row for that sub). A blocked sync must be a
-  // visible state, never a silent no-op wearing the last account's success.
-  it("reports a mismatch as its own health state, not as ok", async () => {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
-    mockFetch([]);
-    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
-    expect(getSyncHealth()).toBe("mismatch");
-  });
-
-  it("never reports the previous account's sync time as this account's", async () => {
-    resetSyncHealth(); // health is module state; start from a known "ok"
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1755000000000, sub: "user-OTHER" }));
-    expect(lastSyncedAt()).toBe(1755000000000); // before we know better
-    mockFetch([]);
-    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
-    expect(lastSyncedAt()).toBeNull(); // the timestamp belongs to user-OTHER
-  });
-
-  it("clears the mismatch state once the choice is made", async () => {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
-    mockFetch([]);
-    await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
-    expect(getSyncHealth()).toBe("mismatch");
-
     mockFetch([{ status: 200, body: { version: 0, data: {} } }]);
-    await syncNow({ accountChange: "reset" });
+    await syncNow();
+    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
     expect(getSyncHealth()).toBe("ok");
-    expect(lastSyncedAt()).not.toBeNull();
   });
+
+  it("does not carry the previous account's data into this account's push", async () => {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
+    // user-OTHER's bucket sits on the device; user-1's does not include it.
+    localStorage.setItem("qc:o:user-OTHER:section:theirs", "1");
+    const calls = mockFetch([{ status: 200, body: { version: 0, data: {} } }]);
+    await syncNow();
+    const pushed = calls.find((c) => c.init?.method === "PUT");
+    expect(JSON.stringify(pushed?.init?.body ?? "{}")).not.toContain("theirs");
+  });
+
+
+
 
   it("binds at ATTEMPT, not success — a fully-failed sync still fences the next account", async () => {
     mockFetch([{ status: 500 }]);
@@ -189,16 +172,6 @@ describe("syncNow", () => {
     expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
   });
 
-  it("accountChange 'reset' wipes local qc:* and takes the account's data only", async () => {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
-    localStorage.setItem("qc:section:theirs", "1");
-    mockFetch([{ status: 200, body: { version: 4, data: { "qc:section:account": "1" } } }]);
-    const result = await syncNow({ accountChange: "reset" });
-    expect(localStorage.getItem("qc:section:theirs")).toBeNull();
-    expect(localStorage.getItem("qc:section:account")).toBe("1");
-    expect(result.pushed).toBe(false); // merged equals the account copy exactly
-    expect(JSON.parse(localStorage.getItem(SYNC_META_KEY)!).sub).toBe("user-1");
-  });
 
   it("surfaces a persistent conflict as an error after one retry", async () => {
     mockFetch([
@@ -396,18 +369,6 @@ describe("sync health", () => {
     expect(getSyncHealth()).toBe("ok");
   });
 
-  // A mismatch is an unanswered question, not a fault: it must never escalate to
-  // "degraded" no matter how many times the blocked sync retries. But it is also
-  // not "ok" — reporting healthy here is what let a new account see a green dot
-  // and another account's "Synced HH:MM" while its own sync was blocked forever.
-  it("SyncAccountMismatch never degrades, and never reads as healthy either", async () => {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ lastSyncedAt: 1, sub: "user-OTHER" }));
-    for (let i = 0; i < DEGRADED_AFTER; i++) {
-      mockFetch([]);
-      await expect(syncNow()).rejects.toThrow(SyncAccountMismatchError);
-    }
-    expect(getSyncHealth()).toBe("mismatch");
-  });
 
   it("notifies subscribers on transitions only, and unsubscribes cleanly", async () => {
     const seen: string[] = [];

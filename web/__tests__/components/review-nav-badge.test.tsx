@@ -2,49 +2,43 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen, act } from "@testing-library/react";
-
-const dueCount = jest.fn();
-jest.mock("@/lib/review-store", () => ({
-  dueCount: () => dueCount(),
-  subscribe: () => () => {},
-}));
-
+import { render, screen } from "@testing-library/react";
 import { ReviewNavBadge } from "@/components/review-nav-badge";
-import { setSyncHealth } from "@/lib/sync-health";
+import { setCurrentOwner } from "@/lib/progress-owner";
+import { gradeCard } from "@/lib/review-store";
+
+const SUB = "310b5550-a0f1-70b3-8b4d-9e2a21e1b855";
+const OTHER = "a14b65c0-90e1-70ee-a1cc-68d4d374ad95";
+
+beforeEach(() => {
+  localStorage.clear();
+  setCurrentOwner(null);
+});
 
 describe("ReviewNavBadge", () => {
-  beforeEach(() => {
-    dueCount.mockReset();
-    act(() => setSyncHealth("ok"));
-  });
-  afterEach(() => act(() => setSyncHealth("ok")));
-
-  it("shows the due count for this account's own progress", () => {
-    dueCount.mockReturnValue(2);
+  it("shows nothing when this account has no due cards", () => {
+    setCurrentOwner(SUB);
     render(<ReviewNavBadge />);
-    expect(screen.getByRole("link")).toHaveAccessibleName(/2/);
+    expect(screen.getByRole("link")).toHaveAccessibleName(/^review$/i);
   });
 
-  // THE 2026-07-28 REPORT, pinned. qc:card:* is device-global with no account
-  // dimension, so a brand-new account signing in on a browser that already held
-  // someone else's cards was greeted by their due count in the nav. Verified live
-  // at the time: DynamoDB held no row at all for the new sub, so none of it was
-  // ever this account's data — it was the browser's leftovers.
-  it("shows no count when the device's progress belongs to another account", () => {
-    dueCount.mockReturnValue(2);
-    act(() => setSyncHealth("mismatch"));
+  // THE 2026-07-28 REPORT, pinned — now at the storage layer rather than behind
+  // a display gate. A card graded by one account must be invisible to the next
+  // account on the same browser, because it is in a different bucket entirely.
+  it("never counts another account's cards", () => {
+    setCurrentOwner(OTHER);
+    gradeCard("challenge:bell-pair", "again", Date.UTC(2026, 0, 1));
+
+    setCurrentOwner(SUB);
     render(<ReviewNavBadge />);
-    expect(screen.getByRole("link")).not.toHaveAccessibleName(/2/);
-    expect(screen.queryByText("2")).toBeNull();
+    expect(screen.getByRole("link")).toHaveAccessibleName(/^review$/i);
+    expect(screen.queryByText("1")).toBeNull();
   });
 
-  it("restores the count once the ownership question is resolved", () => {
-    dueCount.mockReturnValue(2);
-    act(() => setSyncHealth("mismatch"));
+  it("counts this account's own due cards", () => {
+    setCurrentOwner(SUB);
+    gradeCard("challenge:bell-pair", "again", Date.UTC(2026, 0, 1));
     render(<ReviewNavBadge />);
-    expect(screen.queryByText("2")).toBeNull();
-    act(() => setSyncHealth("ok"));
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
   });
 });

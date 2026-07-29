@@ -6,8 +6,6 @@
 //   ok       — no signal; the last attempt succeeded (or none has run yet)
 //   degraded — repeated network/server failures; retries continue
 //   auth     — the session is unusable; only signing in again can fix it
-//   mismatch — this device is bound to a DIFFERENT account; sync is blocked
-//              until the adopt-vs-reset choice is made
 //
 // One transient failure on a flaky network is normal and shows nothing; the
 // degraded signal appears only after DEGRADED_AFTER consecutive failures.
@@ -19,7 +17,7 @@
 // renders. Keeping the store dependency-free lets those surfaces subscribe
 // without dragging the Amplify graph into every bundle.
 
-export type SyncHealth = "ok" | "degraded" | "auth" | "mismatch";
+export type SyncHealth = "ok" | "degraded" | "auth";
 
 let health: SyncHealth = "ok";
 const listeners = new Set<() => void>();
@@ -41,11 +39,3 @@ export function subscribeSyncHealth(listener: () => void): () => void {
   };
 }
 
-/**
- * True when this device's stored progress belongs to a different account than
- * the one signed in — so the local qc:* data on screen is somebody else's and
- * must not be presented as this account's.
- */
-export function progressIsForeign(): boolean {
-  return health === "mismatch";
-}

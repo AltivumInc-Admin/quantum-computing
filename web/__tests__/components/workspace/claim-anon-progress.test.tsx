@@ -17,13 +17,13 @@ describe("ClaimAnonProgress", () => {
   it("says nothing when the device has no unowned progress", () => {
     setCurrentOwner(SUB);
     render(<ClaimAnonProgress />);
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("region", { name: /unclaimed progress/i })).toBeNull();
   });
 
   it("says nothing while signed out — the anon bucket is already what you see", () => {
     localStorage.setItem("qc:card:a", "1");
     render(<ClaimAnonProgress />);
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("region", { name: /unclaimed progress/i })).toBeNull();
   });
 
   it("offers the choice when signed in with unowned progress present", () => {
@@ -31,7 +31,7 @@ describe("ClaimAnonProgress", () => {
     localStorage.setItem("qc:card:b", "1");
     setCurrentOwner(SUB);
     render(<ClaimAnonProgress />);
-    expect(screen.getByRole("alert")).toHaveTextContent(/2 items/);
+    expect(screen.getByRole("region", { name: /unclaimed progress/i })).toHaveTextContent(/2\s*items unclaimed/i);
   });
 
   it("moves the work into the account only on an explicit click", () => {
