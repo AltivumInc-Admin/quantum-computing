@@ -50,10 +50,18 @@ describe("FoundingTenLink", () => {
 
   // The visible text is a bare numeric pair; without a name a screen reader
   // announces "one slash twenty" with no subject.
-  it("gives assistive tech a named accessible label", () => {
+  it("gives assistive tech a named accessible label WITH the real numbers", () => {
+    // The first version of this asserted only /founding ten/i, which happily
+    // passed while the label rendered the raw placeholders
+    // "{{claimed}} of {{total}}" — the interpolation values were never passed.
+    // Assert the numbers, and assert no template syntax survives.
     issued = [badge(1)];
     render(<FoundingTenLink locale="en" />);
-    expect(screen.getByRole("link")).toHaveAccessibleName(/founding ten/i);
+    const name = screen.getByRole("link").getAttribute("aria-label") ?? "";
+    expect(name).toMatch(/founding ten/i);
+    expect(name).toContain("1");
+    expect(name).toContain("20");
+    expect(name).not.toContain("{{");
   });
 
   it("translates its label", () => {

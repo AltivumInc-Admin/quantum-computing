@@ -26,7 +26,6 @@ const TOTAL = COHORT_SIZE * 2; // ten charter places + ten patron places
  * registry is a handful of rows, so that costs nothing meaningful.
  */
 export function FoundingTenLink({ locale }: { locale: Locale }) {
-  const t = (k: string) => translate(locale, k);
   const claimed = allBadges().length;
 
   return (
@@ -35,10 +34,10 @@ export function FoundingTenLink({ locale }: { locale: Locale }) {
       className="group inline-flex items-baseline gap-2 rounded focus-ring interactive"
       // The visible text is a bare numeric pair; on its own it would read as
       // "one slash twenty" with no subject. Name the whole thing for AT.
-      aria-label={t("foundingTen.ariaLabel")}
+      aria-label={translate(locale, "foundingTen.ariaLabel", { claimed, total: TOTAL })}
     >
       <span className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-caption transition-colors group-hover:text-accent dark:group-hover:text-accent-light">
-        {t("foundingTen.label")}
+        {translate(locale, "foundingTen.label")}
       </span>
       <span aria-hidden="true" className="font-mono text-xs tabular-nums text-caption">
         ·
