@@ -93,3 +93,17 @@ Version pins live in the buildspec's `runtime-versions` (python 3.12 /
 nodejs 20 — keep aligned with ci.yml and the Amplify build image). The build
 image `aws/codebuild/standard:7.0` is Ubuntu 22.04, required for
 `playwright install --with-deps`.
+
+### The founding-ten check is standby-only
+
+`scripts/verify-founding-ten.mjs` runs in this stack's buildspec, not in
+`.github/workflows/ci.yml`. That is not an oversight to fix by adding it
+there: GitHub Actions currently has **no AWS credentials at all** — no OIDC
+role, no `configure-aws-credentials` step, no secrets — so a step calling the
+script there would print "no AWS credentials, skipping the live check" and
+exit 0 on every run, which is exactly the false confidence this check exists
+to avoid (see the script's own header comment). Do not add the step to
+`ci.yml` until an OIDC role scoped to `cognito-idp:ListUsers` on the pool
+exists for that workflow. Until then, a `stand-down` back to GitHub Actions
+means this check does not run at all — `failover.sh` prints a warning to that
+effect on `stand-down`.

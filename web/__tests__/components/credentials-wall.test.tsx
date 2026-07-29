@@ -24,10 +24,27 @@ jest.mock("@/lib/qpu-client", () => {
 // The hardware fetch is gated on auth resolving (status === "authenticated") —
 // mutable so tests can drive the configuring → authenticated transition.
 let mockAuthStatus = "authenticated";
+// <MyFoundingBadges />, mounted inside the wall, reads emailHash off this same
+// mock — without it here the component is a permanent no-op and its only
+// integration point into the wall goes untested.
+let mockEmailHash: string | null = null;
 jest.mock("@/components/auth/auth-provider", () => ({
   __esModule: true,
-  useAuth: () => ({ status: mockAuthStatus, email: null, signOut: async () => {} }),
+  useAuth: () => ({ status: mockAuthStatus, email: null, emailHash: mockEmailHash, signOut: async () => {} }),
 }));
+
+// Follows the pattern in __tests__/components/founding-ten/my-badges.test.tsx:
+// stub badgeForEmailHash so one known hash resolves to an issued badge.
+jest.mock("@/lib/founding-ten", () => {
+  const actual = jest.requireActual("@/lib/founding-ten");
+  return {
+    ...actual,
+    badgeForEmailHash: (h: string) =>
+      h === "b".repeat(64)
+        ? [{ cohort: "charter", serial: 1, holder: "Irving Salinas", issuedAt: "2026-07-29", emailHash: h }]
+        : [],
+  };
+});
 
 import { CredentialsWall } from "@/components/credentials-wall";
 import { LocaleProvider, translate } from "@/i18n";
@@ -53,6 +70,7 @@ describe("CredentialsWall", () => {
   beforeEach(() => {
     localStorage.clear();
     mockAuthStatus = "authenticated";
+    mockEmailHash = null;
     (qpu.getBudget as jest.Mock).mockClear();
   });
 
@@ -63,6 +81,17 @@ describe("CredentialsWall", () => {
     expect(screen.getByRole("heading", { name: "Consistency" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hardware" })).toBeInTheDocument();
     expect(screen.getByText(/of \d+ earned/i)).toBeInTheDocument();
+  });
+
+  it("shows a holder's Founding Ten badge above the earned medals when emailHash matches", () => {
+    mockEmailHash = "b".repeat(64);
+    render(<CredentialsWall />);
+    const foundingTen = screen.getByLabelText("Founding Ten");
+    expect(foundingTen).toHaveTextContent(/Charter Member/);
+    expect(screen.getByRole("link", { name: /public record/i })).toHaveAttribute(
+      "href",
+      "/founding-ten/charter-01",
+    );
   });
 
   it("lights the hardware badge from the SERVER counters, not the truncated task list", async () => {

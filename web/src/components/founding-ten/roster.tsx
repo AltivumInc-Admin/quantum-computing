@@ -32,6 +32,7 @@ export function Roster() {
                     <Link
                       href={`/founding-ten/${badgeSlug(badge)}`}
                       className="text-sm text-(--ink) hover:underline focus-ring rounded"
+                      aria-label={`${COHORT_LABEL[cohort]} ${serial} of ${COHORT_SIZE} — ${badge.holder}`}
                     >
                       {badge.holder}
                     </Link>

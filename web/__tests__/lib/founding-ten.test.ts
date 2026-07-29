@@ -77,7 +77,9 @@ describe("lookup", () => {
   });
 
   it("returns null for an unissued slug", () => {
-    expect(badgeBySlug("charter-09")).toBeNull();
+    // Serial 11 is out of the 1-10 range and can never be issued (unlike, say,
+    // charter-09, which IS issuable and would red this test the moment it is).
+    expect(badgeBySlug("charter-11")).toBeNull();
   });
 
   it("finds nothing for an unknown hash", () => {

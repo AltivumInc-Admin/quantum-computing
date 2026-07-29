@@ -100,6 +100,9 @@ stand_down() {
     gh api -X PATCH "$PROTECTION_ENDPOINT" --input - >/dev/null
 
   echo "STOOD DOWN. Gate is back on GitHub Actions."
+  echo "WARNING: the founding-ten badge verification (scripts/verify-founding-ten.mjs)"
+  echo "is standby-only — GitHub Actions has no AWS credentials, so it will NOT run"
+  echo "until the merge gate is on the CodeBuild standby again. See README.md."
 }
 
 drill() {

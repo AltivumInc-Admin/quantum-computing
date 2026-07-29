@@ -529,7 +529,7 @@ export default async function BadgeProofPage({ params }: PageProps) {
 - [ ] **Step 6: Run tests and build**
 
 Run: `cd web && npx jest __tests__/components/founding-ten __tests__/components/auth/auth-wall.test.tsx && npm run lint && npm run build`
-Expected: tests PASS, lint clean, build succeeds. With an empty registry `generateStaticParams` returns `[]` and no proof pages are emitted — that is correct.
+Expected: tests PASS, lint clean, build succeeds. The route itself does not exist yet at this point in the plan (Step 5 above defers it to Task 7) — this build succeeds because there is no dynamic `[badge]` route to hard-error on. Do NOT read this as "an empty registry is fine for the route": per Step 5, Next 16 HARD-ERRORS `generateStaticParams()` returning `[]` under `output: "export"`, which is exactly why the route is created in Task 7, in the same commit as the first issued badge, and never before.
 
 - [ ] **Step 7: Commit**
 
@@ -1099,6 +1099,34 @@ find is not proof" actually holds.
 1. Irving Salinas has agreed to be **named publicly**. Git history makes this effectively permanent; removal is a PR but the log retains the name.
 2. The holder's exact Cognito email has been confirmed directly with them. It is supplied at the shell in Step 1 below and must never be typed into this plan, the registry, or any commit — only its hash is.
 
+- [ ] **Step 0 (HUMAN — do not have an agent run this): redeploy `quantum-ci-standby` first**
+
+The CodeBuild buildspec in `infra/ci-standby/template.yaml` already runs
+`scripts/verify-founding-ten.mjs` and its `ServiceRole` already carries a
+`founding-ten-verify` policy granting `cognito-idp:ListUsers` — but both are
+**template edits only**. The live CodeBuild project's role does NOT yet have
+that permission until the stack is redeployed. The moment this task's Step 2
+makes the registry non-empty, `verify-founding-ten.mjs` stops early-exiting on
+"nothing to verify", actually calls `list-users`, and — on the live,
+un-redeployed role — gets `AccessDenied`, which is not a credentials-absent
+case (see the script's own header) and so FAILS the build, reddening the merge
+gate for every PR, not just this one.
+
+Redeploy is therefore a hard prerequisite of issuing a badge, not a follow-up
+to do after. This is a human step (state-mutating AWS deploy — do not have an
+agent run it):
+
+```bash
+aws cloudformation deploy \
+  --stack-name quantum-ci-standby \
+  --template-file infra/ci-standby/template.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-2
+```
+
+Confirm it succeeds, and ideally prove it live with `./infra/ci-standby/failover.sh drill`
+before proceeding to Step 1.
+
 - [ ] **Step 1: Compute the hash**
 
 ```bash
@@ -1132,7 +1160,14 @@ Expected: `founding-ten: all 1 issued badge(s) resolve to live users`
 - [ ] **Step 4: Run the full gate**
 
 Run: `cd web && npm test && npm run lint && npm run build`
-Expected: all pass. The build now emits `/founding-ten/charter-01`; confirm it appears in the route list.
+Expected: all pass. Then assert the emitted file exists ON DISK — this is the
+signal that matters, not the route table: `test -f web/out/founding-ten/charter-01.html`.
+A prior bug here (`export const revalidate = 0`) made the route table print the
+`● /founding-ten/[badge]` (SSG) line on a green build while the exporter
+silently skipped writing the HTML file — the route-list line is exactly the
+false-green signal that let that ship. You may also check the route table
+(`● /founding-ten/[badge]`, not `ƒ Dynamic`) as a secondary signal, but do not
+rely on it alone.
 
 - [ ] **Step 5: Commit**
 

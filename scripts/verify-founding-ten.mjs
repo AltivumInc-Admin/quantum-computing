@@ -22,7 +22,12 @@ const POOL_ID = process.env.QUANTUM_USER_POOL_ID ?? "us-east-2_aRydPmAjj";
 const REGION = process.env.AWS_REGION ?? "us-east-2";
 
 const registry = JSON.parse(readFileSync(new URL("../web/src/data/founding-ten.json", import.meta.url)));
-const issued = [...registry.charter, ...registry.patron];
+// Tag each row with its cohort here (the raw JSON rows don't carry one) so a
+// failure message can distinguish charter-01 from patron-01.
+const issued = [
+  ...registry.charter.map((b) => ({ ...b, cohort: "charter" })),
+  ...registry.patron.map((b) => ({ ...b, cohort: "patron" })),
+];
 if (issued.length === 0) {
   console.log("founding-ten: no badges issued, nothing to verify");
   process.exit(0);
@@ -37,7 +42,14 @@ try {
     "--user-pool-id", POOL_ID,
     "--region", REGION,
     "--output", "json",
-  ], { stdio: ["ignore", "pipe", "pipe"] }).toString();
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+    // execFileSync's default maxBuffer is 1 MB. Auto-paginated `list-users`
+    // JSON exceeds that at roughly 1-2k users, producing ENOBUFS — which does
+    // NOT match NO_CREDS_PATTERN below and would red the merge gate for an
+    // unrelated reason (a buffer size, not a credentials or Cognito problem).
+    maxBuffer: 32 * 1024 * 1024,
+  }).toString();
 } catch (err) {
   const stderr = err.stderr ? err.stderr.toString() : "";
   const noCredentials = err.code === "ENOENT" || NO_CREDS_PATTERN.test(stderr);
@@ -62,13 +74,18 @@ const live = new Set(
     .filter((u) => u.Enabled)
     .map((u) => u.Attributes.find((a) => a.Name === "email")?.Value)
     .filter(Boolean)
+    // THIRD copy of the normalization, alongside web/src/lib/founding-ten.ts's
+    // normalizeEmail() and scripts/badge-email-hash.mjs. The parity test in
+    // web/__tests__/lib/founding-ten.test.ts only binds those first two — this
+    // copy can drift silently and start reporting false orphans. Keep it
+    // IDENTICAL (exactly trim + lowercase) to both.
     .map((e) => createHash("sha256").update(e.trim().toLowerCase()).digest("hex")),
 );
 
 const orphans = issued.filter((b) => !live.has(b.emailHash));
 if (orphans.length > 0) {
   for (const b of orphans) {
-    console.error(`founding-ten: serial ${b.serial} (${b.holder}) matches no enabled user`);
+    console.error(`founding-ten: ${b.cohort} serial ${b.serial} (${b.holder}) matches no enabled user`);
   }
   console.error("Repair: recompute the hash for the holder's current email and update the registry.");
   process.exit(1);
