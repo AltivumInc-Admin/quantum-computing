@@ -151,14 +151,29 @@ jobs:
 
       # build.sh creates its own .venv and downloads the Pyodide kernel; cache
       # both to keep the smoke build fast.
+      # Cache the two things that are expensive AND self-contained: the pip venv
+      # and the version-keyed Pyodide tarball under .cache/.
+      #
+      # NOT .jupyterlite.doit.db. That is doit's incremental-build state, and it
+      # only tells the truth when the build OUTPUT it describes is still on disk.
+      # CI never caches the output (web/public/lab is rebuilt every run), so a
+      # restored db always describes a tree that isn't there — doit then skips
+      # tasks it believes are done. On 2026-07-30 that skipped
+      # `jupyterlite-pyodide-kernel-pyodide:patch:jupyter-lite.json`, producing a
+      # lab config with an EMPTY pyodideUrl; the same-origin assertion in
+      # finalize_lab.py caught it, but the failure surfaced on an unrelated PR and
+      # would have shipped a lab that cannot boot its kernel. Caching a build
+      # database without its outputs is never sound — don't add it back.
+      #
+      # Key is versioned (-v2) because dropping a path does not stop an EXISTING
+      # cache archive from restoring that file; only a new key gives a clean tree.
       - name: Cache JupyterLite build environment
         uses: actions/cache@v4
         with:
           path: |
             web/jupyterlite-build/.venv
-            web/jupyterlite-build/.jupyterlite.doit.db
             web/jupyterlite-build/.cache
-          key: jupyterlite-${{ runner.os }}-${{ hashFiles('web/jupyterlite-build/requirements.txt', 'qcsim/**/*.py', 'qcsim/pyproject.toml') }}
+          key: jupyterlite-v2-${{ runner.os }}-${{ hashFiles('web/jupyterlite-build/requirements.txt', 'qcsim/**/*.py', 'qcsim/pyproject.toml') }}
 
       - name: Build JupyterLite distribution (qcsim wheel -> Pyodide)
         run: bash web/jupyterlite-build/build.sh

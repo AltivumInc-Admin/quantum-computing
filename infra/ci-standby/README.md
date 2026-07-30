@@ -1,7 +1,9 @@
 # CI standby — CodeBuild warm mirror of the GitHub Actions gate
 
-`main` is branch-protected: nothing merges without 7 required status checks,
-and all 7 are emitted by GitHub Actions with `enforce_admins` on. That makes a
+`main` is branch-protected: nothing merges without every CI job passing as a
+required status check, all emitted by GitHub Actions with `enforce_admins` on
+(8 contexts as of this writing — `./failover.sh contexts` prints the current
+set, derived from `ci.yml` rather than hardcoded). That makes a
 GitHub Actions outage (billing lock, incident) a total merge freeze — deploys
 are unaffected (Amplify builds `main` through its own GitHub App), but no
 verified work can reach `main` at all. This stack removes that single point of
@@ -11,7 +13,7 @@ failure without weakening the gate.
 
 - **`template.yaml`** — CloudFormation stack `quantum-ci-standby` (us-east-2):
   one CodeBuild project that runs the *same* matrix as
-  `.github/workflows/ci.yml` (web tests + lint, the 4 Lambda suites, python
+  `.github/workflows/ci.yml` (web tests + lint, every Lambda suite, python
   tests + lint + manifest drift gate, JupyterLite/Pyodide build smoke, static
   export, Playwright in-browser smoke) as a single sequential build, and
   reports one GitHub commit status: **`CI (CodeBuild standby)`**. The build
@@ -75,8 +77,17 @@ When GitHub Actions is healthy again:
 ./failover.sh stand-down
 ```
 
-Deletes the webhook and restores the 7 Actions contexts (pinned to app id
-15368). `./failover.sh status` shows which mode you're in at any time.
+Deletes the webhook and restores the Actions contexts (pinned to app id 15368).
+The context list is derived from `ci.yml`'s jobs and cross-checked against
+`lambda/` on disk, so a new Lambda can't silently drop out of the gate; if the
+two disagree, `stand-down` refuses rather than restoring a narrower gate.
+`./failover.sh status` shows which mode you're in at any time.
+
+> Restoring the gate by hand (2026-07-30, the billing lock): the hardcoded list
+> this replaced had gone stale, and `stand-down` would have restored a
+> 7-context gate over an 8-job workflow — `Lambda tests (stripe)` running on
+> every PR but unable to block a merge. A gate that is a hand-maintained copy
+> of a job list is a gate that quietly gets smaller.
 
 ## Keeping the mirror honest
 
