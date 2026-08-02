@@ -121,7 +121,10 @@ export function AccountMenu() {
           setOpen((v) => !v);
         }}
         onKeyDown={onTriggerKeyDown}
-        className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-(--ink) interactive focus-ring"
+        // Narrower cap on phones: at 12rem the signed-in email alone outgrew
+        // the header's top row and pushed the page into sideways scroll. The
+        // span truncates, so a long address loses characters, not the layout.
+        className="inline-flex max-w-[8rem] items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-(--ink) interactive focus-ring sm:max-w-[12rem]"
       >
         <span className="truncate">{email}</span>
         <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">

@@ -11,7 +11,7 @@ import { useLocale } from "@/i18n";
  * so it stays in sync with grading anywhere on the site via the shared
  * "qc-progress" channel, and prerenders as 0 under static export.
  */
-export function ReviewNavBadge() {
+export function ReviewNavBadge({ className }: { className?: string }) {
   // Storage is namespaced per owner, so this count is already this account's.
   const count = useSyncExternalStore(subscribe, () => dueCount(), () => 0);
   const { t } = useLocale();
@@ -29,7 +29,13 @@ export function ReviewNavBadge() {
           ? t("nav.reviewDue", { count }, count)
           : t("nav.review")
       }
-      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+      // The caller supplies the chrome so this can be the header's action-rail
+      // link at lg+ AND a chip inside the small-screen pill row, without either
+      // rendering forking into a second copy of the badge logic.
+      className={
+        className ??
+        "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-(--mut) hover:text-accent dark:hover:text-accent-light interactive focus-ring"
+      }
     >
       {t("nav.review")}
       {count > 0 && (
