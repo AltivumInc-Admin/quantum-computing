@@ -225,6 +225,8 @@ export const es: TranslationDict = {
       "Consulta cualquier término cuántico, de la A a la Z — cada uno enlazado a la lección que lo enseña.",
     glossaryCta: "Explorar términos",
     glossaryAria: "Glosario, una referencia de la A a la Z de términos cuánticos",
+    playgroundMockTitle: "Editor en vivo",
+    playgroundMockProbs: "Probabilidades de medición",
     tutorMockTitle: "Pregunta al margen",
     tutorMockReading: "Leyendo: 03 — Algoritmos cuánticos",
     tutorMockQuestion: "¿Por qué la búsqueda de Grover solo necesita unas √N consultas?",

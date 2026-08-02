@@ -129,6 +129,33 @@
   to { transform: translate3d(-2%, 1.5%, 0) scale(1.05); }
 }
 
+/* Slow cinematic push-in for the hero's fog imagery (Ken Burns). Both ends
+   stay pre-scaled so the pan can never expose a frame edge. */
+@keyframes fog-drift {
+  from { transform: scale(1.05); }
+  to { transform: scale(1.12) translate3d(1.2%, -1%, 0); }
+}
+
+/* One-shot draw-in for the hero constellation curves (paths carry
+   pathLength=1, so the dash math is unit-normalized). */
+@keyframes path-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* Gentle vertical bob for the hero constellation nodes; per-node negative
+   delays desynchronize the phases so the corners never move in lockstep. */
+@keyframes node-float {
+  50% { transform: translateY(-6px); }
+}
+
+/* Scroll-linked vertical travel for framed band imagery. Constant pre-scale
+   hides the travel overflow behind the frame's clipped edges. */
+@keyframes parallax-rise {
+  from { transform: scale(1.12) translateY(3.5%); }
+  to { transform: scale(1.12) translateY(-3.5%); }
+}
+
 @keyframes modal-pop {
   from {
     opacity: 0;
@@ -507,6 +534,25 @@
     animation: signal-pulse 2.4s ease-in-out infinite;
   }
 
+  /* Hero ambience — all gated to no-preference at definition (the
+     .bg-atmosphere pattern): reduced-motion users get the finished static
+     frame, not a neutered animation. path-draw's dasharray lives inside the
+     gate too, so without motion the curves render fully drawn. */
+  @media (prefers-reduced-motion: no-preference) {
+    .animate-fog-drift {
+      animation: fog-drift 45s ease-in-out infinite alternate;
+    }
+
+    .animate-node-float {
+      animation: node-float 9s ease-in-out infinite;
+    }
+
+    .animate-path-draw {
+      stroke-dasharray: 1;
+      animation: path-draw 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
+    }
+  }
+
   /* Site-wide focus treatment. The ring color is the per-theme --focus token
      (solid — an alpha ring composites below the 3:1 WCAG 1.4.11 floor on the
      light surfaces); the offset var is already theme-aware, so no dark:
@@ -626,6 +672,23 @@
       animation: fade-up linear both;
       animation-timeline: view();
       animation-range: entry 0% entry 55%;
+    }
+
+    /* A lagged .reveal for the second column of a two-column band: the copy
+       lands first, the visual follows a beat later. Same fallback story —
+       unsupported or reduced-motion simply renders visible. */
+    .reveal-late {
+      animation: fade-up linear both;
+      animation-timeline: view();
+      animation-range: entry 12% entry 70%;
+    }
+
+    /* Scroll-linked parallax for imagery inside a clipped .rounded-card
+       frame (see parallax-rise for the overflow math). */
+    .parallax-img {
+      animation: parallax-rise linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
     }
   }
 }

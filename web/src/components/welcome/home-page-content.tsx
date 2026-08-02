@@ -8,6 +8,7 @@ import { CurriculumGrid } from "@/components/curriculum-grid";
 import { WelcomeHero, type NodeGlyphName } from "@/components/welcome/hero";
 import { Band, BandImage, type FeatureBandProps } from "@/components/welcome/band";
 import { TutorMock } from "@/components/welcome/tutor-mock";
+import { PlaygroundMock } from "@/components/welcome/playground-mock";
 import { useLocale } from "@/i18n";
 import type { Section } from "@/lib/sections";
 
@@ -123,12 +124,9 @@ export function HomePageContent({
       body: t("home.bandPlaygroundBody"),
       href: "/playground",
       linkLabel: t("home.bandPlaygroundCta"),
-      visual: (
-        <BandImage
-          src="/welcome/circuit.webp"
-          alt="Abstract quantum circuit drawn in light: luminous horizontal wires with glowing teal gate glyphs and one gold accent gate"
-        />
-      ),
+      // The product demonstrating itself: a qsim program types itself and the
+      // real parser + kernel + diagram recompute live — not a photograph.
+      visual: <PlaygroundMock />,
     },
     {
       kicker: t("home.bandHardwareKicker"),
