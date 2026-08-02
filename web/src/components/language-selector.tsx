@@ -101,13 +101,18 @@ export function LanguageSelector() {
           setOpen((v) => !v);
         }}
         onKeyDown={onTriggerKeyDown}
-        className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 py-1.5 text-sm font-medium text-(--mut) hover:bg-(--field) hover:text-(--ink) interactive focus-ring"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-control px-2 py-1.5 text-sm font-medium text-(--mut) hover:bg-(--field) hover:text-(--ink) interactive focus-ring"
       >
         <GlobeIcon />
-        <span className="tabular-nums tracking-wide" aria-hidden="true">
+        {/* Globe-only on phones: the code and chevron are 32px the header's
+            top row cannot spare, and the button's aria-label already carries
+            the meaning. min-w-11 keeps the icon-only target at 44px. */}
+        <span className="hidden tabular-nums tracking-wide sm:inline" aria-hidden="true">
           {code}
         </span>
-        <ChevronIcon open={open} />
+        <span className="hidden sm:inline">
+          <ChevronIcon open={open} />
+        </span>
       </button>
 
       {open && (

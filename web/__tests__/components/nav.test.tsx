@@ -45,7 +45,7 @@ describe("Nav", () => {
     expect(link).toHaveAttribute("href", "/");
   });
 
-  it("should link every pill destination from BOTH rows (md+ pill and small-screen row)", () => {
+  it("should link every pill destination from BOTH rows (lg+ pill and small-screen row)", () => {
     render(<Nav />);
     const destinations: [string, string][] = [
       ["Playground", "/playground"],
@@ -55,7 +55,7 @@ describe("Nav", () => {
     ];
     for (const [name, href] of destinations) {
       const links = screen.getAllByRole("link", { name });
-      // Each destination renders twice: once in the md+ centered pill, once
+      // Each destination renders twice: once in the lg+ centered pill, once
       // in the small-screen row — only one is displayed at any width.
       expect(links).toHaveLength(2);
       for (const link of links) {
@@ -65,15 +65,49 @@ describe("Nav", () => {
     }
   });
 
-  it("shows exactly one pill row on each side of the md breakpoint", () => {
+  it("shows exactly one pill row on each side of the lg breakpoint", () => {
     render(<Nav />);
-    // The centered pill is hidden below md; the second row exists only below md.
-    const desktopPill = document.querySelector(".md\\:flex");
-    const mobileRow = document.querySelector(".md\\:hidden");
+    // The pill breakpoint is lg, not md: at md the centered pill appeared
+    // ~100px before brand + pill + actions could fit, scrolling the page
+    // sideways by 43px at exactly 768.
+    const desktopPill = document.querySelector(".lg\\:flex");
+    const mobileRow = document.querySelector(".lg\\:hidden");
     expect(desktopPill).toHaveClass("hidden");
     expect(mobileRow).not.toBeNull();
+    expect(document.querySelector(".md\\:flex")).toBeNull();
+    expect(document.querySelector(".md\\:hidden")).toBeNull();
+    // Four destinations in the centered pill; the small-screen row carries the
+    // same four plus Review, which moves out of the cramped top row below lg.
     expect(desktopPill!.querySelectorAll("a")).toHaveLength(4);
-    expect(mobileRow!.querySelectorAll("a")).toHaveLength(4);
+    expect(mobileRow!.querySelectorAll("a")).toHaveLength(5);
+  });
+
+  it("keeps Review reachable at every width, exactly once per row", () => {
+    render(<Nav />);
+    const reviewLinks = screen
+      .getAllByRole("link")
+      .filter((el) => el.getAttribute("href") === "/review");
+    // One in the lg+ action rail, one in the small-screen pill row.
+    expect(reviewLinks).toHaveLength(2);
+    expect(reviewLinks.some((el) => el.className.includes("lg:inline-flex"))).toBe(true);
+    expect(reviewLinks.some((el) => el.className.includes("rounded-chip"))).toBe(true);
+  });
+
+  it("names the home link even where the wordmark is hidden below sm", () => {
+    render(<Nav />);
+    // The visible wordmark is display:none under sm, so the accessible name
+    // must come from the link itself or phones get an unnamed home link.
+    const link = screen.getByRole("link", { name: "Quantum Learner" });
+    expect(link).toHaveAttribute("aria-label", "Quantum Learner");
+  });
+
+  it("does not use a shrink-proof 1fr track in the header grid", () => {
+    render(<Nav />);
+    // `1fr` is minmax(AUTO,1fr) and an auto minimum is min-content, so the
+    // track refuses to compress and the page scrolls sideways instead.
+    const row = document.querySelector("nav > div");
+    expect(row!.className).toContain("minmax(0,1fr)");
+    expect(row!.className).not.toMatch(/grid-cols-\[1fr_/);
   });
 
   it("should render the ThemeToggle component", () => {

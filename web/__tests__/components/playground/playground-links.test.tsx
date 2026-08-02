@@ -20,20 +20,22 @@ jest.mock("@/components/review-nav-badge", () => ({ ReviewNavBadge: () => null }
 jest.mock("@/components/auth/account-menu", () => ({ AccountMenu: () => null }));
 
 describe("Playground discovery links", () => {
-  it("nav carries Playground beside Runbook in BOTH pill rows (md+ pill and small-screen row)", () => {
+  it("nav carries Playground beside Runbook in BOTH pill rows (lg+ pill and small-screen row)", () => {
     render(<Nav />);
     const links = screen.getAllByRole("link", { name: "Playground" });
-    // One in the md+ centered pill, one in the small-screen row — every
+    // One in the lg+ centered pill, one in the small-screen row — every
     // viewport gets a header path to the playground (the footer is a
-    // secondary path, no longer the only mobile one).
+    // secondary path, no longer the only mobile one). The breakpoint is lg
+    // rather than md because at md the pill did not yet fit beside the brand
+    // and the action rail.
     expect(links).toHaveLength(2);
     for (const link of links) {
       expect(link).toHaveAttribute("href", "/playground");
     }
     const pills = links.map((link) => link.closest("div")!.className);
-    expect(pills.some((c) => c.includes("hidden") && c.includes("md:flex"))).toBe(true);
+    expect(pills.some((c) => c.includes("hidden") && c.includes("lg:flex"))).toBe(true);
     expect(
-      links.some((link) => link.closest("div.md\\:hidden, .md\\:hidden") !== null)
+      links.some((link) => link.closest("div.lg\\:hidden, .lg\\:hidden") !== null)
     ).toBe(true);
     // Same recipe as its Runbook sibling
     expect(screen.getAllByRole("link", { name: "Runbook" })).toHaveLength(2);
