@@ -42,6 +42,17 @@ async function renderHome() {
 }
 
 describe("HomePage (welcome page)", () => {
+  beforeEach(() => {
+    // The hero's CountUp and the playground mock read the reduced-motion
+    // media query through usePrefersReducedMotion; jsdom has no matchMedia.
+    // `matches: true` keeps both on their static final frames, so assertions
+    // see the real numbers without animation timing in the way.
+    window.matchMedia = jest.fn().mockReturnValue({
+      matches: true,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    }) as unknown as typeof window.matchMedia;
+  });
   afterEach(() => setAuthEnv(false));
 
   it("exports SEO metadata describing the platform", () => {
@@ -145,7 +156,9 @@ describe("HomePage (welcome page)", () => {
     await renderHome();
     const sections = getSections();
     const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
-    expect(screen.getByText(String(notebookTotal))).toBeInTheDocument();
+    // Each stat renders twice by design: CountUp's sr-only truth plus its
+    // aria-hidden animated twin (static here under the reduced-motion mock).
+    expect(screen.getAllByText(String(notebookTotal)).length).toBeGreaterThanOrEqual(2);
     // The third stat is the playground's gate count. It must equal what a
     // visitor can actually count there — the compose palette's chips — NOT
     // the DSL registry alone (which also holds the identity gate the palette
@@ -153,7 +166,7 @@ describe("HomePage (welcome page)", () => {
     // this on purpose.
     const paletteGates = PALETTE.reduce((n, group) => n + group.chips.length, 0);
     expect(paletteGates).toBe(10);
-    expect(screen.getByText(String(paletteGates))).toBeInTheDocument();
+    expect(screen.getAllByText(String(paletteGates)).length).toBeGreaterThanOrEqual(2);
     // The label appears twice in the DOM by design: an sr-only <dt> plus the
     // visible (aria-hidden) <dd> — screen readers announce it once.
     expect(screen.getAllByText(/gates in the live playground/i)).toHaveLength(2);
@@ -248,11 +261,34 @@ describe("HomePage (welcome page)", () => {
       "/welcome/hero-fog-960.webp 960w, /welcome/hero-fog.webp 2688w"
     );
     expect(hero).toHaveAttribute("sizes", "100vw");
-    for (const src of ["/welcome/circuit.webp", "/welcome/hardware.webp", "/welcome/bloch.webp"]) {
+    for (const src of ["/welcome/hardware.webp", "/welcome/bloch.webp"]) {
       const img = images.find((el) => el.getAttribute("src") === src);
       expect(img).toBeDefined();
       expect(img!.getAttribute("alt")!.length).toBeGreaterThan(20);
       expect(img).toHaveAttribute("loading", "lazy");
     }
+  });
+
+  it("renders the playground band as a live, inert demo instead of a photo", async () => {
+    await renderHome();
+    // The old circuit photograph is gone — the band demonstrates the product.
+    expect(
+      document.querySelector('img[src="/welcome/circuit.webp"]')
+    ).not.toBeInTheDocument();
+    // The demo types real qsim source; under the reduced-motion mock it sits
+    // on its finished frame, so all three program lines are visible...
+    const editorLine = screen.getByText("CNOT");
+    expect(editorLine).toBeInTheDocument();
+    // ...and the probabilities are simulate()'s real output for the final
+    // circuit (H 0 / CNOT 0 1 / RY 1 0.79): cos²(0.395)/2 ≈ 42.6% on |00⟩
+    // and |11⟩, sin²(0.395)/2 ≈ 7.4% on |01⟩ and |10⟩.
+    expect(screen.getAllByText("42.6%")).toHaveLength(2);
+    expect(screen.getAllByText("7.4%")).toHaveLength(2);
+    // The whole card is decoration: hidden from AT and — because the embedded
+    // CircuitDiagram is normally focusable — inert, so keyboard users can
+    // never land inside hidden content.
+    const card = editorLine.closest("[aria-hidden='true']");
+    expect(card).not.toBeNull();
+    expect(card).toHaveAttribute("inert");
   });
 });

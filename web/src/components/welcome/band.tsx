@@ -22,8 +22,11 @@ export interface FeatureBandProps {
 
 export function Band({ kicker, title, body, href, linkLabel, visual, flip }: FeatureBandProps) {
   return (
-    <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center reveal">
-      <div className={flip ? "lg:order-2" : undefined}>
+    // Copy and visual reveal on separate, slightly offset scroll timelines
+    // (.reveal / .reveal-late) — the text lands first, the artifact follows a
+    // beat later, so each band reads as a sequence instead of one slab.
+    <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center">
+      <div className={`reveal ${flip ? "lg:order-2" : ""}`}>
         <p className="text-xs font-semibold tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light font-mono mb-3">
           {kicker}
         </p>
@@ -35,11 +38,11 @@ export function Band({ kicker, title, body, href, linkLabel, visual, flip }: Fea
         </p>
         <Link
           href={href}
-          className="mt-6 inline-flex items-center gap-1.5 text-base font-medium text-accent-dark dark:text-accent-light hover:underline underline-offset-4 interactive focus-ring rounded"
+          className="group mt-6 inline-flex items-center gap-1.5 text-base font-medium text-accent-dark dark:text-accent-light hover:underline underline-offset-4 interactive focus-ring rounded"
         >
           {linkLabel}
           <svg
-            className="w-4 h-4"
+            className="w-4 h-4 transition-transform duration-200 can-hover:group-hover:translate-x-0.5 motion-reduce:transition-none"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -50,7 +53,7 @@ export function Band({ kicker, title, body, href, linkLabel, visual, flip }: Fea
           </svg>
         </Link>
       </div>
-      <div className={flip ? "lg:order-1" : undefined}>{visual}</div>
+      <div className={`reveal-late ${flip ? "lg:order-1" : ""}`}>{visual}</div>
     </div>
   );
 }
@@ -58,7 +61,11 @@ export function Band({ kicker, title, body, href, linkLabel, visual, flip }: Fea
 /** The framed photographic visual the three image bands share. */
 export function BandImage({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-smoke shadow-(--shadow-resting)">
+    // The frame clips a pre-scaled image that travels vertically with scroll
+    // (.parallax-img); pointing at it raises the frame's elevation. Where
+    // scroll timelines are unsupported or motion is reduced, the image simply
+    // sits still at scale(1) — the frame never exposes an edge either way.
+    <div className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-smoke shadow-(--shadow-resting) transition-shadow duration-300 can-hover:hover:shadow-(--shadow-raised) motion-reduce:transition-none">
       {/* eslint-disable-next-line @next/next/no-img-element -- static export has no image optimizer; assets are pre-sized WebP */}
       <img
         src={src}
@@ -67,7 +74,7 @@ export function BandImage({ src, alt }: { src: string; alt: string }) {
         height={853}
         loading="lazy"
         decoding="async"
-        className="w-full h-auto"
+        className="parallax-img w-full h-auto"
       />
     </div>
   );

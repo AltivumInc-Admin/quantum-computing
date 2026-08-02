@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CountUp } from "./count-up";
 
 /**
  * Cinematic, framed "smoke-and-glass" welcome hero — a dark rounded shell over a
@@ -53,27 +54,43 @@ function Node({ node }: { node: NodeDatum }) {
     bl: "left-[7%] bottom-[26%] sm:left-[9%]",
     br: "right-[6%] bottom-[24%] sm:right-[9%] text-right",
   };
+  // Negative delays start each corner mid-phase, so the four nodes drift on
+  // the fog independently instead of bobbing in lockstep.
+  const floatDelay: Record<NodeDatum["pos"], string> = {
+    tl: "0s",
+    tr: "-2.3s",
+    bl: "-4.6s",
+    br: "-6.9s",
+  };
   const rightSide = node.pos === "tr" || node.pos === "br";
   return (
     // aria-hidden: these fragments precede the h1 in DOM order, and a screen
     // reader must not hit stray "Foundations / 12 notebooks" bits before the
     // page heading — the curriculum grid carries the real structured data.
+    // Entrance on the outer div, float on the inner: transforms on separate
+    // elements compose instead of overwriting each other.
     <div
       aria-hidden="true"
-      className={`pointer-events-none absolute z-20 hidden lg:block ${place[node.pos]}`}
+      className={`pointer-events-none absolute z-20 hidden lg:block animate-fade-up ${place[node.pos]}`}
+      style={{ animationDelay: "550ms" }}
     >
-      <div className={`flex items-center gap-2.5 ${rightSide ? "flex-row-reverse" : ""}`}>
-        <span className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 backdrop-blur-md">
-          <NodeGlyph d={GLYPHS[node.glyph]} />
-        </span>
-        <span className="h-px w-9 bg-gradient-to-r from-white/45 to-transparent" style={rightSide ? { transform: "scaleX(-1)" } : undefined} />
-      </div>
-      <div className={`mt-2 ${rightSide ? "pr-11 text-right" : "pl-11"}`}>
-        <div className="flex items-center gap-1.5 text-[13px] font-medium text-white/95">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          {node.label}
+      <div
+        className="animate-node-float"
+        style={{ animationDelay: floatDelay[node.pos] }}
+      >
+        <div className={`flex items-center gap-2.5 ${rightSide ? "flex-row-reverse" : ""}`}>
+          <span className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 backdrop-blur-md">
+            <NodeGlyph d={GLYPHS[node.glyph]} />
+          </span>
+          <span className="h-px w-9 bg-gradient-to-r from-white/45 to-transparent" style={rightSide ? { transform: "scaleX(-1)" } : undefined} />
         </div>
-        <div className="font-mono text-[11px] tracking-wider text-white/55">{node.value}</div>
+        <div className={`mt-2 ${rightSide ? "pr-11 text-right" : "pl-11"}`}>
+          <div className="flex items-center gap-1.5 text-[13px] font-medium text-white/95">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            {node.label}
+          </div>
+          <div className="font-mono text-[11px] tracking-wider text-white/55">{node.value}</div>
+        </div>
       </div>
     </div>
   );
@@ -121,7 +138,7 @@ export function WelcomeHero({
           alt=""
           aria-hidden="true"
           fetchPriority="high"
-          className="absolute inset-0 h-full w-full object-cover opacity-[0.92]"
+          className="animate-fog-drift absolute inset-0 h-full w-full object-cover opacity-[0.92]"
         />
         {/* Legibility wash — keep the left/center readable, let the light bloom breathe */}
         <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_78%_-10%,transparent_10%,rgba(11,11,12,0.55)_60%,rgba(11,11,12,0.92)_100%)]" />
@@ -144,17 +161,20 @@ export function WelcomeHero({
           preserveAspectRatio="none"
           className="absolute inset-0 hidden h-full w-full lg:block"
         >
-          <path d="M150 250 C 480 130, 960 130, 1290 300" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.25" />
-          <path d="M150 560 C 520 700, 940 700, 1300 560" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.25" />
+          <path d="M150 250 C 480 130, 960 130, 1290 300" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.25" pathLength={1} className="animate-path-draw" />
+          <path d="M150 560 C 520 700, 940 700, 1300 560" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.25" pathLength={1} className="animate-path-draw" style={{ animationDelay: "0.8s" }} />
         </svg>
 
         {nodes.map((n) => (
           <Node key={n.pos} node={n} />
         ))}
 
-        {/* Content */}
+        {/* Content — one authored entrance: eyebrow, headline, subtitle,
+            CTAs, then the stats counting up, each a beat apart. The delays
+            are inline (the codebase stagger pattern): the animate-fade-up
+            shorthand would reset a class-based delay in the cascade. */}
         <div className="relative z-10 mx-auto flex max-w-3xl flex-col items-center px-6 py-24 text-center sm:py-32 lg:py-36">
-          <span className="inline-flex items-center gap-2 rounded-chip border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[13px] text-white/80 backdrop-blur-md">
+          <span className="animate-fade-up inline-flex items-center gap-2 rounded-chip border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[13px] text-white/80 backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-accent animate-signal" />
             {eyebrow}
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -162,22 +182,41 @@ export function WelcomeHero({
             </svg>
           </span>
 
-          <h1 className="mt-7 font-display text-display-2xl font-light tracking-[-0.02em] text-white">
+          <h1
+            className="animate-fade-up mt-7 font-display text-display-2xl font-light tracking-[-0.02em] text-white"
+            style={{ animationDelay: "90ms" }}
+          >
             {/* white/50 keeps the two-tone hierarchy but clears the 3:1
                 large-text floor with margin even where the fog bloom
                 brightens the ground behind the words. */}
             {headlineLead} <span className="text-white/50">{headlineDim}</span>
           </h1>
 
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-white/55">{subtitle}</p>
+          <p
+            className="animate-fade-up mt-5 max-w-xl text-lg leading-relaxed text-white/55"
+            style={{ animationDelay: "180ms" }}
+          >
+            {subtitle}
+          </p>
 
-          <div className="mt-9">{ctas}</div>
+          <div className="animate-fade-up mt-9" style={{ animationDelay: "270ms" }}>
+            {ctas}
+          </div>
 
-          <dl className="mt-14 flex items-center gap-8 sm:gap-12">
+          <dl
+            className="animate-fade-up mt-14 flex items-center gap-8 sm:gap-12"
+            style={{ animationDelay: "380ms" }}
+          >
             {stats.map((s) => (
               <div key={s.label} className="text-center">
                 <dt className="sr-only">{s.label}</dt>
-                <dd className="font-display text-2xl font-light text-white tabular-nums">{s.value}</dd>
+                <dd className="font-display text-2xl font-light text-white tabular-nums">
+                  {typeof s.value === "number" ? (
+                    <CountUp value={s.value} startDelayMs={380} />
+                  ) : (
+                    s.value
+                  )}
+                </dd>
                 {/* Visual repeat of the dt — hidden from AT so each stat is
                     announced once ("curriculum sections, 7"), not twice. */}
                 <dd aria-hidden="true" className="mt-1 text-xs text-white/45">{s.label}</dd>
@@ -192,7 +231,8 @@ export function WelcomeHero({
         <a
           href="#curriculum"
           aria-label={scrollLabel}
-          className="absolute bottom-5 left-5 z-20 hidden items-center gap-2.5 rounded-chip border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white/60 backdrop-blur-md transition-colors hover:text-white/90 sm:flex interactive focus-ring"
+          className="animate-fade-up absolute bottom-5 left-5 z-20 hidden items-center gap-2.5 rounded-chip border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white/60 backdrop-blur-md transition-colors hover:text-white/90 sm:flex interactive focus-ring"
+          style={{ animationDelay: "640ms" }}
         >
           <span className="grid h-6 w-6 place-items-center rounded-full border border-white/15" aria-hidden="true">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
@@ -210,7 +250,8 @@ export function WelcomeHero({
             widens the meter instead of silently lying. Decorative. */}
         <div
           aria-hidden="true"
-          className="absolute bottom-6 right-6 z-20 hidden select-none flex-col items-end gap-2 sm:flex"
+          className="animate-fade-up absolute bottom-6 right-6 z-20 hidden select-none flex-col items-end gap-2 sm:flex"
+          style={{ animationDelay: "640ms" }}
         >
           <span className="font-mono text-[12px] tracking-wide text-white/55">{horizonsLabel}</span>
           <div className="flex items-center gap-1">

@@ -224,6 +224,8 @@ export const en: TranslationDict = {
       "Look up any quantum term, A to Z — each linked to the lesson that teaches it.",
     glossaryCta: "Browse terms",
     glossaryAria: "Glossary, an A to Z reference of quantum terms",
+    playgroundMockTitle: "Live editor",
+    playgroundMockProbs: "Measurement probabilities",
     tutorMockTitle: "Ask the margin",
     tutorMockReading: "Reading: 03 — Quantum Algorithms",
     tutorMockQuestion: "Why does Grover's search only need about √N queries?",
