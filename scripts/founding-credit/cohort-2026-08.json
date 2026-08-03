@@ -1,0 +1,19 @@
+{
+  "cohortId": "2026-08",
+  "label": "Founding cohort — 1,000 credits to the first 20 learners",
+  "creditsEach": 1000,
+  "maxRecipients": 20,
+  "closed": false,
+  "walletTable": "quantum-stripe-wallet",
+  "region": "us-east-2",
+  "expectedAccountId": "205930636302",
+  "recipients": [
+    { "slot": 1, "emailHash": "c4bbbc098bd9eb5dac4694a7f5149ed295f6f39f8b04ad362e5da8e5c8ee5239", "firstSeenAt": "2026-07-20T20:43:30Z" },
+    { "slot": 2, "emailHash": "bd25fd00e3f1973dcd036b012fb92d72f0edc83aca68cdf808f348cb0d3087fe", "firstSeenAt": "2026-07-22T02:13:34Z" },
+    { "slot": 3, "emailHash": "79ae87a17663bffbb3dc65d801c8e2430088c6ffd0ed64fd8ef3aa222b118d63", "firstSeenAt": "2026-07-25T16:46:43Z" },
+    { "slot": 4, "emailHash": "8835908f8159033fa5014f2bcc2379bf349c4f085a4d63d792951ba68fe2b16f", "firstSeenAt": "2026-07-27T21:51:55Z" },
+    { "slot": 5, "emailHash": "f642e7bfe8f0723debbd7e4111afe57be6f3d65818e4717e7295d80571dfe6d2", "firstSeenAt": "2026-07-28T17:02:47Z" },
+    { "slot": 6, "emailHash": "8048d11a8aab3abc636f79040987e74ae0032008a1ca162e1c770c0b1868108b", "firstSeenAt": "2026-07-29T14:54:11Z" },
+    { "slot": 7, "emailHash": "fe1bd85d98ab105a471722ad01126d2b35ebdd8da5914b7e055eeb5de59d903b", "firstSeenAt": "2026-07-29T15:50:46Z" }
+  ]
+}

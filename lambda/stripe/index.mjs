@@ -25,6 +25,16 @@
 // credits a learner did not pay for: there are no free, promotional, or
 // starter credits, and every positive wallet delta is a completed purchase or
 // the return of the learner's own unused reserve.
+//
+// That invariant is scoped to THIS FUNCTION and still holds exactly as
+// written. Elsewhere in the repo there is one — and only one — approved
+// exception: scripts/founding-credit/ gifts 1,000 credits to the first 20
+// learners ($200 ceiling), by hand, from a roster reviewed in git. It is
+// deliberately NOT here: an admin path on an internet-facing function is a
+// credit mint the day anyone adds a Function URL or a new event source, and
+// web/__tests__/infra/credit-writers.test.ts asserts this file never learns
+// the cohort's key prefix. If you are reading this because the gift looks
+// like a contradiction — it is not one, and deleting it is not the fix.
 // DI-core like lambda/sync + lambda/qpu: createHandlerCore(deps)
 // unit-tests under node --test with stubbed Stripe + DynamoDB; the production
 // handler lazily builds the real deps from env on first invocation.
@@ -52,11 +62,16 @@ const eventKey = (id) => ({ pk: { S: `EVENT#${id}` } });
 /**
  * A PURCHASE RECEIPT — "PaymentIntent pi_X bought N credits for user Y".
  *
- * NOT a gift. Nothing in this platform ever adds credits a learner did not pay
- * for: every positive wallet delta is either a completed Stripe purchase or the
- * return of the learner's own unused reserve (lambda/qpu releaseReservation,
- * lambda/tutor settle). This row exists solely so a REFUND can reverse exactly
- * what a specific payment bought.
+ * NOT a gift. No wallet delta THIS FUNCTION writes is a gift: every one is
+ * either a completed Stripe purchase or the return of the learner's own unused
+ * reserve (lambda/qpu releaseReservation, lambda/tutor settle). This row exists
+ * solely so a REFUND can reverse exactly what a specific payment bought.
+ *
+ * The founding-cohort gift (scripts/founding-credit/) writes no receipt, by
+ * design: reclaim() finds receipts only by GetItem on receiptKey(paymentIntent)
+ * — no scan, no index — so gifted credits are structurally unreachable from
+ * every refund path and can never be clawed back against a payment that never
+ * happened.
  *
  * Keyed by PaymentIntent id because that is the only link surviving from a
  * Charge back to what it bought: `Charge.invoice` was removed in the Basil

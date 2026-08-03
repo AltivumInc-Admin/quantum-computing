@@ -23,12 +23,172 @@ Parameters:
     Type: String
     Default: https://quantum.altivum.ai
     Description: Production site origin (for callback/logout URLs).
+  AlertEmail:
+    Type: String
+    Default: christian.perez@altivum.io
+    Description: >
+      Where new-signup alerts are sent. AWS emails a confirmation link to this
+      address on first deploy; the subscription stays PendingConfirmation (and
+      delivers nothing) until it is clicked.
 
 Resources:
+  # ── New-signup alerting ────────────────────────────────────────────────────
+  # A PostConfirmation trigger, not CloudTrail: the founder asked to know
+  # IMMEDIATELY, and this fires sub-second where a CloudTrail/EventBridge hop
+  # lands minutes later. PostConfirmation_ConfirmSignUp is invoked on a
+  # federated user's FIRST sign-in as well as on native confirmation, so one
+  # trigger covers both email/password and Google.
+  SignupAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-signup-alerts
+      DisplayName: Quantum signups
+      Tags:
+        - Key: Project
+          Value: quantum
+        - Key: Feature
+          Value: workspace-auth
+
+  SignupAlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SignupAlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  SignupAlertRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: publish-signup-alerts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref SignupAlertTopic
+
+  SignupAlertFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: quantum-signup-alert
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt SignupAlertRole.Arn
+      # Cognito caps a trigger at 5s. This one only formats a string and calls
+      # SNS (typically well under 100ms), but the timeout is stated rather than
+      # left at the 3s default so the ceiling is deliberate.
+      Timeout: 5
+      MemorySize: 128
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref SignupAlertTopic
+          INTERNAL_DOMAIN: altivum.ai
+      Tags:
+        - Key: Project
+          Value: quantum
+        - Key: Feature
+          Value: workspace-auth
+      Code:
+        ZipFile: |
+          // THIS HANDLER MUST NEVER THROW.
+          //
+          // A PostConfirmation trigger that raises does not merely lose an
+          // alert — Cognito surfaces the failure to the caller, so a broken
+          // notifier becomes a broken sign-up for real people. Every path
+          // below is wrapped and every path returns the event unchanged. An
+          // alert is worth strictly less than a working front door.
+          import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+
+          const sns = new SNSClient({});
+
+          // SNS rejects a Subject over 100 chars or containing control
+          // characters, and that rejection would be an exception on the
+          // sign-up path. Clamp rather than trust the address.
+          function safeSubject(email) {
+            const clean = String(email || "unknown").replace(/[^\x20-\x7E]/g, "");
+            const s = `New Quantum Learner signup: ${clean}`;
+            return s.length > 99 ? s.slice(0, 96) + "..." : s;
+          }
+
+          export const handler = async (event) => {
+            try {
+              const attrs = event?.request?.userAttributes ?? {};
+              const email = attrs.email ?? "(no email attribute)";
+              const sub = attrs.sub ?? "(unknown)";
+              const userName = event?.userName ?? "(unknown)";
+              // Federated users arrive with a provider-prefixed userName
+              // ("Google_1234..."); native sign-ups do not.
+              const viaGoogle = /^google_/i.test(userName);
+              const internalDomain = process.env.INTERNAL_DOMAIN || "";
+              const isInternal =
+                internalDomain.length > 0 &&
+                email.toLowerCase().endsWith("@" + internalDomain.toLowerCase());
+
+              const lines = [
+                `Email:     ${email}`,
+                `Sign-in:   ${viaGoogle ? "Google" : "email + password"}`,
+                `Cognito sub: ${sub}`,
+                `Username:  ${userName}`,
+                `Trigger:   ${event?.triggerSource ?? "(unknown)"}`,
+                `When:      ${new Date().toISOString()}`,
+                "",
+                isInternal
+                  ? `NOTE: internal @${internalDomain} account — does not occupy a founding-cohort slot.`
+                  : "This is an external signup.",
+                "",
+                "One person can hold TWO accounts (native + Google) with different subs.",
+                "Before treating this as a new human, check the roster by email:",
+                "",
+                `  aws cognito-idp list-users --user-pool-id ${event?.userPoolId ?? "<pool>"} \\`,
+                `    --region ${process.env.AWS_REGION} \\`,
+                `    --query 'Users[].{email:Attributes[?Name==\`email\`].Value|[0],created:UserCreateDate}' --output table`,
+              ];
+
+              await sns.send(
+                new PublishCommand({
+                  TopicArn: process.env.TOPIC_ARN,
+                  Subject: safeSubject(email),
+                  Message: lines.join("\n"),
+                })
+              );
+            } catch (err) {
+              // Log and swallow. Never fail the sign-up.
+              console.error("signup alert failed (sign-up unaffected):", err);
+            }
+            return event;
+          };
+
+  # SourceAccount rather than SourceArn deliberately. SourceArn would need the
+  # pool's ARN, and the pool already references this function's ARN in its
+  # LambdaConfig — the permission would then have to be created after the pool
+  # that depends on it, leaving a window where the trigger exists but cannot be
+  # invoked. Scoping to the account lets the permission come FIRST (see the
+  # pool's DependsOn) so that window never exists.
+  SignupAlertPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SignupAlertFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
   UserPool:
     Type: AWS::Cognito::UserPool
     DeletionPolicy: Retain
+    # The invoke permission must exist before the trigger is attached.
+    DependsOn: SignupAlertPermission
     Properties:
+      LambdaConfig:
+        PostConfirmation: !GetAtt SignupAlertFunction.Arn
       UserPoolName: quantum-workspace
       UsernameAttributes:
         - email
@@ -135,3 +295,8 @@ Outputs:
   Region:
     Description: NEXT_PUBLIC_AWS_REGION
     Value: !Ref AWS::Region
+  SignupAlertTopicArn:
+    Description: >
+      SNS topic for new-signup alerts. The email subscription stays
+      PendingConfirmation until the link AWS sends is clicked.
+    Value: !Ref SignupAlertTopic
