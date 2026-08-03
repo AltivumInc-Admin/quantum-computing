@@ -170,6 +170,10 @@ Resources:
                 - cd "$CODEBUILD_SRC_DIR/web" && npm ci
                 - cd "$CODEBUILD_SRC_DIR/web" && npm run lint
                 - cd "$CODEBUILD_SRC_DIR/web" && npm test
+                # Operator scripts that move money. Mirrors the step of the
+                # same name in ci.yml's `web` job; no install needed (the
+                # issuer takes its DynamoDB client by injection).
+                - cd "$CODEBUILD_SRC_DIR" && node --test scripts/founding-credit/*.test.mjs
                 # Live gate: fails the build if an issued Founding Ten badge no
                 # longer matches an enabled Cognito user (see the script's own
                 # header for why — email-bound, not sub-bound). No-ops offline;
