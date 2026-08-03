@@ -83,9 +83,26 @@ describe("tiers", () => {
     expect(TIERS.map((t) => t.id)).toEqual(["free", "plus", "pro"]);
   });
 
-  it("monthly credits are worth at least the price paid (never worse than PAYG)", () => {
+  /**
+   * The inverse of this assertion shipped until 2026-08-03 ("worth at least the price
+   * paid, never worse than PAYG") and guarded a tier that LOST money: Plus granted $18.90
+   * of credits for $18, Pro $62.00 for $59, so a subscriber who redeemed everything cost
+   * more than they paid. A face value below the price is what lets the tier carry margin
+   * even at 100% redemption. Do not flip this back.
+   */
+  it("monthly credits are worth less than the price paid (the subscription carries margin)", () => {
     for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
-      expect(tier.monthlyCredits * CREDIT_USD).toBeGreaterThanOrEqual(tier.priceUsdPerMonth);
+      expect(tier.monthlyCredits * CREDIT_USD).toBeLessThan(tier.priceUsdPerMonth);
+    }
+  });
+
+  it("monthly credits are still worth at least half the price paid", () => {
+    // Margin is not a licence to make the grant token. Below roughly half, the tier stops
+    // reading as a credit bundle and starts reading as a paywall with a tip jar.
+    for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
+      expect(tier.monthlyCredits * CREDIT_USD).toBeGreaterThanOrEqual(
+        tier.priceUsdPerMonth * 0.5,
+      );
     }
   });
 

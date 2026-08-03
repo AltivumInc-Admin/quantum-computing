@@ -109,8 +109,8 @@ const txItems = (ddb) =>
 // ---- CATALOG guardrail -----------------------------------------------------
 
 test("CATALOG credit counts mirror the published pricing", () => {
-  assert.equal(CATALOG.ql_plus_monthly.credits, 1890);
-  assert.equal(CATALOG.ql_pro_monthly.credits, 6200);
+  assert.equal(CATALOG.ql_plus_monthly.credits, 1200);
+  assert.equal(CATALOG.ql_pro_monthly.credits, 4000);
   assert.equal(CATALOG.ql_credits_500.credits, 500);
   assert.equal(CATALOG.ql_credits_10000.credits, 10000);
   assert.equal(CATALOG.ql_plus_monthly.mode, "subscription");
@@ -184,8 +184,12 @@ test("POST /checkout creates a subscription session with server-set metadata", a
   assert.equal(s.client_reference_id, "user-1");
   assert.equal(s.customer, "cus_new");
   assert.equal(s.line_items[0].price, "price_resolved");
-  // credits/tier are set server-side from CATALOG, not from the client
-  assert.equal(s.subscription_data.metadata.credits, "1890");
+  // credits/tier are set server-side from CATALOG, not from the client.
+  // NOTE: this stamp is permanent for the life of the subscription — invoice.paid reads
+  // subscription.metadata.credits on every renewal, so repricing CATALOG changes NEW
+  // subscribers only. Existing subscribers keep the grant they signed up with until their
+  // subscription metadata is explicitly backfilled.
+  assert.equal(s.subscription_data.metadata.credits, "1200");
   assert.equal(s.subscription_data.metadata.tier, "plus");
   assert.equal(s.subscription_data.metadata.userId, "user-1");
   // dynamic payment methods: payment_method_types must NEVER be set

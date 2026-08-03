@@ -766,7 +766,7 @@ export const en: TranslationDict = {
       "Credits will meter paid compute and paid tutoring: questions to the AI tutor, runs on real quantum hardware, and minutes on the managed cloud simulators — every rate published below. The curriculum, the browser simulator, and the playground stay free. Today none of the three is metered yet.",
     tiersHeading: "Three ways to fund the wallet",
     tiersIntro:
-      "Every account is pay-as-you-go at heart: top up any amount, and it will spend on anything metered once metering ships. Plus and Pro are monthly credit bundles at a small bonus — never an all-you-can-eat plan, so the deal stays honest in both directions.",
+      "Every account is pay-as-you-go at heart: top up any amount, and it will spend on anything metered once metering ships. Plus and Pro bundle a fixed number of credits each month — never an all-you-can-eat plan, so the deal stays honest in both directions.",
     bestForRegulars: "Best for regulars",
     forever: "forever",
     perMonth: "/ month",
@@ -883,15 +883,18 @@ export const en: TranslationDict = {
     freeF2: "Playground, glossary, spaced-repetition review",
     freeF3: "Progress and saved circuits synced across devices",
     freeF4: "The AI tutor is free to try, and curriculum hardware runs are platform-sponsored",
-    plusTagline: "Monthly credits, at a small bonus over pay-as-you-go.",
+    plusTagline: "Monthly credits, included with your subscription.",
     plusFootnote: "Cancel anytime. Purchased credits never expire.",
     plusF0: "Everything in Free",
-    plusF1: "1,890 credits every month — a 5% bonus over pay-as-you-go",
+    // No "bonus over pay-as-you-go" claim: under the 2026-08 pricing the monthly grant is
+    // deliberately worth less than the sticker price, so that framing is false. State the
+    // grant plainly and let the tier's model access carry the value.
+    plusF1: "1,200 credits every month",
     plusF2: "Credits roll over while you are subscribed",
     proTagline: "The largest monthly credit bundle.",
     proFootnote: "For the heaviest users. Cancel anytime; credits never expire.",
     proF0: "Everything in Plus",
-    proF1: "6,200 credits every month",
+    proF1: "4,000 credits every month",
     // Hardware technology descriptors for rate table
     techSuperconducting108: "Superconducting, 108 qubits",
     techSuperconducting: "Superconducting",

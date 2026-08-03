@@ -710,7 +710,7 @@ export const es: TranslationDict = {
       "Los créditos medirán el cómputo de pago y la tutoría de pago: preguntas al tutor de IA, ejecuciones en hardware cuántico real y minutos en los simuladores gestionados en la nube — cada tarifa está publicada abajo. El currículo, el simulador del navegador y el playground siguen gratis. Hoy todavía no se mide ninguna de las tres.",
     tiersHeading: "Tres formas de fondear la billetera",
     tiersIntro:
-      "Toda cuenta es de pago por uso en el fondo: recarga cualquier monto y se gastará en lo que se mida cuando se lance la medición. Plus y Pro son paquetes mensuales de créditos con una pequeña bonificación — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones.",
+      "Toda cuenta es de pago por uso en el fondo: recarga cualquier monto y se gastará en lo que se mida cuando se lance la medición. Plus y Pro incluyen una cantidad fija de créditos cada mes — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones.",
     bestForRegulars: "Ideal para uso regular",
     forever: "para siempre",
     perMonth: "/ mes",
@@ -815,16 +815,16 @@ export const es: TranslationDict = {
     freeF3: "Progreso y circuitos guardados sincronizados entre dispositivos",
     freeF4:
       "El tutor de IA es gratis para probar, y las ejecuciones de hardware del currículo están patrocinadas por la plataforma",
-    plusTagline: "Créditos mensuales, con una pequeña bonificación sobre pago por uso.",
+    plusTagline: "Créditos mensuales, incluidos en tu suscripción.",
     plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
     plusF0: "Todo lo de Gratis",
-    plusF1: "1,890 créditos cada mes — un 5% de bonificación sobre pago por uso",
+    plusF1: "1,200 créditos cada mes",
     plusF2: "Los créditos se acumulan mientras estés suscrito",
     proTagline: "El paquete mensual de créditos más grande.",
     proFootnote:
       "Para quienes más lo usan. Cancela cuando quieras; los créditos no expiran.",
     proF0: "Todo lo de Plus",
-    proF1: "6,200 créditos cada mes",
+    proF1: "4,000 créditos cada mes",
     techSuperconducting108: "Superconductor, 108 cúbits",
     techSuperconducting: "Superconductor",
     techNeutralAtom: "Analógico de átomos neutros",

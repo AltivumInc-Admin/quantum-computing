@@ -123,8 +123,8 @@ export const REQUIRED_WEBHOOK_EVENTS = [
 // into Stripe metadata at session creation and read back, verbatim, by the
 // webhook, so the wallet is never at the mercy of a mis-tagged price.
 export const CATALOG = {
-  ql_plus_monthly: { mode: "subscription", tier: "plus", credits: 1890 },
-  ql_pro_monthly: { mode: "subscription", tier: "pro", credits: 6200 },
+  ql_plus_monthly: { mode: "subscription", tier: "plus", credits: 1200 },
+  ql_pro_monthly: { mode: "subscription", tier: "pro", credits: 4000 },
   ql_credits_500: { mode: "payment", tier: null, credits: 500 },
   ql_credits_2000: { mode: "payment", tier: null, credits: 2000 },
   ql_credits_5000: { mode: "payment", tier: null, credits: 5000 },
