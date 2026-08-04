@@ -122,9 +122,48 @@ test("an unpriced model is served free rather than charged a guessed rate", () =
 
 test("maxCreditsFor bounds a generation by its worst case, for the pre-flight check", () => {
   const worst = maxCreditsFor("opus-5", { inputTokens: 6_000, maxOutputTokens: 800 });
-  // 6,000 in @ $5/Mtok = $0.03; 800 out @ $25/Mtok = $0.02 -> $0.05 = 5 credits
-  assert.equal(worst, 5);
-  // It must never under-state the real cost of the same generation.
-  const actual = creditsForUsage("opus-5", { inputTokens: 6_000, outputTokens: 800 });
-  assert.ok(worst >= actual, "the pre-flight bound must not be below actual cost");
+  // Worst case is a cache WRITE, which bills at 1.25x input — dearer than an uncached
+  // send, and exactly what the first question on a lesson does.
+  // 6,000 in @ $5/Mtok x 1.25 = $0.0375; 800 out @ $25/Mtok = $0.02 -> $0.0575 -> 6 credits
+  assert.equal(worst, 6);
+
+  // It must not under-state ANY real outcome of the same generation: uncached, writing
+  // the cache, or reading it. The settle path caps the charge at the reserve, so an
+  // under-reserve is silently absorbed rather than billed.
+  for (const [label, usage] of [
+    ["uncached", { inputTokens: 6_000, outputTokens: 800 }],
+    ["cache write", { inputTokens: 0, cacheWriteInputTokens: 6_000, outputTokens: 800 }],
+    ["cache read", { inputTokens: 14, cacheReadInputTokens: 5_986, outputTokens: 800 }],
+  ]) {
+    assert.ok(
+      worst >= creditsForUsage("opus-5", usage),
+      `the pre-flight bound must not be below actual cost (${label})`,
+    );
+  }
+});
+
+test("cache reads and writes are priced, not free", () => {
+  // `usage.inputTokens` is the UNCACHED REMAINDER — verified against the live service.
+  // Billing it alone would charge ~nothing for a cached prompt, so a cachePoint would
+  // quietly turn the tutor into a giveaway. These assertions are the guard against that.
+  const uncached = creditsForUsage("opus-5", { inputTokens: 10_000, outputTokens: 0 });
+  const read = creditsForUsage("opus-5", { inputTokens: 0, cacheReadInputTokens: 10_000, outputTokens: 0 });
+  const write = creditsForUsage("opus-5", { inputTokens: 0, cacheWriteInputTokens: 10_000, outputTokens: 0 });
+
+  assert.ok(read > 0, "a cache read must cost something");
+  assert.ok(read < uncached, "a cache read must be cheaper than an uncached send");
+  assert.ok(write > uncached, "a cache write must be dearer than an uncached send");
+
+  // 10,000 @ $5/Mtok = $0.05 uncached -> read 0.1x = $0.005, write 1.25x = $0.0625
+  assert.equal(uncached, 5);
+  assert.equal(read, 1); // $0.005 rounds up to 1 credit
+  assert.equal(write, 7); // $0.0625 -> 6.25 -> 7
+});
+
+test("a garbled cache field voids the charge rather than guessing", () => {
+  // Fail toward undercharging: usage we cannot read is usage we do not bill.
+  assert.equal(creditsForUsage("opus-5", { inputTokens: 100, cacheReadInputTokens: "some", outputTokens: 5 }), 0);
+  assert.equal(creditsForUsage("opus-5", { inputTokens: 100, cacheWriteInputTokens: NaN, outputTokens: 5 }), 0);
+  // Absent cache fields are simply zero — the pre-caching wire shape still prices correctly.
+  assert.equal(creditsForUsage("haiku-4-5", { inputTokens: 10_000, outputTokens: 2_000 }), 2);
 });
