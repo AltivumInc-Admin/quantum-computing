@@ -80,8 +80,12 @@ describe("PricingPage", () => {
     for (const name of ["Free", "Plus", "Pro"]) {
       expect(screen.getByRole("heading", { level: 3, name })).toBeInTheDocument();
     }
-    expect(screen.getByText("$18")).toBeInTheDocument();
-    expect(screen.getByText("$59")).toBeInTheDocument();
+    // Derived from TIERS, not hardcoded: a reprice should not require editing this test.
+    // It shipped as literal "$18"/"$59" and broke on the 2026-08 reprice, which is the
+    // failure mode this assertion now exists to prevent.
+    for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
+      expect(screen.getByText(`$${tier.priceUsdPerMonth}`)).toBeInTheDocument();
+    }
     expect(screen.getByText("Best for regulars")).toBeInTheDocument();
     // Paid tiers are not purchasable yet — both must say so.
     expect(screen.getAllByText("Launching soon")).toHaveLength(2);
