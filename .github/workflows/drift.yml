@@ -1,0 +1,77 @@
+name: Deploy drift
+
+# Is what is RUNNING what is in git?
+#
+# The failure this exists for is "merged but never deployed": CI green, PR closed,
+# CloudFormation reading UPDATE_COMPLETE from the PREVIOUS deploy, and production quietly
+# a week behind. Nothing in a normal pipeline looks at the deployed artifact, so nothing
+# catches it. This does, once a day, whether or not anyone opens a PR.
+#
+# Deliberately NOT a pull-request check: drift appears at merge time, not at PR time, so a
+# PR gate would block unrelated work for a deploy someone else owes. Scheduled instead, so
+# the signal lands on the person who can act on it.
+#
+# Requires the quantum-ci-drift-check role (infra/github-oidc-drift-role.yaml) and the
+# AWS_DRIFT_ROLE_ARN repository variable. If either is absent the job skips rather than
+# failing, so this file can merge before the role exists.
+
+on:
+  schedule:
+    - cron: "0 13 * * *" # 13:00 UTC daily — mid-morning US Eastern
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required to request the OIDC token; nothing else
+
+concurrency:
+  group: drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Deployed-vs-git drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The ARN goes through env rather than being interpolated into the script body.
+      # It is a repository variable (admin-set, not attacker-controlled), so this is not
+      # closing a live hole — it is the documented safe pattern, and it costs nothing.
+      - name: Check the role is configured
+        id: cfg
+        env:
+          ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "AWS_DRIFT_ROLE_ARN is not set — deploy infra/github-oidc-drift-role.yaml"
+            echo "and add the role ARN as a repository variable. Skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Assume the read-only drift role
+        if: steps.cfg.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DRIFT_ROLE_ARN }}
+          aws-region: us-east-2
+          role-session-name: quantum-drift-check
+
+      - name: Compare every deployed Lambda against this commit
+        if: steps.cfg.outputs.ready == 'true'
+        run: node scripts/check-lambda-drift.mjs
+
+      - name: Explain a failure
+        if: failure() && steps.cfg.outputs.ready == 'true'
+        run: |
+          echo "::error::Production does not match main. Deploy the drifted functions, or"
+          echo "::error::record why they are intentionally behind. Run 'make drift' locally"
+          echo "::error::for the same report. Merging is not shipping."

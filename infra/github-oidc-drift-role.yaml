@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Read-only role for the GitHub Actions deployed-vs-git drift check. Lets CI answer
+  "is what is running what is in git?" and nothing else — it can read Lambda code
+  locations and configuration, and cannot invoke, update, or delete anything.
+
+  The account already has the GitHub OIDC provider
+  (token.actions.githubusercontent.com, audience sts.amazonaws.com), so this template
+  only adds the role. It does NOT create the provider — creating a second one for the
+  same URL fails, and the existing one is shared with other Altivum repos.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: AltivumInc-Admin/quantum-computing
+    Description: owner/repo permitted to assume this role.
+  GitHubRef:
+    Type: String
+    Default: refs/heads/main
+    Description: >
+      The single git ref permitted. Scheduled and workflow_dispatch runs both execute on
+      the default branch, so main alone is sufficient — and it is the tightest possible
+      scope. Widening this to a wildcard would let any workflow added by any branch
+      assume the role.
+  FunctionNamePrefix:
+    Type: String
+    Default: quantum
+    Description: Only functions with this name prefix are readable.
+
+Resources:
+  DriftCheckRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: quantum-ci-drift-check
+      Description: Read-only Lambda inspection for the CI drift check. No mutating actions.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                # Both conditions are required. Without the `aud` check any GitHub
+                # tenant could mint a token for this role; without the `sub` check any
+                # repository could.
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:${GitHubRef}
+      Policies:
+        - PolicyName: read-lambda-code-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # GetFunction returns a presigned URL to the deployment package — which is
+              # the whole point, since only the artifact reveals drift. Scoped by name
+              # prefix so this cannot read unrelated functions in a shared account.
+              - Effect: Allow
+                Action:
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:${FunctionNamePrefix}-*
+              # ListFunctions cannot be resource-scoped; it is read-only and returns
+              # metadata only (no code, no environment secrets).
+              - Effect: Allow
+                Action: lambda:ListFunctions
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Description: Set as the AWS_DRIFT_ROLE_ARN repository variable in GitHub.
+    Value: !GetAtt DriftCheckRole.Arn
