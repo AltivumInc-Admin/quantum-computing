@@ -109,8 +109,8 @@ const txItems = (ddb) =>
 // ---- CATALOG guardrail -----------------------------------------------------
 
 test("CATALOG credit counts mirror the published pricing", () => {
-  assert.equal(CATALOG.ql_plus_monthly.credits, 1200);
-  assert.equal(CATALOG.ql_pro_monthly.credits, 4000);
+  assert.equal(CATALOG.ql_plus_monthly.credits, 1900);
+  assert.equal(CATALOG.ql_pro_monthly.credits, 6500);
   assert.equal(CATALOG.ql_credits_500.credits, 500);
   assert.equal(CATALOG.ql_credits_10000.credits, 10000);
   assert.equal(CATALOG.ql_plus_monthly.mode, "subscription");
@@ -189,7 +189,7 @@ test("POST /checkout creates a subscription session with server-set metadata", a
   // subscription.metadata.credits on every renewal, so repricing CATALOG changes NEW
   // subscribers only. Existing subscribers keep the grant they signed up with until their
   // subscription metadata is explicitly backfilled.
-  assert.equal(s.subscription_data.metadata.credits, "1200");
+  assert.equal(s.subscription_data.metadata.credits, "1900");
   assert.equal(s.subscription_data.metadata.tier, "plus");
   assert.equal(s.subscription_data.metadata.userId, "user-1");
   // dynamic payment methods: payment_method_types must NEVER be set
@@ -207,9 +207,18 @@ test("POST /checkout reuses an existing Stripe customer", async () => {
   assert.equal(stripe.calls.sessionsCreate[0].customer, "cus_existing");
 });
 
+/** A wallet already on a paid tier. Top-ups are subscriber-only, so every
+ *  top-up test needs one; `stripeCustomerId` also short-circuits ensureCustomer. */
+const paidWallet = (tier = "plus") =>
+  stubDdb({
+    GetItemCommand: {
+      Item: { pk: { S: "WALLET#user-1" }, tier: { S: tier }, stripeCustomerId: { S: "cus_existing" } },
+    },
+  });
+
 test("POST /checkout builds a one-time payment session for a top-up", async () => {
   const stripe = stubStripe();
-  const core = createHandlerCore({ stripe, ddb: stubDdb({ GetItemCommand: {} }), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const core = createHandlerCore({ stripe, ddb: paidWallet(), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
   const s = stripe.calls.sessionsCreate[0];
   assert.equal(s.mode, "payment");
@@ -220,7 +229,7 @@ test("POST /checkout builds a one-time payment session for a top-up", async () =
 
 test("POST /checkout accepts a custom whole-dollar top-up and prices it ad hoc", async () => {
   const stripe = stubStripe();
-  const core = createHandlerCore({ stripe, ddb: stubDdb({ GetItemCommand: {} }), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const core = createHandlerCore({ stripe, ddb: paidWallet("pro"), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd: 37 } }));
   assert.equal(res.statusCode, 200);
   const s = stripe.calls.sessionsCreate[0];
@@ -237,11 +246,54 @@ test("POST /checkout accepts a custom whole-dollar top-up and prices it ad hoc",
 });
 
 test("POST /checkout rejects out-of-bounds or fractional custom amounts", async () => {
-  const core = mk();
+  const core = createHandlerCore({ stripe: stubStripe(), ddb: paidWallet(), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   for (const amountUsd of [4, 501, 12.5, -5, "20", 0]) {
     const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd } }));
     assert.equal(res.statusCode, 400, `amountUsd=${amountUsd} must be rejected`);
   }
+});
+
+// ---- top-ups are subscriber-only -------------------------------------------
+
+test("POST /checkout refuses a top-up from a free account", async () => {
+  // Free gets the curriculum and a capped tutor trial and nothing purchasable.
+  // Selling credits to an account whose tier cannot spend them is a dead-weight
+  // liability and a small fraud on the buyer.
+  for (const body of [{ lookupKey: "ql_credits_2000" }, { amountUsd: 37 }]) {
+    const stripe = stubStripe();
+    const core = createHandlerCore({
+      stripe,
+      ddb: stubDdb({ GetItemCommand: {} }), // no wallet row => free
+      tableName: TABLE,
+      webhookSecret: SECRET,
+      siteOrigin: ORIGIN,
+    });
+    const res = await core(makeEvent({ method: "POST", path: "/checkout", body }));
+    assert.equal(res.statusCode, 403, `${JSON.stringify(body)} must be refused`);
+    // and nothing was created on Stripe's side
+    assert.equal(stripe.calls.sessionsCreate.length, 0);
+    assert.equal(stripe.calls.customersCreate.length, 0);
+  }
+});
+
+test("POST /checkout refuses a top-up after a subscription is cancelled", async () => {
+  // customer.subscription.deleted resets tier to "free", so a lapsed subscriber
+  // loses the top-up path with it — no separate Stripe round-trip needed.
+  const ddb = stubDdb({
+    GetItemCommand: { Item: { pk: { S: "WALLET#user-1" }, tier: { S: "free" }, credits: { N: "400" } } },
+  });
+  const core = createHandlerCore({ stripe: stubStripe(), ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd: 20 } }));
+  assert.equal(res.statusCode, 403);
+});
+
+test("POST /checkout still allows a SUBSCRIPTION from a free account", async () => {
+  // The gate is on top-ups only — subscribing is the entry point and must stay open.
+  const stripe = stubStripe();
+  const core = createHandlerCore({ stripe, ddb: stubDdb({ GetItemCommand: {} }), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_plus_monthly" } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(stripe.calls.sessionsCreate[0].mode, "subscription");
 });
 
 // ---- POST /portal ----------------------------------------------------------

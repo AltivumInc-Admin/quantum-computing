@@ -258,7 +258,7 @@ export const TIERS: Tier[] = [
     name: "Plus",
     taglineKey: "pricingUi.plusTagline",
     priceUsdPerMonth: 19,
-    monthlyCredits: 1200,
+    monthlyCredits: 1900,
     checkoutLookupKey: "ql_plus_monthly",
     // Three bullets, all true today (the credit grant lands via lambda/stripe's
     // invoice.paid handler, and WALLET# rows carry no expiresAt so credits do roll
@@ -274,7 +274,7 @@ export const TIERS: Tier[] = [
     name: "Pro",
     taglineKey: "pricingUi.proTagline",
     priceUsdPerMonth: 59,
-    monthlyCredits: 4000,
+    monthlyCredits: 6500,
     checkoutLookupKey: "ql_pro_monthly",
     // Two bullets: a larger grant is genuinely all Pro delivers over Plus today.
     // "Claude Fable unlocked", "Priority queue on quantum hardware", and "Early access

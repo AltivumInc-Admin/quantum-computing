@@ -123,8 +123,8 @@ export const REQUIRED_WEBHOOK_EVENTS = [
 // into Stripe metadata at session creation and read back, verbatim, by the
 // webhook, so the wallet is never at the mercy of a mis-tagged price.
 export const CATALOG = {
-  ql_plus_monthly: { mode: "subscription", tier: "plus", credits: 1200 },
-  ql_pro_monthly: { mode: "subscription", tier: "pro", credits: 4000 },
+  ql_plus_monthly: { mode: "subscription", tier: "plus", credits: 1900 },
+  ql_pro_monthly: { mode: "subscription", tier: "pro", credits: 6500 },
   ql_credits_500: { mode: "payment", tier: null, credits: 500 },
   ql_credits_2000: { mode: "payment", tier: null, credits: 2000 },
   ql_credits_5000: { mode: "payment", tier: null, credits: 5000 },
@@ -155,6 +155,28 @@ export function createHandlerCore({
       new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
     );
     return res.Item ?? null;
+  }
+
+  /**
+   * Top-ups are a subscriber convenience, not a way in.
+   *
+   * A free account gets the curriculum and a capped tutor trial and nothing
+   * purchasable — so selling it credits would be selling something its tier
+   * cannot spend, which is both a dead-weight liability and a small fraud on
+   * the buyer. Subscriptions are therefore the only entry point; top-ups exist
+   * to extend a subscription that ran dry mid-month.
+   *
+   * This also removes the pay-as-you-go path as a competitor to the tiers: a
+   * grant can never be "worse than just topping up" for someone who has no
+   * ability to top up in the first place.
+   *
+   * The webhook is the ONLY writer of `tier` and resets it to "free" on
+   * customer.subscription.deleted, so this read is authoritative and needs no
+   * separate Stripe round-trip. Absent row => free, matching GET /wallet.
+   */
+  async function hasPaidTier(sub) {
+    const tier = (await readWallet(sub))?.tier?.S ?? "free";
+    return tier === "plus" || tier === "pro";
   }
 
   /**
@@ -741,6 +763,7 @@ export function createHandlerCore({
 
       // ---- Custom top-up: { amountUsd } — whole dollars, bounded, 1:1 credits ----
       if (body?.amountUsd !== undefined) {
+        if (!(await hasPaidTier(sub))) return json(403, { error: "subscription required" });
         const amountUsd = body.amountUsd;
         if (
           !Number.isInteger(amountUsd) ||
@@ -776,6 +799,9 @@ export function createHandlerCore({
 
       const spec = CATALOG[body?.lookupKey];
       if (!spec) return json(400, { error: "unknown lookupKey" });
+      if (spec.mode === "payment" && !(await hasPaidTier(sub))) {
+        return json(403, { error: "subscription required" });
+      }
 
       const prices = await stripe.prices.list({
         lookup_keys: [body.lookupKey],

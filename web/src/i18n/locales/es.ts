@@ -701,7 +701,7 @@ export const es: TranslationDict = {
       "Las lecciones, los cuadernos y el simulador de circuitos se ejecutan en tu navegador, así que podemos mantenerlos gratis para todos, para siempre. El currículo nunca pasa detrás de la billetera.",
     principleWallet: "Una billetera, anclada al dólar",
     principleWalletBody:
-      "Un crédito es un centavo — siempre. Recarga desde {{min}}; los créditos comprados no expiran, y todavía nada los descuenta.",
+      "Un crédito es un centavo — siempre. Los planes incluyen créditos cada mes, y quienes están suscritos pueden recargar desde {{min}}; los créditos comprados no expiran, y todavía nada los descuenta.",
     principleLine: "Una línea clara",
     // Ver el comentario en en.ts: la tabla de tarifas de esta misma página publica SV1 y
     // DM1 por minuto, así que la promesa absoluta de que nada más costará créditos
@@ -710,7 +710,7 @@ export const es: TranslationDict = {
       "Los créditos medirán el cómputo de pago y la tutoría de pago: preguntas al tutor de IA, ejecuciones en hardware cuántico real y minutos en los simuladores gestionados en la nube — cada tarifa está publicada abajo. El currículo, el simulador del navegador y el playground siguen gratis. Hoy todavía no se mide ninguna de las tres.",
     tiersHeading: "Tres formas de fondear la billetera",
     tiersIntro:
-      "Toda cuenta es de pago por uso en el fondo: recarga cualquier monto y se gastará en lo que se mida cuando se lance la medición. Plus y Pro incluyen una cantidad fija de créditos cada mes — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones.",
+      "Plus y Pro incluyen una cantidad fija de créditos cada mes — nunca un plan todo-incluido, para que el trato sea honesto en ambas direcciones. Si se te acaban antes de tiempo, puedes recargar cualquier monto en dólares enteros al mismo peg de un centavo. Las recargas extienden un plan, no lo reemplazan.",
     bestForRegulars: "Ideal para uso regular",
     forever: "para siempre",
     perMonth: "/ mes",
@@ -800,12 +800,12 @@ export const es: TranslationDict = {
     },
     topUpTitle: "Recarga cualquier monto",
     topUpBody:
-      "{{credits}} por dólar — el anclaje de $0.01, siempre. Dólares enteros de ${{min}} a ${{max}}.",
+      "{{credits}} por dólar — el anclaje de $0.01, siempre. Dólares enteros de ${{min}} a ${{max}}, para quienes están suscritos y se quedan sin créditos a mitad de mes.",
     amountPresets: "Montos predefinidos",
     customAmount: "Monto personalizado (USD)",
     invalidAmount: "Ingresa un monto en dólares enteros de ${{min}} a ${{max}}.",
     topUpFootnote:
-      "Los créditos comprados no expiran. Verás el monto exacto en la página de checkout de Stripe antes de pagar.",
+      "Las recargas requieren un plan activo. Los créditos comprados no expiran, y verás el monto exacto en la página de checkout de Stripe antes de pagar.",
     checkoutFailed: "No se pudo iniciar el checkout. Inténtalo de nuevo.",
     freeTagline: "Toda la plataforma de aprendizaje. Sin tarjeta, sin reloj.",
     freeFootnote: "Gratis para siempre. Aprender nunca pasa detrás de la billetera.",
@@ -818,13 +818,13 @@ export const es: TranslationDict = {
     plusTagline: "Créditos mensuales, incluidos en tu suscripción.",
     plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
     plusF0: "Todo lo de Gratis",
-    plusF1: "1,200 créditos cada mes",
+    plusF1: "1,900 créditos cada mes",
     plusF2: "Los créditos se acumulan mientras estés suscrito",
     proTagline: "El paquete mensual de créditos más grande.",
     proFootnote:
       "Para quienes más lo usan. Cancela cuando quieras; los créditos no expiran.",
     proF0: "Todo lo de Plus",
-    proF1: "4,000 créditos cada mes",
+    proF1: "6,500 créditos cada mes — un 10% de bonificación sobre pago por uso",
     techSuperconducting108: "Superconductor, 108 cúbits",
     techSuperconducting: "Superconductor",
     techNeutralAtom: "Analógico de átomos neutros",

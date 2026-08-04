@@ -84,25 +84,38 @@ describe("tiers", () => {
   });
 
   /**
-   * The inverse of this assertion shipped until 2026-08-03 ("worth at least the price
-   * paid, never worse than PAYG") and guarded a tier that LOST money: Plus granted $18.90
-   * of credits for $18, Pro $62.00 for $59, so a subscriber who redeemed everything cost
-   * more than they paid. A face value below the price is what lets the tier carry margin
-   * even at 100% redemption. Do not flip this back.
+   * ANTI-DOMINATION GUARD. Credits are sold openly at CREDIT_USD, so a subscriber can
+   * always compare their monthly grant against simply topping up the same dollar amount.
+   * If the grant is worth less than the price, the tier is strictly dominated by
+   * pay-as-you-go and there is no rational reason to subscribe — including for someone
+   * already subscribed, looking at their own renewal. Parity is the floor.
+   *
+   * This was briefly inverted on 2026-08-03 to "worth LESS than the price paid", on the
+   * theory that a grant below the price is what makes a tier profitable. That was wrong:
+   * solvency comes from the markup between what a credit sells for and what it costs to
+   * serve, not from shrinking the grant. Under a markup, a grant at parity is comfortably
+   * profitable. Do not invert this again.
+   *
+   * There is deliberately NO upper bound asserted here. The real ceiling is a function of
+   * the markup, and this repository is public — encoding it would disclose the spread.
+   * Before raising a grant, check it against the private economics, not against this file.
    */
-  it("monthly credits are worth less than the price paid (the subscription carries margin)", () => {
+  it("monthly credits are worth at least the price paid (never worse than pay-as-you-go)", () => {
     for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
-      expect(tier.monthlyCredits * CREDIT_USD).toBeLessThan(tier.priceUsdPerMonth);
+      expect(tier.monthlyCredits * CREDIT_USD).toBeGreaterThanOrEqual(tier.priceUsdPerMonth);
     }
   });
 
-  it("monthly credits are still worth at least half the price paid", () => {
-    // Margin is not a licence to make the grant token. Below roughly half, the tier stops
-    // reading as a credit bundle and starts reading as a paywall with a tip jar.
-    for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
-      expect(tier.monthlyCredits * CREDIT_USD).toBeGreaterThanOrEqual(
-        tier.priceUsdPerMonth * 0.5,
-      );
+  it("a larger tier is never a worse credit rate than a smaller one", () => {
+    // Monotonic value: if Pro costs more than Plus, its credits-per-dollar must not be
+    // worse, or the upgrade is a downgrade at the only thing the tiers are measured on.
+    const paid = TIERS.filter((t) => t.priceUsdPerMonth > 0).sort(
+      (a, b) => a.priceUsdPerMonth - b.priceUsdPerMonth,
+    );
+    for (let i = 1; i < paid.length; i++) {
+      const prev = paid[i - 1].monthlyCredits / paid[i - 1].priceUsdPerMonth;
+      const curr = paid[i].monthlyCredits / paid[i].priceUsdPerMonth;
+      expect(curr).toBeGreaterThanOrEqual(prev);
     }
   });
 
