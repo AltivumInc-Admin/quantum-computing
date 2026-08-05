@@ -1,4 +1,4 @@
-.PHONY: setup lab test devices cost lint deploy-infra teardown-infra lock-container
+.PHONY: setup lab test devices cost lint drift deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -25,6 +25,12 @@ cost:
 lint:
 	ruff check .
 	ruff format --check .
+
+drift:
+	@# Is what is RUNNING what is in git? Merging is not shipping, and a green CI plus a
+	@# closed PR plus an UPDATE_COMPLETE stack can all be true while production runs
+	@# week-old code. Needs AWS read access; exits non-zero on drift.
+	node scripts/check-lambda-drift.mjs
 
 deploy-infra:
 	bash infra/scripts/deploy-infra.sh
