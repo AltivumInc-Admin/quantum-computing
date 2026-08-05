@@ -125,20 +125,31 @@ Two facts from it that change how you write code, and are worth carrying in your
 
 ### Open work to reopen the storefront
 
+- **FIRST — the shipped copy is now false.** Both locales still say curriculum hardware runs
+  are platform-sponsored (14 strings in `en.ts`, 12 in `es.ts`; one is test-locked, so the
+  test changes too). Since the 2026-08-05 QPU deploy that is no longer merely stale, it is
+  **wrong**: `LIFETIME_CAP_MICROS` is `0` and no wallet table is wired, so every submit
+  returns 402. Rule 13 says never advertise what the deployed system cannot do — this is
+  that, live on the pricing page today. Fix the copy or wire the funding; do not leave both.
 - Correct `RATES` to true Bedrock cost, and read the shared markup from **deployed
   configuration** (an env var, like `TUTOR_MODEL_ID`) in both metering paths — never a
   committed constant, per rule 6. One value, injected once, consumed by both.
-- Enable prompt caching on the tutor system prompt (`cachePoint` in the Converse call).
-- Move QPU debit rates onto the same markup.
+- Move QPU debit rates onto the same markup. Until this lands, both stacks' `WalletTableName`
+  stays `""` on purpose — enabling the wallet at raw cost would introduce a metered surface at
+  a markup that differs from the others, which rule 5 forbids.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
-  tutor `ROSTER`.
+  tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs:27`).
 - Add `expiresAt` to subscription WALLET# rows with expire-soonest-first spend ordering.
-- Retire the shipped pricing strings in both locales that still say hardware runs are
-  platform-sponsored (one is test-locked, so the test changes too).
+  (`lambda/stripe/index.mjs` sets `expiresAt` on idempotency rows only — WALLET# rows have none.)
 - **Resolve the open product question in `docs/pricing-cost-basis.md`** — the tier is
   dominated by pay-as-you-go until model access is actually gated on it.
-- Deploy the Lambdas — they lag `main`. The live QPU function has no wallet metering and
-  the live tutor is free and unmetered. **Merging is not shipping.**
+
+**Merging is not shipping — now guarded, not remembered.** The deploy lag closed 2026-08-05:
+all 9 Lambdas match git, `make drift` reports it locally, and `.github/workflows/drift.yml`
+runs daily at 13:00 UTC via the read-only OIDC role `quantum-ci-drift-check` (repo variable
+`AWS_DRIFT_ROLE_ARN`; the job skips cleanly if unset). Still true, and deliberate: the live
+tutor is **free and unmetered** (`UserPoolId`/`WalletTableName` both `""`) and the live QPU
+function has **no wallet metering**.
 
 ## Development Guidelines
 
