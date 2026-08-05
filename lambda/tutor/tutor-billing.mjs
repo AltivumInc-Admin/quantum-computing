@@ -111,14 +111,41 @@ export function resolveModel(tier, requested) {
  * The free tier is metered at zero regardless of usage: free learning is the
  * funnel, and the platform eats Haiku's cost as customer acquisition.
  */
+/**
+ * Prompt-cache price multipliers, applied to the model's INPUT rate.
+ *
+ * Measured against real Cost Explorer billing, not assumed: on Sonnet 4.6 a cache read
+ * billed at $0.33/1M against a $3.30 input rate (0.1x) and a cache write at $4.125 (1.25x).
+ *
+ * Note a cache WRITE costs MORE than sending the same tokens uncached. Caching is a net
+ * win across a lesson's questions, but the first one is dearer than it used to be.
+ */
+export const CACHE_READ_MULTIPLIER = 0.1;
+export const CACHE_WRITE_MULTIPLIER = 1.25;
+
+/**
+ * `usage.inputTokens` is the UNCACHED REMAINDER, not the full prompt — verified against the
+ * live service: a 5,545-token system prompt reports inputTokens=14 with
+ * cacheReadInputTokens=5529 once cached. Billing only `inputTokens` would therefore stop
+ * charging for ~99.7% of the prompt the moment a cachePoint was added, silently. Cache
+ * reads and writes have to be priced explicitly, or caching becomes a giveaway.
+ */
 export function creditsForUsage(model, usage, { free = false } = {}) {
   if (free) return 0;
   const rate = RATES[model];
   if (!rate) return 0; // unpriced model: never charge for what we can't price
   const inTok = Number(usage?.inputTokens ?? 0);
   const outTok = Number(usage?.outputTokens ?? 0);
-  if (!Number.isFinite(inTok) || !Number.isFinite(outTok)) return 0;
-  const micros = (inTok * rate.in + outTok * rate.out) / 1_000_000;
+  const cacheRead = Number(usage?.cacheReadInputTokens ?? 0);
+  const cacheWrite = Number(usage?.cacheWriteInputTokens ?? 0);
+  // Any garbled field voids the whole charge — the standing fail-toward-undercharging rule.
+  if (![inTok, outTok, cacheRead, cacheWrite].every(Number.isFinite)) return 0;
+  const micros =
+    (inTok * rate.in +
+      outTok * rate.out +
+      cacheRead * rate.in * CACHE_READ_MULTIPLIER +
+      cacheWrite * rate.in * CACHE_WRITE_MULTIPLIER) /
+    1_000_000;
   return Math.ceil(micros / MICROS_PER_CREDIT);
 }
 
@@ -144,8 +171,14 @@ export function estimateTokens(chars) {
  * dishonesty this whole subsystem exists to avoid.
  */
 export function maxCreditsFor(model, { inputTokens, maxOutputTokens }) {
+  // The worst case is a cache WRITE, not an uncached send: writing the prefix bills at
+  // CACHE_WRITE_MULTIPLIER x the input rate. Reserving the uncached figure would
+  // under-reserve on precisely the first question of every lesson — the one that writes
+  // the cache — and the settle path caps the charge at the reserve, so the shortfall
+  // would be silently absorbed rather than billed.
   return creditsForUsage(model, {
-    inputTokens,
+    inputTokens: 0,
+    cacheWriteInputTokens: inputTokens,
     outputTokens: maxOutputTokens,
   });
 }

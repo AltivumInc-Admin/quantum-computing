@@ -280,7 +280,21 @@ export function createHandlerCore({
         // attribution rides on it); paid models invoke their cross-region
         // system profile directly.
         modelId: model === "haiku-4-5" ? modelId : PROFILE_IDS[model],
-        system: [{ text: systemText }],
+        // The lesson text is byte-identical for every question on a lesson, so it is a
+        // perfect cache prefix. The checkpoint goes at the END of `system` — Bedrock
+        // processes tools -> system -> messages, so this caches everything stable and
+        // leaves the learner's question (the only varying part) outside the prefix.
+        //
+        // MEASURED CAVEAT: Claude Haiku 4.5 requires 4,096 tokens per checkpoint, and only
+        // 3 of our 7 lessons clear it (06-hybrid-jobs misses by ~159 tokens). Under the
+        // minimum, Bedrock accepts the request and simply does not cache — no error, no
+        // warning. So this is a partial win by design, not a bug, and it costs nothing on
+        // the lessons it cannot help. Re-measure with probe-tokens.mjs if lesson text grows.
+        //
+        // Do NOT interpolate anything per-request ahead of this point. A timestamp, a user
+        // id, or a reordered heading list invalidates the prefix and silently restores full
+        // input cost with no visible symptom.
+        system: [{ text: systemText }, { cachePoint: { type: "default" } }],
         messages: [{ role: "user", content: [{ text: question }] }],
         inferenceConfig: { maxTokens: MAX_TOKENS, temperature: 0.2 },
       });
