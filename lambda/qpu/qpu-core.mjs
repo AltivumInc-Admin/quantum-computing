@@ -602,55 +602,102 @@ export function createHandlerCore({
   async function releaseReservation(sub, day, cost, idempotencyKey, funding = "allowance") {
     // Refund whichever source actually paid. The task-row RESERVED→RELEASED
     // guard below makes the WHOLE release idempotent for both shapes.
-    const refundLeg =
-      funding === "wallet"
-        ? {
-            Update: {
-              TableName: walletTable,
-              Key: { pk: { S: `WALLET#${sub}` } },
-              UpdateExpression: "ADD credits :pos",
-              ExpressionAttributeValues: { ":pos": { N: String(creditsForMicros(cost)) } },
-            },
-          }
-        : {
-            Update: {
-              TableName: ledgerTable,
-              Key: { pk: { S: `USER#${sub}` } },
-              UpdateExpression: "ADD spentMicros :neg",
-              ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
-            },
-          };
-    await ddb.send(
-      new TransactWriteItemsCommand({
-        TransactItems: [
-          refundLeg,
-          {
-            Update: {
-              TableName: ledgerTable,
-              Key: { pk: { S: `DAY#${day}` } },
-              UpdateExpression: "ADD dayMicros :neg",
-              ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
-            },
-          },
-          {
-            Update: {
-              TableName: tasksTable,
-              Key: { idempotencyKey: { S: idempotencyKey } },
-              // Idempotent refund: the whole all-or-none release only fires while
-              // the task is still RESERVED, so a retry (or the PR-4 sweeper)
-              // running after a successful release can't double-decrement.
-              UpdateExpression: "SET #s = :released",
-              ConditionExpression: "attribute_exists(idempotencyKey) AND #s = :reserved",
-              ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: {
-                ":released": { S: "RELEASED" },
-                ":reserved": { S: "RESERVED" },
+    let refundLeg;
+    let refundCredits = 0;
+    if (funding === "wallet") {
+      // Refund the credits RECORDED on the task row at debit time — never a
+      // re-derivation from cost. The debit computed the charge once and wrote
+      // it as creditsCharged; re-deriving here is identical today but diverges
+      // the moment the credit conversion changes between debit and release,
+      // and it diverges in the OVERCHARGING direction (rule 7). Same pattern
+      // as reconcile.mjs, which reads the recorded figure off the row.
+      const row = await ddb.send(
+        new GetItemCommand({ TableName: tasksTable, Key: { idempotencyKey: { S: idempotencyKey } } }),
+      );
+      const recorded = Number(row.Item?.creditsCharged?.N);
+      if (Number.isFinite(recorded) && recorded > 0) {
+        refundCredits = recorded;
+      } else {
+        // Should be impossible — the reservation Put always records the charge
+        // on a wallet-funded row. Log it (an unrecorded charge is an audit
+        // gap), then fall back to the derivation rather than strand the money.
+        console.error("qpu-release-credits-unrecorded", { sub, idempotencyKey, funding });
+        refundCredits = creditsForMicros(cost);
+      }
+      refundLeg = {
+        Update: {
+          TableName: walletTable,
+          Key: { pk: { S: `WALLET#${sub}` } },
+          UpdateExpression: "ADD credits :pos",
+          // A refund must never MINT a wallet row (rule 11): an unconditional
+          // ADD against a missing key would materialize credits nobody paid
+          // for. The catch below turns this leg's failure into a loud log.
+          ConditionExpression: "attribute_exists(pk)",
+          ExpressionAttributeValues: { ":pos": { N: String(refundCredits) } },
+        },
+      };
+    } else {
+      refundLeg = {
+        Update: {
+          TableName: ledgerTable,
+          Key: { pk: { S: `USER#${sub}` } },
+          UpdateExpression: "ADD spentMicros :neg",
+          ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
+        },
+      };
+    }
+    try {
+      await ddb.send(
+        new TransactWriteItemsCommand({
+          TransactItems: [
+            refundLeg,
+            {
+              Update: {
+                TableName: ledgerTable,
+                Key: { pk: { S: `DAY#${day}` } },
+                UpdateExpression: "ADD dayMicros :neg",
+                ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
               },
             },
-          },
-        ],
-      }),
-    );
+            {
+              Update: {
+                TableName: tasksTable,
+                Key: { idempotencyKey: { S: idempotencyKey } },
+                // Idempotent refund: the whole all-or-none release only fires while
+                // the task is still RESERVED, so a retry (or the PR-4 sweeper)
+                // running after a successful release can't double-decrement.
+                UpdateExpression: "SET #s = :released",
+                ConditionExpression: "attribute_exists(idempotencyKey) AND #s = :reserved",
+                ExpressionAttributeNames: { "#s": "status" },
+                ExpressionAttributeValues: {
+                  ":released": { S: "RELEASED" },
+                  ":reserved": { S: "RESERVED" },
+                },
+              },
+            },
+          ],
+        }),
+      );
+    } catch (err) {
+      // The one condition handled HERE rather than rethrown to the caller's
+      // generic qpu-release-failed log: the wallet row is gone, so the refund
+      // cannot be delivered without minting a row nobody paid for (rule 11).
+      // This is money owed a learner — the log line is the alarm hook.
+      if (
+        funding === "wallet" &&
+        err?.name === "TransactionCanceledException" &&
+        err.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed"
+      ) {
+        console.error("qpu-refund-wallet-row-missing", {
+          sub,
+          idempotencyKey,
+          day,
+          credits: refundCredits,
+        });
+        return;
+      }
+      throw err;
+    }
   }
 
   return async function core(event) {

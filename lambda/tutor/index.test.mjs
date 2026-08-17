@@ -636,6 +636,48 @@ test("M10: a learner owing clawback credits cannot spend on a paid model", async
   assert.ok(stream.text().includes(INSUFFICIENT_CREDITS_MESSAGE));
 });
 
+// ---- the REAL wallet wiring (buildWallet) -----------------------------------
+// The stub wallets above prove the handler's sequencing; this proves the
+// DynamoDB shape the production wallet actually sends. The refund (credit) leg
+// is the one that can MINT: an unconditional ADD against a missing WALLET# key
+// materializes a row holding credits nobody paid for (rule 11).
+
+import { buildWallet } from "./index.mjs";
+
+test("N1: buildWallet.credit never mints a missing wallet row — conditional, logged loudly, not thrown", async () => {
+  const sent = [];
+  const ddb = {
+    send: async (cmd) => {
+      sent.push(cmd.input);
+      throw Object.assign(new Error("The conditional request failed"), {
+        name: "ConditionalCheckFailedException",
+      });
+    },
+  };
+  const wallet = buildWallet({ table: "wallet", ddb });
+  const errors = [];
+  const original = console.error;
+  console.error = (...a) => errors.push(a.join(" "));
+  try {
+    // Must NOT throw: this is the refund path — the learner already lost the
+    // generation, and a throw here would fail a response that already streamed.
+    await wallet.credit("user-1", 40);
+  } finally {
+    console.error = original;
+  }
+  assert.match(
+    sent[0].ConditionExpression ?? "",
+    /attribute_exists\(pk\)/,
+    "a refund must never create the wallet row",
+  );
+  assert.match(sent[0].UpdateExpression, /ADD credits :pos/);
+  assert.equal(sent[0].ExpressionAttributeValues[":pos"].N, "40");
+  assert.ok(
+    errors.some((l) => l.includes("tutorRefundNoWalletRow")),
+    "money owed a learner must alarm — the log line is the metric-filter hook",
+  );
+});
+
 // ---- the request shape itself ---------------------------------------------
 // Everything below is a 400 or a silent cost bug on the real API, and none of
 // it is visible from the streamed text. The Bedrock-era handler would have hit

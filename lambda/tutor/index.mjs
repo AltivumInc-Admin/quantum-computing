@@ -429,18 +429,19 @@ export function createHandlerCore({
 // the pre-metering tutor. Same DynamoDB idiom as lambda/qpu's wallet legs:
 // conditional debit that can neither go negative nor mint a phantom row, and
 // an unconditional refund credit.
-function buildWallet() {
-  const table = process.env.WALLET_TABLE;
+// Exported (with injectable deps) so the handler test can pin the DynamoDB
+// shape of the credit leg without a live client; production calls it bare.
+export function buildWallet({ table = process.env.WALLET_TABLE, ddb } = {}) {
   if (!table) return undefined;
-  const ddb = new DynamoDBClient({});
+  const client = ddb ?? new DynamoDBClient({});
   const key = (sub) => ({ pk: { S: `WALLET#${sub}` } });
   return {
     async readTier(sub) {
-      const res = await ddb.send(new GetItemCommand({ TableName: table, Key: key(sub) }));
+      const res = await client.send(new GetItemCommand({ TableName: table, Key: key(sub) }));
       return res.Item?.tier?.S ?? "free";
     },
     async debit(sub, n) {
-      await ddb.send(
+      await client.send(
         new UpdateItemCommand({
           TableName: table,
           Key: key(sub),
@@ -460,14 +461,31 @@ function buildWallet() {
       );
     },
     async credit(sub, n) {
-      await ddb.send(
-        new UpdateItemCommand({
-          TableName: table,
-          Key: key(sub),
-          UpdateExpression: "ADD credits :pos",
-          ExpressionAttributeValues: { ":pos": { N: String(n) } },
-        })
-      );
+      try {
+        await client.send(
+          new UpdateItemCommand({
+            TableName: table,
+            Key: key(sub),
+            UpdateExpression: "ADD credits :pos",
+            // A refund must never MINT a wallet row (rule 11): an unconditional
+            // ADD against a missing WALLET# key would materialize credits
+            // nobody paid for. The debit above already requires the row, so a
+            // refund against a missing one means it vanished mid-request.
+            ConditionExpression: "attribute_exists(pk)",
+            ExpressionAttributeValues: { ":pos": { N: String(n) } },
+          })
+        );
+      } catch (e) {
+        if (e?.name === "ConditionalCheckFailedException") {
+          // Money owed a learner that cannot be delivered without minting.
+          // Never throw on the refund path — the answer already streamed; the
+          // loud structured line is the alarm hook (same idiom as
+          // tutorRefundFailed in the settle path above).
+          console.error(JSON.stringify({ tutorRefundNoWalletRow: true, sub, refund: n }));
+          return;
+        }
+        throw e;
+      }
     },
   };
 }

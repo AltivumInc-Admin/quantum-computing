@@ -138,6 +138,11 @@ export function createReconcileCore({
               TableName: walletTable,
               Key: { pk: { S: `WALLET#${sub}` } },
               UpdateExpression: "ADD credits :pos",
+              // A refund must never MINT a wallet row (rule 11): an
+              // unconditional ADD against a missing key would materialize
+              // credits nobody paid for. The catch below turns this leg's
+              // failure into a loud log instead of a thrown sweep-abort.
+              ConditionExpression: "attribute_exists(pk)",
               ExpressionAttributeValues: { ":pos": { N: String(funding.creditsCharged) } },
             },
           }
@@ -179,7 +184,20 @@ export function createReconcileCore({
         // Leg 2 carries the status guard here (the two ledger ADDs come first), so a
         // ConditionalCheckFailed there = already reconciled. A TransactionConflict is
         // NOT that, and must surface: a silently dropped refund is real money.
-        if (!isAlreadyTerminal(e, 2)) throw e;
+        if (isAlreadyTerminal(e, 2)) return;
+        // Leg 0 on a wallet-funded row carries attribute_exists(pk): a
+        // ConditionalCheckFailed there means the wallet row is GONE, so the
+        // refund cannot be delivered without minting a row nobody paid for
+        // (rule 11). That is money owed a learner — surface it loudly (the log
+        // line is the alarm hook) rather than abort the whole sweep; the row
+        // stays SUBMITTED, so every later tick re-surfaces it for review.
+        if (funding?.fundedBy === "wallet" && isAlreadyTerminal(e, 0)) {
+          log(
+            `qpu-reconcile: wallet row missing for refund ${idempotencyKey} (${sub}, ${funding.creditsCharged} credits) — money owed the learner needs review`,
+          );
+          return;
+        }
+        throw e;
       });
   }
 
