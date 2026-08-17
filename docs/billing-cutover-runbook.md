@@ -3,8 +3,20 @@
 Turning on paid metering: subscriptions grant credits, the AI tutor and QPU runs
 spend them, and the platform stops absorbing either cost.
 
-**Authored 2026-07-26.** Every command below was grounded against live account
-205930636302 on that date. Re-verify anything marked `CONFIRM` before running it.
+**Authored 2026-07-26.** Every command below was grounded against the live Altivum
+production account on that date. Re-verify anything marked `CONFIRM` before running it.
+
+This repo is public, so account numbers are referenced by shell variable. Export them
+before running anything (see `docs/account-migration-runbook.md` for the full block):
+
+```sh
+export SRC_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+export SRC_PROFILE_ID=$(aws bedrock list-inference-profiles --region us-east-2 \
+  --type-equals APPLICATION \
+  --query "inferenceProfileSummaries[?inferenceProfileName=='quantum-ask-tutor'].inferenceProfileId" \
+  --output text)
+: "${SRC_ACCOUNT:?}" "${SRC_PROFILE_ID:?}"
+```
 
 ---
 
@@ -71,7 +83,7 @@ handler read a field retired from the Stripe SDK) plus the pricing-copy honesty
 work.
 
 ```bash
-cd /Users/cperez/dev/altivum-dev/quantum
+cd /Users/cperez/dev/altivum-inc/quantum
 git checkout fix/billing-blockers
 git status --short          # review; stage explicitly, never `git add -A`
 cd web && npm test && npm run lint && npm run build
@@ -89,7 +101,7 @@ hashing it — `sha256 e4951eb0…` on both). Merging is not shipping: there is 
 deploy automation for any Lambda in this repo.
 
 ```bash
-cd /Users/cperez/dev/altivum-dev/quantum/lambda/stripe
+cd /Users/cperez/dev/altivum-inc/quantum/lambda/stripe
 npm ci && npm test                 # 33/33
 sam build
 sam deploy --stack-name quantum-stripe --region us-east-2 \
@@ -248,7 +260,7 @@ Current parameters to preserve: `AlertEmail=christian.perez@altivum.io`,
 `FunctionUrlAuthType=AWS_IAM`, `LogRetentionInDays=30`, `MaxConcurrency=5`,
 `AllowedOrigin=https://quantum.altivum.ai`,
 `FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0`,
-`ModelId=arn:aws:bedrock:us-east-2:205930636302:application-inference-profile/q050egz0q4mb`.
+`ModelId=arn:aws:bedrock:us-east-2:$SRC_ACCOUNT:application-inference-profile/$SRC_PROFILE_ID`.
 
 **New in this deploy — tutor credit metering.** Three parameters turn it on;
 leaving them empty keeps the free Haiku tutor exactly as it is today and makes
@@ -312,7 +324,7 @@ and adds `braket:SearchQuantumTasks` for orphan recovery.
 Preserve: `UserPoolClientId=2sg8nejrf2j8p28j6khjil99ir`,
 `UserPoolId=us-east-2_aRydPmAjj`, `SiteOrigin=https://quantum.altivum.ai`,
 `EdgeSecretName=quantum-qpu-edge-secret`,
-`ResultsBucket=amazon-braket-eu-north-1-205930636302`, `MonthlyBraketBudget=150`,
+`ResultsBucket=amazon-braket-eu-north-1-$SRC_ACCOUNT`, `MonthlyBraketBudget=150`,
 `AlertEmail`, `LogRetentionInDays=30`, `MaxConcurrency=5`. Plus the new
 `WalletTableName`.
 

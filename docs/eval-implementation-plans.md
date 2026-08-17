@@ -1526,7 +1526,7 @@ This plan presents the three real options (WAF cannot attach directly to a Lambd
 
 ## Prerequisites
 
-- AWS CLI v2 + SAM CLI configured for the deploy account (the live profile per `policy.json` is account `205930636302`, region `us-east-2`; the inference profile is `arn:aws:bedrock:us-east-2:205930636302:application-inference-profile/q050egz0q4mb`).
+- AWS CLI v2 + SAM CLI configured for the deploy account (the live profile per `policy.json` is account `$SRC_ACCOUNT`, region `us-east-2`; the inference profile is `arn:aws:bedrock:us-east-2:$SRC_ACCOUNT:application-inference-profile/$SRC_PROFILE_ID`).
 - Permission to create CloudFront distributions, WAFv2 web ACLs (**CLOUDFRONT scope = us-east-1/global**), and to run `aws lambda add-permission` (OAC resource policy must be set via CLI — the Lambda console cannot edit it).
 - `cfn-lint` for template validation (CI already runs the IaC gate elsewhere; validate locally too).
 - Knowledge of the verified AWS constraints below; do not deviate from them:
@@ -1563,7 +1563,7 @@ aws lambda add-permission --function-name quantum-tutor \
   --statement-id AllowCloudFrontOAC \
   --action lambda:InvokeFunctionUrl \
   --principal cloudfront.amazonaws.com \
-  --source-arn arn:aws:cloudfront::205930636302:distribution/<DistributionId> \
+  --source-arn arn:aws:cloudfront::$SRC_ACCOUNT:distribution/<DistributionId> \
   --region us-east-2
 ```
 

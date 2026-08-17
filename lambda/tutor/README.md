@@ -289,7 +289,7 @@ AIP ARN (passed as `ModelId`) instead of the raw model id, so the AIP's tags lan
 every billing record. Current AIP (us-east-2):
 
 ```
-quantum-ask-tutor  ->  arn:aws:bedrock:us-east-2:205930636302:application-inference-profile/q050egz0q4mb
+quantum-ask-tutor  ->  arn:aws:bedrock:us-east-2:$SRC_ACCOUNT:application-inference-profile/$SRC_PROFILE_ID
    wraps system profile  us.anthropic.claude-haiku-4-5-20251001-v1:0   (tags: Project/Feature/CostCategory)
 ```
 
@@ -299,7 +299,7 @@ Recreate it if needed:
 aws bedrock create-inference-profile --region us-east-2 \
   --inference-profile-name quantum-ask-tutor \
   --description "Cost attribution for the quantum portal gen-AI lesson tutor" \
-  --model-source copyFrom=arn:aws:bedrock:us-east-2:205930636302:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --model-source copyFrom=arn:aws:bedrock:us-east-2:$SRC_ACCOUNT:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0 \
   --tags '[{"key":"Project","value":"quantum"},{"key":"Feature","value":"ask-tutor"},{"key":"CostCategory","value":"genai"}]'
 # then redeploy with ModelId=<the returned application-inference-profile ARN>
 ```
