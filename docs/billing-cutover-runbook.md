@@ -45,13 +45,19 @@ and neither is negotiable:
 | Storefront | CLOSED | `aws amplify get-app --app-id d1ao02to23x85y --query 'app.environmentVariables.NEXT_PUBLIC_BILLING_URL'` → `null` |
 | Wallet table | empty (nobody harmed) | `aws dynamodb scan --table-name quantum-stripe-wallet --region us-east-2 --select COUNT` |
 | Stripe live volume | `$0.00` | dashboard, acct `acct_1TuFow07hJdXv6GV` |
-| GitHub Actions | billing-locked | jobs fail in <5s with `steps: []` |
-| Merge gate | `CI (CodeBuild standby)`, `strict: true` | `infra/ci-standby/failover.sh status` |
+| GitHub Actions | **restored** (2026-08-17: PRs #231/#232 ran the normal workflow end to end) | `gh run list --limit 3` shows completed `pull_request` runs |
+| Merge gate | the 8 GHA job contexts required, `strict: true`, `enforce_admins` | `gh api repos/:owner/:repo/branches/main/protection` |
 
 **Value to restore when re-opening:**
 `NEXT_PUBLIC_BILLING_URL=https://bfiloz43aa.execute-api.us-east-2.amazonaws.com`
 
-### The CI ritual (GHA is locked; every PR needs this)
+### The CI ritual (FALLBACK ONLY — GHA was restored 2026-08-17)
+
+> GitHub Actions billing was restored and PRs run the normal `ci.yml` workflow;
+> the required contexts on `main` are the 8 GHA jobs, not `CI (CodeBuild
+> standby)`. Keep this ritual — the standby infra still exists — but reach for
+> it only if GHA locks again, and re-point branch protection first
+> (`infra/ci-standby/failover.sh`).
 
 ```bash
 # 1. build
@@ -90,7 +96,7 @@ cd web && npm test && npm run lint && npm run build
 cd ../lambda/stripe && npm test
 ```
 
-Commit, push, open PR, run the CI ritual, squash-merge.
+Commit, push, open PR, let CI go green (8 checks), squash-merge.
 
 ### 1.1b Deploy `quantum-stripe` — the fix only exists in git until you do
 
@@ -102,7 +108,7 @@ deploy automation for any Lambda in this repo.
 
 ```bash
 cd /Users/cperez/dev/altivum-inc/quantum/lambda/stripe
-npm ci && npm test                 # 33/33
+npm ci && npm test                 # all green — count grows with the suite
 sam build
 sam deploy --stack-name quantum-stripe --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
@@ -219,20 +225,31 @@ Verify on the live page: `Get Plus`, `Get Pro` present; `Launching soon` absent.
 Everything upstream is offline tests against a stubbed SDK; nothing has ever
 exercised a real Stripe webhook against this handler.
 
-1. Buy a **$5 top-up** with a real card on quantum.altivum.ai.
-2. Confirm the wallet row appears:
+1. Buy a **Plus subscription** with a real card. This is the path that was
+   broken, and it must come FIRST: top-ups 403 with `subscription required`
+   for a free-tier account (`hasPaidTier`, lambda/stripe/index.mjs), so the
+   old top-up-first ordering of this gate could never be executed. Expect
+   `tier` = `plus` and `credits` += the Plus `monthlyCredits` in
+   `web/src/lib/pricing.ts` (`TIERS`; `CATALOG` in `lambda/stripe/index.mjs`
+   must agree). Per CLAUDE.md rule 8 the figures are deliberately NOT restated
+   here — a hardcoded number in this step has already gone stale across one
+   repricing. If the subscriber carries clawback debt, renewals garnish it
+   first (#218): expect `credits` += grant − debt.
+2. Confirm the wallet row appeared:
    ```bash
    aws dynamodb get-item --table-name quantum-stripe-wallet --region us-east-2 \
      --key '{"pk":{"S":"WALLET#<your-cognito-sub>"}}' --output json
    ```
-   Expect `credits` = 500.
-3. Buy a **Plus subscription** ($18). This is the path that was broken.
-   Expect `credits` += 1890 and `tier` = `plus`.
+3. Then buy a **$5 top-up**. Expect `credits` += 500.
 4. Check the endpoint returned 2xx: Stripe Dashboard → Developers → Webhooks →
    recent deliveries. A 2xx with **no** matching wallet row means the fix did not
    land — **STOP and roll back**.
-5. Refund both in Stripe when done. Note: **there is no clawback** — refunding
-   does not remove the credits. Zero them by hand if it matters.
+5. Refund both in Stripe when done. **Clawback is live** (`charge.refunded` →
+   `reclaim`, pro-rated for partial refunds; disputes pro-rate against the
+   receipt's `amountPaidCents`). Confirm `credits` returns to 0 on its own — a
+   leftover balance means the webhook missed the refund events. If a clawback
+   exceeds the balance, the shortfall lands in `clawbackOwedCredits` (visible in
+   `GET /wallet`) and both metered backends refuse spends until it clears.
 
 **Rollback:** unset `NEXT_PUBLIC_BILLING_URL`, redeploy. Storefront closes; no
 code change needed.
@@ -339,7 +356,7 @@ the orphan alarm with the money in it rather than refunding or skipping.
 
 Only after 2.1 has landed and been verified.
 
-Merge the tutor and QPU web changes (CI ritual each), then let Amplify build, or
+Merge the tutor and QPU web changes (normal CI on each), then let Amplify build, or
 force one:
 
 ```bash
@@ -395,24 +412,28 @@ prior balances. Decide before 2.3, not after.
   the cost or clawing back after delivering an answer. Revisit only with a real
   usage distribution to size it against.
 - **Clawback covers refunds and disputes, but only for grants written AFTER it
-  ships.** A refund reclaims credits by looking up a `GRANT#<payment_intent>`
-  row written at grant time — `Charge.invoice` was removed in Basil, so there is
+  ships.** A refund reclaims credits by looking up a `RECEIPT#<payment_intent>`
+  row written at grant time (the key prefix is `RECEIPT#` — index.mjs `receiptKey`) — `Charge.invoice` was removed in Basil, so there is
   no way to re-derive the link for a historical charge. Any grant predating this
   deploy is unreclaimable and logs `credits NOT reclaimed` for manual handling.
   (Live volume is zero, so today this set is empty.)
 - **A clawback can leave a learner "owing".** The wallet floors at 0 and the
   shortfall lands in `clawbackOwedCredits` — deliberately NOT a negative
   `credits`, which the client's `counter()` would read as "metering
-  unconfigured" and use to hide the top-up path. Nothing yet spends or displays
-  that field: deciding whether to write it off or require clearing it is an open
-  product decision, not a bug.
+  unconfigured" and use to hide the top-up path. RESOLVED 2026-08-17 (#218):
+  the open decision closed as garnish-fully — both spend gates refuse while the
+  debt stands, every money-in path (top-ups AND renewals) pays it down before
+  granting spendable credits, `GET /wallet` returns the field, and a dispute
+  the learner wins restores what was taken and clears the debt it created
+  (#217). The web UI does not surface the number yet — the endpoint does.
 - **A permanently-failing reconciler row** holds a learner's charge with no
   automatic recovery. It throws and logs every tick with `sub` and
   `chargeMilliCredits`, but the errors alarm pins in ALARM and CloudWatch only
   notifies on transition — so it pages once, then masks later reconciler faults.
-- **The `invoice.paid` log line is greppable, not alertable.** No metric filter
-  exists on the stripe stack; `AWS/Lambda Errors` cannot see a `console.error`
-  inside a successful 200.
+- **The `invoice.paid` log line IS alertable now.** `template.yaml` pins
+  `UncreditedInvoiceMetricFilter` to the exact phrase with an alarm, and
+  `template.test.mjs` asserts filter and handler stay in lockstep — the
+  earlier version of this bullet predated those filters.
 - **Copy guards are denylists.** Both the pricing guard and the curriculum guard
   are regression nets for known phrasings; reworded claims pass. A green suite is
   not clearance — read the rendered page, both locales.

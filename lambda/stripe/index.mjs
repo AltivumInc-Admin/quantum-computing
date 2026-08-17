@@ -195,6 +195,15 @@ export function createHandlerCore({
     setTier,
     setSubStatus,
     owedCredits = 0,
+    // OCC for debt paydowns. Every owedCredits < 0 is computed from a GetItem
+    // OUTSIDE this transaction; two concurrent money-in events (a renewal
+    // racing a top-up, two invoice.paid deliveries) would otherwise both read
+    // owed=N and both ADD -N, driving the field negative — which the spend
+    // gates (clawbackOwedCredits = 0) refuse as hard as a positive debt, and
+    // which no code path can ever repair (splitAgainstDebt exits on owed <= 0).
+    // Passing the read value pins the wallet leg to it; a loser returns
+    // CLAWBACK_RETRY so the caller re-reads and recomputes.
+    expectedOwed,
     // Optional third leg: the purchase receipt that makes a refund findable.
     // ALWAYS APPENDED at index RECEIPT_LEG so EVENT_LEG/WALLET_LEG keep their
     // positions — the catch below and the suite's positional pins both depend
@@ -223,6 +232,11 @@ export function createHandlerCore({
     let expr = "SET " + sets.join(", ");
     if (adds.length) expr += " ADD " + adds.join(", ");
 
+    const hasOwedGuard = Number.isFinite(expectedOwed);
+    if (hasOwedGuard) {
+      values[":expectedOwed"] = { N: String(expectedOwed) };
+    }
+
     try {
       await ddb.send(
         new TransactWriteItemsCommand({
@@ -245,6 +259,9 @@ export function createHandlerCore({
                 Key: walletKey(sub),
                 UpdateExpression: expr,
                 ExpressionAttributeValues: values,
+                ...(hasOwedGuard
+                  ? { ConditionExpression: "clawbackOwedCredits = :expectedOwed" }
+                  : {}),
               },
             },
             ...(receiptLeg ? [receiptLeg] : []),
@@ -261,6 +278,7 @@ export function createHandlerCore({
         const reasons = err.CancellationReasons ?? [];
         const failed = (i) => reasons[i]?.Code === "ConditionalCheckFailed";
         if (failed(EVENT_LEG)) return false; // already processed
+        if (hasOwedGuard && failed(WALLET_LEG)) return CLAWBACK_RETRY; // lost update
         if (receiptLeg && failed(RECEIPT_LEG)) return CLAWBACK_RETRY; // lost update
       }
       throw err;
@@ -352,22 +370,28 @@ export function createHandlerCore({
 
   /** The durable purchase receipt a future refund will look up. Only built when the
    *  key is a real PaymentIntent — a falsy key would merge unrelated users'
-   *  purchases under one row (e.g. a 100%-off session, which has no PI at all). */
-  function receiptRowLeg(paymentIntent, sub, credits) {
+   *  purchases under one row (e.g. a 100%-off session, which has no PI at all).
+   *
+   *  `amountPaidCents` is what the buyer actually paid (session.amount_total or
+   *  invoice.amount_paid, both already in the smallest currency unit). It is the
+   *  denominator a partial DISPUTE needs: the Dispute object carries only its own
+   *  amount, never the charge total, so without this field a $5 dispute on a $20
+   *  purchase is indistinguishable from a full one. Refunds never need it — the
+   *  Charge object carries both numbers itself. */
+  function receiptRowLeg(paymentIntent, sub, credits, amountPaidCents) {
     if (!paymentIntent || !(credits > 0)) return undefined;
-    return {
-      Put: {
-        TableName: tableName,
-        Item: {
-          ...receiptKey(paymentIntent),
-          sub: { S: sub },
-          purchasedCredits: { N: String(credits) },
-          refundedCredits: { N: "0" },
-          disputedCredits: { N: "0" },
-          createdAt: { N: String(Date.now()) },
-        },
-      },
+    const item = {
+      ...receiptKey(paymentIntent),
+      sub: { S: sub },
+      purchasedCredits: { N: String(credits) },
+      refundedCredits: { N: "0" },
+      disputedCredits: { N: "0" },
+      createdAt: { N: String(Date.now()) },
     };
+    if (Number.isFinite(amountPaidCents) && amountPaidCents > 0) {
+      item.amountPaidCents = { N: String(Math.round(amountPaidCents)) };
+    }
+    return { Put: { TableName: tableName, Item: item } };
   }
 
   function invoiceSubscriptionId(invoice) {
@@ -422,9 +446,27 @@ export function createHandlerCore({
       new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
     );
     const owed = Number(res.Item?.clawbackOwedCredits?.N ?? 0);
+    // expectedOwed is the OCC token for the paydown: applyOnce pins the wallet
+    // leg to the value read here, so a concurrent paydown cancels the
+    // transaction instead of compounding into a negative, gate-wedging debt.
     if (!(owed > 0)) return { deltaCredits: credits, owedCredits: 0 };
     const applied = Math.min(owed, credits);
-    return { deltaCredits: credits - applied, owedCredits: -applied };
+    return { deltaCredits: credits - applied, owedCredits: -applied, expectedOwed: owed };
+  }
+
+  /**
+   * Grant credits through the debt split, retrying a lost paydown race against
+   * freshly read state — the same loop-and-reread discipline reclaim() uses,
+   * with the same ending: past the budget, throw so Stripe redelivers.
+   */
+  async function grantThroughDebt(evt, sub, credits, extra) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const split = await splitAgainstDebt(sub, credits);
+      const outcome = await applyOnce({ eventId: evt.id, sub, ...split, ...extra });
+      if (outcome !== CLAWBACK_RETRY) return;
+      // Lost the race: loop, re-read the debt, recompute the split.
+    }
+    throw new Error(`${evt.type}: debt paydown contended past retry budget for ${sub}`);
   }
 
   async function fulfillCheckoutSession(evt, obj) {
@@ -434,12 +476,8 @@ export function createHandlerCore({
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
-        const split = await splitAgainstDebt(sub, credits);
-        await applyOnce({
-          eventId: evt.id,
-          sub,
-          ...split,
-          receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits),
+        await grantThroughDebt(evt, sub, credits, {
+          receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits, Number(obj.amount_total)),
         });
       }
     } else if (obj.mode === "subscription") {
@@ -470,7 +508,7 @@ export function createHandlerCore({
    * refund arriving after a dispute must not look like a reduction and hand
    * credits back.
    */
-  async function reclaim({ eventId, paymentIntent, field, fraction, restore = false, label }) {
+  async function reclaim({ eventId, paymentIntent, field, fraction, disputedAmountCents, restore = false, label }) {
     if (!paymentIntent) {
       console.error(`${label}: no payment_intent on the charge; ${CLAWBACK_UNRECLAIMED}`, eventId);
       return;
@@ -499,13 +537,68 @@ export function createHandlerCore({
         return;
       }
 
+      // Disputes pro-rate against what was actually PAID (#230): the Dispute
+      // object carries only its own amount — "usually the amount of the charge,
+      // but it can differ" (partial disputes, currency conversion, banks
+      // bundling recurring charges) — so the denominator must come from the
+      // receipt. A receipt without one (written before amountPaidCents existed)
+      // gets NO reclaim rather than a guessed `fraction: 1`: rule 7 says fail
+      // toward undercharging, and the pinned phrase routes it to a human. The
+      // legacy set is empty today (zero live volume), so this branch is a
+      // safety net, not a live cost.
+      let effectiveFraction = fraction;
+      if (!restore && disputedAmountCents !== undefined) {
+        const paidCents = Number(row.amountPaidCents?.N ?? 0);
+        if (!(paidCents > 0)) {
+          console.error(
+            `${label}: no amountPaidCents on the receipt to pro-rate the disputed amount against; ${CLAWBACK_UNRECLAIMED}`,
+            eventId,
+            paymentIntent
+          );
+          return;
+        }
+        if (!(disputedAmountCents > 0)) {
+          console.error(
+            `${label}: dispute carries no usable amount to pro-rate; ${CLAWBACK_UNRECLAIMED}`,
+            eventId,
+            paymentIntent,
+            disputedAmountCents
+          );
+          return;
+        }
+        // The min-1 cap is what keeps a cross-currency dispute (amount
+        // denominated differently than the charge) from over-reclaiming.
+        effectiveFraction = Math.min(1, disputedAmountCents / paidCents);
+      }
+
       // Never reclaim more than was purchased, and never let a stale event push
       // the counter backwards into a re-grant. `floor` so a rounding edge
       // always favours the customer.
-      const target = restore ? 0 : Math.min(purchased, Math.floor(purchased * fraction));
+      const target = restore ? 0 : Math.min(purchased, Math.floor(purchased * effectiveFraction));
+      if (!Number.isFinite(target)) {
+        // Unreachable while the callers Number() their inputs — but NaN passes
+        // both move checks below and would be written into DynamoDB as the
+        // counter, so refuse loudly rather than trust the callers forever.
+        console.error(`${label}: computed a non-finite target; ${CLAWBACK_UNRECLAIMED}`, eventId, paymentIntent);
+        return;
+      }
       const move = target - seen;
       if (move === 0) return; // nothing owed — no write at all
-      if (move < 0 && !restore) return; // stale/out-of-order: never re-grant
+      if (move < 0 && !restore) {
+        // For refunds this is a stale/out-of-order delivery and silence is
+        // right. For disputes it is new information — the disputed amount went
+        // DOWN, so the learner sits over-reclaimed — and the counter cannot
+        // move down outside `restore` without opening the re-grant hole. Defer
+        // to a human, loudly: the pinned phrase is what the metric filter pages on.
+        if (disputedAmountCents !== undefined) {
+          console.error(
+            `${label}: dispute target ${target} is below the ${seen} already reclaimed — learner is over-reclaimed pending manual review; ${CLAWBACK_UNRECLAIMED}`,
+            eventId,
+            paymentIntent
+          );
+        }
+        return; // never re-grant outside restore
+      }
 
       // Floor the balance at zero and record any shortfall separately. A
       // negative `credits` would read as "metering unconfigured" to the
@@ -555,6 +648,12 @@ export function createHandlerCore({
         sub,
         deltaCredits,
         owedCredits: owedDelta,
+        // A restore subtracts debt computed from the owedNow read above — the
+        // same outside-the-transaction read the grant paths make, with the
+        // same negative-debt race. Pin it; a loser lands on CLAWBACK_RETRY and
+        // this loop re-reads. (Additions never need the guard: ADD of a
+        // positive cannot drive the field negative.)
+        ...(owedDelta < 0 ? { expectedOwed: owedNow } : {}),
         receiptLeg: {
           Update: {
             TableName: tableName,
@@ -656,14 +755,24 @@ export function createHandlerCore({
             obj.id
           );
         }
-        await applyOnce({
-          eventId: evt.id,
-          sub,
-          deltaCredits: granted,
+        // Renewals garnish FULLY (founder decision 2026-08-17, issue #218): the
+        // grant pays clawbackOwedCredits down to zero before anything becomes
+        // spendable — the identical splitAgainstDebt rule top-ups use, so
+        // money-in behaves one way everywhere. Before this, invoice.paid was
+        // the one grant path that skipped the split, so a renewing subscriber
+        // accumulated credits the debt-gate refused while the debt never moved.
+        // The receipt still records the FULL grant: a refund of this invoice
+        // claws back against what was granted, not the post-garnish remainder.
+        const extra = {
           setTier: subscription.metadata?.tier,
           setSubStatus: "active",
-          receiptLeg: receiptRowLeg(pi, sub, granted),
-        });
+          receiptLeg: receiptRowLeg(pi, sub, granted, Number(obj.amount_paid)),
+        };
+        if (granted > 0) {
+          await grantThroughDebt(evt, sub, granted, extra);
+        } else {
+          await applyOnce({ eventId: evt.id, sub, ...extra });
+        }
         return;
       }
 
@@ -708,10 +817,11 @@ export function createHandlerCore({
           eventId: evt.id,
           paymentIntent: idOf(d.payment_intent),
           field: "disputedCredits",
-          // A funds-withdrawn dispute takes the whole charge, so the whole
-          // grant goes with it. Tracked on its own counter, so a later partial
-          // refund's arithmetic cannot read this as a reduction and re-grant.
-          fraction: 1,
+          // Pro-rated by reclaim() against the receipt's amountPaidCents — a
+          // dispute's amount is NOT guaranteed to be the whole charge (#230).
+          // Tracked on its own counter, so a later partial refund's arithmetic
+          // cannot read this as a reduction and re-grant.
+          disputedAmountCents: Number(d.amount),
           label: "charge.dispute.funds_withdrawn",
         });
         return;
@@ -784,6 +894,11 @@ export function createHandlerCore({
         tier: item?.tier?.S ?? "free",
         credits: item?.credits?.N ? Number(item.credits.N) : 0,
         subscriptionStatus: item?.subscriptionStatus?.S ?? null,
+        // The debt-gate (qpu-core.mjs / tutor index.mjs) refuses any spend while
+        // this is nonzero. Without exposing it, a locked-out learner sees a
+        // positive balance and "insufficient-credits" — undiagnosable from the
+        // outside. Zero when absent, so the client needs no null handling.
+        clawbackOwedCredits: item?.clawbackOwedCredits?.N ? Number(item.clawbackOwedCredits.N) : 0,
       });
     }
 

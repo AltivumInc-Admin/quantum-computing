@@ -19,6 +19,13 @@ export interface Wallet {
   tier: "free" | "plus" | "pro";
   credits: number;
   subscriptionStatus: string | null;
+  /**
+   * Debt left by a clawback (refund/dispute) that exceeded the balance. While
+   * nonzero, BOTH metered backends refuse every spend regardless of `credits`,
+   * so any surface showing the balance must be able to explain the refusal.
+   * Optional because a deployed Lambda may predate the field; treat absent as 0.
+   */
+  clawbackOwedCredits?: number;
 }
 
 /** A billing round trip the server refused — carries the status for triage. */
