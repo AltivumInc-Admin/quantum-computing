@@ -515,14 +515,46 @@ export function createHandlerCore({
         new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
       );
       const balance = Number(walletRes.Item?.credits?.N ?? 0);
-      const applied = move > 0 ? Math.min(move, Math.max(0, balance)) : move;
-      const unrecovered = move > 0 ? move - applied : 0;
+      const owedNow = Number(walletRes.Item?.clawbackOwedCredits?.N ?? 0);
+      // How much of this counter's clawback landed in DEBT rather than coming out
+      // of credits. Tracked per counter on the receipt because a restore has to
+      // undo BOTH halves, and `move` alone cannot say how the original clawback
+      // split. No `attribute_exists` init in receiptRowLeg and no OCC clause of
+      // its own: unlike `${field}`, nothing conditions on it, so the `?? 0`
+      // default is the whole legacy story — a receipt written before this field
+      // existed restores exactly as it used to.
+      const unrecoveredField = `${field}Unrecovered`;
+      const seenUnrecovered = Number(row[unrecoveredField]?.N ?? 0);
+
+      let deltaCredits, owedDelta, targetUnrecovered;
+      if (move > 0) {
+        const applied = Math.min(move, Math.max(0, balance));
+        deltaCredits = -applied;
+        owedDelta = move - applied;
+        targetUnrecovered = seenUnrecovered + owedDelta;
+      } else {
+        // Restoring: give back exactly what was TAKEN and clear exactly the debt
+        // that was CREATED. Returning the whole `move` while leaving the debt
+        // standing hands a learner who WON their dispute a balance the spend
+        // gates then refuse (both gates test `clawbackOwedCredits = 0`), payable
+        // only by buying their way clear — rule 7 inverted.
+        //
+        // Bounded by `owedNow` because the learner may have already paid part of
+        // it down mid-dispute; clearing the full original shortfall would drive
+        // the field NEGATIVE, and `= 0` locks a negative debt out just as hard as
+        // a positive one. Whatever the debt no longer needs comes back as credits,
+        // which is what keeps the learner whole across a paydown.
+        const owedCleared = Math.min(Math.max(0, owedNow), seenUnrecovered);
+        deltaCredits = -move - owedCleared;
+        owedDelta = -owedCleared;
+        targetUnrecovered = 0;
+      }
 
       const outcome = await applyOnce({
         eventId,
         sub,
-        deltaCredits: -applied,
-        owedCredits: unrecovered,
+        deltaCredits,
+        owedCredits: owedDelta,
         receiptLeg: {
           Update: {
             TableName: tableName,
@@ -530,12 +562,14 @@ export function createHandlerCore({
             // ABSOLUTE set guarded by the value we read — the optimistic
             // concurrency token. TransactWriteItems has no read leg, so the
             // GetItem above is outside the transaction and this condition is
-            // the only thing closing the lost-update window.
-            UpdateExpression: `SET ${field} = :target`,
+            // the only thing closing the lost-update window. Guarding `${field}`
+            // alone is sufficient: the two counters only ever move together.
+            UpdateExpression: `SET ${field} = :target, ${unrecoveredField} = :targetUnrecovered`,
             ConditionExpression: `attribute_exists(pk) AND ${field} = :seen`,
             ExpressionAttributeValues: {
               ":target": { N: String(target) },
               ":seen": { N: String(seen) },
+              ":targetUnrecovered": { N: String(targetUnrecovered) },
             },
           },
         },
