@@ -15,8 +15,8 @@ import { buildCorpusEntry } from "./tutor-core.mjs";
 
 test("isValidBedrockModelId: accepts the real shapes the handler uses", () => {
   const ok = [
-    "arn:aws:bedrock:us-east-2:205930636302:application-inference-profile/q050egz0q4mb",
-    "arn:aws:bedrock:us-east-2:205930636302:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "arn:aws:bedrock:us-east-2:000000000000:application-inference-profile/EXAMPLEPROF1",
+    "arn:aws:bedrock:us-east-2:000000000000:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
     "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "us.anthropic.claude-haiku-4-5-20251001-v1:0",

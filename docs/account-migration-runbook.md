@@ -1,11 +1,48 @@
 # Quantum Learner — Cross-Account Migration Runbook (Blue-Green)
 
-> **Status: DRAFT FOR APPROVAL — nothing has been executed.** Built 2026-07-18 from a live inventory of account `205930636302` + the repo IaC, then audited by three adversarial reviewers (completeness / ordering / data-safety). **Section 11** holds their 16 corrections; the HIGH/MEDIUM items there OVERRIDE the inline steps where they conflict. The source account stays fully live and writable until an explicit, approved cutover.
+> **Status: DRAFT FOR APPROVAL — nothing has been executed.** Built 2026-07-18 from a live inventory of account `$SRC_ACCOUNT` + the repo IaC, then audited by three adversarial reviewers (completeness / ordering / data-safety). **Section 11** holds their 16 corrections; the HIGH/MEDIUM items there OVERRIDE the inline steps where they conflict. The source account stays fully live and writable until an explicit, approved cutover.
 
-**Source:** `205930636302` (Altivum Inc - Original Account, shared) — primary `us-east-2`, edge `us-east-1`, Braket devices `eu-north-1`
-**Destination:** `431715654696` (Quantum Learner, `quantumlearner@altivum.ai`) — greenfield, created 2026-07-18
-**Access into destination:** SSO profile `altivum-mgmt` (Org mgmt `022779560111`) → assumes `arn:aws:iam::431715654696:role/OrganizationAccountAccessRole` → chained CLI profile **`quantum-learner`**
+**Source:** `$SRC_ACCOUNT` (Altivum Inc - Original Account, shared) — primary `us-east-2`, edge `us-east-1`, Braket devices `eu-north-1`
+**Destination:** `$DST_ACCOUNT` (Quantum Learner, `quantumlearner@altivum.ai`) — greenfield, created 2026-07-18
+**Access into destination:** SSO profile `altivum-mgmt` (Org mgmt `$ORG_MGMT_ACCOUNT`) → assumes `arn:aws:iam::$DST_ACCOUNT:role/OrganizationAccountAccessRole` → chained CLI profile **`quantum-learner`**
 **Canonical domain flips:** `quantum.altivum.ai` → **`quantumlearner.dev`** (today the relationship is the reverse).
+
+### Identifiers — export these before running anything below
+
+This repository is public, so account numbers and the OAuth client id are referenced
+by shell variable rather than written out. Every command below is copy-pasteable once
+these are exported. Resolve them from the org itself, not from memory:
+
+```sh
+# Names are the source of truth; ids are looked up. Run with management-account creds.
+export ORG_MGMT_ACCOUNT=$(aws organizations describe-organization \
+  --query 'Organization.MasterAccountId' --output text)
+export SRC_ACCOUNT=$(aws organizations list-accounts \
+  --query "Accounts[?Name=='Altivum Inc - Original Account'].Id" --output text)
+export DST_ACCOUNT=$(aws organizations list-accounts \
+  --query "Accounts[?Name=='Quantum Learner'].Id" --output text)
+
+# The source Bedrock application-inference-profile the tutor runs on today.
+export SRC_PROFILE_ID=$(aws bedrock list-inference-profiles --region us-east-2 \
+  --type-equals APPLICATION --profile "$SOURCE_PROFILE" \
+  --query "inferenceProfileSummaries[?inferenceProfileName=='quantum-ask-tutor'].inferenceProfileId" \
+  --output text)
+
+# Google OAuth web client id — public by protocol, but not ours to publish here.
+# It is in the founder's private notes beside the client SECRET, which never
+# appears in this file in any form (see step 12's $GOOGLE_CLIENT_SECRET).
+export GOOGLE_CLIENT_ID=...
+
+# Sanity: all four must be non-empty before you continue.
+: "${ORG_MGMT_ACCOUNT:?}" "${SRC_ACCOUNT:?}" "${DST_ACCOUNT:?}" "${SRC_PROFILE_ID:?}"
+```
+
+> Two literals are deliberately NOT parameterized elsewhere in the repo and must not be:
+> `scripts/founding-credit/cohort-2026-08.json`'s `expectedAccountId` is a spend guard
+> that aborts issuance when the caller is in the wrong account (`run.mjs:49`) — which is
+> exactly the mistake this migration makes possible — and `lambda/tutor/policy.json` is a
+> live IAM document for the raw-CLI fallback path. Update both at cutover (§11 item 12);
+> do not blank them.
 
 ---
 
@@ -38,11 +75,11 @@ This runbook moves the entire Quantum Learner platform — 10 CloudFormation/SAM
 1. Configure `~/.aws/config`:
    ```
    [profile quantum-learner]
-   role_arn      = arn:aws:iam::431715654696:role/OrganizationAccountAccessRole
+   role_arn      = arn:aws:iam::$DST_ACCOUNT:role/OrganizationAccountAccessRole
    source_profile = altivum-mgmt
    region        = us-east-2
    ```
-2. Sanity check: `aws sts get-caller-identity --profile quantum-learner` → **must** print `"Account": "431715654696"` and an assumed-role of `OrganizationAccountAccessRole`.
+2. Sanity check: `aws sts get-caller-identity --profile quantum-learner` → **must** print `"Account": "$DST_ACCOUNT"` and an assumed-role of `OrganizationAccountAccessRole`.
 3. Harden root (console / Org): reset the root password for `quantumlearner@altivum.ai`, enable root MFA, confirm **no** root access keys, set alternate/billing contacts, enable IAM access to Billing.
 4. **Confirm the root inbox `quantumlearner@altivum.ai` is actively monitored** — SES approval, every SNS confirmation, and all budget alerts land there.
 
@@ -74,19 +111,19 @@ This runbook moves the entire Quantum Learner platform — 10 CloudFormation/SAM
    aws bedrock create-inference-profile --region us-east-2 --profile quantum-learner \
      --inference-profile-name quantum-ask-tutor \
      --description "Cost attribution for the quantum portal gen-AI lesson tutor" \
-     --model-source copyFrom=arn:aws:bedrock:us-east-2:431715654696:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+     --model-source copyFrom=arn:aws:bedrock:us-east-2:$DST_ACCOUNT:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0 \
      --tags '[{"key":"Project","value":"quantum"},{"key":"Feature","value":"ask-tutor"},{"key":"CostCategory","value":"genai"}]'
    ```
-   **Capture the returned application-inference-profile ARN as `$NEW_MODEL_ID`** (`arn:aws:bedrock:us-east-2:431715654696:application-inference-profile/<new-id>`). Do **not** reuse the source `q050egz0q4mb`.
+   **Capture the returned application-inference-profile ARN as `$NEW_MODEL_ID`** (`arn:aws:bedrock:us-east-2:$DST_ACCOUNT:application-inference-profile/<new-id>`). Do **not** reuse the source `$SRC_PROFILE_ID`.
 
 ### 2.4 LONG-LEAD #3 — Braket enablement, device access, spend guardrail
 
-10. Accept the Amazon Braket terms once (console) → auto-creates `AWSServiceRoleForAmazonBraket` **and** the managed results bucket `amazon-braket-eu-north-1-431715654696`.
+10. Accept the Amazon Braket terms once (console) → auto-creates `AWSServiceRoleForAmazonBraket` **and** the managed results bucket `amazon-braket-eu-north-1-$DST_ACCOUNT`.
 11. Accept each third-party device provider's terms (console): **IQM Garnet (`eu-north-1`)**, IonQ Forte, QuEra. **Do NOT accept device terms until the QPU budget + kill-switch are deployed and verified (Phase 1.4)** — device access is irreversible real-money exposure.
 12. Set an **account-level Braket spend guardrail** (Billing console — no CLI). This is the real-money hard stop, separate from the in-stack `QpuBudget`.
 13. Pre-create the results bucket deterministically (or let Braket auto-create on first task):
     ```
-    aws s3 mb s3://amazon-braket-eu-north-1-431715654696 --region eu-north-1 --profile quantum-learner
+    aws s3 mb s3://amazon-braket-eu-north-1-$DST_ACCOUNT --region eu-north-1 --profile quantum-learner
     ```
     Verify: `aws braket search-devices --filters '[]' --region eu-north-1 --profile quantum-learner` returns the device list.
 
@@ -97,7 +134,7 @@ This runbook moves the entire Quantum Learner platform — 10 CloudFormation/SAM
     aws codeconnections create-connection --provider-type GitHub --connection-name quantum-github \
       --region us-east-2 --profile quantum-learner       # lands PENDING; capture ConnectionArn
     ```
-    Then a **human, signed into `431715654696`**, opens the console → Developer Tools → Settings → Connections → `quantum-github` → *Update pending connection* → install/authorize the "AWS Connector for GitHub" app on `AltivumInc-Admin/quantum-computing`.
+    Then a **human, signed into `$DST_ACCOUNT`**, opens the console → Developer Tools → Settings → Connections → `quantum-github` → *Update pending connection* → install/authorize the "AWS Connector for GitHub" app on `AltivumInc-Admin/quantum-computing`.
     Gate: `aws codeconnections get-connection --connection-arn <arn> --region us-east-2 --profile quantum-learner --query 'Connection.ConnectionStatus'` → must read **`AVAILABLE`** before the ci-standby deploy. Reuse this ARN for any other dest item needing GitHub source.
 15. **Amplify GitHub App** (a *different* GitHub App than #14): authorize the AWS Amplify GitHub App on the same repo from the destination account (done in Phase 3 at app-create time; provision the authorization now to avoid blocking).
 
@@ -118,8 +155,8 @@ This runbook moves the entire Quantum Learner platform — 10 CloudFormation/SAM
       --secret-string "$(jq -nc --arg sk "$SK" '{secretKey:$sk, webhookSecret:"whsec_PLACEHOLDER"}')"
     unset SK
     ```
-18. SAM staging buckets auto-create via `--resolve-s3`. For the Braket nested-stack `package` step (only if deploying `braket-base`), pre-create `braket-cfn-staging-431715654696-us-east-2`.
-19. **Cost-allocation tags — run in the PAYER/management account (`022779560111`), NOT the member** (not retroactive, ~24h to appear):
+18. SAM staging buckets auto-create via `--resolve-s3`. For the Braket nested-stack `package` step (only if deploying `braket-base`), pre-create `braket-cfn-staging-$DST_ACCOUNT-us-east-2`.
+19. **Cost-allocation tags — run in the PAYER/management account (`$ORG_MGMT_ACCOUNT`), NOT the member** (not retroactive, ~24h to appear):
     ```
     aws ce update-cost-allocation-tags-status --region us-east-1 --profile altivum-mgmt \
       --cost-allocation-tags-status TagKey=Project,Status=Active TagKey=Feature,Status=Active TagKey=CostCategory,Status=Active
@@ -132,7 +169,7 @@ This runbook moves the entire Quantum Learner platform — 10 CloudFormation/SAM
 
 ### 2.7 Repo prep (one branch)
 
-21. `git checkout -b migrate/crosscut-431715654696`. Land the account-specific repo edits here (details in §3 per-stack and consolidated below), but **sequence the `SITE_URL` flip to coincide with cutover** — `main` is shared with the still-live source Amplify app, so any push to `main` rebuilds *both* apps.
+21. `git checkout -b migrate/crosscut-$DST_ACCOUNT`. Land the account-specific repo edits here (details in §3 per-stack and consolidated below), but **sequence the `SITE_URL` flip to coincide with cutover** — `main` is shared with the still-live source Amplify app, so any push to `main` rebuilds *both* apps.
 22. Edits: `lambda/tutor/policy.json` line 9 → `$NEW_MODEL_ID`; `lambda/tutor/README.md` + `docs/eval-implementation-plans.md` ARN references; origin-param **defaults** (`quantum.altivum.ai` → `quantumlearner.dev`) in the 6 templates; `infra/workspace/cognito.yaml` `DomainPrefix` default `quantum-altivum` → `quantumlearner`; `web/src/lib/site.ts` `SITE_URL` + `web/src/lib/auth-config.ts` line 36 fallback origin. **Do NOT touch** Braket device ARNs (`web/public/lab/**` are build artifacts), ECR account `292282985366`, or the GitHub repo string `AltivumInc-Admin/quantum-computing`.
 
 ---
@@ -152,7 +189,7 @@ Prereqs: Google OAuth client secret retrieved from Google Cloud Console (NoEcho,
    aws cloudformation deploy --template-file infra/workspace/cognito.yaml \
      --stack-name quantum-workspace-auth --region us-east-2 --profile quantum-learner \
      --parameter-overrides \
-       GoogleClientId=587221189421-hq1lo8o8l5gk3284nsjloc3oeb61lbj0.apps.googleusercontent.com \
+       GoogleClientId=$GOOGLE_CLIENT_ID \
        GoogleClientSecret="$GOOGLE_CLIENT_SECRET" \
        DomainPrefix=quantumlearner \
        SiteUrl=https://quantumlearner.dev \
@@ -223,7 +260,7 @@ Prereqs: Google OAuth client secret retrieved from Google Cloud Console (NoEcho,
     ```
 12. Capture the new **DistributionId** + **DistributionDomainName**; wait for `Status=Deployed`:
     `aws cloudfront get-distribution --profile quantum-learner --id <DistId> --query 'Distribution.Status' --output text`
-13. Grant CloudFront OAC → Lambda (out-of-template glue; run with dest creds so `sts get-caller-identity` resolves to `431715654696`):
+13. Grant CloudFront OAC → Lambda (out-of-template glue; run with dest creds so `sts get-caller-identity` resolves to `$DST_ACCOUNT`):
     ```
     AWS_PROFILE=quantum-learner DISTRIBUTION_ID=<DistId> AWS_REGION=us-east-2 FUNCTION_NAME=quantum-tutor \
       ./lambda/tutor/scripts/grant-oac.sh
@@ -243,7 +280,7 @@ Prereqs already satisfied in Phase 0: edge secret exists (2.6 #16), results buck
       --capabilities CAPABILITY_IAM --resolve-s3 \
       --parameter-overrides \
         UserPoolId=$NEW_POOL_ID UserPoolClientId=$NEW_CLIENT_ID \
-        ResultsBucket=amazon-braket-eu-north-1-431715654696 \
+        ResultsBucket=amazon-braket-eu-north-1-$DST_ACCOUNT \
         SiteOrigin=https://<TEMP_AMPLIFY_HOST> EdgeSecretName=quantum-qpu-edge-secret \
         AlertEmail=christian.perez@altivum.io MonthlyBraketBudget=150 MaxConcurrency=5 LogRetentionInDays=30
     ```
@@ -331,8 +368,8 @@ Prereq: SES identity verified + production access (Phase 0 #6–7) — but the s
 
 > **Not deployed in source** — its S3/IAM/Budget pieces are superseded by `quantum-qpu-submit`. The account-level Braket prerequisites (Phase 0 #10–13) are what actually matter. Deploy this only if you want the extra budget/role/bucket hygiene, and if so **do not run its `BraketQuantumWorkspaceBudget` alongside qpu-submit's `QpuBudget`** (duplicate Braket cost alerts).
 
-37. (Optional) `aws s3api head-bucket --bucket braket-cfn-staging-431715654696-us-east-2 --profile quantum-learner || aws s3 mb s3://braket-cfn-staging-431715654696-us-east-2 --region us-east-2 --profile quantum-learner`
-38. (Optional) `aws cloudformation package --template-file infra/cloudformation/main.yaml --s3-bucket braket-cfn-staging-431715654696-us-east-2 --region us-east-2 --profile quantum-learner --output-template-file /tmp/braket-packaged.yaml`
+37. (Optional) `aws s3api head-bucket --bucket braket-cfn-staging-$DST_ACCOUNT-us-east-2 --profile quantum-learner || aws s3 mb s3://braket-cfn-staging-$DST_ACCOUNT-us-east-2 --region us-east-2 --profile quantum-learner`
+38. (Optional) `aws cloudformation package --template-file infra/cloudformation/main.yaml --s3-bucket braket-cfn-staging-$DST_ACCOUNT-us-east-2 --region us-east-2 --profile quantum-learner --output-template-file /tmp/braket-packaged.yaml`
 39. (Optional) `aws cloudformation deploy --template-file /tmp/braket-packaged.yaml --stack-name braket-quantum-workspace --region us-east-2 --profile quantum-learner --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --parameter-overrides MonthlyBudget=50 NotificationEmail=quantumlearner@altivum.ai ResultsRetentionDays=90 DeployNotebook=false` (keep `DeployNotebook=false` — it carries a billed 20GB stateful EBS volume).
 
 ---
@@ -341,7 +378,7 @@ Prereq: SES identity verified + production access (Phase 0 #6–7) — but the s
 
 **Precondition:** `quantum-workspace-auth` is deployed (Phase 1.1) and all 5 destination tables exist empty (Phases 1.2/1.5/1.7/1.8). This concern only READS source and WRITES destination → rollback is clean.
 
-**Method:** a `scan → transform(remap sub) → PutItem` script (only ~2 items/table; PITR export-to-S3 can't remap subs inline, so it's overkill here). Two boto3 sessions: `SOURCE_PROFILE` (reads `205930636302`) + `quantum-learner` (writes dest). Pass explicit `--profile` on every call; dry-run first to avoid a credential slip.
+**Method:** a `scan → transform(remap sub) → PutItem` script (only ~2 items/table; PITR export-to-S3 can't remap subs inline, so it's overkill here). Two boto3 sessions: `SOURCE_PROFILE` (reads `$SRC_ACCOUNT`) + `quantum-learner` (writes dest). Pass explicit `--profile` on every call; dry-run first to avoid a credential slip.
 
 ### 4.1 Recreate the 2 Cognito users → build `SUB_REMAP`
 
@@ -392,7 +429,7 @@ Prereq: SES identity verified + production access (Phase 0 #6–7) — but the s
 
 Amplify holds **no persistent state** — the site regenerates from GitHub on every build, so this is a plain CLI create, not a data migration. It is **not** a CloudFormation resource; discover live source config first (no facts file exists for the app).
 
-1. **Discover** (source creds, `205930636302`, no `--profile quantum-learner`):
+1. **Discover** (source creds, `$SRC_ACCOUNT`, no `--profile quantum-learner`):
    ```
    aws amplify get-app    --app-id d1ao02to23x85y --region us-east-2   # name, platform, repo, iamServiceRoleArn, buildSpec(null?), customRules, env vars
    aws amplify get-branch --app-id d1ao02to23x85y --branch-name main --region us-east-2   # BRANCH-level env vars, framework
@@ -502,7 +539,7 @@ Amplify holds **no persistent state** — the site regenerates from GitHub on ev
 15. Transfer the registration intra-AWS (no auth code, no 60-day lock, expiry/auto-renew/WHOIS preserved):
     ```
     aws route53domains transfer-domain-to-another-aws-account --region us-east-1 --domain-name quantumlearner.dev \
-      --account-id 431715654696 --profile <SOURCE_PROFILE>
+      --account-id $DST_ACCOUNT --profile <SOURCE_PROFILE>
     aws route53domains accept-domain-transfer-from-another-aws-account --region us-east-1 \
       --domain-name quantumlearner.dev --password <from-transfer> --profile quantum-learner
     ```
@@ -523,9 +560,9 @@ Amplify holds **no persistent state** — the site regenerates from GitHub on ev
 
 Run these on temp hostnames pre-flip, then re-run on the production domain post-flip.
 
-1. **Identity:** `aws sts get-caller-identity --profile quantum-learner` → `431715654696`.
+1. **Identity:** `aws sts get-caller-identity --profile quantum-learner` → `$DST_ACCOUNT`.
 2. **Site:** `https://main.<NEW>.amplifyapp.com` (then `https://quantumlearner.dev`) smoke — `/`, `/learn`, a lesson, `/lab` (real Pyodide boots + runs a browser notebook cell), `/glossary`, `/playground`, `/pricing`, `/login`.
-3. **Zero source-account leakage:** grep built pages for `d1iiu6blp8cumd`, `d2m7qwngri5wk3`, `0w2buslijb`, `bfiloz43aa`, `8vdy0chz57`, `us-east-2_aRydPmAjj`, `2sg8nejrf2j8p28j6khjil99ir` → **zero hits**; also `grep -rn 205930636302 .` (excluding node_modules/.git/out/.next) returns only intentional historical docs.
+3. **Zero source-account leakage:** grep built pages for `d1iiu6blp8cumd`, `d2m7qwngri5wk3`, `0w2buslijb`, `bfiloz43aa`, `8vdy0chz57`, `us-east-2_aRydPmAjj`, `2sg8nejrf2j8p28j6khjil99ir` → **zero hits**; also `grep -rn $SRC_ACCOUNT .` (excluding node_modules/.git/out/.next) returns only intentional historical docs.
 4. **Auth round-trip (real path):** on the site, complete a native email/password SRP login AND a Google federated sign-in via the dest Cognito pool (callback origin allowlisted); decode the id token → `iss = https://cognito-idp.us-east-2.amazonaws.com/$NEW_POOL_ID`, validates against that pool's JWKS. A downstream Lambda (sync/qpu) accepts a dest-pool token.
 5. **Tutor stream:** with `Origin: https://quantumlearner.dev`, a signed POST through the tutor edge streams grounded tokens; the raw Function URL returns 403 (AWS_IAM lock holds).
 6. **Sync:** unauth `GET /progress` → 401; signed `GET` → 200 `{version,data}`; `PUT {baseVersion:0,...}` → 200; stale `PUT` → 409; two-tab cross-device sync works.
@@ -585,14 +622,14 @@ Run these on temp hostnames pre-flip, then re-run on the production domain post-
 2. **Google OAuth client — reuse vs new** — reusing the source client couples both accounts (rotating its secret breaks the source pool's Google sign-in); minting a new client decouples but needs its own consent/config. Also the Google client secret is NoEcho/unrecoverable from the stack — confirm it can be retrieved from Google Console, else the only path is rotation.
 3. **Actual source user count** — the whole `SUB_REMAP` assumes exactly 2 users. `verify-live`: `aws cognito-idp list-users --user-pool-id us-east-2_aRydPmAjj --profile <SOURCE_PROFILE>` at cutover; if it grew, extend the map before copying. Also confirm per-user native vs Google-federated.
 4. **Source DynamoDB row counts** (`verify-live`, Phase 2 #6) — decides migrate vs recreate-empty for ledger/tasks/wallet/prefs. Progress expects 2; the money tables are likely empty (no real QPU run, no committed pricing).
-5. **`ResultsBucket` existence timing** — `amazon-braket-eu-north-1-431715654696` only exists after Braket enablement + first task (or pre-create). Deploying qpu-submit against a missing bucket makes the S3-write IAM inert. `verify-live` with `head-bucket`.
+5. **`ResultsBucket` existence timing** — `amazon-braket-eu-north-1-$DST_ACCOUNT` only exists after Braket enablement + first task (or pre-create). Deploying qpu-submit against a missing bucket makes the S3-write IAM inert. `verify-live` with `head-bucket`.
 6. **Account Lambda concurrency ceiling** (`verify-live`, Phase 0 #20) — a fresh account may reject the fleet's reserved-concurrency total; request an increase before the reserved-concurrency deploys.
 7. **`www.quantum.altivum.ai`** — does it exist as a separate alias needing the reverse redirect too? `verify-live` before authoring the inverted template's `Aliases`.
 8. **Reverse-redirect mechanism for `quantum.altivum.ai`** — a Cloudflare Redirect Rule (no AWS resources, simplest) vs the adapted CloudFront stack (§6.2). Confirm with the user; do NOT blindly redeploy `quantumlearner-dev.yaml` inverted (its Route53 assumptions break for a Cloudflare apex).
 9. **Amplify service role + custom rules** — no facts file; `verify-live` via `get-app` for `iamServiceRoleArn` (recreate in dest if present) and `customRules` (replicate a missed SPA rewrite or client routes 404).
 10. **Amplify build image / Node version drift** — no repo pin; `verify-live` the dest default matches source before trusting a green build.
 11. **`braket-base` deploy — yes or no?** Source never had it; deploying diverges from baseline and duplicates the Braket budget. Decide whether the budget/role/bucket hygiene is worth the drift (§3.10).
-12. **`policy.json` / README stale ARNs** — used only by the raw-CLI fallback (SAM builds the policy from the template `ModelId`), but update them to avoid a stale `205930636302` reference if that path is ever used.
+12. **`policy.json` / README stale ARNs** — used only by the raw-CLI fallback (SAM builds the policy from the template `ModelId`), but update them to avoid a stale `$SRC_ACCOUNT` reference if that path is ever used.
 
 
 ---
