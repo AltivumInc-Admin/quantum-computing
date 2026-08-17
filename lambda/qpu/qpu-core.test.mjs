@@ -590,6 +590,11 @@ test("creditsForMicros converts at the $0.01 peg, rounding UP to a whole credit"
 });
 
 test("an over-allowance run is funded by the wallet: atomic debit, day cap and kill-switch still bind", async () => {
+  // Second, independent bind on the rounding direction: with every wallet
+  // expectation below DERIVED via creditsForMicros, a ceil→floor regression
+  // would otherwise be caught only by the single pinned peg test. One micro
+  // must cost one whole credit — a fraction of a cent is never dispensed free.
+  assert.equal(creditsForMicros(1), 1, "rounding must go UP: 1 micro-dollar = 1 whole credit");
   const ddb = stubDdb({ ledgerUser: SPENT_UP });
   const braket = stubBraket();
   const res = await walletCore(ddb, braket)(submitEvent(goodClaims, goodBody));

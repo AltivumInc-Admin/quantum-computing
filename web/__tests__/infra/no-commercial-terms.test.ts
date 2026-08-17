@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync } from "fs";
 import { join, relative, sep } from "path";
 
 /**
@@ -157,24 +157,26 @@ const BANNED: Array<{ name: string; re: RegExp }> = [
   },
 ];
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (SKIP_DIRS.has(entry)) continue;
-    const full = join(dir, entry);
-    let st;
-    try {
-      st = statSync(full);
-    } catch {
-      continue; // a broken symlink is not our problem
-    }
-    if (st.isDirectory()) walk(full, out);
-    else if (SCAN_EXT.test(entry)) out.push(full);
-  }
-  return out;
+// The disclosure surface is exactly what git publishes, so enumerate via
+// git ls-files rather than a filesystem walk. A walker also sweeps local,
+// never-committed artifacts (downloaded editor bundles, design-tool vendor
+// output) whose innocent `markup` identifiers are not this guard's business —
+// and since a CI clone contains only tracked files, a walker would make the
+// guard pass in CI while failing on a contributor's machine. ls-files gives
+// both the same file set. Consequence for teeth checks: a planted violation
+// must be `git add -f`ed to trip the scan, exactly like the samconfig teeth.
+function trackedFiles(): string[] {
+  return execSync("git ls-files -z", { cwd: REPO })
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .filter((rel) => SCAN_EXT.test(rel))
+    .filter((rel) => !rel.split("/").some((seg) => SKIP_DIRS.has(seg)))
+    .map((rel) => join(REPO, rel));
 }
 
 describe("the public repo discloses no commercial terms", () => {
-  const files = walk(REPO);
+  const files = trackedFiles();
 
   it("scans a meaningful number of files (the walker itself must not silently no-op)", () => {
     // A guard that scans nothing passes forever. This is the guard's guard.
@@ -213,6 +215,9 @@ describe("the public repo discloses no commercial terms", () => {
  * and can be written out in full.
  */
 describe("the banned patterns catch what they must and spare what they must", () => {
+  // EVERY figure in the trip samples below is FICTIONAL — invented to exercise a
+  // regex, mutually inconsistent on purpose (no coherent P&L can be assembled from
+  // them), and unrelated to any real commercial term of this or any product.
   const trips = (s: string) => BANNED.some(({ re }) => re.test(s));
 
   it.each([

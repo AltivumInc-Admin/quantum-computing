@@ -317,7 +317,9 @@ const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
     // every hardware submit without one is refused (402). Sponsorship copy kept
     // shipping for weeks after the withdrawal precisely because the old tests locked
     // its PRESENCE — this bars it from coming back, in either locale.
-    pattern: /\b(sponsor(?:ed|ship|s)?|patrocinad[oa]s?|patrocinio)\b/i,
+    // Stem-matched (\w*): "sponsoring", "sponsorships" and Spanish finite verb
+    // forms (patrocina, patrocinamos) must not walk past a suffix list.
+    pattern: /\b(sponsor\w*|patrocin\w*)\b/i,
     why: "sponsored hardware: LIFETIME_CAP_MICROS is 0 and no wallet is wired — nobody gets a platform-funded run",
   },
   {

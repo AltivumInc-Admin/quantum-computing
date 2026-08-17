@@ -41,7 +41,9 @@ import { join } from "path";
  */
 
 const REPO = join(__dirname, "..", "..", "..");
-const LAMBDA_DIRS = ["lambda/stripe", "lambda/tutor", "lambda/qpu"];
+// sync and review-email touch no wallet today (verified 2026-08-17) — included so
+// a FUTURE wallet-touching change in either lands inside the guard, not beside it.
+const LAMBDA_DIRS = ["lambda/stripe", "lambda/tutor", "lambda/qpu", "lambda/sync", "lambda/review-email"];
 const SKIP = /node_modules|\.aws-sam/;
 
 /**
@@ -71,21 +73,35 @@ const ROW_MARKER = /eventKey\(|walletKey\(|EVENT#|WALLET#|DAY#|USER#|TASK#/g;
 const TABLE_NAME = /TableName:\s*([A-Za-z_$][\w$]*)/g;
 
 function collectSources(): Array<{ rel: string; src: string }> {
+  // Recursive: a future lambda/<name>/lib/*.mjs must not silently drop out of the
+  // count pin and the shape check just because it moved one directory down.
   const out: Array<{ rel: string; src: string }> = [];
-  for (const dir of LAMBDA_DIRS) {
+  const walk = (dir: string) => {
     let entries: string[];
     try {
       entries = readdirSync(join(REPO, dir));
     } catch {
-      continue;
+      return;
     }
     for (const name of entries) {
+      const rel = `${dir}/${name}`;
       const full = join(REPO, dir, name);
-      if (SKIP.test(full) || !/\.(mjs|js)$/.test(name) || /\.test\./.test(name)) continue;
-      if (!statSync(full).isFile()) continue;
-      out.push({ rel: `${dir}/${name}`, src: readFileSync(full, "utf8") });
+      if (SKIP.test(full)) continue;
+      let st;
+      try {
+        st = statSync(full); // symlinked node_modules etc. may dangle — skip, never throw
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        walk(rel);
+        continue;
+      }
+      if (!/\.(mjs|js)$/.test(name) || /\.test\./.test(name)) continue;
+      out.push({ rel, src: readFileSync(full, "utf8") });
     }
-  }
+  };
+  for (const dir of LAMBDA_DIRS) walk(dir);
   return out;
 }
 

@@ -725,7 +725,7 @@ export const es: TranslationDict = {
       " las billeteras ya están activas, pero todavía nada las descuenta. El tutor en la lección es gratis para probar y las ejecuciones de hardware no están disponibles por ahora, así que un saldo que compres hoy no compra nada hoy. Los créditos no expiran y empiezan a medirse cuando se lance la facturación del tutor y del hardware.",
     earlyAccess: "Acceso anticipado:",
     earlyAccessBody:
-      " la facturación aún no se ha lanzado — estos son precios de lanzamiento. Hoy el tutor es gratis para probar, y las ejecuciones de hardware no están disponibles por ahora. Cuando las billeteras estén activas, las financiares tú con una recarga o un plan.",
+      " la facturación aún no se ha lanzado — estos son precios de lanzamiento. Hoy el tutor es gratis para probar, y las ejecuciones de hardware no están disponibles por ahora. Cuando las billeteras estén activas, las financiarás tú con una recarga o un plan.",
     estimatorHeading: "Conoce el número antes de ejecutar",
     estimatorIntro:
       "Ninguna plataforma cuántica debería sorprenderte con una factura. Calcula aquí cualquier backend publicado y cualquier hábito de tutor. Antes de una ejecución real de hardware, el espacio de trabajo te muestra su costo y te hace aprobarlo.",
