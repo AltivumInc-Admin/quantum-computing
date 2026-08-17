@@ -323,13 +323,29 @@ test("every console.error in the handler is covered by some metric filter", () =
     "invoice.paid: could not expand payments",
   ];
 
-  const messages = [...handlerSrc.matchAll(/console\.error\(\s*(`[^`]*`|"[^"]*")/g)].map((m) =>
-    m[1].slice(1, -1)
+  // Exported string constants used as log messages, resolved from the source so a
+  // phrase can be shared between the handler and this test without being retyped.
+  const consts = Object.fromEntries(
+    [...handlerSrc.matchAll(/export const ([A-Z_]+) = "([^"]+)";/g)].map((m) => [m[1], m[2]])
   );
-  assert.ok(messages.length >= 5, `expected several console.error sites, found ${messages.length}`);
+
+  // Three first-argument shapes, and ALL of them must be seen: a template
+  // literal, a plain string, and a BARE CONSTANT. The bare-constant case was
+  // invisible here until 2026-08-17, which is how console.error(SIGNATURE_REJECTED)
+  // slipped in watched by nothing — the same blind spot physicalNames() had, in a
+  // different guard. A message this test cannot see is a message no alarm covers.
+  const messages = [...handlerSrc.matchAll(/console\.error\(\s*(`[^`]*`|"[^"]*"|[A-Z_]{4,})/g)].map((m) => {
+    const raw = m[1];
+    if (raw.startsWith("`") || raw.startsWith('"')) return raw.slice(1, -1);
+    return consts[raw] ?? `<unresolved constant ${raw}>`;
+  });
+  assert.ok(messages.length >= 6, `expected several console.error sites, found ${messages.length}`);
   for (const msg of messages) {
-    // Template literals interpolate the shared phrase constant; resolve it.
-    const resolved = msg.replace(/\$\{CLAWBACK_UNRECLAIMED\}/g, "credits NOT reclaimed");
+    // Template literals interpolate the shared phrase constants; resolve them.
+    let resolved = msg;
+    for (const [name, value] of Object.entries(consts)) {
+      resolved = resolved.replaceAll(`\${${name}}`, value);
+    }
     const covered = phrases.some((p) => resolved.includes(p)) || UNWATCHED.some((u) => resolved.includes(u));
     assert.ok(covered, `console.error("${resolved}") is watched by no metric filter and is not on UNWATCHED`);
   }

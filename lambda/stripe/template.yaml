@@ -282,6 +282,44 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  SignatureRejectedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"stripe-webhook: signature verification failed"'
+      MetricTransformations:
+        - MetricNamespace: !Ref MetricNamespace
+          MetricName: SignatureRejected
+          MetricValue: "1"
+          Unit: Count
+
+  SignatureRejectedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${NamePrefix}-signature-rejected"
+      AlarmDescription: >-
+        Stripe delivered a webhook whose signature did not verify. Treat this as
+        OUR secret being wrong, not an attacker: the overwhelmingly likely cause
+        is a signing secret that was rotated without the function picking it up,
+        and while it lasts EVERY event is dropped — no credits granted, no
+        refunds clawed back. Neither of the other alarms can see it: the
+        invocation SUCCEEDS (so AWS/Lambda Errors is blind) and the response is
+        a 4xx (so the 5xx alarm is blind). Verified on 2026-08-17 by rotating a
+        sandbox secret: 24 invocations, wallet untouched, and not one log line
+        until this filter existed.
+        FIRST CHECK: does the function hold the current secret? A warm container
+        caches it at cold start, so a rotation needs an
+        `update-function-configuration` to recycle the environment.
+      Namespace: !Ref MetricNamespace
+      MetricName: SignatureRejected
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   AsyncPaymentFailedMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
