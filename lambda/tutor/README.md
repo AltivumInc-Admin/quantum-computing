@@ -1,8 +1,25 @@
 # Ask the margin — lesson tutor (streaming Lambda)
 
 A single, stateless, response-streaming Lambda that answers questions **grounded in
-the current lesson** using Amazon Bedrock (Claude, `ConverseStream`). The rest of
-the site stays a static export; this is the only server-side surface.
+the current lesson**, using Anthropic's first-party Messages API. The rest of the
+site stays a static export; this is the only server-side surface.
+
+> **Provider, 2026-08-17: this moved off Amazon Bedrock.** Bedrock never entitled
+> this account to the paid roster — `converse` answered
+> `anthropic.claude-sonnet-5 is not available for this account … contact AWS
+> Sales` for sonnet-5, opus-5 and fable-5, so every tier above free was
+> unreachable there. Only haiku-4-5 was ever invocable.
+>
+> Worth knowing because it is the trap that hid it: `list-foundation-models`,
+> `list-inference-profiles` **and** `get-foundation-model-availability` all
+> reported the paid models present and `AUTHORIZED`. Availability describes the
+> model in the region, not your account's entitlement to invoke it. The only
+> honest check is an actual call.
+>
+> Two consequences worth carrying: model inference is no longer on the AWS bill
+> at all (see Cost attribution below), and `RATES` in `tutor-billing.mjs` stopped
+> being a placeholder — Anthropic's published rates *are* the cost basis here,
+> where Bedrock's had to be re-derived from Cost Explorer.
 
 - `index.mjs` — the streaming handler. Imports its prompt/grounding logic from
   `tutor-core.mjs`; no hand-copied mirror.
@@ -19,11 +36,20 @@ the site stays a static export; this is the only server-side surface.
 
 ## Prerequisites
 
-1. **Request Bedrock model access** for the Claude model you'll use, in your deploy
-   region (Bedrock console → Model access). Get its id/inference-profile:
+1. **An Anthropic API key**, stored in one Secrets Manager secret as
+   `{"apiKey": "sk-ant-..."}`. The function reads it with its own execution role
+   on first model call, so it never enters the environment and is not visible via
+   `GetFunctionConfiguration`.
    ```bash
-   aws bedrock list-inference-profiles --query "inferenceProfileSummaries[].inferenceProfileId"
+   # create it once (the value is piped, never an argument -- argv is world-readable)
+   printf '{"apiKey":"%s"}' "$KEY" | aws secretsmanager create-secret \
+     --name quantum-tutor --secret-string file:///dev/stdin --region us-east-2
+
+   # verify it exists WITHOUT reading the value
+   aws secretsmanager describe-secret --secret-id quantum-tutor --region us-east-2
    ```
+   There is no model-access request to make and no inference profile to create:
+   model ids are the bare first-party strings in `tutor-billing.mjs` `MODEL_IDS`.
 2. AWS CLI v2 configured; Node 22 (matches the function's `nodejs22.x` runtime).
 
 ## Deploy (SAM, recommended)
@@ -31,28 +57,33 @@ the site stays a static export; this is the only server-side surface.
 ```bash
 cd lambda/tutor
 npm install
-TUTOR_MODEL_ID=<inference-profile-arn> npm run deploy
+npm run deploy
 ```
 
 `npm run deploy` is the whole recipe. npm runs `predeploy` first, which rebuilds
 `corpus.json` from the current GUIDEs and then runs the preflight gate; a non-zero
 exit from either aborts before `sam build`, so you cannot ship a missing, stale or
-truncated corpus (the failure mode that answers OUT_OF_SCOPE to every learner) or a
-malformed model id. Add `-- --guided` on a first deploy to set the parameters:
+truncated corpus (the failure mode that answers OUT_OF_SCOPE to every learner), or a
+roster model whose id still carries a Bedrock prefix (which 404s at request time and
+is indistinguishable from a model outage, because the handler converts it into the
+in-band error sentinel inside a committed HTTP 200).
+
+Add `-- --guided` on a first deploy to set the parameters:
 
 ```bash
-TUTOR_MODEL_ID=<inference-profile-arn> npm run build:corpus \
+npm run build:corpus \
   && node deploy-check.mjs \
   && sam build \
   && sam deploy --guided \
     --parameter-overrides \
-      ModelId=<inference-profile-arn> \
-      FoundationModelId=anthropic.claude-haiku-4-5-20251001-v1:0 \
+      SecretId=quantum-tutor \
       MaxConcurrency=5 \
       LogRetentionInDays=30
 # note the TutorUrl output. MaxConcurrency is the hard cost ceiling (reserved
-# concurrency). FoundationModelId scopes the Bedrock IAM to the model the profile
-# routes to. LogRetentionInDays sets the (now stack-managed) log group's retention.
+# concurrency). SecretId names the Secrets Manager secret holding the Anthropic
+# API key; the IAM grant is scoped to exactly that one secret, so this role
+# cannot read quantum-stripe's live Stripe key from the same account.
+# LogRetentionInDays sets the (now stack-managed) log group's retention.
 ```
 
 > **First deploy after the log group was added to the template:** the
@@ -75,7 +106,7 @@ aws lambda create-function --function-name quantum-tutor \
   --runtime nodejs22.x --handler index.handler \
   --role arn:aws:iam::<ACCOUNT_ID>:role/quantum-tutor-role \
   --zip-file fileb://lambda/tutor.zip --timeout 60 --memory-size 512 \
-  --environment "Variables={TUTOR_MODEL_ID=<inference-profile-id>}"
+  --environment "Variables={SECRET_ID=quantum-tutor}"
 
 aws lambda create-function-url-config --function-name quantum-tutor \
   --auth-type AWS_IAM --invoke-mode RESPONSE_STREAM \
@@ -94,9 +125,9 @@ and the learner is inside a `/learn/<slug>` lesson.
 
 ## Smoke test
 
-Offline handler test (no AWS creds, stubs Bedrock, no `corpus.json` needed — the
-import-time corpus read is guarded). `npm install` is required first because
-`index.mjs` imports the Bedrock SDK at module top:
+Offline handler test (no AWS creds, stubs the Anthropic client, no `corpus.json`
+needed — the import-time corpus read is guarded). `npm install` is required first
+because `index.mjs` imports the Anthropic and AWS SDKs at module top:
 
 ```bash
 cd lambda/tutor && npm install && npm test
@@ -105,8 +136,10 @@ cd lambda/tutor && npm install && npm test
 #                         the out-of-scope / too-long gates (no model call), the
 #                         shared question cap, and the 45s stream deadline
 #  - handler-wiring.test.mjs the PRODUCTION wiring behind a fake `awslambda`:
-#                         statusCode 200 + text/plain, and the TUTOR_MODEL_ID
-#                         env contract against template.yaml
+#                         statusCode 200 + text/plain, and the SECRET_ID env
+#                         contract against template.yaml
+#  - tutor-billing.test.mjs the money kernel: roster, rates, per-model request
+#                         shape, and the usage-report reader
 #  - tutor-core.test.mjs  strip/heading/system-prompt + corpus-entry logic
 #  - deploy-check.test.mjs the deploy preflight (model-id + corpus-freshness) validators
 ```
@@ -180,8 +213,10 @@ curl -N -X POST "https://<distribution-domain>" \
   2. **`ReservedConcurrentExecutions`** (`MaxConcurrency`, default 5) — a hard
      ceiling on simultaneous billable invocations behind the edge limit; excess is
      throttled rather than fanning out into unbounded paid generations. The
-     template also scopes the Bedrock IAM `Resource` to the inference-profile + its
-     foundation-model ARNs (least privilege, not `*`) and caps `maxTokens` at 800.
+     template also scopes the Secrets Manager IAM `Resource` to the one secret
+     holding the API key (least privilege, not `*` — this role must not be able to
+     read quantum-stripe's live Stripe key from the same account), and the handler
+     caps `max_tokens` per model (`MAX_OUTPUT_TOKENS`).
      Monitoring is now **stack-managed** (see [Alarms](#alarms)): the
      `quantum-tutor-high-invocations-stack` alarm (hourly Invocations Sum > 500)
      and the `quantum-tutor-errors` metric-filter alarm (any `tutorError` log line
@@ -191,7 +226,8 @@ curl -N -X POST "https://<distribution-domain>" \
      [Log retention](#log-retention).
 - **Teardown:** `sam delete` (SAM) or `aws lambda delete-function-url-config` +
   `aws lambda delete-function` (CLI), then unset `NEXT_PUBLIC_TUTOR_URL`. Also
-  delete the application inference profile (below).
+  revoke the Anthropic API key in the Anthropic console and delete its secret —
+  `sam delete` does not remove a secret it did not create.
 
 ## Alarms
 
@@ -207,7 +243,7 @@ stack-managed `quantum-tutor-stack-alerts` SNS topic (email subscription via the
   silently seize the console-created resource — and then delete it on rollback.
 - **`quantum-tutor-errors`** — fed by the `TutorErrorMetricFilter` on the
   function's log group (`QuantumTutor/TutorError`, Sum over 5 minutes > 0).
-  `index.mjs` streams inside a committed HTTP 200, so a Bedrock failure raises
+  `index.mjs` streams inside a committed HTTP 200, so a model failure raises
   neither the HTTP status nor the Lambda `Errors` metric; its only trace is the
   `console.error(JSON.stringify({ tutorError: true, ... }))` line, which the
   filter turns into a metric. The pattern is the literal term `"tutorError"`,
@@ -283,37 +319,28 @@ The lessons stay free; the gen-AI tutor is tagged so its spend is attributable a
 ready to monetize. All tutor resources carry `Project=quantum`, `Feature=ask-tutor`,
 `CostCategory=genai`.
 
-The dominant cost is **Bedrock inference**, which is attributed via an **application
-inference profile** (AIP) — a tagged wrapper around the model. The Lambda invokes the
-AIP ARN (passed as `ModelId`) instead of the raw model id, so the AIP's tags land on
-every billing record. Current AIP (us-east-2):
+**The dominant cost is no longer on the AWS bill at all.** Model inference is billed
+by Anthropic against the API key in the `quantum-tutor` secret, so Cost Explorer,
+`make cost`, and the tags below now cover only this stack's own AWS footprint:
+Lambda compute, CloudWatch Logs, the Function URL, and the edge distribution.
 
-```
-quantum-ask-tutor  ->  arn:aws:bedrock:us-east-2:$SRC_ACCOUNT:application-inference-profile/$SRC_PROFILE_ID
-   wraps system profile  us.anthropic.claude-haiku-4-5-20251001-v1:0   (tags: Project/Feature/CostCategory)
-```
-
-Recreate it if needed:
-
-```bash
-aws bedrock create-inference-profile --region us-east-2 \
-  --inference-profile-name quantum-ask-tutor \
-  --description "Cost attribution for the quantum portal gen-AI lesson tutor" \
-  --model-source copyFrom=arn:aws:bedrock:us-east-2:$SRC_ACCOUNT:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0 \
-  --tags '[{"key":"Project","value":"quantum"},{"key":"Feature","value":"ask-tutor"},{"key":"CostCategory","value":"genai"}]'
-# then redeploy with ModelId=<the returned application-inference-profile ARN>
-```
-
-**Activation (must run in the MANAGEMENT / payer account):** user-defined tags only
-appear in Cost Explorer after activation, and this account is a linked member, so the
-payer account must activate them — Billing & Cost Management console -> Cost allocation
-tags -> activate `Project`, `Feature`, `CostCategory`; or from the management account:
+Expect tutor inference in Cost Explorer to drop to zero from the cutover date.
+That is the provider move, not a usage collapse — read inference spend in the
+Anthropic console instead. The application inference profile `quantum-ask-tutor`
+that used to carry the tags onto every Bedrock billing record is now unused and
+can be deleted:
 
 ```bash
-aws ce update-cost-allocation-tags-status --region us-east-1 \
-  --cost-allocation-tags-status TagKey=Project,Status=Active TagKey=Feature,Status=Active TagKey=CostCategory,Status=Active
+aws bedrock delete-inference-profile --region us-east-2 \
+  --inference-profile-identifier <AIP-ARN>
 ```
 
-Activation is **not retroactive** (only spend after activation is tagged) and tags take
-up to ~24h to appear. Then filter/group by these tags in Cost Explorer or CUR 2.0.
-Teardown also: `aws bedrock delete-inference-profile --inference-profile-identifier <AIP-ARN> --region us-east-2`.
+Per-request cost is still fully observable *inside* this repo, and more precisely
+than Cost Explorer ever showed: every metered generation logs `tutorReserve` and
+`tutorSettle` lines carrying the credits reserved, charged and refunded, and
+`RATES` in `tutor-billing.mjs` is now the provider's published rate rather than a
+placeholder pending verification.
+
+The AWS-side tags below remain useful for the compute footprint. All tutor
+resources carry `Project=quantum`, `Feature=ask-tutor`, `CostCategory=genai`.
+

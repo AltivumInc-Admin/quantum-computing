@@ -6,9 +6,9 @@
  * never true under a plain `node --test`, so three things had no test at all:
  * the `HttpResponseStream.from(..., { statusCode, headers })` contract the
  * browser's byte-stream reader depends on, the fact that the wrapper actually
- * invokes the core, and the `process.env.TUTOR_MODEL_ID` read — a two-sided
- * contract with template.yaml whose breakage makes every ConverseStreamCommand
- * fail and hands 100% of learners the error sentinel.
+ * invokes the core, and the `process.env.SECRET_ID` read — a two-sided contract
+ * with template.yaml whose breakage makes every model call fail and hands 100%
+ * of learners the error sentinel.
  *
  * This file installs a fake `awslambda` global and dynamically imports the
  * module, so the real wiring runs with no Lambda runtime, no AWS creds and no
@@ -23,11 +23,10 @@ import { readFileSync } from "node:fs";
 
 const recorded = [];
 
-// Import the SDK FIRST: it installs its own `awslambda` global (an empty object),
-// which would otherwise clobber the fake installed below. index.mjs capability-
-// checks for streamifyResponse precisely because that stub exists.
-await import("@aws-sdk/client-bedrock-runtime");
-
+// index.mjs capability-checks for `streamifyResponse` rather than for the
+// `awslambda` global, because an AWS SDK client used to install that global as
+// an empty object and clobber a fake installed here. No current dependency does,
+// but the check stays: the failure it prevents is silent.
 globalThis.awslambda = {
   streamifyResponse: (fn) => fn,
   HttpResponseStream: {
@@ -49,7 +48,10 @@ test("it commits 200 with text/plain — the contract the client's byte reader d
   const sink = { write: (s) => chunks.push(s), end: () => {} };
 
   // A slug no corpus can contain, so this exercises the wiring without a real
-  // Bedrock call — the module-scope client here is the production one.
+  // model call — the module-scope client here is the production one, and it
+  // would try to read the API key out of Secrets Manager if it were reached.
+  // Reaching the refusal instead is itself the proof that the credential is
+  // deferred: an eagerly-built client would have needed AWS to get this far.
   await handler({ body: JSON.stringify({ slug: "__wiring-probe__", question: "hi" }) }, sink);
 
   assert.equal(recorded.length, 1, "HttpResponseStream.from must be called once per invocation");
@@ -75,7 +77,11 @@ test("every env var the handler reads is declared in template.yaml", () => {
   const template = readFileSync(new URL("./template.yaml", import.meta.url), "utf8");
 
   const read = [...source.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]);
-  assert.ok(read.includes("TUTOR_MODEL_ID"), "the handler must still read TUTOR_MODEL_ID");
+  assert.ok(read.includes("SECRET_ID"), "the handler must still read SECRET_ID");
+  assert.ok(
+    !read.includes("TUTOR_MODEL_ID"),
+    "TUTOR_MODEL_ID is a Bedrock-era leftover — model ids come from MODEL_IDS now"
+  );
 
   const declared = template.slice(template.indexOf("Environment:"));
   for (const name of new Set(read)) {

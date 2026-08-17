@@ -4,8 +4,7 @@
  * building the corpus and BEFORE `sam deploy`:
  *
  *   npm --prefix lambda/tutor run build:corpus
- *   TUTOR_MODEL_ID=<inference-profile-arn> node lambda/tutor/deploy-check.mjs
- *   # or: node lambda/tutor/deploy-check.mjs <inference-profile-arn>
+ *   node lambda/tutor/deploy-check.mjs
  *
  * It fails (exit 1) if either guard trips, so a broken deploy is caught before it
  * ships:
@@ -14,10 +13,19 @@
  *      non-empty entry that matches a fresh rebuild. Catches "forgot to rebuild
  *      after editing/adding a GUIDE" and the silent empty-corpus-answers-everything
  *      OUT_OF_SCOPE failure mode.
- *   2. MODEL ID — must be present and shaped like a Bedrock inference-profile ARN
- *      (system or application) or a foundation-model id/ARN. A format/presence
- *      check only — no AWS call — so it runs in CI and offline. Confirm the profile
- *      actually exists with `aws bedrock list-inference-profiles` before deploying.
+ *   2. MODEL ROSTER — every model a tier can select must carry a bare first-party
+ *      Anthropic id, with no Bedrock `us.` / `anthropic.` prefix left on it. A
+ *      surviving prefix is a 404 at request time, which the handler converts into
+ *      the in-band error sentinel — a 200 response, a flat Errors metric, and no
+ *      way to tell it from a model outage.
+ *
+ *      This replaced a Bedrock inference-profile ARN check when the tutor moved
+ *      to the first-party API (Bedrock never entitled this account to the paid
+ *      models). There is deliberately no credential check here: the gate makes no
+ *      AWS call so it runs in CI and offline, and reading the secret to validate
+ *      it would put the API key somewhere it does not belong. Confirm the secret
+ *      exists with `aws secretsmanager describe-secret --secret-id quantum-tutor`
+ *      (metadata only, never the value) before deploying.
  *
  * Pure helpers are exported and unit-tested in deploy-check.test.mjs (CI runs it via
  * `node --test`). Not in package.json `files`, so `sam build` never packages it.
@@ -26,30 +34,41 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildCorpusEntry } from "./tutor-core.mjs";
+import { ROSTER, MODEL_IDS } from "./tutor-billing.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
 const CORPUS_PATH = path.join(HERE, "corpus.json");
 
 /**
- * True if `id` is a Bedrock model identifier the handler can pass to ConverseStream:
- * a system/application inference-profile ARN, a foundation-model ARN, or a bare
- * foundation-model / cross-region inference-profile id (e.g.
- * `anthropic.claude-haiku-4-5-20251001-v1:0`, `us.anthropic.claude-...-v1:0`).
+ * True if `id` is a bare first-party Anthropic model id — what `POST /v1/messages`
+ * accepts. Rejects the two shapes a half-finished migration leaves behind: a
+ * regional inference-profile prefix (`us.`, `global.`) and Bedrock's provider
+ * prefix (`anthropic.`). Also rejects a trailing Bedrock version suffix (`-v1:0`)
+ * and a date suffix, both of which 404 on this API.
  */
-export function isValidBedrockModelId(id) {
+export function isValidAnthropicModelId(id) {
   if (typeof id !== "string") return false;
   const s = id.trim();
   if (s === "") return false;
-  // (application-)inference-profile ARN
-  if (/^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:\d+:(application-)?inference-profile\/\S+$/.test(s)) {
-    return true;
+  if (/^(us|eu|apac|global)\./.test(s)) return false; // regional inference profile
+  if (/^anthropic\./.test(s)) return false; // Bedrock provider prefix
+  if (/-v\d+:\d+$/.test(s)) return false; // Bedrock version suffix
+  return /^claude-[a-z0-9-]+$/.test(s);
+}
+
+/** Every model any tier can select must be invocable. Returns problem strings. */
+export function modelRosterProblems() {
+  const problems = [];
+  for (const model of new Set(Object.values(ROSTER).flat())) {
+    const id = MODEL_IDS[model];
+    if (!id) {
+      problems.push(`roster model "${model}" has no entry in MODEL_IDS — selecting it would 404`);
+    } else if (!isValidAnthropicModelId(id)) {
+      problems.push(`roster model "${model}" maps to "${id}", which is not a bare first-party model id`);
+    }
   }
-  // foundation-model ARN (account field is empty for AWS-owned models)
-  if (/^arn:aws[a-z-]*:bedrock:[a-z0-9-]+::foundation-model\/\S+$/.test(s)) return true;
-  // bare foundation-model or cross-region inference-profile id, ending in a `:N` version
-  if (/^([a-z]{2}\.)?[a-z0-9][a-z0-9.-]*:\d+$/.test(s)) return true;
-  return false;
+  return problems;
 }
 
 /** The curriculum's `NN-*` sections that have a GUIDE.md — the corpus's source set. */
@@ -92,15 +111,10 @@ export function corpusFreshnessProblems(corpus, sections, root = REPO_ROOT) {
   return problems;
 }
 
-export function runPreflight({ modelId, corpusPath = CORPUS_PATH, root = REPO_ROOT } = {}) {
+export function runPreflight({ corpusPath = CORPUS_PATH, root = REPO_ROOT } = {}) {
   const errors = [];
 
-  if (!isValidBedrockModelId(modelId)) {
-    errors.push(
-      `model id invalid/missing: ${JSON.stringify(modelId)} — pass the inference-profile ARN as ` +
-        `$TUTOR_MODEL_ID or arg 1 (find it: aws bedrock list-inference-profiles)`
-    );
-  }
+  for (const p of modelRosterProblems()) errors.push(p);
 
   let corpus = null;
   try {
@@ -114,18 +128,17 @@ export function runPreflight({ modelId, corpusPath = CORPUS_PATH, root = REPO_RO
   return errors;
 }
 
-function main(argv) {
-  const modelId = process.env.TUTOR_MODEL_ID || argv[2] || "";
-  const errors = runPreflight({ modelId });
+function main() {
+  const errors = runPreflight();
   if (errors.length) {
     console.error("tutor deploy preflight FAILED:");
     for (const e of errors) console.error(`  - ${e}`);
     process.exit(1);
   }
-  console.log("tutor deploy preflight OK — corpus is fresh and the model id is well-formed.");
+  console.log("tutor deploy preflight OK — corpus is fresh and every roster model id is invocable.");
 }
 
 // Only run the CLI when executed directly, so importing the helpers in tests is side-effect-free.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(process.argv);
+  main();
 }
