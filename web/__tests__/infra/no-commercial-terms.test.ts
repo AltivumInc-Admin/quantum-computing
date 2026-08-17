@@ -1,3 +1,4 @@
+import { execSync } from "child_process";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join, relative, sep } from "path";
 
@@ -32,9 +33,14 @@ const SKIP_DIRS = new Set([
   ".git", "node_modules", ".venv", "venv", "__pycache__", ".next", "out", ".aws-sam",
   ".pytest_cache", "dist", "build", ".claude", ".agents", ".continue", ".factory",
   ".kiro", ".design-sync", "coverage", "playwright-report", "test-results",
+  ".ipynb_checkpoints",
 ]);
 
-const SCAN_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|md|yaml|yml|json|sh|toml)$/;
+// .ipynb is deliberately in this list (2026-08-17): notebook JSON carries the cell
+// sources as string arrays, so a banned figure typed into a curriculum notebook is
+// right there in the raw file text — scanning the file as text is sufficient, and a
+// notebook was previously a blind spot the size of the entire curriculum.
+const SCAN_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|md|yaml|yml|json|sh|toml|ipynb)$/;
 
 /** Files exempt, each with a reason. Keep this list at zero if at all possible. */
 const ALLOWED = new Map<string, string>([
@@ -51,9 +57,61 @@ const ALLOWED = new Map<string, string>([
  * Amazon's own published cache ratios — none of those reveal anything and none may trip.
  */
 const BANNED: Array<{ name: string; re: RegExp }> = [
+  // ── Identifier assignments ────────────────────────────────────────────────
+  // Widened 2026-08-17: the old single pattern here was case-sensitive and
+  // word-boundary bounded (\bMARKUP\b), which is name-dependent in exactly the
+  // region it polices — `tutorMarkup = 1.3`, `markup_factor: 1.3` and
+  // `QPU_MARKUP_X = 1.2` all passed it clean. These match any identifier that
+  // CONTAINS the money word (any case, camelCase, snake_case, prefixed or
+  // suffixed) followed by an assignment, regardless of what the RHS looks like
+  // — `markup = base * perUnit` discloses just as much as a literal.
   {
-    name: "a markup/handling/margin constant",
-    re: /\b(MARKUP|MARGIN|HANDLING|COST_PER_CREDIT|GROSS_MARGIN|CREDIT_COST_USD)\b\s*[:=]/,
+    // The one legitimate sense of "markup" in a web repo is document markup, so
+    // identifiers that are exactly a doc-markup compound (LATEX_MARKUP,
+    // htmlMarkup, …) are carved out up front; everything else that contains
+    // mark_?up and is assigned to, trips.
+    name: "a markup-bearing identifier assignment",
+    re: /(?<![\w$])(?!(?:latex|html|xml|svg|jsx|inner|rich|text|raw|safe|rendered)_?markup(?![\w$]))[\w$]*mark_?up[\w$]*\s*[:=](?!=)/i,
+  },
+  {
+    // "margin" alone is CSS (margin:, marginTop:) and chart layout
+    // (POINT_MARGIN, APPROACH_ROOT_MARGIN), so the bare word cannot be banned.
+    // What CAN be: a margin identifier carrying a commercial qualifier on
+    // either side — gross/net/profit/… before it, or pct/rate/multiplier/…
+    // after it. Layout margins never spell themselves that way.
+    name: "a commercial margin identifier assignment",
+    re: /(?<![\w$])(?:[\w$]*(?:gross|net|profit|contribution|operating)_?margin[\w$]*|[\w$]*margin_?(?:pct|percent(?:age)?|rate|ratio|multiplier|factor|bps|usd|micros)[\w$]*)\s*[:=](?!=)/i,
+  },
+  {
+    // The bare SCREAMING forms, standalone only (case-sensitive on purpose:
+    // lowercase `margin:` is CSS, lowercase `handling` is error handling).
+    name: "a bare MARKUP/MARGIN/HANDLING constant",
+    re: /(?<![\w$])(?:MARGIN|HANDLING|MARKUP)(?![\w$])\s*[:=](?!=)/,
+  },
+  {
+    name: "a handling-fee identifier assignment",
+    re: /(?<![\w$])[\w$]*handling_?(?:fee|pct|percent|rate|multiplier|factor|charge)[\w$]*\s*[:=](?!=)/i,
+  },
+  {
+    name: "a per-credit-cost identifier assignment",
+    re: /(?<![\w$])[\w$]*(?:cost_?per_?credit|credit_?cost|cost_?to_?serve|serve_?cost)[\w$]*\s*[:=](?!=)/i,
+  },
+  {
+    name: "a breakeven identifier assignment",
+    re: /(?<![\w$])[\w$]*break_?even[\w$]*\s*[:=](?!=)/i,
+  },
+  // ── Prose forms of the same disclosure ────────────────────────────────────
+  {
+    // "the markup is 1.3", "marked up 30%", "we mark up by 1.3x". Either the
+    // number wears x/× /% (a ratio can only be the spread), or the sentence
+    // links markup to a bare number with of/is/at/by/=. Digit-free prose about
+    // markup as a CONCEPT (rule 6 itself, "no markup constant") stays legal.
+    name: "the spread stated as markup prose",
+    re: /\bmark(?:ed|s)?[\s-]?up\b[^.\n]{0,30}?\b\d+(?:\.\d+)?\s?(?:[x×%]|percent)|\bmark(?:ed|s)?[\s-]?up\s+(?:of|is|at|by|=)\s*\$?\d/i,
+  },
+  {
+    name: "the spread named as a spread, with a figure",
+    re: /\bspread\s+(?:of|is|at)\s+\$?\d/i,
   },
   {
     name: "a stated margin percentage",
@@ -168,6 +226,24 @@ describe("the banned patterns catch what they must and spare what they must", ()
     ["a markup constant", "const MARKUP = 1.35;"],
     ["what a credit costs to serve", "a credit costs us $0.0072"],
     ["a breakeven figure", "breakeven is 340 subscribers"],
+    // Widened 2026-08-17: all of the below passed the old guard clean, because the
+    // constant pattern was case-sensitive and word-boundary bounded — camelCase and
+    // suffixed spellings of the same identifiers walked straight past \bMARKUP\b.
+    ["a camelCase markup identifier", "const tutorMarkup = 1.3;"],
+    ["a snake_case markup identifier", "markup_factor: 1.3,"],
+    ["a suffixed SCREAMING markup identifier", "export const QPU_MARKUP_X = 1.2;"],
+    ["a markup identifier with a non-literal RHS", "const markupOverCost = base * perUnit;"],
+    ["a camelCase gross-margin identifier", "grossMargin = 0.12;"],
+    ["a snake_case margin-percent identifier", "const gross_margin_pct = 12;"],
+    ["a margin-pct field", "marginPct: 12,"],
+    ["a handling-fee identifier", "handlingFee = 40;"],
+    ["a credit-cost identifier", "creditCostUsd = 0.0072;"],
+    ["a cost-to-serve identifier", "const costToServe = 812;"],
+    ["a breakeven identifier", "breakEvenSubscribers = 340;"],
+    ["the spread stated as prose markup", "the markup is 1.3 on every surface"],
+    ["the spread as a marked-up percentage", "prices are marked up 30% before publish"],
+    ["the spread as a mark-up verb phrase", "we mark up by 1.3x across surfaces"],
+    ["the spread named as a spread", "a spread of 2.1 cents on each credit"],
   ])("trips on %s", (_label, sample) => {
     expect(trips(sample)).toBe(true);
   });
@@ -183,8 +259,93 @@ describe("the banned patterns catch what they must and spare what they must", ()
     ["the product name for the tutor", "Ask the margin, right inside the lesson"],
     ["the design principle by name", "the margin rule is load-bearing"],
     ["Amazon's published cache ratios", "const CACHE_WRITE_MULTIPLIER = 1.25;"],
+    ["the cache-read ratio likewise", "const CACHE_READ_MULTIPLIER = 0.1;"],
     ["a provider list rate on its own", "IQM lists at $0.00145 per shot"],
+    // Look-alikes the 2026-08-17 widening must provably NOT reach: every one of
+    // these exists in the tree today (or is one keystroke away from it).
+    ["the public peg constant", "const MICROS_PER_CREDIT = 10_000;"],
+    ["estimateTokens' chars-per-token divisor", "const estimateTokens = (s) => Math.ceil(s.length / 3);"],
+    ["a document-markup regex (tests/test_pricing_prose.py)", 'LATEX_MARKUP = re.compile(r"[\\\\^_{}]")'],
+    ["a chart layout margin (vqc-trainer.tsx)", "const POINT_MARGIN = 0.5; // breathing room, viewBox units"],
+    ["an IntersectionObserver margin (widget-fence.tsx)", 'const APPROACH_ROOT_MARGIN = "400px 0px";'],
+    ["plain CSS margins", "margin: 0 auto;"],
+    ["React style-object margins", "style={{ marginTop: 8, margin: '0 auto' }}"],
+    ["scroll-margin CSS", "scroll-margin-top: 4rem;"],
+    ["HTML markup as a variable, named as such", "const htmlMarkup = renderToString(page);"],
+    ["error handling as prose", "error handling: retries are capped"],
+    ["spread as a verb", "the read path spreads over three tables"],
+    ["a published TIERS literal (pricing.ts is public by design)", "monthlyCredits: 1200,"],
   ])("spares %s", (_label, sample) => {
     expect(trips(sample)).toBe(false);
+  });
+});
+
+/**
+ * `sam deploy --guided` writes every parameter the operator types — including the
+ * deployed-configuration values that exist precisely so they never appear in git,
+ * like the metering env vars — into samconfig.toml VERBATIM, as a
+ * `parameter_overrides = "..."` line. Until 2026-08-17 that file was not
+ * gitignored (`git check-ignore samconfig.toml` exited 1), so one habitual
+ * `git add -A` after a guided deploy would have published the exact numbers this
+ * whole test exists to keep out.
+ *
+ * Three layers, because each fails differently:
+ *  1. no samconfig file may be TRACKED (any depth, any samconfig.*.toml/yaml);
+ *  2. no tracked file may carry a samconfig-style `parameter_overrides =` line
+ *     (catches the content pasted into some other file);
+ *  3. .gitignore must actively refuse the paths, so the mistake is stopped at
+ *     `git add` rather than found here after the push.
+ *
+ * The `--parameter-overrides` CLI flag in READMEs and runbooks is a different
+ * string (hyphens, mid-line) and stays legal — those documented invocations carry
+ * placeholders, and the runbook rule is "pass every parameter explicitly on the
+ * command line" for exactly this reason.
+ */
+describe("sam deploy --guided output never lands in git", () => {
+  const tracked = execSync("git ls-files -z", { cwd: REPO })
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
+
+  it("sees the tracked file list (this guard must not silently no-op)", () => {
+    expect(tracked.length).toBeGreaterThan(200);
+  });
+
+  it("no samconfig file is tracked, at any depth", () => {
+    const hits = tracked.filter((p) => /(^|\/)samconfig[^/]*\.(toml|ya?ml)$/i.test(p));
+    expect(hits).toEqual([]);
+  });
+
+  it("no tracked file carries a parameter_overrides value assignment", () => {
+    const findings: string[] = [];
+    for (const rel of tracked) {
+      if (!SCAN_EXT.test(rel)) continue;
+      if (ALLOWED.has(rel.split("/").join(sep))) continue;
+      let text: string;
+      try {
+        text = readFileSync(join(REPO, rel), "utf8");
+      } catch {
+        continue;
+      }
+      text.split("\n").forEach((line, i) => {
+        if (/^\s*"?parameter_overrides"?\s*[:=]\s*\S/.test(line)) {
+          findings.push(`${rel}:${i + 1}  ${line.trim().slice(0, 120)}`);
+        }
+      });
+    }
+    expect(findings.join("\n")).toBe("");
+  });
+
+  it(".gitignore refuses samconfig files before they can be staged", () => {
+    for (const name of [
+      "samconfig.toml",
+      "samconfig.prod.toml",
+      "samconfig.yaml",
+      "lambda/tutor/samconfig.toml",
+      "lambda/stripe/samconfig.dev.toml",
+    ]) {
+      // check-ignore exits 0 when the path IS ignored; execSync throws otherwise.
+      expect(() => execSync(`git check-ignore -q -- ${name}`, { cwd: REPO })).not.toThrow();
+    }
   });
 });
