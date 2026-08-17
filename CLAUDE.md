@@ -186,12 +186,20 @@ Two facts from it that change how you write code, and are worth carrying in your
 
 ### Open work to reopen the storefront
 
-- **FIRST — the shipped copy is now false.** Both locales still say curriculum hardware runs
-  are platform-sponsored (14 strings in `en.ts`, 12 in `es.ts`; one is test-locked, so the
-  test changes too). Since the 2026-08-05 QPU deploy that is no longer merely stale, it is
-  **wrong**: `LIFETIME_CAP_MICROS` is `0` and no wallet table is wired, so every submit
-  returns 402. Rule 13 says never advertise what the deployed system cannot do — this is
-  that, live on the pricing page today. Fix the copy or wire the funding; do not leave both.
+- ~~FIRST — the shipped copy is now false~~ — **copy corrected 2026-08-17** (live once the
+  next Amplify deploy from main ships). The sponsorship family was **14 keys in `en.ts` and
+  14 in `es.ts`** — the "12 in es" previously recorded here was stale; parity was already
+  full. 12 of the 14 now state the present truth ("hardware runs are not currently
+  available"; the credentials wall states the ladder plan without claiming an allowance
+  funds it), and the privacy page names **Anthropic**, not AWS Bedrock, as the tutor's
+  processor in both locales. Deliberately kept, because they are true for their only
+  audience: `credentialsUi.outOfReachDetail` ("remaining sponsored budget") renders only
+  for grandfathered allowance-holders (`capMicros > 0` stamped on the ledger row), and
+  `workspaceUi.outOfAllowance` is a refusal chip, not an advertisement (the submit panel's
+  sponsor note is likewise conditional and stays). The pricing page's copy-honesty guard
+  now **bars** `/sponsor|patrocinad/` across both locales and the metadata export — the old
+  tests locked the promise's PRESENCE, which is exactly how it outlived the withdrawal.
+  Still open: wire the funding path (wallet metering) before advertising hardware again.
 - ~~Correct `RATES` to true Bedrock cost~~ — **done 2026-08-17**, by moving the tutor off
   Bedrock entirely. Anthropic's published rates are the cost basis on that provider, so
   `RATES` is now verified rather than a documented placeholder. Still outstanding: read
@@ -290,7 +298,7 @@ Managed via pyproject.toml. Key packages:
 - Fonts: Sora (display) + Geist (body) + Geist Mono (code/data) via `next/font/google` — the Instrument type system, exposed as `--font-sora`/`--font-geist`/`--font-geist-mono`
 - Dark mode: `next-themes` with `@variant dark (&:where(.dark, .dark *));` in globals.css
 - Deployment: AWS Amplify (auto-deploys from git push, `amplify.yml` at repo root)
-- Optional lesson tutor ("Ask the margin"): a streaming Bedrock Lambda in `lambda/tutor/` (deploy separately; see its README). The `<AskTutor />` affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set in Amplify env, so the static site is unaffected when it is absent.
+- Optional lesson tutor ("Ask the margin"): a streaming Lambda in `lambda/tutor/` calling Anthropic's first-party API (deploy separately; see its README). The `<AskTutor />` affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set in Amplify env, so the static site is unaffected when it is absent.
 
 ### Key Patterns
 - `@theme inline` values compile statically — they cannot be overridden at runtime via CSS classes. Use standard Tailwind `dark:` utilities for theme-dependent values.

@@ -30,6 +30,18 @@ describe("PrivacyPage", () => {
     expect(screen.getByText(/at most one email every 7 days/i)).toBeInTheDocument();
   });
 
+  it("names the tutor's real processor: Anthropic, not Amazon Bedrock", () => {
+    // The tutor moved off Bedrock to Anthropic's first-party API (2026-08-17). A
+    // privacy page is exactly the surface that must name where a question actually
+    // goes, so the old wording is barred, not just the new one asserted.
+    renderPrivacy();
+    expect(screen.getByText(/Anthropic/)).toBeInTheDocument();
+    expect(screen.queryByText(/Bedrock/)).not.toBeInTheDocument();
+    // The hardware-run bullet's justification is spend limits, not a "sponsored
+    // budget" nobody holds (qpu-core.mjs LIFETIME_CAP_MICROS = 0).
+    expect(screen.queryByText(/sponsored/i)).not.toBeInTheDocument();
+  });
+
   it("points at the real deletion control and gives a contact", () => {
     renderPrivacy();
     expect(screen.getByText(/delete account/i)).toBeInTheDocument();

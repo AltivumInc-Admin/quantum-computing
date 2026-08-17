@@ -7,13 +7,13 @@ hardware (Phase 4 / R4). Submission runs under this stack's Braket execution rol
 Braket task is created. This is **PR-1: the core**; the WAF/CloudFront edge and the
 Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR-4.
 
-## Launch posture (user-approved 2026-07-07)
+## Launch posture (user-approved 2026-07-07; allowance withdrawn 2026-07-28)
 
 | Control | Value |
 |---|---|
 | Device (v1) | **IQM Garnet only** (`$0.30 + $0.00145/shot`) |
 | Shot ceiling | **1000** → $1.75 max per run |
-| Per-user LIFETIME cap | **$2.50** (sponsored — the platform pays, the learner never does) |
+| Per-user LIFETIME cap | **$0** (`LIFETIME_CAP_MICROS = 0` — no new learner holds an allowance, so every submit a wallet cannot fund returns `402`. A `capMicros` already stamped on a user's ledger row is still honored, which is the grandfathered remainder of the withdrawn sponsored allowance.) |
 | Per-day GLOBAL kill-switch | **$15.00/day** (resets 00:00 UTC) |
 | Entitlement | verified email **+** a **server-minted cost-estimate credential** (`POST /qpu/credential`) |
 
@@ -104,7 +104,8 @@ without CloudFront), so PR-1..PR-3 deploy and pass tests before the edge exists.
 
 ## Safety notes
 
-- **The hard caps are the real spend boundary.** The per-user `$2.50` lifetime cap and the
+- **The hard caps are the real spend boundary.** The per-user lifetime cap (`0` for every
+  new learner; a grandfathered row keeps its stamped `capMicros`) and the
   `$15/day` global kill-switch, enforced atomically before every submit, bound abuse even
   if the entitlement gate is scripted past. The credential gate is **server-verified
   competency** (the server re-computes the true cost before minting, and the credential lives
