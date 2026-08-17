@@ -697,6 +697,30 @@ test("GET /qpu/budget reports the wallet balance when metering is configured", a
   assert.equal(JSON.parse(bare.body).walletCredits, null, "unconfigured metering reports null, not 0");
 });
 
+test("GET /qpu/budget reports clawback debt, so a post-refund 402 can explain itself", async () => {
+  // The debt gate is `clawbackOwedCredits = 0` in BOTH metered backends, so a
+  // learner carrying a debt sees a healthy positive balance beside a hard 402
+  // and there is nothing on any surface that says why. Reported here because
+  // the wallet item is already fetched for walletCredits — no extra read.
+  const ddb = stubDdb({
+    wallet: { pk: { S: "WALLET#u1" }, credits: { N: "2000" }, clawbackOwedCredits: { N: "1500" } },
+  });
+  const event = {
+    requestContext: { authorizer: { jwt: { claims: goodClaims } }, http: { method: "GET", path: "/qpu/budget" } },
+  };
+  const body = JSON.parse((await walletCore(ddb, stubBraket())(event)).body);
+  assert.equal(body.walletCredits, 2000, "the balance still reads healthy — that is the confusing part");
+  assert.equal(body.clawbackOwedCredits, 1500, "and the reason spends are refused is now visible");
+
+  // No debt is 0, not absent: the client needs no null-handling for the common case.
+  const clean = stubDdb({ wallet: { pk: { S: "WALLET#u1" }, credits: { N: "300" } } });
+  assert.equal(JSON.parse((await walletCore(clean, stubBraket())(event)).body).clawbackOwedCredits, 0);
+
+  // Metering unconfigured mirrors walletCredits: null, not 0.
+  const bare = await coreNoMetering(stubDdb({}), stubBraket())(event);
+  assert.equal(JSON.parse(bare.body).clawbackOwedCredits, null, "unconfigured metering reports null, not 0");
+});
+
 // The reserve transaction originally used both ("if_not_exists(spent,:z)+:cost
 // <= if_not_exists(cap,:cap)"); the stub never evaluates the expression, so all
 // tests passed while every REAL submit failed with a ValidationException. This
