@@ -186,8 +186,17 @@ Two facts from it that change how you write code, and are worth carrying in your
   a markup that differs from the others, which rule 5 forbids.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
   tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs:27`).
-- Add `expiresAt` to subscription WALLET# rows with expire-soonest-first spend ordering.
-  (`lambda/stripe/index.mjs` sets `expiresAt` on idempotency rows only — WALLET# rows have none.)
+- Credit expiry with expire-soonest-first spend ordering. **DO NOT implement this by
+  writing `expiresAt` onto WALLET# rows, which is how this item read until 2026-08-17.**
+  The wallet table has DynamoDB **TTL ENABLED on the attribute `expiresAt`** (verified:
+  `aws dynamodb describe-time-to-live --table-name quantum-stripe-wallet` returns
+  `ENABLED`/`expiresAt`). Today only EVENT# idempotency rows carry it, which is exactly
+  why it is safe. Putting it on a WALLET# row makes DynamoDB **delete the learner's whole
+  wallet** at that timestamp — balance, tier, subscriptionStatus, clawbackOwedCredits —
+  silently, with no application code involved and nothing to alarm on. Purchased credits
+  must never expire (rule 10), so this would also break the one promise the wallet makes.
+  Use a differently-named attribute (per-lot rows, or `creditLotsExpireAt`), or move the
+  TTL specification onto an attribute only EVENT# rows can ever have.
 - **Resolve the open product question in `docs/pricing-cost-basis.md`** — the tier is
   dominated by pay-as-you-go until model access is actually gated on it.
 

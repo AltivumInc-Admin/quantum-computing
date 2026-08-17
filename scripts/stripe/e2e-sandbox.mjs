@@ -82,6 +82,14 @@ if (!key) fail("STRIPE_API_KEY is not set. Pass it by environment, never as an a
 if (/^(sk|rk)_live_/.test(key)) fail("REFUSING: that is a LIVE key. This harness creates disputes and refunds.");
 if (!expectAccount) fail("--expect-account <acct_...> is required.");
 if (!table) fail("--table <ddb-table> is required (the SANDBOX stack's wallet table).");
+// The Stripe half of this harness's isolation was enforced and the DynamoDB half
+// was only a comment. `quantum-stripe-wallet` and `quantum-stripe-sandbox-wallet`
+// live in ONE AWS account and differ by one word, and the seeds below are
+// absolute SET writes — they destroy a balance rather than adjust it. A refusal
+// here matches the energy of the sk_live_ refusal above.
+if (!/sandbox/.test(table)) {
+  fail(`REFUSING: --table ${table} does not look like a sandbox table. This harness issues absolute SET writes to wallet rows.`);
+}
 if (!sub) fail("--sub <cognito-sub> is required — the identity these wallet rows are keyed by.");
 
 const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;

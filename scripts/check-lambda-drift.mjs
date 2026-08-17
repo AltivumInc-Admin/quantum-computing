@@ -38,6 +38,12 @@ const JSON_OUT = process.argv.includes("--json");
  */
 const FUNCTIONS = [
   { fn: "quantum-stripe", dir: "lambda/stripe" },
+  // The sandbox stack runs the SAME source and is where payment changes are
+  // rehearsed. Unwatched, a green e2e run is a claim about deployed sandbox code
+  // that nothing ties to git — a false green, which is worse than no green.
+  // NOTE: red here has two meanings, unlike every other row: "deploy it" or
+  // "you are mid-rehearsal with an unmerged branch checked out".
+  { fn: "quantum-stripe-sandbox", dir: "lambda/stripe" },
   { fn: "quantum-tutor", dir: "lambda/tutor" },
   { fn: "quantum-qpu-submit", dir: "lambda/qpu" },
   { fn: "quantum-qpu-reconcile", dir: "lambda/qpu" },
