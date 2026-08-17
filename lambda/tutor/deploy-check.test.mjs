@@ -10,23 +10,43 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { isValidBedrockModelId, listGuideSections, corpusFreshnessProblems } from "./deploy-check.mjs";
+import {
+  isValidAnthropicModelId,
+  modelRosterProblems,
+  listGuideSections,
+  corpusFreshnessProblems,
+} from "./deploy-check.mjs";
 import { buildCorpusEntry } from "./tutor-core.mjs";
 
-test("isValidBedrockModelId: accepts the real shapes the handler uses", () => {
-  const ok = [
-    "arn:aws:bedrock:us-east-2:000000000000:application-inference-profile/EXAMPLEPROF1",
-    "arn:aws:bedrock:us-east-2:000000000000:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
-    "anthropic.claude-haiku-4-5-20251001-v1:0",
-    "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-  ];
-  for (const id of ok) assert.equal(isValidBedrockModelId(id), true, id);
+test("isValidAnthropicModelId: accepts the bare first-party ids the handler sends", () => {
+  for (const id of ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5", "claude-fable-5"]) {
+    assert.equal(isValidAnthropicModelId(id), true, id);
+  }
 });
 
-test("isValidBedrockModelId: rejects empty / malformed / non-string", () => {
-  const bad = ["", "   ", "not-a-model", "https://example.com/x", "arn:aws:s3:::bucket", undefined, null, 42, {}];
-  for (const id of bad) assert.equal(isValidBedrockModelId(id), false, JSON.stringify(id));
+test("isValidAnthropicModelId: rejects every shape a half-finished migration leaves behind", () => {
+  const bad = [
+    "us.anthropic.claude-sonnet-5", // Bedrock cross-region inference profile
+    "global.anthropic.claude-opus-5",
+    "anthropic.claude-sonnet-5", // Bedrock provider prefix
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0", // profile + version suffix
+    "claude-haiku-4-5-20251001-v1:0", // bare id with a Bedrock version suffix
+    "arn:aws:bedrock:us-east-2:000000000000:inference-profile/us.anthropic.claude-opus-5",
+    "",
+    "   ",
+    undefined,
+    null,
+    42,
+  ];
+  for (const id of bad) assert.equal(isValidAnthropicModelId(id), false, JSON.stringify(id));
+});
+
+test("every model any tier can select is actually invocable", () => {
+  // The gate that would have caught the migration half-done: a tier naming a
+  // model whose id still carries a Bedrock prefix 404s at request time, and the
+  // handler turns that into the in-band sentinel — HTTP 200, flat Errors metric,
+  // indistinguishable from a model outage.
+  assert.deepEqual(modelRosterProblems(), []);
 });
 
 // --- corpus freshness, against a temp GUIDE.md fixture tree ---------------------

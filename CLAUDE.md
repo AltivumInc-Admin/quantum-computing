@@ -127,12 +127,26 @@ the live table, so an instruction file must never become a second source of trut
 
 Two facts from it that change how you write code, and are worth carrying in your head:
 
-- **Amazon Bedrock costs 1.10x Anthropic list**, and Claude bills as separate AWS
-  Marketplace SKUs — so it appears in neither the Bedrock pricing page nor the Price List
-  API. Re-derive from Cost Explorer, never from a published table.
+- **The tutor is no longer on Amazon Bedrock** (2026-08-17). Bedrock never entitled this
+  account to the paid roster — `converse` returned "not available for this account …
+  contact AWS Sales" for sonnet-5, opus-5 and fable-5, so every tier above free was
+  unreachable there. It now calls Anthropic's first-party API. Note the trap, because it
+  generalizes: `list-foundation-models`, `list-inference-profiles` **and**
+  `get-foundation-model-availability` all reported those models present and `AUTHORIZED`.
+  Availability describes the model in the region, not the account's entitlement to invoke
+  it. Only an actual call is evidence.
+  - Consequence for cost: the old Bedrock note here said Claude billed as separate AWS
+    Marketplace SKUs invisible to the Price List API, so cost had to be re-derived from
+    Cost Explorer. That is no longer the tutor's problem — Anthropic publishes the rate
+    and returns exact per-response usage, so `RATES` in `tutor-billing.mjs` is a verified
+    cost basis rather than a placeholder. The Bedrock caveat still applies to anything
+    else in this account that uses Bedrock.
 - **Tutor cost is input-dominated**: `buildSystemPrompt` embeds the whole lesson text while
-  output is capped at `MAX_TOKENS`. Prompt caching is therefore not optional, and any edit
-  that makes the system prefix vary per request silently destroys it.
+  output is capped per model (`MAX_OUTPUT_TOKENS`). Prompt caching is therefore not
+  optional, and any edit that makes the system prefix vary per request silently destroys
+  it. The minimum cacheable prefix is **per model and not monotonic** — 4,096 tokens on
+  haiku-4-5 but 512 on opus-5 — and under the minimum the request is accepted and simply
+  does not cache, with no error. Measure with `lambda/tutor/probe-tokens.mjs`.
 
 ### Prices
 
@@ -178,14 +192,22 @@ Two facts from it that change how you write code, and are worth carrying in your
   **wrong**: `LIFETIME_CAP_MICROS` is `0` and no wallet table is wired, so every submit
   returns 402. Rule 13 says never advertise what the deployed system cannot do — this is
   that, live on the pricing page today. Fix the copy or wire the funding; do not leave both.
-- Correct `RATES` to true Bedrock cost, and read the shared markup from **deployed
-  configuration** (an env var, like `TUTOR_MODEL_ID`) in both metering paths — never a
-  committed constant, per rule 6. One value, injected once, consumed by both.
+- ~~Correct `RATES` to true Bedrock cost~~ — **done 2026-08-17**, by moving the tutor off
+  Bedrock entirely. Anthropic's published rates are the cost basis on that provider, so
+  `RATES` is now verified rather than a documented placeholder. Still outstanding: read
+  the shared markup from **deployed configuration** (an env var, like `SECRET_ID`) in both
+  metering paths — never a committed constant, per rule 6. One value, injected once,
+  consumed by both.
 - Move QPU debit rates onto the same markup. Until this lands, both stacks' `WalletTableName`
   stays `""` on purpose — enabling the wallet at raw cost would introduce a metered surface at
   a markup that differs from the others, which rule 5 forbids.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
-  tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs:27`).
+  tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs`).
+- **Create the `quantum-tutor` secret and deploy the tutor.** The handler now reads its
+  Anthropic API key from Secrets Manager (`SECRET_ID`, default `quantum-tutor`) as
+  `{"apiKey": "..."}`. Until that secret exists AND the stack is redeployed, git and the
+  deployed function disagree and `make drift` reports it — correctly. The old Bedrock IAM
+  grant and the `ModelId`/`FoundationModelId` parameters are gone from the template.
 - Credit expiry with expire-soonest-first spend ordering. **DO NOT implement this by
   writing `expiresAt` onto WALLET# rows, which is how this item read until 2026-08-17.**
   The wallet table has DynamoDB **TTL ENABLED on the attribute `expiresAt`** (verified:

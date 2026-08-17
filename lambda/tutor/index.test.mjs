@@ -1,12 +1,16 @@
 /**
  * Offline tests for the tutor handler logic. They exercise createHandlerCore
- * (the real per-request body) against a stubbed Bedrock client + fixture corpus,
- * so the streaming loop, the error-sentinel path, and the paid-call gate are
- * covered with no AWS creds, no real model call, and no packaged corpus.json.
+ * (the real per-request body) against a stubbed Anthropic client + fixture
+ * corpus, so the streaming loop, the error-sentinel path, and the paid-call gate
+ * are covered with no AWS creds, no real model call, and no packaged corpus.json.
+ *
+ * The stub speaks the Anthropic Messages wire format: `messages.create()`
+ * resolves to an async-iterable of stream events, and token usage arrives split
+ * across `message_start` (the input legs) and `message_delta` (final output),
+ * not in one trailing metadata event. That split is the thing most likely to be
+ * got wrong, so the stub reproduces it exactly rather than flattening it.
  *
  * Run: `cd lambda/tutor && npm install && node --test`
- * (npm install is required because index.mjs imports @aws-sdk/client-bedrock-runtime
- * at module top.)
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,6 +19,7 @@ import {
   TUTOR_ERROR_SENTINEL,
   OUT_OF_SCOPE_MESSAGE,
   TOO_LONG_MESSAGE,
+  USAGE_SHAPE_UNRECOGNIZED,
 } from "./index.mjs";
 import { MAX_QUESTION_CHARS } from "./tutor-core.mjs";
 
@@ -32,21 +37,28 @@ const FIXTURE_CORPUS = {
   "00-prereqs": { title: "Prereqs", headings: ["A"], text: "lesson body" },
 };
 
-// A stub Bedrock client that records the commands it was sent and streams three
-// deltas (two with text, one text-less — which the handler must skip).
+/** One text delta, in the Anthropic stream-event shape. */
+const textDelta = (text) => ({
+  type: "content_block_delta",
+  delta: { type: "text_delta", text },
+});
+
+// A stub client that records the request params it was sent and streams three
+// deltas: two text ones, and one non-text (a thinking delta) which the handler
+// must skip rather than concatenate into the learner's answer.
 function okClient() {
   const sent = [];
   return {
     sent,
-    send: async (command) => {
-      sent.push(command);
-      return {
-        stream: (async function* () {
-          yield { contentBlockDelta: { delta: { text: "Hel" } } };
-          yield { contentBlockDelta: { delta: { text: "lo" } } };
-          yield { contentBlockDelta: {} }; // text-less delta -> skipped
-        })(),
-      };
+    messages: {
+      create: async (params) => {
+        sent.push(params);
+        return (async function* () {
+          yield textDelta("Hel");
+          yield textDelta("lo");
+          yield { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "hmm" } };
+        })();
+      },
     },
   };
 }
@@ -54,19 +66,19 @@ function okClient() {
 test("A: streams concatenated text deltas, skips text-less deltas, sends a grounded command", async () => {
   const client = okClient();
   const stream = makeStream();
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "model-x" })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
     stream
   );
   assert.equal(stream.text(), "Hello");
   assert.equal(client.sent.length, 1);
-  const { input } = client.sent[0]; // AWS SDK v3 command stores args under .input
-  assert.equal(input.modelId, "model-x");
+  const input = client.sent[0]; // the request params, verbatim
+  assert.equal(input.model, MODEL_IDS["haiku-4-5"]);
   assert.ok(input.system?.[0]?.text?.includes("LESSON TEXT:"), "system prompt has the grounding section");
   // Assert the section's ACTUAL text reaches the model, not just the static label —
   // a regression dropping section.text (the whole point of grounding) must fail here.
   assert.ok(input.system[0].text.includes("lesson body"), "grounding text reaches the model");
-  assert.equal(input.messages?.[0]?.content?.[0]?.text, "hi");
+  assert.equal(input.messages?.[0]?.content, "hi");
 });
 
 test("B2: writes text then the error sentinel when the stream throws mid-flight", async () => {
@@ -74,15 +86,15 @@ test("B2: writes text then the error sentinel when the stream throws mid-flight"
   // the realistic streaming failure. The client scans with indexOf (not startsWith),
   // tolerating the sentinel after partial text, so assert includes() + text-before.
   const client = {
-    send: async () => ({
-      stream: (async function* () {
-        yield { contentBlockDelta: { delta: { text: "partial" } } };
+    messages: {
+      create: async () => (async function* () {
+        yield textDelta("partial");
         throw new Error("mid-stream boom");
       })(),
-    }),
+    },
   };
   const stream = makeStream();
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
     stream
   );
@@ -93,12 +105,14 @@ test("B2: writes text then the error sentinel when the stream throws mid-flight"
 
 test("B: writes the in-band error sentinel when the client throws", async () => {
   const client = {
-    send: async () => {
-      throw new Error("boom");
+    messages: {
+      create: async () => {
+        throw new Error("boom");
+      },
     },
   };
   const stream = makeStream();
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
     stream
   );
@@ -114,13 +128,15 @@ test("C: out-of-scope (unknown slug / empty question / __proto__) returns the me
   for (const body of bodies) {
     let called = false;
     const client = {
-      send: async () => {
-        called = true;
-        return { stream: (async function* () {})() };
+      messages: {
+        create: async () => {
+          called = true;
+          return (async function* () {})();
+        },
       },
     };
     const stream = makeStream();
-    await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })({ body }, stream);
+    await createHandlerCore({ client, corpus: FIXTURE_CORPUS })({ body }, stream);
     assert.equal(stream.text(), OUT_OF_SCOPE_MESSAGE, `body=${body}`);
     assert.equal(called, false, `model must not be called for body=${body}`);
   }
@@ -133,14 +149,16 @@ test("D: a body over MAX_BODY_BYTES is refused for LENGTH, not scope, with no mo
   // guarantee is unchanged; only the claim the message makes is.
   let called = false;
   const client = {
-    send: async () => {
-      called = true;
-      return { stream: (async function* () {})() };
+    messages: {
+      create: async () => {
+        called = true;
+        return (async function* () {})();
+      },
     },
   };
   const stream = makeStream();
   const huge = "x".repeat(17 * 1024); // > 16 KiB cap
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
     { body: JSON.stringify({ slug: "00-prereqs", question: huge }) },
     stream
   );
@@ -154,15 +172,17 @@ test("D2: the size gate measures BYTES, so multi-byte glyphs cannot smuggle a hu
   // passed at up to ~48 KiB — three times the constant's stated limit.
   let called = false;
   const client = {
-    send: async () => {
-      called = true;
-      return { stream: (async function* () {})() };
+    messages: {
+      create: async () => {
+        called = true;
+        return (async function* () {})();
+      },
     },
   };
   const stream = makeStream();
   // ~7k UTF-16 units but ~21 KiB of UTF-8 — under the OLD gate, over the real one.
   const glyphs = "⊗".repeat(7 * 1024);
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
     { body: JSON.stringify({ slug: "00-prereqs", question: glyphs }) },
     stream
   );
@@ -175,11 +195,11 @@ test("E: a question is sliced to the SHARED cap the client's textarea enforces",
   const client = okClient();
   const stream = makeStream();
   const long = "q".repeat(MAX_QUESTION_CHARS + 500);
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m" })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
     { body: JSON.stringify({ slug: "00-prereqs", question: long }) },
     stream
   );
-  const sent = client.sent[0].input.messages[0].content[0].text;
+  const sent = client.sent[0].messages[0].content;
   assert.equal(sent.length, MAX_QUESTION_CHARS);
   // The cap is imported, never re-declared: a drift between the handler's slice
   // and the panel's maxLength is exactly what silent mid-word truncation was.
@@ -214,26 +234,26 @@ test("F: a stalled model stream hits the deadline and emits the sentinel", async
   // sentinel was written and the client rendered the truncated body as a finished
   // answer. deadlineMs is injected (a few ms here, 45s in production).
   const client = {
-    send: async () => ({
-      stream: {
+    messages: {
+      create: async () => ({
         [Symbol.asyncIterator]: () => ({
           next: () => stalls(), // outlives the 20ms deadline, then settles
         }),
-      },
-    }),
+      }),
+    },
   };
   const stream = makeStream();
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 20 })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, deadlineMs: 20 })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
     stream
   );
   assert.ok(stream.text().startsWith(TUTOR_ERROR_SENTINEL), "deadline reaches the sentinel path");
 });
 
-test("F2: a send that never returns headers also hits the deadline", async () => {
-  const client = { send: () => stalls() };
+test("F2: a request that never returns headers also hits the deadline", async () => {
+  const client = { messages: { create: () => stalls() } };
   const stream = makeStream();
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 20 })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, deadlineMs: 20 })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
     stream
   );
@@ -243,7 +263,7 @@ test("F2: a send that never returns headers also hits the deadline", async () =>
 test("F3: a healthy stream is never cut by the deadline guard", async () => {
   const client = okClient();
   const stream = makeStream();
-  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, modelId: "m", deadlineMs: 5_000 })(
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS, deadlineMs: 5_000 })(
     { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
     stream
   );
@@ -264,22 +284,29 @@ import {
   SIGN_IN_REQUIRED_MESSAGE,
   NOT_IN_PLAN_MESSAGE,
 } from "./index.mjs";
-import { PROFILE_IDS, MODEL_LABELS, creditsForUsage } from "./tutor-billing.mjs";
+import { MODEL_IDS, MODEL_LABELS, MAX_OUTPUT_TOKENS, creditsForUsage } from "./tutor-billing.mjs";
 
-/** Bedrock stub that also emits the usage metadata event, like the real
- *  ConverseStream does after the last delta. */
-function meteredClient({ inputTokens = 6_000, outputTokens = 400 } = {}) {
+/**
+ * Stub that reports usage the way the real API does: SPLIT across two events.
+ * `message_start` carries the input legs, `message_delta` carries the final
+ * output_tokens. A stub that emitted both in one event would let a handler
+ * reading only one of them pass — and reading only one silently undercharges
+ * (input-only bills output at zero; delta-only makes the entire prompt free,
+ * and on this workload the prompt is the expensive half).
+ */
+function meteredClient({ input_tokens = 6_000, output_tokens = 400, ...rest } = {}) {
   const sent = [];
   return {
     sent,
-    send: async (command) => {
-      sent.push(command);
-      return {
-        stream: (async function* () {
-          yield { contentBlockDelta: { delta: { text: "Answer." } } };
-          yield { metadata: { usage: { inputTokens, outputTokens } } };
-        })(),
-      };
+    messages: {
+      create: async (params) => {
+        sent.push(params);
+        return (async function* () {
+          yield { type: "message_start", message: { usage: { input_tokens, output_tokens: 0, ...rest } } };
+          yield textDelta("Answer.");
+          yield { type: "message_delta", usage: { output_tokens } };
+        })();
+      },
     },
   };
 }
@@ -326,12 +353,11 @@ test("M1: a legacy request is byte-identical — no wallet, no verifier, no trai
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "app-profile-arn",
     verifier: okVerifier,
     wallet,
   })({ body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) }, stream);
   assert.equal(stream.text(), "Hello"); // exactly today's bytes
-  assert.equal(client.sent[0].input.modelId, "app-profile-arn"); // env default model
+  assert.equal(client.sent[0].model, MODEL_IDS["haiku-4-5"]); // the free-tier default
   assert.equal(wallet.calls.reads.length + wallet.calls.debits.length, 0, "wallet untouched");
 });
 
@@ -340,7 +366,7 @@ test("M2: a Pro caller on a paid model reserves, streams, settles, and gets the 
   // has a real (non-zero) refund to make. Expectations are computed from the
   // billing kernel rather than hardcoded, so a rate change cannot silently
   // turn this into the overshoot case (that case is M9's).
-  const usage = { inputTokens: 200, outputTokens: 400 };
+  const usage = { input_tokens: 200, output_tokens: 400 };
   const actual = creditsForUsage("opus-5", usage);
   const client = meteredClient(usage);
   const wallet = stubWallet({ tier: "pro", credits: 1_000 });
@@ -348,13 +374,12 @@ test("M2: a Pro caller on a paid model reserves, streams, settles, and gets the 
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "app-profile-arn",
     verifier: okVerifier,
     wallet,
   })(paidEvent(), stream);
 
   // the paid model was actually invoked (its inference profile, not the default)
-  assert.equal(client.sent[0].input.modelId, PROFILE_IDS["opus-5"]);
+  assert.equal(client.sent[0].model, MODEL_IDS["opus-5"]);
 
   // reserve happened BEFORE the model call, against the verified sub
   assert.equal(wallet.calls.debits.length, 1);
@@ -386,7 +411,7 @@ test("M12: a metered debit leaves a durable trace of both the reserve and the se
   //
   // Two lines make it a Logs Insights query. A reserve with no matching settle
   // is also how you find a stranded reservation, which nothing sweeps today.
-  const usage = { inputTokens: 200, outputTokens: 400 };
+  const usage = { input_tokens: 200, output_tokens: 400 };
   const actual = creditsForUsage("opus-5", usage);
   const wallet = stubWallet({ tier: "pro", credits: 1_000 });
   const lines = [];
@@ -396,7 +421,6 @@ test("M12: a metered debit leaves a durable trace of both the reserve and the se
     await createHandlerCore({
       client: meteredClient(usage),
       corpus: FIXTURE_CORPUS,
-      modelId: "app-profile-arn",
       verifier: okVerifier,
       wallet,
     })(paidEvent(), makeStream());
@@ -439,7 +463,7 @@ test("M13: the FREE path stays byte-identical — no metering log when nothing i
   const original = console.log;
   console.log = (...a) => lines.push(a.join(" "));
   try {
-    await createHandlerCore({ client: okClient(), corpus: FIXTURE_CORPUS, modelId: "m" })(
+    await createHandlerCore({ client: okClient(), corpus: FIXTURE_CORPUS })(
       { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
       makeStream()
     );
@@ -460,7 +484,6 @@ test("M3: insufficient credits refuses BEFORE any model call, with the exact mes
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     wallet,
   })(paidEvent(), stream);
@@ -476,7 +499,6 @@ test("M4: a paid-model request without a valid token is refused, never silently 
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: badVerifier,
     wallet: stubWallet(),
   })(paidEvent(), stream);
@@ -488,7 +510,6 @@ test("M4: a paid-model request without a valid token is refused, never silently 
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     wallet: stubWallet(),
   })({ body: paidEvent().body }, stream2);
@@ -504,7 +525,6 @@ test("M5: a tier explicitly asking for a model above it is refused, not substitu
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     wallet,
   })(paidEvent({ model: "fable-5" }), stream);
@@ -520,11 +540,10 @@ test("M6: haiku is free for a signed-in caller — answered, metered at zero, no
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "app-profile-arn",
     verifier: okVerifier,
     wallet,
   })(paidEvent({ model: "haiku-4-5" }), stream);
-  assert.equal(client.sent[0].input.modelId, "app-profile-arn", "haiku keeps the app profile");
+  assert.equal(client.sent[0].model, MODEL_IDS["haiku-4-5"], "haiku answers the free request");
   assert.equal(wallet.calls.debits.length, 0, "the funnel model never debits");
   const out = stream.text();
   const meta = JSON.parse(out.slice(out.indexOf(TUTOR_META_SENTINEL) + TUTOR_META_SENTINEL.length));
@@ -533,19 +552,18 @@ test("M6: haiku is free for a signed-in caller — answered, metered at zero, no
 
 test("M7: a mid-stream failure settles at zero — the reserve is fully refunded", async () => {
   const client = {
-    send: async () => ({
-      stream: (async function* () {
-        yield { contentBlockDelta: { delta: { text: "par" } } };
-        throw new Error("boom"); // dies before the usage metadata event
+    messages: {
+      create: async () => (async function* () {
+        yield textDelta("par");
+        throw new Error("boom"); // dies before either usage event
       })(),
-    }),
+    },
   };
   const wallet = stubWallet({ tier: "pro" });
   const stream = makeStream();
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     wallet,
   })(paidEvent(), stream);
@@ -562,7 +580,6 @@ test("M8: without a configured wallet, a paid-model request is refused up front"
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     // no wallet injected — metering not deployed
   })(paidEvent(), stream);
@@ -574,13 +591,12 @@ test("M9: the settle never charges more than the reserve, even if usage overshoo
   // Real input tokens can exceed the char-based estimate. The doctrine is
   // fail-toward-undercharging: charged = min(actual, reserved), never a
   // negative "refund" that would push a wallet below zero.
-  const client = meteredClient({ inputTokens: 500_000, outputTokens: 800 });
+  const client = meteredClient({ input_tokens: 500_000, output_tokens: 800 });
   const wallet = stubWallet({ tier: "pro" });
   const stream = makeStream();
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     wallet,
   })(paidEvent(), stream);
@@ -613,10 +629,138 @@ test("M10: a learner owing clawback credits cannot spend on a paid model", async
   await createHandlerCore({
     client,
     corpus: FIXTURE_CORPUS,
-    modelId: "m",
     verifier: okVerifier,
     wallet,
   })(paidEvent(), stream);
   assert.equal(client.sent.length, 0, "no paid generation while a debt stands");
   assert.ok(stream.text().includes(INSUFFICIENT_CREDITS_MESSAGE));
+});
+
+// ---- the request shape itself ---------------------------------------------
+// Everything below is a 400 or a silent cost bug on the real API, and none of
+// it is visible from the streamed text. The Bedrock-era handler would have hit
+// the first two on its first paid request.
+
+test("W1: no sampling parameters survive — they are a 400 on every paid model", async () => {
+  const client = okClient();
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+    makeStream()
+  );
+  for (const banned of ["temperature", "top_p", "top_k"]) {
+    assert.equal(client.sent[0][banned], undefined, `${banned} is rejected on Opus/Sonnet 4.7+`);
+  }
+});
+
+test("W2: the lesson prefix carries a cache breakpoint, and the question sits outside it", async () => {
+  // Tutor cost is input-dominated: the whole lesson is re-sent with every
+  // question. Losing this breakpoint costs ~10x on input with no symptom the
+  // learner or the logs would show.
+  const client = okClient();
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+    makeStream()
+  );
+  const { system, messages } = client.sent[0];
+  assert.deepEqual(system[0].cache_control, { type: "ephemeral" }, "no cache breakpoint on the prefix");
+  assert.ok(system[0].text.includes("lesson body"), "the cached block must be the lesson");
+  // The learner's question is the only varying part; inside the prefix it would
+  // invalidate the cache on every single request.
+  assert.equal(messages[0].content, "hi");
+});
+
+test("W3: fable-5 is sent no thinking config and a ceiling that fits its thinking", async () => {
+  // fable-5 rejects thinking:{type:"disabled"} with a 400 — thinking is always
+  // on — and thinking bills as output against this same max_tokens. An 800-token
+  // ceiling would be spent reasoning and return a truncated answer.
+  const client = meteredClient();
+  await createHandlerCore({
+    client,
+    corpus: FIXTURE_CORPUS,
+    verifier: okVerifier,
+    wallet: stubWallet({ tier: "pro" }),
+  })(paidEvent({ model: "fable-5" }), makeStream());
+
+  const sent = client.sent[0];
+  assert.equal(sent.model, MODEL_IDS["fable-5"]);
+  assert.equal(sent.thinking, undefined, "any thinking config is a 400 on fable-5");
+  assert.equal(sent.max_tokens, MAX_OUTPUT_TOKENS["fable-5"]);
+  assert.ok(sent.max_tokens > MAX_OUTPUT_TOKENS["opus-5"], "fable-5 needs room to think");
+});
+
+test("W4: the reserve is sized against the model's OWN ceiling, not a shared constant", async () => {
+  // The settle caps the charge at the reserve, so a reserve computed against
+  // 800 output tokens while fable-5 may emit 4,000 silently absorbs the
+  // difference. Comparing fable-5's reserve to opus-5's does NOT test this —
+  // fable-5 reserves more either way because its rate is twice opus-5's, so
+  // that assertion passes even against a hardcoded shared ceiling. (Verified
+  // by mutation: it did.) Pin the exact figure instead.
+  const reserveFor = async (model) => {
+    const wallet = stubWallet({ tier: "pro", credits: 1_000_000 });
+    const client = meteredClient();
+    await createHandlerCore({
+      client,
+      corpus: FIXTURE_CORPUS,
+      verifier: okVerifier,
+      wallet,
+    })(paidEvent({ model }), makeStream());
+    return { reserved: wallet.calls.debits[0].n, sentCeiling: client.sent[0].max_tokens };
+  };
+
+  for (const model of ["opus-5", "fable-5"]) {
+    const { reserved, sentCeiling } = await reserveFor(model);
+    // The ceiling the reserve assumed and the ceiling actually sent to the API
+    // must be the same number, or the bound is against a fiction.
+    assert.equal(sentCeiling, MAX_OUTPUT_TOKENS[model], `${model}: wrong ceiling on the wire`);
+    const worstRealCost = creditsForUsage(model, {
+      input_tokens: 0,
+      output_tokens: sentCeiling,
+      cache_creation_input_tokens: 0,
+    });
+    assert.ok(
+      reserved >= worstRealCost,
+      `${model}: reserved ${reserved} < ${worstRealCost}, the cost of output alone at the ceiling`
+    );
+  }
+});
+
+test("W5: a paid generation whose usage cannot be read alarms instead of going quiet", async () => {
+  // The migration's silent failure, at the handler level: a usage report in the
+  // OLD provider's shape prices to 0, so a paid generation streams a full
+  // answer and bills nothing. Without this log line nothing anywhere says so —
+  // the response is 200, the text is correct, and Lambda Errors stays flat.
+  const client = {
+    sent: [],
+    messages: {
+      create: async (params) => {
+        client.sent.push(params);
+        return (async function* () {
+          yield textDelta("Answer.");
+          // Bedrock's camelCase spelling — what an un-migrated provider sends.
+          yield { type: "message_delta", usage: { inputTokens: 5_000, outputTokens: 700 } };
+        })();
+      },
+    },
+  };
+  const wallet = stubWallet({ tier: "pro" });
+  const errors = [];
+  const original = console.error;
+  console.error = (...a) => errors.push(a.join(" "));
+  try {
+    await createHandlerCore({
+      client,
+      corpus: FIXTURE_CORPUS,
+      verifier: okVerifier,
+      wallet,
+    })(paidEvent(), makeStream());
+  } finally {
+    console.error = original;
+  }
+
+  assert.ok(
+    errors.some((l) => l.includes(USAGE_SHAPE_UNRECOGNIZED)),
+    "an unreadable usage report must be logged, or free inference is invisible"
+  );
+  // And it still fails toward undercharging: the whole reserve comes back.
+  assert.equal(wallet.calls.credits[0].n, wallet.calls.debits[0].n);
 });

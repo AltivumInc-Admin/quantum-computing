@@ -162,12 +162,26 @@ test("the wallet grant is scoped to the one table, only when metering is on", ()
   assert.ok(!/dynamodb:(PutItem|DeleteItem|Scan|Query)/.test(stmt), "wallet grant over-broad");
 });
 
-test("the roster's paid inference profiles are invokable, scoped by model name", () => {
+test("the provider credential is readable, and scoped to one secret", () => {
+  // The paid roster is no longer reached through IAM at all — Bedrock never
+  // entitled this account to sonnet-5/opus-5/fable-5, so the tutor calls
+  // Anthropic directly and the only AWS grant it needs for inference is the
+  // one that reads its API key.
   const fn = body("TutorFunction");
-  for (const m of ["claude-sonnet-5", "claude-opus-5", "claude-fable-5"]) {
-    assert.ok(fn.includes(`inference-profile/us.anthropic.${m}`), `${m} profile grant missing`);
-    assert.ok(fn.includes(`foundation-model/anthropic.${m}`), `${m} foundation-model grant missing`);
-  }
+  assert.match(fn, /secretsmanager:GetSecretValue/, "the handler cannot read its API key");
+  assert.ok(!/bedrock:/.test(fn), "a Bedrock grant survived a migration that removed every Bedrock call");
+});
+
+test("the secret grant cannot reach the Stripe key", () => {
+  // quantum-stripe's LIVE Stripe secret key sits in the same account. A
+  // Resource "*" here — or a prefix wildcard — would let a compromised tutor
+  // read it. The ARN is pinned to ${SecretId} plus exactly the six characters
+  // Secrets Manager appends, so it matches one secret and no sibling.
+  const fn = body("TutorFunction");
+  const arn = fn.match(/arn:aws:secretsmanager:[^\n"]*/)?.[0];
+  assert.ok(arn, "no Secrets Manager resource ARN found");
+  assert.ok(arn.includes("${SecretId}-??????"), `grant is not pinned to one secret: ${arn}`);
+  assert.ok(!arn.includes("*"), `wildcard in the secret ARN would widen the grant: ${arn}`);
 });
 
 test("CORS allows the auth header the metered client sends", () => {

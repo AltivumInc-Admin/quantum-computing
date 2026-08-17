@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Ask the margin — a response-streaming, Bedrock-backed lesson tutor for the
+  Ask the margin — a response-streaming, Anthropic-backed lesson tutor for the
   quantum curriculum. A single stateless Lambda behind a Function URL.
 
 # NOTE: abuse/cost monitoring has two layers. (1) Per-IP rate limiting is enforced
@@ -16,21 +16,21 @@ Description: >
 # the PR runbook) — CloudFormation cannot adopt a live alarm by reusing its name.
 
 Parameters:
-  ModelId:
+  SecretId:
     Type: String
+    Default: quantum-tutor
     Description: >
-      Bedrock model / inference-profile the handler invokes (also the
-      TUTOR_MODEL_ID env var). For this deployment it is the application
-      inference-profile ARN — get the current one with
-      `aws bedrock list-inference-profiles`. Request model access first.
-  FoundationModelId:
-    Type: String
-    Default: anthropic.claude-haiku-4-5-20251001-v1:0
-    Description: >
-      The underlying foundation model the inference profile routes to. Used to
-      scope the IAM policy: invoking an application inference profile is
-      authorized against BOTH the profile ARN (ModelId) AND the foundation-model
-      ARN in each region the profile can route to.
+      Secrets Manager secret holding the Anthropic API key as {"apiKey": "..."}.
+      The handler reads it on first model call with its own execution role, so
+      the key never appears in the function's environment and is not visible via
+      GetFunctionConfiguration.
+
+      There is no ModelId parameter any more: model ids are the bare first-party
+      strings in tutor-billing.mjs MODEL_IDS, chosen per request from the
+      caller's tier. Amazon Bedrock never entitled this account to the paid
+      models (sonnet-5, opus-5 and fable-5 all returned "not available for this
+      account" from Converse while the availability API reported them
+      AUTHORIZED), so every tier above free was unreachable there.
   AllowedOrigin:
     Type: String
     Default: https://quantum.altivum.ai
@@ -43,7 +43,7 @@ Parameters:
       Reserved concurrency — a HARD ceiling on simultaneous (billable)
       invocations. A second-layer cost control behind the edge WAF rate limit:
       excess requests are throttled rather than fanning out into unbounded paid
-      Bedrock generations.
+      model generations.
   FunctionUrlAuthType:
     Type: String
     Default: AWS_IAM
@@ -113,44 +113,33 @@ Resources:
       Timeout: 60
       # HARD cost ceiling (second layer behind the edge WAF rate limit).
       ReservedConcurrentExecutions: !Ref MaxConcurrency
-      # Cost-attribution tags on the Lambda's OWN compute. The dominant cost
-      # (Bedrock inference) is attributed separately via the application
-      # inference profile passed as ModelId; keep these keys in sync with that
-      # profile's tags and activate them as cost-allocation tags in Billing.
+      # Cost-attribution tags on the Lambda's OWN compute only. The dominant
+      # cost — model inference — is no longer on the AWS bill at all: it is
+      # billed by Anthropic against the API key in SecretId. `make cost` and
+      # Cost Explorer will therefore show tutor inference dropping to zero from
+      # the cutover date; that is the provider move, not a usage collapse.
       Tags:
         Project: quantum
         Feature: ask-tutor
         CostCategory: genai
       Environment:
         Variables:
-          TUTOR_MODEL_ID: !Ref ModelId
+          SECRET_ID: !Ref SecretId
           WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
           USER_POOL_ID: !If [HasUserPool, !Ref UserPoolId, !Ref AWS::NoValue]
           USER_POOL_CLIENT_ID: !If [HasUserPool, !Ref UserPoolClientId, !Ref AWS::NoValue]
       Policies:
+        # The provider credential. Scoped to the ONE secret by name — the
+        # trailing -?????? matches the six random characters Secrets Manager
+        # appends to every ARN, which are not known at deploy time. NOT
+        # Resource "*": this role must not be able to read quantum-stripe's
+        # live Stripe key, which lives in the same account.
         - Statement:
             - Effect: Allow
               Action:
-                - bedrock:InvokeModelWithResponseStream
-              # Least privilege on the MODEL dimension: the free tier's app
-              # inference profile + its foundation model, and the paid roster's
-              # cross-region profiles (tutor-billing.mjs PROFILE_IDS — the
-              # handler refuses anything outside the roster before invoking).
-              # Foundation-model ARNs for the roster use a region wildcard
-              # because a us.* cross-region profile may route to any US region;
-              # the ARNs stay scoped to the exact Anthropic model names.
-              # NOT Resource "*".
+                - secretsmanager:GetSecretValue
               Resource:
-                - !Ref ModelId
-                - !Sub "arn:aws:bedrock:us-east-1::foundation-model/${FoundationModelId}"
-                - !Sub "arn:aws:bedrock:us-east-2::foundation-model/${FoundationModelId}"
-                - !Sub "arn:aws:bedrock:us-west-2::foundation-model/${FoundationModelId}"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-5"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-opus-5"
-                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-fable-5"
-                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-5*"
-                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-5*"
-                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-fable-5*"
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretId}-??????"
         # The credit wallet (metering): tier read, the pre-flight debit, and the
         # post-stream refund. When metering is off the !If collapses onto a
         # well-formed table ARN that does not exist, so the statement grants
@@ -231,7 +220,7 @@ Resources:
         - Endpoint: !Ref AlertEmail
           Protocol: email
 
-  # index.mjs streams inside a committed HTTP 200, so a Bedrock failure raises
+  # index.mjs streams inside a committed HTTP 200, so a model failure raises
   # neither the HTTP status nor the Lambda Errors metric; its only trace is the
   # console.error(JSON.stringify({ tutorError: true, ... })) line. This filter
   # turns that line into a metric. The pattern is a literal quoted term, NOT the
@@ -257,7 +246,7 @@ Resources:
       AlarmName: quantum-tutor-errors
       AlarmDescription: >-
         The tutor emitted at least one tutorError log line in 5 minutes — a
-        Bedrock call failed after the 200 was committed, so learners saw the
+        model call failed after the 200 was committed, so learners saw the
         in-band error sentinel. Neither HTTP status nor Lambda Errors ever
         reflects this. Check the function's log group for the error detail.
       Namespace: QuantumTutor
@@ -312,6 +301,47 @@ Resources:
   # fail stack creation ("resource already exists") or silently seize a resource
   # this stack did not create — and then delete it on rollback. Runbook: delete
   # the console alarm immediately after the first deploy of this version.
+  # THE MIGRATION ALARM. index.mjs logs USAGE_SHAPE_UNRECOGNIZED when the
+  # provider returns a usage report it cannot read — the failure a field rename
+  # produces. Nothing else can see it: the answer streams normally, the response
+  # is 200, Lambda Errors stays flat, and every generation simply prices to zero
+  # credits. Metering would report success and bill nothing, indefinitely.
+  #
+  # This is not hypothetical. Amazon Bedrock spelled all four usage fields in
+  # camelCase and Anthropic spells them in snake_case, so the un-migrated
+  # handler would have hit exactly this. Threshold 0: one occurrence is a bug,
+  # not noise.
+  TutorUsageShapeMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"usage report shape unrecognized"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorUsageShapeUnrecognized
+          MetricValue: "1"
+          Unit: Count
+
+  TutorUsageShapeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-usage-shape-unrecognized
+      AlarmDescription: >-
+        The tutor received a token-usage report it could not read, so it charged
+        0 credits for a paid generation. Almost certainly a provider field
+        rename. Every metered request is currently free and no other signal
+        shows it. Compare the logged `keys` against readUsage in
+        tutor-billing.mjs.
+      Namespace: QuantumTutor
+      MetricName: TutorUsageShapeUnrecognized
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   HighInvocationsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -319,7 +349,7 @@ Resources:
       AlarmDescription: >-
         The tutor Lambda was invoked more than 500 times in an hour —
         possible abuse of the Function URL past the edge WAF, and every
-        invocation is a paid Bedrock generation. Check the edge WAF metrics
+        invocation is a paid model generation. Check the edge WAF metrics
         and consider lowering MaxConcurrency while investigating.
       Namespace: AWS/Lambda
       MetricName: Invocations
