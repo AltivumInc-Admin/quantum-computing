@@ -669,7 +669,9 @@ test("an allowance race falls back to the wallet exactly once", async () => {
 
 test("a Braket failure on a wallet-funded run refunds the CREDITS, not the sponsored ledger", async () => {
   const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
-  const ddb = stubDdb({ ledgerUser: SPENT_UP });
+  // The reservation Put always records the charge on the row; seed it the way
+  // the committed transaction leaves it, since the release reads it back.
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, existingTask: walletTaskRow(RUN_CREDITS) });
   const res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 502);
   const txs = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
@@ -678,7 +680,7 @@ test("a Braket failure on a wallet-funded run refunds the CREDITS, not the spons
   const refund = release[0].Update;
   assert.equal(refund.TableName, "wallet");
   assert.equal(refund.Key.pk.S, "WALLET#u1");
-  assert.equal(refund.ExpressionAttributeValues[":pos"].N, "175");
+  assert.equal(refund.ExpressionAttributeValues[":pos"].N, String(RUN_CREDITS));
   // the release is still guarded on the task row being RESERVED (idempotent)
   const guard = release.find((l) => l.Update?.TableName === "tasks").Update;
   assert.match(guard.ConditionExpression, /:reserved/);
@@ -814,6 +816,92 @@ test("W4: a stamped learner past their cap falls through to the wallet", async (
   });
   const res = await walletCore(ddb, stubBraket())(submitEvent(goodClaims, goodBody));
   assert.equal(JSON.parse(res.body).fundedBy, "wallet");
+});
+
+// ---- the compensating release: recorded figure, no minting ------------------
+// The debit computes the charge ONCE and records it on the task row as
+// creditsCharged. The release must refund THAT figure, read back off the row —
+// exactly as reconcile.mjs already does — because re-deriving from cost
+// diverges the moment the credit conversion changes between debit and release,
+// and it diverges in the OVERCHARGING direction (rule 7).
+
+// Derived in-test from the public constants (the $0.01 peg + IQM list rates) so
+// a future conversion factor flows through these expectations instead of
+// forcing pinned integers here.
+const RUN_CREDITS = creditsForMicros(costMicros(1000));
+
+/** A committed wallet-funded task row, as the reservation Put writes it. */
+const walletTaskRow = (credits) => ({
+  idempotencyKey: { S: "abcd-1234-efgh" },
+  userId: { S: "u1" },
+  device: { S: DEVICE },
+  shots: { N: "1000" },
+  estMicros: { N: String(costMicros(1000)) },
+  status: { S: "RESERVED" },
+  createdAt: { N: String(NOW) },
+  fundedBy: { S: "wallet" },
+  creditsCharged: { N: String(credits) },
+});
+
+test("the release refunds the creditsCharged RECORDED on the task row, never a re-derivation", async () => {
+  // A task row whose recorded charge DELIBERATELY differs from what re-deriving
+  // from cost would produce (999 is fictional test data, not a price, and not
+  // derivable from any rate): if the release re-derives, it refunds
+  // creditsForMicros(cost) instead and this reddens.
+  const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, existingTask: walletTaskRow(999) });
+  const res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 502);
+  const txs = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
+  assert.equal(txs.length, 2, "reservation + compensating release");
+  const refund = txs[1].input.TransactItems[0].Update;
+  assert.equal(refund.TableName, "wallet");
+  assert.equal(refund.ExpressionAttributeValues[":pos"].N, "999", "refund the RECORDED figure");
+});
+
+test("a release against a MISSING wallet row mints nothing: conditional, logged loudly, never thrown", async () => {
+  // Rule 11: a refund must never CREATE a wallet row — an unconditional ADD
+  // against a missing key materializes a row holding credits nobody paid for.
+  // The refund leg therefore carries attribute_exists(pk); when it fails, the
+  // money owed the learner is logged loudly (the log line is the alarm hook)
+  // and the 502 still returns without an unhandled throw.
+  const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
+  const releaseCancel = canceled([
+    { Code: "ConditionalCheckFailed" }, // leg 0: the wallet refund — row missing
+    { Code: "None" },
+    { Code: "None" },
+  ]);
+  const ddb = stubDdb({
+    ledgerUser: SPENT_UP,
+    existingTask: walletTaskRow(RUN_CREDITS),
+    transact: [{}, releaseCancel], // reservation commits; the release cancels
+  });
+  const errors = [];
+  const original = console.error;
+  console.error = (...a) =>
+    errors.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  let res;
+  try {
+    res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
+  } finally {
+    console.error = original;
+  }
+  assert.equal(res.statusCode, 502);
+  const release = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand")[1].input
+    .TransactItems;
+  assert.match(
+    release[0].Update.ConditionExpression ?? "",
+    /attribute_exists\(pk\)/,
+    "the refund leg must refuse to mint a missing wallet row",
+  );
+  assert.ok(
+    errors.some((l) => l.includes("qpu-refund-wallet-row-missing")),
+    "money owed a learner must be logged loudly",
+  );
+  assert.ok(
+    !errors.some((l) => l.includes("qpu-release-failed")),
+    "the missing-row case is handled, not rethrown into the generic release-failure log",
+  );
 });
 
 test("W5: no NEW cap is ever stamped onto a ledger row", async () => {

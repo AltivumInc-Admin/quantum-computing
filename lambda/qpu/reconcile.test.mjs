@@ -212,6 +212,47 @@ test("a re-delivered refund is idempotent: the already-reconciled cancellation i
   assert.equal(summary.failed, 1); // did not throw
 });
 
+test("a wallet refund leg never mints a missing wallet row — attribute_exists(pk)", async () => {
+  // Rule 11: a refund against a row that does not exist must NOT create it —
+  // an unconditional ADD materializes a wallet holding credits nobody paid for.
+  const ddb = stubDdb([task({ fundedBy: { S: "wallet" }, creditsCharged: { N: "45" } })]);
+  await walletAwareCore(
+    ddb,
+    stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }),
+  )();
+  const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+  assert.match(
+    tx[0].Update.ConditionExpression ?? "",
+    /attribute_exists\(pk\)/,
+    "the wallet refund must refuse to mint a missing row",
+  );
+});
+
+test("a refund cancelled by the missing-wallet-row guard is logged loudly, not thrown", async () => {
+  // This is money owed a learner that cannot be delivered: the log line is the
+  // alarm hook, and the row stays SUBMITTED so every later tick re-surfaces it.
+  // It must NOT throw — one unpayable refund must not abort the whole sweep.
+  const logs = [];
+  const ddb = throwingDdb(
+    [task({ fundedBy: { S: "wallet" }, creditsCharged: { N: "45" } })],
+    cancelled(["ConditionalCheckFailed", "None", "None"]),
+  );
+  const summary = await createReconcileCore({
+    ddb,
+    braket: stubBraket({ "arn:aws:braket:eu-north-1:1:quantum-task/t1": "FAILED" }),
+    ledgerTable: "ledger",
+    tasksTable: "tasks",
+    walletTable: "wallet",
+    now: () => NOW,
+    log: (l) => logs.push(l),
+  })();
+  assert.equal(summary.checked, 1); // completed without throwing
+  assert.ok(
+    logs.some((l) => l.includes("wallet row missing")),
+    "an undeliverable refund must be surfaced in the log",
+  );
+});
+
 test("a genuinely unexpected error on markCompleted still THROWS (never silently lost)", async () => {
   // The swallow is narrow on purpose. A throttle/permission error must surface, not
   // vanish — otherwise a run could go uncounted and a medal would quietly fail to light.
