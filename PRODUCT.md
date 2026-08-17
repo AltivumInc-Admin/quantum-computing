@@ -121,9 +121,17 @@ funnel; paid tiers add stronger models). Charged at cost — the margin is the
 subscription, not a markup on inference. **The roster is the product claim and is
 test-asserted.**
 
-**Commercial model.** Free $0 / Plus $18-mo / Pro $59-mo, a dollar-pegged wallet
-(1 credit = $0.01), Stripe checkout with a fixed catalog plus custom top-ups, and
-refund/dispute clawback with a debt-clearing rule. **The storefront is
+**Commercial model.** Three tiers — Free, Plus, Pro — at the prices published in
+`web/src/lib/pricing.ts` (`TIERS`, mirrored by `CATALOG` in
+`lambda/stripe/index.mjs`; per CLAUDE.md rule 8 the figures are not restated
+here — a hardcoded price in this file has already gone stale across one
+repricing). A dollar-pegged wallet (1 credit = $0.01), Stripe checkout with a
+fixed catalog plus custom top-ups, and refund/dispute clawback with a
+debt-clearing rule: clawbacks pro-rate against what was actually paid, a
+shortfall becomes `clawbackOwedCredits`, every money-in path (top-ups and
+renewals alike) pays that debt down before granting spendable credits, and a
+dispute the learner wins restores exactly what was taken and clears exactly the
+debt it created. **The storefront is
 deliberately closed** — no billing URL is set in the live environment, and no
 money has ever moved.
 

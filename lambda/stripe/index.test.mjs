@@ -79,6 +79,17 @@ function stubStripe(over = {}) {
         return over.subscription ?? { metadata: {} };
       },
     },
+    invoices: {
+      // invoicePaymentIntent re-retrieves the invoice with payments expanded
+      // (Basil removed Invoice.charge/payment_intent). Default: no payments
+      // resolve, matching the pre-existing tests that assert the grant still
+      // lands without a receipt leg.
+      retrieve: async (id, opts) => {
+        calls.invoicesRetrieve = calls.invoicesRetrieve ?? [];
+        calls.invoicesRetrieve.push({ id, opts });
+        return over.invoice ?? { payments: { data: [] } };
+      },
+    },
     webhooks: {
       constructEventAsync: async (raw, sig, secret) => {
         calls.constructEvent.push({ raw, sig, secret });
@@ -137,7 +148,12 @@ test("GET /wallet defaults to the free tier and zero credits when absent", async
   });
   const res = await core(makeEvent({ method: "GET", path: "/wallet" }));
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(JSON.parse(res.body), { tier: "free", credits: 0, subscriptionStatus: null });
+  assert.deepEqual(JSON.parse(res.body), {
+    tier: "free",
+    credits: 0,
+    subscriptionStatus: null,
+    clawbackOwedCredits: 0,
+  });
 });
 
 test("GET /wallet returns the stored tier, balance, and status", async () => {
@@ -153,7 +169,12 @@ test("GET /wallet returns the stored tier, balance, and status", async () => {
   });
   const core = createHandlerCore({ stripe: stubStripe(), ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   const res = await core(makeEvent({ method: "GET", path: "/wallet" }));
-  assert.deepEqual(JSON.parse(res.body), { tier: "plus", credits: 1890, subscriptionStatus: "active" });
+  assert.deepEqual(JSON.parse(res.body), {
+    tier: "plus",
+    credits: 1890,
+    subscriptionStatus: "active",
+    clawbackOwedCredits: 0,
+  });
   // keyed by the WALLET# pk, never anything from the request body
   assert.equal(ddb.calls[0].input.Key.pk.S, "WALLET#user-1");
 });
@@ -750,6 +771,9 @@ const RECEIPT_ROW = {
   sub: { S: "user-9" },
   purchasedCredits: { N: "2000" },
   refundedCredits: { N: "0" },
+  // $20.00 paid — the denominator dispute pro-rating (#230) reads. Refund tests
+  // never touch it (the Charge object carries its own amounts).
+  amountPaidCents: { N: "2000" },
 };
 const txOf = (ddb) => ddb.calls.find((c) => c.name === "TransactWriteItemsCommand")?.input.TransactItems;
 
@@ -946,11 +970,22 @@ function ledgerDdb(rows = {}) {
   };
 }
 
-const disputeEvt = (id, type) => ({
+const disputeEvt = (id, type, amount = 2000) => ({
   id,
   type,
-  data: { object: { id: "dp_1", charge: "ch_1", payment_intent: "pi_1", amount: 2000 } },
+  data: { object: { id: "dp_1", charge: "ch_1", payment_intent: "pi_1", amount } },
 });
+
+// A receipt as the post-#230 writer produces it: amountPaidCents carries what the
+// buyer actually paid, so a dispute's own amount can be pro-rated against it.
+const PRICED_RECEIPT = {
+  pk: { S: "RECEIPT#pi_1" },
+  sub: { S: "user-9" },
+  purchasedCredits: { N: "2000" },
+  refundedCredits: { N: "0" },
+  disputedCredits: { N: "0" },
+  amountPaidCents: { N: "2000" }, // $20.00 for 2000 credits
+};
 
 test("R10: a reinstated dispute returns the wallet to EXACTLY its pre-dispute state", async () => {
   // The learner bought 2000 and spent 1500, so the clawback cannot come out of
@@ -960,13 +995,7 @@ test("R10: a reinstated dispute returns the wallet to EXACTLY its pre-dispute st
   // (qpu-core.mjs:398, tutor/index.mjs:390) — a learner who WON is locked out
   // until they buy their way clear.
   const ddb = ledgerDdb({
-    "RECEIPT#pi_1": {
-      pk: { S: "RECEIPT#pi_1" },
-      sub: { S: "user-9" },
-      purchasedCredits: { N: "2000" },
-      refundedCredits: { N: "0" },
-      disputedCredits: { N: "0" },
-    },
+    "RECEIPT#pi_1": { ...PRICED_RECEIPT },
     "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "500" } },
   });
 
@@ -985,13 +1014,7 @@ test("R11: a reinstated dispute that took only credits restores exactly those cr
   // created and the restore is a plain credit return. This is what the code
   // already gets right, and the fix must not disturb it.
   const ddb = ledgerDdb({
-    "RECEIPT#pi_1": {
-      pk: { S: "RECEIPT#pi_1" },
-      sub: { S: "user-9" },
-      purchasedCredits: { N: "2000" },
-      refundedCredits: { N: "0" },
-      disputedCredits: { N: "0" },
-    },
+    "RECEIPT#pi_1": { ...PRICED_RECEIPT },
     "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "5000" } },
   });
 
@@ -1029,6 +1052,104 @@ test("R12: a debt already paid down before the reinstate is not cleared twice", 
   await deliver(ddb, disputeEvt("evt_dr3", "charge.dispute.funds_reinstated"));
   assert.equal(ddb.wallet("user-9").clawbackOwedCredits.N, "0", "never negative");
   assert.equal(ddb.wallet("user-9").credits.N, "1500", "the rest returns as spendable credits");
+});
+
+// ---- partial disputes (#230) ---------------------------------------------------
+// Stripe: a Dispute's `amount` is "usually the amount of the charge, but it can
+// differ" — partial disputes, currency conversion, banks bundling recurring
+// charges. The clawback must be pro-rated against what the buyer actually paid
+// (receipt.amountPaidCents), the way charge.refunded already pro-rates against
+// the Charge's own amount.
+
+test("R13: a partial dispute claws back only the disputed fraction of the grant", async () => {
+  // $5 disputed of a $20 purchase -> a quarter of the 2000 credits, not all of them.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": { ...PRICED_RECEIPT },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "2000" } },
+  });
+  await deliver(ddb, disputeEvt("evt_dw_part", "charge.dispute.funds_withdrawn", 500));
+  assert.equal(ddb.wallet("user-9").credits.N, "1500", "only the disputed quarter leaves");
+  assert.equal(ddb.receipt("pi_1").disputedCredits.N, "500");
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits?.N ?? "0", "0", "covered by credits, no debt");
+});
+
+test("R14: a dispute against a receipt with no amountPaidCents reclaims NOTHING and logs", async () => {
+  // Rule 7: where metering is uncertain the learner is charged less, never more.
+  // Without the denominator we cannot know the disputed fraction, so we do not
+  // guess `1` — we leave the pinned phrase for manual reconciliation instead.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": {
+      pk: { S: "RECEIPT#pi_1" },
+      sub: { S: "user-9" },
+      purchasedCredits: { N: "2000" },
+      refundedCredits: { N: "0" },
+      disputedCredits: { N: "0" },
+    },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "2000" } },
+  });
+  let lines;
+  lines = await captureConsoleError(async () => {
+    await deliver(ddb, disputeEvt("evt_dw_legacy", "charge.dispute.funds_withdrawn", 500));
+  });
+  assert.equal(ddb.wallet("user-9").credits.N, "2000", "nothing reclaimed");
+  assert.equal(ddb.receipt("pi_1").disputedCredits.N, "0");
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0].join(" ").includes(CLAWBACK_UNRECLAIMED), "must carry the shared pinned phrase");
+});
+
+test("R15: reinstating a partial dispute returns exactly the partial amount", async () => {
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": { ...PRICED_RECEIPT },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "2000" } },
+  });
+  await deliver(ddb, disputeEvt("evt_dw_p2", "charge.dispute.funds_withdrawn", 500));
+  assert.equal(ddb.wallet("user-9").credits.N, "1500");
+  await deliver(ddb, disputeEvt("evt_dr_p2", "charge.dispute.funds_reinstated", 500));
+  assert.equal(ddb.wallet("user-9").credits.N, "2000", "the quarter comes back, not the whole grant");
+  assert.equal(ddb.receipt("pi_1").disputedCredits.N, "0");
+});
+
+test("R16: a partial refund followed by a dispute of the remainder never reclaims more than the purchase", async () => {
+  // The double-clawback the hardcoded `fraction: 1` used to cause: refund half,
+  // dispute the other half, and the dispute leg would target the WHOLE grant on
+  // its own counter — 3000 credits reclaimed for 2000 cents returned. With both
+  // paths pro-rated the two counters can only ever sum to the purchase.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": { ...PRICED_RECEIPT },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "2000" } },
+  });
+  await deliver(ddb, {
+    id: "evt_refund_half",
+    type: "charge.refunded",
+    data: { object: { id: "ch_1", payment_intent: "pi_1", amount: 2000, amount_refunded: 1000 } },
+  });
+  assert.equal(ddb.wallet("user-9").credits.N, "1000");
+  await deliver(ddb, disputeEvt("evt_dw_rest", "charge.dispute.funds_withdrawn", 1000));
+  assert.equal(ddb.wallet("user-9").credits.N, "0", "exactly the purchase, never more");
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits?.N ?? "0", "0", "no phantom debt");
+  assert.equal(ddb.receipt("pi_1").refundedCredits.N, "1000");
+  assert.equal(ddb.receipt("pi_1").disputedCredits.N, "1000");
+});
+
+test("R17: a dispute whose amount DECREASES logs the pinned phrase instead of silently keeping the over-reclaim", async () => {
+  // Reachable only now that the fraction is data-driven: a dispute updated to a
+  // smaller amount, then another funds-movement delivery. The counter cannot
+  // move down outside `restore` (that guard protects refunds from re-grants),
+  // so the learner stays over-reclaimed — which is fine to defer to a human,
+  // and NOT fine to do silently.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": { ...PRICED_RECEIPT },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "4000" } },
+  });
+  await deliver(ddb, disputeEvt("evt_dw_big", "charge.dispute.funds_withdrawn", 2000));
+  assert.equal(ddb.wallet("user-9").credits.N, "2000");
+  const lines = await captureConsoleError(async () => {
+    await deliver(ddb, disputeEvt("evt_dw_small", "charge.dispute.funds_withdrawn", 500));
+  });
+  assert.equal(ddb.wallet("user-9").credits.N, "2000", "no write either way");
+  assert.equal(ddb.receipt("pi_1").disputedCredits.N, "2000");
+  assert.equal(lines.length, 1, "the over-reclaim must be visible to the metric filter");
+  assert.ok(lines[0].join(" ").includes(CLAWBACK_UNRECLAIMED));
 });
 
 // ---- debt clearing ------------------------------------------------------------
@@ -1099,4 +1220,220 @@ test("D3: with no debt, a purchase behaves exactly as before", async () => {
   const w = txOf(ddb)[1].Update;
   assert.equal(w.ExpressionAttributeValues[":amt"].N, "2000");
   assert.equal(w.ExpressionAttributeValues[":owed"], undefined, "no debt leg at all");
+});
+
+// invoice.paid is the OTHER path that moves money in, and until #218 it was the
+// one that skipped the split: a renewing subscriber accumulated credits the
+// debt-gate refused while the debt never shrank. Founder decision (2026-08-17,
+// issue #218): renewals garnish FULLY — the same splitAgainstDebt rule top-ups
+// use, so money-in behaves one way everywhere.
+
+test("D5: a renewal grant pays down clawback debt before granting spendable credits", async () => {
+  const ddb = stubDdb({
+    GetItemCommand: {
+      Item: { pk: { S: "WALLET#user-8" }, credits: { N: "0" }, clawbackOwedCredits: { N: "800" } },
+    },
+  });
+  const stripe = stubStripe({
+    event: {
+      id: "evt_inv_garnish",
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: "in_garnish",
+          billing_reason: "subscription_cycle",
+          amount_paid: 1900,
+          parent: { type: "subscription_details", subscription_details: { subscription: "sub_g" } },
+        },
+      },
+    },
+    subscription: { metadata: { userId: "user-8", tier: "plus", credits: "1900" } },
+  });
+  const core = createHandlerCore({ stripe, ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const res = await core(
+    makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
+  );
+  assert.equal(res.statusCode, 200);
+  const tx = ddb.calls.find((c) => c.constructor.name === "TransactWriteItemsCommand").input.TransactItems;
+  const w = tx[1].Update;
+  assert.equal(w.ExpressionAttributeValues[":amt"].N, "1100", "1900 granted, 800 garnished");
+  assert.equal(w.ExpressionAttributeValues[":owed"].N, "-800", "the debt is paid down");
+  assert.equal(w.ExpressionAttributeValues[":tier"].S, "plus", "tier still lights up");
+});
+
+test("D6: a debt larger than the grant consumes the whole renewal, and the receipt still records the full grant", async () => {
+  const ddb = stubDdb({
+    GetItemCommand: {
+      Item: { pk: { S: "WALLET#user-8" }, credits: { N: "0" }, clawbackOwedCredits: { N: "2500" } },
+    },
+  });
+  const stripe = stubStripe({
+    event: {
+      id: "evt_inv_garnish_all",
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: "in_garnish_all",
+          billing_reason: "subscription_cycle",
+          amount_paid: 1900,
+          parent: { type: "subscription_details", subscription_details: { subscription: "sub_g" } },
+        },
+      },
+    },
+    subscription: { metadata: { userId: "user-8", tier: "plus", credits: "1900" } },
+    invoice: { payments: { data: [{ payment: { payment_intent: "pi_renewal" } }] } },
+  });
+  const core = createHandlerCore({ stripe, ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  await core(
+    makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
+  );
+  const tx = ddb.calls.find((c) => c.constructor.name === "TransactWriteItemsCommand").input.TransactItems;
+  const w = tx[1].Update;
+  assert.equal(w.ExpressionAttributeValues[":amt"], undefined, "nothing spendable this period");
+  assert.equal(w.ExpressionAttributeValues[":owed"].N, "-1900", "the whole grant garnishes");
+  // The receipt still says 1900 purchased: a refund of THIS invoice claws back
+  // against the full grant, not the post-garnish remainder.
+  const receipt = tx.find((l) => l.Put?.Item?.pk?.S?.startsWith("RECEIPT#"));
+  assert.equal(receipt.Put.Item.purchasedCredits.N, "1900");
+});
+
+// ---- the debt-paydown race -----------------------------------------------------
+// splitAgainstDebt reads clawbackOwedCredits OUTSIDE the transaction. Without an
+// OCC condition on the wallet leg, two concurrent money-in events (a renewal
+// racing a top-up, or two invoice.paid deliveries) both read owed=N and both
+// ADD -N — driving the field NEGATIVE, which the spend gates refuse exactly as
+// hard as a positive debt, permanently, with no self-healing path.
+
+test("D7: a debt paydown carries the read debt as an OCC condition on the wallet leg", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "800" } } });
+  await deliver(ddb, {
+    id: "evt_topup_occ",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_occ",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_occ",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  });
+  const w = txOf(ddb)[1].Update;
+  assert.match(w.ConditionExpression ?? "", /clawbackOwedCredits = :expectedOwed/);
+  assert.equal(w.ExpressionAttributeValues[":expectedOwed"].N, "800");
+});
+
+test("D8: a lost debt-paydown race re-reads and retries against fresh state", async () => {
+  // Interleaving: this delivery reads owed=800, but a concurrent event pays the
+  // debt off before our transaction commits. The OCC condition cancels the
+  // wallet leg; the retry re-reads owed=0 and grants in full — instead of
+  // blindly ADDing -800 into a negative, gate-wedging debt.
+  const walletReads = [
+    { Item: { pk: { S: "WALLET#user-9" }, credits: { N: "0" }, clawbackOwedCredits: { N: "800" } } },
+    { Item: { pk: { S: "WALLET#user-9" }, credits: { N: "1200" }, clawbackOwedCredits: { N: "0" } } },
+  ];
+  const outcomes = [cancelledAt(1), {}];
+  const calls = [];
+  const ddb = {
+    calls,
+    async send(cmd) {
+      const name = cmd.constructor.name;
+      calls.push({ name, input: cmd.input });
+      if (name === "GetItemCommand") return walletReads.shift() ?? {};
+      if (name === "TransactWriteItemsCommand") {
+        const o = outcomes.shift();
+        if (o instanceof Error) throw o;
+        return o ?? {};
+      }
+      return {};
+    },
+  };
+  await deliver(ddb, {
+    id: "evt_topup_race",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_race",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_race",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  });
+  const txs = calls.filter((c) => c.name === "TransactWriteItemsCommand");
+  assert.equal(txs.length, 2, "one lost race, one retry");
+  const second = txs[1].input.TransactItems[1].Update;
+  assert.equal(second.ExpressionAttributeValues[":amt"].N, "2000", "fresh read: no debt, full grant");
+  assert.equal(second.ExpressionAttributeValues[":owed"], undefined, "nothing left to garnish");
+});
+
+// ---- the denominator a partial dispute needs (#230) ----------------------------
+
+test("a checkout purchase records amountPaidCents on the receipt", async () => {
+  const ddb = walletDdb({ wallet: { credits: { N: "0" } } });
+  await deliver(ddb, {
+    id: "evt_topup_price",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_p",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_price",
+        client_reference_id: "user-9",
+        amount_total: 500,
+        metadata: { credits: "500" },
+      },
+    },
+  });
+  const receipt = txOf(ddb).find((l) => l.Put?.Item?.pk?.S?.startsWith("RECEIPT#"));
+  assert.equal(receipt.Put.Item.amountPaidCents.N, "500");
+});
+
+test("a subscription invoice records amountPaidCents on the receipt", async () => {
+  const { ddb } = await deliverWebhook(
+    {
+      id: "evt_inv_price",
+      type: "invoice.paid",
+      data: {
+        object: {
+          id: "in_price",
+          billing_reason: "subscription_cycle",
+          amount_paid: 1900,
+          parent: { type: "subscription_details", subscription_details: { subscription: "sub_p" } },
+        },
+      },
+    },
+    {
+      subscription: { metadata: { userId: "user-8", tier: "plus", credits: "1900" } },
+      invoice: { payments: { data: [{ payment: { payment_intent: "pi_renewal" } }] } },
+    }
+  );
+  const tx = ddb.calls.find((c) => c.constructor.name === "TransactWriteItemsCommand").input.TransactItems;
+  const receipt = tx.find((l) => l.Put?.Item?.pk?.S?.startsWith("RECEIPT#"));
+  assert.equal(receipt.Put.Item.amountPaidCents.N, "1900");
+});
+
+test("GET /wallet exposes clawback debt so a lockout is diagnosable", async () => {
+  // Until now no surface carried the debt: the gate refused with
+  // "insufficient-credits" while the wallet showed a balance. The client (and
+  // support) need the number to explain WHY a spend was refused.
+  const ddb = stubDdb({
+    GetItemCommand: {
+      Item: {
+        pk: { S: "WALLET#user-1" },
+        tier: { S: "plus" },
+        credits: { N: "2000" },
+        clawbackOwedCredits: { N: "1500" },
+        subscriptionStatus: { S: "active" },
+      },
+    },
+  });
+  const core = createHandlerCore({ stripe: stubStripe(), ddb, tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
+  const res = await core(makeEvent({ method: "GET", path: "/wallet" }));
+  assert.equal(JSON.parse(res.body).clawbackOwedCredits, 1500);
 });
