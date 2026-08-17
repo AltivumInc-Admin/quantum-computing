@@ -145,15 +145,26 @@ test("Errors / Throttles / 5xx alarms exist and all notify a human", () => {
 // tested the claim.
 
 /** Properties whose value becomes a physical, account-unique name. */
-const PHYSICAL_NAME_PROPS = ["TableName", "FunctionName", "TopicName", "AlarmName", "MetricNamespace"];
+const PHYSICAL_NAME_PROPS = ["TableName", "FunctionName", "TopicName", "AlarmName", "MetricNamespace", "Namespace"];
 
-/** Every `Prop: value` in the whole Resources section for the naming props. */
+/**
+ * Every `Prop: value` in the whole Resources section for the naming props.
+ *
+ * Two YAML shapes both carry a namespace and BOTH must be seen, or the guard has
+ * a blind spot exactly where a hardcoded name would hide: the alarm form
+ * `Namespace: <x>` and the metric-filter list-item form `- MetricNamespace: <x>`
+ * (a leading `- ` that a `^\s+Prop:` anchor silently skips). `AWS/...` namespaces
+ * are Amazon's own and are legitimately literal, so they are excluded here rather
+ * than exempted downstream — they are not OUR physical names.
+ */
 function physicalNames() {
   const out = [];
   for (const id of Object.keys(resources)) {
     for (const line of resources[id]) {
-      const m = line.match(new RegExp(`^\\s+(${PHYSICAL_NAME_PROPS.join("|")}):\\s*(.+?)\\s*$`));
-      if (m) out.push({ id, prop: m[1], value: m[2] });
+      const m = line.match(new RegExp(`^\\s+-?\\s*(${PHYSICAL_NAME_PROPS.join("|")}):\\s*(.+?)\\s*$`));
+      if (!m) continue;
+      if (/^["']?AWS\//.test(m[2])) continue; // AWS-owned namespace, not ours to parameterize
+      out.push({ id, prop: m[1], value: m[2] });
     }
   }
   return out;

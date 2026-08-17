@@ -36,6 +36,50 @@ the other. Re-check the MCP with `get_stripe_account_info` after every re-author
 **Never place a live key in a `stripe` CLI profile**: the CLI redacts `*_api_key` in place
 and destroys the secret. Use `curl -u "$KEY:"`, `--api-key`, or `STRIPE_API_KEY`.
 
+**Every `stripe` CLI profile on this machine currently points at the WRONG account.**
+`default`, `ql-live-admin` and `quantum-learner` all resolve to `acct_1Rm6Rr000wqzRfNl`
+(Altivum Logic, the agency account). A profile name is not evidence. Verify identity per
+call, or use the scripts under `scripts/stripe/`, which take `--expect-account` and refuse
+to act on a mismatch.
+
+### Evaluate in the sandbox. Always. Then live.
+
+**Anything Stripe gets exercised in the sandbox (`acct_1TuFpH0a2DloOdGu`) before it is
+believed about live.** Sandbox runs real Checkout, real webhook deliveries, real refunds
+and real disputes, so "tests pass but the path cannot be exercised end to end" is never a
+true statement about this integration — it only ever meant the sandbox had not been built.
+The closer sandbox is to live, the more a green sandbox predicts a green live.
+
+- `scripts/stripe/provision-sandbox.mjs` builds it: products (including `ql_credits` by
+  that literal id — `CUSTOM_TOPUP_PRODUCT` needs it or custom top-ups 500), one price per
+  `CATALOG` lookup key, and a webhook endpoint carrying **all nine** `REQUIRED_WEBHOOK_EVENTS`
+  pinned to the SDK's own `apiVersion`. Idempotent; refuses any `sk_live_` key outright.
+- **The Dashboard cannot pin an arbitrary API version and `api_version` is creation-only.**
+  Create endpoints through the API, or the payload shape follows the account default and
+  moves under a deployed handler — which is exactly how `invoice.subscription` moved under
+  `parent.subscription_details` and broke credit granting once already.
+- `stripe trigger` is near-useless here: its fixtures carry no `client_reference_id` and no
+  `metadata`, so `checkout.session.completed`, `invoice.paid` and both subscription events
+  no-op silently against this handler, and there are no dispute fixtures at all. Drive the
+  real `/checkout` route. Force renewals with test clocks (advance twice — the renewal
+  invoice sits in `draft` for ~1h of simulated time). Win a dispute with
+  `evidence[uncategorized_text]=winning_evidence` + `submit=true`.
+- Sandbox retries deliveries **3 times over a few hours**, not 3 days. Use
+  `stripe events resend` as the forcing function, and to prove idempotency for real.
+
+### Two guards for what the repo cannot see
+
+The Stripe Dashboard is not in the repo, so no test in the repo can see it, and both halves
+had drifted when first checked on 2026-08-17. Run these against **both** accounts:
+
+- `scripts/stripe/check-webhook-parity.mjs` — subscribed events vs `REQUIRED_WEBHOOK_EVENTS`,
+  plus a pinned `api_version`. Live was subscribed to **4 of 9**: `charge.refunded` and both
+  dispute events were absent, so the whole clawback path was dark in production. `index.test.mjs`
+  R9 compares the code's list to the code's `switch` and can never catch this.
+- `scripts/stripe/check-catalog-parity.mjs` — products and prices vs `CATALOG` + `TIERS`,
+  including product **descriptions**, which are customer-facing at Checkout and therefore a
+  rule 13 surface sitting outside every rule 13 guard.
+
 ### The shape of the business
 
 1. **Free to learn, forever.** Curriculum, browser simulator, playground, glossary, review
