@@ -20,11 +20,30 @@ in-handler by the `Stripe-Signature` HMAC.
 
 ## Data model
 
-One table, `quantum-stripe-wallet`, `pk`-prefixed rows (the `lambda/qpu` idiom):
+One table, `quantum-stripe-wallet`, `pk`-prefixed rows (the `lambda/qpu` idiom).
+Four prefixes are in use — the first three written by this Lambda (`index.mjs`),
+the fourth by `scripts/founding-credit/`:
 
 - `WALLET#<sub>` — `credits` (N), `tier` (S), `stripeCustomerId` (S),
-  `subscriptionStatus` (S). Never expires.
+  `subscriptionStatus` (S), and `clawbackOwedCredits` (N) — the residual debt
+  left when a refund/dispute clawback exceeded the balance held, paid down by
+  later money-in events; both metered backends refuse every spend while it is
+  nonzero. Never expires.
 - `EVENT#<stripeEventId>` — idempotency marker with `expiresAt` (TTL, 30 days).
+- `RECEIPT#<paymentIntentId>` — purchase receipt ("this PaymentIntent bought N
+  credits for user Y"), the only link a refund/dispute has back to what a
+  payment bought. No TTL: Stripe's dispute window outlives the 30-day EVENT#
+  marker. Gifts write no receipt, by design — that is what makes gifted credits
+  structurally unreachable from every clawback path.
+- `FOUNDING#<cohortId>#<hash>` / `FOUNDING#<cohortId>#COUNTER` — the founding-
+  cohort gift's once-only marker per recipient and its cohort-size counter,
+  written by `scripts/founding-credit/issue.mjs` in the same transaction as the
+  wallet grant. Not read by this Lambda.
+
+**TTL landmine:** the table has DynamoDB TTL **enabled on the attribute
+`expiresAt`**. Only `EVENT#` rows may ever carry that attribute — put it on any
+other row (a `WALLET#` row especially) and DynamoDB silently deletes the whole
+row at that timestamp, wallet balance and all, with no application code involved.
 
 **Money → credits is exactly once.** Every wallet mutation is a single
 `TransactWriteItems` that conditionally records the Stripe event id
