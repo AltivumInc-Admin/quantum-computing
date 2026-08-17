@@ -48,6 +48,13 @@ const ALLOWED = new Map<string, string>([
     "scripts/founding-credit/issue.mjs",
     "THE ONE APPROVED EXCEPTION — the founding-cohort gift, hand-run, roster reviewed in git, ceiling enforced by DynamoDB",
   ],
+  [
+    "scripts/stripe/e2e-sandbox.mjs",
+    "the sandbox e2e harness — seeds balances with an ABSOLUTE SET to set up refund/dispute cases. " +
+      "It is the only entry here that destroys rather than adjusts a balance, so it carries its own " +
+      "refusal: --table must match /sandbox/, alongside the existing sk_live_ refusal. Both wallet " +
+      "tables live in one AWS account and their names differ by one word.",
+  ],
 ]);
 
 /** Directories worth scanning; everything else cannot reach DynamoDB anyway. */
@@ -83,8 +90,22 @@ function walk(dir: string, acc: string[] = []): string[] {
  * `credits :amt` pushed into an ADD list). Test files are excluded — they
  * assert on the string. Matching the mutation rather than only the increase is
  * deliberate: a new debit path is also something this list should notice.
+ *
+ * The third alternative exists because this guard had a hole for a day and
+ * looked authoritative the whole time. `scripts/stripe/e2e-sandbox.mjs` moves a
+ * balance with `SET ${expr.join(", ")}` built from an object, so the literal
+ * `credits` never appears next to `ADD` or `SET` anywhere in the source — the
+ * suite passed 4/4 with an unlisted writer in a scanned root. And its write is
+ * an absolute SET, which DESTROYS a balance rather than adjusting it, so it was
+ * the most dangerous possible thing to be invisible here.
+ *
+ * So: also treat "constructs a WALLET# key AND issues a DynamoDB update" as a
+ * balance move, regardless of how the expression is assembled. A guard that can
+ * only see one spelling of the mutation is a guard that reports a wrong answer
+ * with total confidence.
  */
-const CREDIT_WRITE = /ADD\s+credits\b|adds\.push\("credits /;
+const CREDIT_WRITE =
+  /ADD\s+credits\b|adds\.push\("credits |(?=[\s\S]*`WALLET#\$\{)[\s\S]*(?:update-item|UpdateItemCommand)/;
 
 describe("credit-writer allowlist", () => {
   const offenders: string[] = [];

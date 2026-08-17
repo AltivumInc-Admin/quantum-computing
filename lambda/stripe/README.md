@@ -88,16 +88,38 @@ Note the stack outputs — `BillingUrl` and `WebhookUrl`.
 
 **Phase 2 — wire the webhook and finish the secret:**
 
-1. In the Stripe Dashboard (**Developers → Webhooks → Add endpoint**), register
-   the `WebhookUrl` output **with a pinned API version** (creation-only — it
-   cannot be set later; unpinned means the account default, which moves).
-   Subscribe to exactly these events:
-   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed`, `invoice.paid`,
-   `customer.subscription.updated`, `customer.subscription.deleted`.
-   The async pair is load-bearing: delayed-notification methods (Klarna, Cash
-   App, Amazon Pay, ACH) complete the session with `payment_status: "unpaid"`,
-   and the handler fulfills nothing until `async_payment_succeeded` lands.
+1. Register the `WebhookUrl` output **with a pinned API version**, subscribed to
+   **all nine** events in `REQUIRED_WEBHOOK_EVENTS`. Do not retype the list and do
+   not use the Dashboard for this — print it from the code and create the endpoint
+   through the API, because the Dashboard can only pin *your account version* or
+   *latest*, and `api_version` is creation-only (it cannot be patched afterwards):
+
+   ```bash
+   node -e "import('./index.mjs').then(m=>console.log(m.REQUIRED_WEBHOOK_EVENTS.join('\n')))"
+   ```
+
+   `scripts/stripe/provision-sandbox.mjs` does exactly this, pinned to the SDK's
+   own `apiVersion`, and pipes the signing secret straight into Secrets Manager.
+
+   > **This list was wrong here for months, and production inherited the mistake.**
+   > It named six events and omitted `charge.refunded`,
+   > `charge.dispute.funds_withdrawn` and `charge.dispute.funds_reinstated`. On
+   > 2026-08-17 the live endpoint was found subscribed to four of the nine, so the
+   > entire clawback path — fully implemented and fully tested — could never fire:
+   > a refund would have returned the customer's money and left the credits spent.
+   > `index.test.mjs` R9 could not catch it because it compares the code's list to
+   > the code's `switch`, never to the Dashboard. `scripts/stripe/check-webhook-parity.mjs`
+   > is the check that closes that loop; run it after any endpoint change.
+
+   Two groups are load-bearing and easy to skip:
+   - **the async pair** — delayed-notification methods (Klarna, Cash App, Amazon
+     Pay, ACH) complete the session with `payment_status: "unpaid"`, and the
+     handler fulfills nothing until `async_payment_succeeded` lands;
+   - **the three clawback events** — without them money can leave and credits stay.
+
+   Deliberately NOT subscribed: `charge.dispute.created`, which also fires for
+   inquiries where Stripe withdraws nothing; clawing back there would zero a
+   paying customer's wallet for free.
 2. Copy the endpoint's **Signing secret** (`whsec_…`).
 3. Replace the placeholder with the real signing secret (re-reading the key from
    1Password so the plaintext still never lands in the shell history):

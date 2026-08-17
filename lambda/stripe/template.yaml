@@ -11,6 +11,31 @@ Description: >
   us-east-2 (the Cognito pool's region).
 
 Parameters:
+  NamePrefix:
+    Type: String
+    Default: quantum-stripe
+    Description: >
+      Prefix for every physical, account-unique name in this stack (the wallet
+      table, the function, the SNS topic, all seven alarms). It exists so the
+      SAME template can be deployed a second time as a sandbox stack in this
+      account and region, which is where payment and credit-issuance changes get
+      exercised before they touch real money.
+
+      CHANGING THIS ON THE LIVE STACK REPLACES THE WALLET TABLE. CloudFormation
+      does not rename resources — a new TableName is a new table, and the old one
+      (DeletionPolicy: Retain) is orphaned with every purchased balance still in
+      it while the stack serves an empty replacement. The default is pinned to
+      the live names by template.test.mjs for exactly that reason. For a sandbox,
+      pass quantum-stripe-sandbox; never edit the default.
+  MetricNamespace:
+    Type: String
+    Default: QuantumStripe
+    Description: >
+      CloudWatch namespace for this stack's money-path metrics. Parameterized
+      alongside NamePrefix because the alarms below carry NO dimensions: two
+      stacks publishing UncreditedInvoice into one namespace means a sandbox
+      refund test pages the operator about live money, and worse, trains them to
+      ignore the topic. The sandbox stack must pass its own namespace.
   UserPoolId:
     Type: String
     Default: us-east-2_aRydPmAjj
@@ -56,7 +81,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: quantum-stripe-wallet
+      TableName: !Sub "${NamePrefix}-wallet"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: pk
@@ -105,7 +130,7 @@ Resources:
   StripeFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: quantum-stripe
+      FunctionName: !Ref NamePrefix
       Runtime: nodejs22.x
       Handler: index.handler
       MemorySize: 256
@@ -186,7 +211,7 @@ Resources:
   AlertsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: quantum-stripe-alerts
+      TopicName: !Sub "${NamePrefix}-alerts"
       Subscription:
         - Endpoint: !Ref AlertEmail
           Protocol: email
@@ -194,7 +219,7 @@ Resources:
   StripeErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-errors
+      AlarmName: !Sub "${NamePrefix}-errors"
       AlarmDescription: >-
         The quantum-stripe function threw at least one error in 5 minutes. A
         paid checkout webhook may have failed to grant credits (Stripe will
@@ -227,7 +252,7 @@ Resources:
       LogGroupName: !Ref StripeLogGroup
       FilterPattern: '"no subscription id resolved on a subscription invoice"'
       MetricTransformations:
-        - MetricNamespace: QuantumStripe
+        - MetricNamespace: !Ref MetricNamespace
           MetricName: UncreditedInvoice
           MetricValue: "1"
           Unit: Count
@@ -235,7 +260,7 @@ Resources:
   UncreditedInvoiceAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-uncredited-invoice
+      AlarmName: !Sub "${NamePrefix}-uncredited-invoice"
       AlarmDescription: >-
         A paid subscription invoice arrived with no resolvable subscription id,
         so its credits were NOT granted — the buyer paid and their balance did
@@ -244,7 +269,7 @@ Resources:
         exact failure that shipped once already (the id moved under
         parent.subscription_details) and went unnoticed because nothing watched
         for it.
-      Namespace: QuantumStripe
+      Namespace: !Ref MetricNamespace
       MetricName: UncreditedInvoice
       Statistic: Sum
       Period: 300
@@ -257,13 +282,51 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  SignatureRejectedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"stripe-webhook: signature verification failed"'
+      MetricTransformations:
+        - MetricNamespace: !Ref MetricNamespace
+          MetricName: SignatureRejected
+          MetricValue: "1"
+          Unit: Count
+
+  SignatureRejectedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${NamePrefix}-signature-rejected"
+      AlarmDescription: >-
+        Stripe delivered a webhook whose signature did not verify. Treat this as
+        OUR secret being wrong, not an attacker: the overwhelmingly likely cause
+        is a signing secret that was rotated without the function picking it up,
+        and while it lasts EVERY event is dropped — no credits granted, no
+        refunds clawed back. Neither of the other alarms can see it: the
+        invocation SUCCEEDS (so AWS/Lambda Errors is blind) and the response is
+        a 4xx (so the 5xx alarm is blind). Verified on 2026-08-17 by rotating a
+        sandbox secret: 24 invocations, wallet untouched, and not one log line
+        until this filter existed.
+        FIRST CHECK: does the function hold the current secret? A warm container
+        caches it at cold start, so a rotation needs an
+        `update-function-configuration` to recycle the environment.
+      Namespace: !Ref MetricNamespace
+      MetricName: SignatureRejected
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   AsyncPaymentFailedMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Ref StripeLogGroup
       FilterPattern: '"delayed payment failed; nothing granted"'
       MetricTransformations:
-        - MetricNamespace: QuantumStripe
+        - MetricNamespace: !Ref MetricNamespace
           MetricName: AsyncPaymentFailed
           MetricValue: "1"
           Unit: Count
@@ -271,14 +334,14 @@ Resources:
   AsyncPaymentFailedAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-async-payment-failed
+      AlarmName: !Sub "${NamePrefix}-async-payment-failed"
       AlarmDescription: >-
         A delayed-notification payment (Klarna / Cash App / Amazon Pay / ACH)
         failed after the Checkout Session completed. Nothing was granted, which
         is correct — but a learner believes they bought something, so this is
         the signal to check whether they need help completing the purchase. Not
         an outage; do not treat a single occurrence as an incident.
-      Namespace: QuantumStripe
+      Namespace: !Ref MetricNamespace
       MetricName: AsyncPaymentFailed
       Statistic: Sum
       Period: 300
@@ -299,7 +362,7 @@ Resources:
       LogGroupName: !Ref StripeLogGroup
       FilterPattern: '"credits NOT reclaimed"'
       MetricTransformations:
-        - MetricNamespace: QuantumStripe
+        - MetricNamespace: !Ref MetricNamespace
           MetricName: UnreclaimedRefund
           MetricValue: "1"
           Unit: Count
@@ -307,14 +370,14 @@ Resources:
   UnreclaimedRefundAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-unreclaimed-refund
+      AlarmName: !Sub "${NamePrefix}-unreclaimed-refund"
       AlarmDescription: >-
         Money went back to a customer (refund or lost dispute) but the credits
         it bought could NOT be reclaimed automatically — most likely a charge
         with no grant row, or a subscription whose PaymentIntent never
         resolved. The learner keeps credits the platform has refunded. Find the
         payment_intent on the log line and adjust the wallet by hand.
-      Namespace: QuantumStripe
+      Namespace: !Ref MetricNamespace
       MetricName: UnreclaimedRefund
       Statistic: Sum
       Period: 300
@@ -333,7 +396,7 @@ Resources:
       LogGroupName: !Ref StripeLogGroup
       FilterPattern: '"webhook handling failed"'
       MetricTransformations:
-        - MetricNamespace: QuantumStripe
+        - MetricNamespace: !Ref MetricNamespace
           MetricName: WebhookHandlerFault
           MetricValue: "1"
           Unit: Count
@@ -341,13 +404,13 @@ Resources:
   WebhookHandlerFaultAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-webhook-fault
+      AlarmName: !Sub "${NamePrefix}-webhook-fault"
       AlarmDescription: >-
         The webhook handler threw. Stripe will retry, so a single occurrence on
         a GRANT path usually self-heals — but check the event type on the log
         line: a CLAWBACK fault that persists past Stripe's retry window is
         permanent, because nothing else will ever reclaim those credits.
-      Namespace: QuantumStripe
+      Namespace: !Ref MetricNamespace
       MetricName: WebhookHandlerFault
       Statistic: Sum
       Period: 300
@@ -360,7 +423,7 @@ Resources:
   StripeThrottlesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-throttles
+      AlarmName: !Sub "${NamePrefix}-throttles"
       AlarmDescription: >-
         The quantum-stripe function was throttled (reserved concurrency
         exhausted) in the last 5 minutes. Either real traffic outgrew
@@ -382,7 +445,7 @@ Resources:
   Api5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: quantum-stripe-5xx
+      AlarmName: !Sub "${NamePrefix}-5xx"
       AlarmDescription: >-
         The billing HTTP API returned at least one 5xx in 5 minutes (v2 metric
         name is 5xx, not 5XXError). The function, its DynamoDB access, or the

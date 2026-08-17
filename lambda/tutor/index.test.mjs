@@ -377,6 +377,82 @@ test("M2: a Pro caller on a paid model reserves, streams, settles, and gets the 
   assert.equal(meta.label, MODEL_LABELS["opus-5"]);
 });
 
+test("M12: a metered debit leaves a durable trace of both the reserve and the settle", async () => {
+  // The only wallet writer with NO artifact. Stripe persists EVENT#/RECEIPT#;
+  // the QPU persists fundedBy + creditsCharged on its task row; the tutor did a
+  // bare UpdateItem and logged only failures. So "a learner says 40 credits
+  // vanished" was answerable for two of three surfaces and unanswerable for the
+  // third — the wallet table has no stream, so PITR gives restore, not history.
+  //
+  // Two lines make it a Logs Insights query. A reserve with no matching settle
+  // is also how you find a stranded reservation, which nothing sweeps today.
+  const usage = { inputTokens: 200, outputTokens: 400 };
+  const actual = creditsForUsage("opus-5", usage);
+  const wallet = stubWallet({ tier: "pro", credits: 1_000 });
+  const lines = [];
+  const original = console.log;
+  console.log = (...a) => lines.push(a.join(" "));
+  try {
+    await createHandlerCore({
+      client: meteredClient(usage),
+      corpus: FIXTURE_CORPUS,
+      modelId: "app-profile-arn",
+      verifier: okVerifier,
+      wallet,
+    })(paidEvent(), makeStream());
+  } finally {
+    console.log = original;
+  }
+
+  const parsed = lines.map((l) => {
+    try {
+      return JSON.parse(l);
+    } catch {
+      return {};
+    }
+  });
+  const reserve = parsed.find((p) => p.tutorReserve);
+  const settle = parsed.find((p) => p.tutorSettle);
+  assert.ok(reserve, "a reserve must be traceable");
+  assert.ok(settle, "a settle must be traceable");
+
+  assert.equal(reserve.sub, "user-1");
+  assert.equal(reserve.model, "opus-5");
+  assert.equal(reserve.reservedCredits, wallet.calls.debits[0].n);
+  assert.equal(settle.sub, "user-1");
+  assert.equal(settle.chargedCredits, actual);
+  assert.equal(settle.refundedCredits, wallet.calls.debits[0].n - actual);
+
+  // Rule 6: credits only. A dollar figure here would put the cost basis in
+  // CloudWatch, and the log group is not the private notes.
+  const joined = JSON.stringify(parsed);
+  assert.doesNotMatch(joined, /usd|dollar|\$\d/i, "log credits, never money");
+  // And never the learner's question or the lesson text.
+  assert.doesNotMatch(joined, /question|prompt|lessonText/i, "no learner content in the log");
+});
+
+test("M13: the FREE path stays byte-identical — no metering log when nothing is metered", async () => {
+  // The free tutor is the pre-metering tutor. Tracing must live inside the
+  // metered branch only, or every free question writes a log line for a debit
+  // that never happened.
+  const lines = [];
+  const original = console.log;
+  console.log = (...a) => lines.push(a.join(" "));
+  try {
+    await createHandlerCore({ client: okClient(), corpus: FIXTURE_CORPUS, modelId: "m" })(
+      { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+      makeStream()
+    );
+  } finally {
+    console.log = original;
+  }
+  assert.equal(
+    lines.filter((l) => l.includes("tutorReserve") || l.includes("tutorSettle")).length,
+    0,
+    "the unmetered path must not log a debit"
+  );
+});
+
 test("M3: insufficient credits refuses BEFORE any model call, with the exact message", async () => {
   const client = meteredClient();
   const wallet = stubWallet({ tier: "pro", debitFails: true });

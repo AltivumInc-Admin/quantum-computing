@@ -309,6 +309,12 @@ export function createHandlerCore({
       // null = metering not configured (the panel hides the balance line);
       // 0 = configured but this learner holds no credits.
       walletCredits: walletTable ? Number(wallet?.Item?.credits?.N ?? 0) : null,
+      // The debt gate is `clawbackOwedCredits = 0` in BOTH metered backends, so
+      // a learner carrying one sees a healthy positive balance next to a hard
+      // 402 and nothing anywhere says why — the first debugging step was a
+      // manual GetItem. The wallet item is already fetched for walletCredits,
+      // so this costs no extra read. Same null/0 convention as the line above.
+      clawbackOwedCredits: walletTable ? Number(wallet?.Item?.clawbackOwedCredits?.N ?? 0) : null,
       tasks: (tasks.Items ?? []).map(taskSummary),
     });
   }

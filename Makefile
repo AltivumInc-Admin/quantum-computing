@@ -1,4 +1,4 @@
-.PHONY: setup lab test devices cost lint drift deploy-infra teardown-infra lock-container
+.PHONY: setup lab test devices cost lint stripe-parity drift deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -25,6 +25,17 @@ cost:
 lint:
 	ruff check .
 	ruff format --check .
+
+KEYREF ?= op://Quantum Learner/Stripe/add more/Secret Key
+
+stripe-parity:
+	@# Does the Stripe Dashboard match the code? Two things no test in this repo
+	@# can see, because the Dashboard is not in the repo. Read-only; needs a key.
+	@#   make stripe-parity ACCOUNT=acct_1TuFow07hJdXv6GV      (live)
+	@#   make stripe-parity ACCOUNT=acct_1TuFpH0a2DloOdGu KEYREF="op://Quantum Learner/Stripe Sandbox/Secret Key"
+	@test -n "$(ACCOUNT)" || { echo "ACCOUNT=acct_... is required"; exit 2; }
+	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT)
+	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-catalog-parity.mjs --expect-account $(ACCOUNT)
 
 drift:
 	@# Is what is RUNNING what is in git? Merging is not shipping, and a green CI plus a

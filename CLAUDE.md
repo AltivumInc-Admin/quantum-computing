@@ -20,7 +20,10 @@ drivers in `docs/pricing-cost-basis.md`; commercial terms in neither — see rul
 Quantum Learner billing lives on **exactly one** Stripe account: **`acct_1TuFow07hJdXv6GV`**
 (live, dashboard display name **"Quantum Learner"**, `charges_enabled: true`). The owner's
 Stripe login also controls **Altivum Logic** (`acct_1Rm6Rr000wqzRfNl`) and **Tj-Scents** —
-writing prices to one of those is silent and easy. Sandbox is `acct_1TuFpH0a2DloOdGu`.
+writing prices to one of those is silent and easy. Sandbox is **`acct_1U5IQr0txWLZHlL3`** ("Quantum Learner Sandbox", key at
+`op://Quantum Learner/Stripe Sandbox/Secret Key`). An older `acct_1TuFpH0a2DloOdGu` is
+recorded in some places and is NOT the one that is provisioned — another reason every
+script takes `--expect-account` and refuses a mismatch rather than trusting a written-down id.
 
 **Confirm identity before any mutation; never infer it from a CLI profile, an MCP session,
 or a previous conversation:**
@@ -35,6 +38,50 @@ The Stripe MCP authenticates independently of that key — verifying one proves 
 the other. Re-check the MCP with `get_stripe_account_info` after every re-authorization.
 **Never place a live key in a `stripe` CLI profile**: the CLI redacts `*_api_key` in place
 and destroys the secret. Use `curl -u "$KEY:"`, `--api-key`, or `STRIPE_API_KEY`.
+
+**Every `stripe` CLI profile on this machine currently points at the WRONG account.**
+`default`, `ql-live-admin` and `quantum-learner` all resolve to `acct_1Rm6Rr000wqzRfNl`
+(Altivum Logic, the agency account). A profile name is not evidence. Verify identity per
+call, or use the scripts under `scripts/stripe/`, which take `--expect-account` and refuse
+to act on a mismatch.
+
+### Evaluate in the sandbox. Always. Then live.
+
+**Anything Stripe gets exercised in the sandbox (`acct_1TuFpH0a2DloOdGu`) before it is
+believed about live.** Sandbox runs real Checkout, real webhook deliveries, real refunds
+and real disputes, so "tests pass but the path cannot be exercised end to end" is never a
+true statement about this integration — it only ever meant the sandbox had not been built.
+The closer sandbox is to live, the more a green sandbox predicts a green live.
+
+- `scripts/stripe/provision-sandbox.mjs` builds it: products (including `ql_credits` by
+  that literal id — `CUSTOM_TOPUP_PRODUCT` needs it or custom top-ups 500), one price per
+  `CATALOG` lookup key, and a webhook endpoint carrying **all nine** `REQUIRED_WEBHOOK_EVENTS`
+  pinned to the SDK's own `apiVersion`. Idempotent; refuses any `sk_live_` key outright.
+- **The Dashboard cannot pin an arbitrary API version and `api_version` is creation-only.**
+  Create endpoints through the API, or the payload shape follows the account default and
+  moves under a deployed handler — which is exactly how `invoice.subscription` moved under
+  `parent.subscription_details` and broke credit granting once already.
+- `stripe trigger` is near-useless here: its fixtures carry no `client_reference_id` and no
+  `metadata`, so `checkout.session.completed`, `invoice.paid` and both subscription events
+  no-op silently against this handler, and there are no dispute fixtures at all. Drive the
+  real `/checkout` route. Force renewals with test clocks (advance twice — the renewal
+  invoice sits in `draft` for ~1h of simulated time). Win a dispute with
+  `evidence[uncategorized_text]=winning_evidence` + `submit=true`.
+- Sandbox retries deliveries **3 times over a few hours**, not 3 days. Use
+  `stripe events resend` as the forcing function, and to prove idempotency for real.
+
+### Two guards for what the repo cannot see
+
+The Stripe Dashboard is not in the repo, so no test in the repo can see it, and both halves
+had drifted when first checked on 2026-08-17. Run these against **both** accounts:
+
+- `scripts/stripe/check-webhook-parity.mjs` — subscribed events vs `REQUIRED_WEBHOOK_EVENTS`,
+  plus a pinned `api_version`. Live was subscribed to **4 of 9**: `charge.refunded` and both
+  dispute events were absent, so the whole clawback path was dark in production. `index.test.mjs`
+  R9 compares the code's list to the code's `switch` and can never catch this.
+- `scripts/stripe/check-catalog-parity.mjs` — products and prices vs `CATALOG` + `TIERS`,
+  including product **descriptions**, which are customer-facing at Checkout and therefore a
+  rule 13 surface sitting outside every rule 13 guard.
 
 ### The shape of the business
 
@@ -139,8 +186,17 @@ Two facts from it that change how you write code, and are worth carrying in your
   a markup that differs from the others, which rule 5 forbids.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
   tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs:27`).
-- Add `expiresAt` to subscription WALLET# rows with expire-soonest-first spend ordering.
-  (`lambda/stripe/index.mjs` sets `expiresAt` on idempotency rows only — WALLET# rows have none.)
+- Credit expiry with expire-soonest-first spend ordering. **DO NOT implement this by
+  writing `expiresAt` onto WALLET# rows, which is how this item read until 2026-08-17.**
+  The wallet table has DynamoDB **TTL ENABLED on the attribute `expiresAt`** (verified:
+  `aws dynamodb describe-time-to-live --table-name quantum-stripe-wallet` returns
+  `ENABLED`/`expiresAt`). Today only EVENT# idempotency rows carry it, which is exactly
+  why it is safe. Putting it on a WALLET# row makes DynamoDB **delete the learner's whole
+  wallet** at that timestamp — balance, tier, subscriptionStatus, clawbackOwedCredits —
+  silently, with no application code involved and nothing to alarm on. Purchased credits
+  must never expire (rule 10), so this would also break the one promise the wallet makes.
+  Use a differently-named attribute (per-lot rows, or `creditLotsExpireAt`), or move the
+  TTL specification onto an attribute only EVENT# rows can ever have.
 - **Resolve the open product question in `docs/pricing-cost-basis.md`** — the tier is
   dominated by pay-as-you-go until model access is actually gated on it.
 

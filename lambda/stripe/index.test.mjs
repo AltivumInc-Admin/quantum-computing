@@ -2,7 +2,7 @@
 // both stubbed and injected into createHandlerCore, mirroring lambda/sync.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHandlerCore, lazyCore, CATALOG } from "./index.mjs";
+import { createHandlerCore, lazyCore, CATALOG, SIGNATURE_REJECTED } from "./index.mjs";
 
 const TABLE = "quantum-stripe-wallet";
 const ORIGIN = "https://quantum.altivum.ai";
@@ -354,6 +354,36 @@ test("POST /webhook rejects a missing or invalid signature", async () => {
     makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "t=1,v1=x" } })
   );
   assert.equal(res.statusCode, 400);
+});
+
+test("a rejected signature is ALERTABLE, not silent", async () => {
+  // Found by rehearsing a signing-secret rotation against a real sandbox: after
+  // the secret was rotated, every delivery to a still-warm container was
+  // rejected — 24 invocations, 2-38ms each, wallet untouched, and NOT ONE log
+  // line, because this branch was a bare `catch { return 400 }`. The money path
+  // was completely down and the only evidence lived in Stripe's dashboard.
+  //
+  // A secret mismatch is the single most likely webhook outage (rotation, a
+  // half-finished deploy, the wrong endpoint's secret), so it must page.
+  const core = createHandlerCore({
+    stripe: stubStripe({ constructThrows: true }),
+    ddb: stubDdb(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await core(
+      makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "t=1,v1=x" } })
+    );
+  });
+  assert.equal(res.statusCode, 400, "contract unchanged: Stripe must not retry a forgery forever");
+  assert.equal(lines.length, 1, "a rejected signature must leave evidence in the log group");
+  assert.ok(
+    lines[0].join(" ").includes(SIGNATURE_REJECTED),
+    `must carry the pinned phrase ${JSON.stringify(SIGNATURE_REJECTED)} so the metric filter can see it`
+  );
 });
 
 test("webhook checkout.session.completed (top-up) grants credits atomically, once", async () => {

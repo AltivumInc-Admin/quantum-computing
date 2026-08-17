@@ -99,6 +99,18 @@ export const CLAWBACK_RETRY = Symbol("clawback-retry");
 export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
 
 /**
+ * Pinned phrase for a webhook whose signature did not verify. A metric filter in
+ * template.yaml watches for it, so a secret mismatch pages instead of vanishing.
+ *
+ * This exists because a rehearsed rotation proved how invisible it is otherwise:
+ * with a stale secret in a warm container, Stripe delivered, the handler returned
+ * 400, and nothing anywhere recorded it — 24 invocations, no logs, no metrics, a
+ * dead money path. AWS/Lambda Errors cannot see it (the invocation SUCCEEDS) and
+ * the 5xx alarm cannot see it (this is a 4xx).
+ */
+export const SIGNATURE_REJECTED = "stripe-webhook: signature verification failed";
+
+/**
  * Exactly the event types this handler acts on. Exported so a test can assert
  * it matches the switch's cases, and so the Dashboard subscription in the
  * runbook has a single source of truth to be checked against. A type we handle
@@ -870,7 +882,12 @@ export function createHandlerCore({
       let evt;
       try {
         evt = await stripe.webhooks.constructEventAsync(raw, sig, webhookSecret);
-      } catch {
+      } catch (err) {
+        // 400 (not 5xx) is deliberate: a forged or unverifiable payload must not
+        // put Stripe into a multi-day retry loop. But it must not be silent —
+        // the overwhelmingly likely cause is OUR secret being wrong, not an
+        // attacker, and that means every real event is being dropped too.
+        console.error(SIGNATURE_REJECTED, err?.message ?? "unknown");
         return json(400, { error: "signature verification failed" });
       }
       try {

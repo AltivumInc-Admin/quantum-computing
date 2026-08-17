@@ -187,6 +187,16 @@ export function createHandlerCore({
           );
         }
       }
+      console.log(
+        JSON.stringify({
+          tutorSettle: true,
+          sub,
+          model,
+          reservedCredits: reserved,
+          chargedCredits: charged,
+          refundedCredits: refund,
+        })
+      );
       return charged;
     };
 
@@ -267,6 +277,19 @@ export function createHandlerCore({
         try {
           await wallet.debit(sub, need);
           reserved = need;
+          // The tutor was the ONLY wallet writer leaving no artifact: stripe
+          // persists EVENT#/RECEIPT#, the QPU persists fundedBy +
+          // creditsCharged on its task row, and this path did a bare
+          // UpdateItem and logged only failures. With no DynamoDB stream on
+          // the wallet, PITR gives restore, not history — so "40 credits
+          // vanished" was unanswerable here alone. Two lines make it a Logs
+          // Insights query, and a reserve with no matching settle is how you
+          // find a stranded reservation (nothing sweeps those today).
+          //
+          // CREDITS ONLY, never a dollar figure: rule 6 keeps the cost basis
+          // out of version control, and a log group is not the private notes.
+          // No question text, no lesson text — this is a billing record.
+          console.log(JSON.stringify({ tutorReserve: true, sub, model, reservedCredits: reserved }));
         } catch (err) {
           if (err?.name === "ConditionalCheckFailedException") {
             return refuse(INSUFFICIENT_CREDITS_MESSAGE);
