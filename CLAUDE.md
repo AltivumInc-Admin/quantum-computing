@@ -20,7 +20,10 @@ drivers in `docs/pricing-cost-basis.md`; commercial terms in neither — see rul
 Quantum Learner billing lives on **exactly one** Stripe account: **`acct_1TuFow07hJdXv6GV`**
 (live, dashboard display name **"Quantum Learner"**, `charges_enabled: true`). The owner's
 Stripe login also controls **Altivum Logic** (`acct_1Rm6Rr000wqzRfNl`) and **Tj-Scents** —
-writing prices to one of those is silent and easy. Sandbox is `acct_1TuFpH0a2DloOdGu`.
+writing prices to one of those is silent and easy. Sandbox is **`acct_1U5IQr0txWLZHlL3`** ("Quantum Learner Sandbox", key at
+`op://Quantum Learner/Stripe Sandbox/Secret Key`). An older `acct_1TuFpH0a2DloOdGu` is
+recorded in some places and is NOT the one that is provisioned — another reason every
+script takes `--expect-account` and refuses a mismatch rather than trusting a written-down id.
 
 **Confirm identity before any mutation; never infer it from a CLI profile, an MCP session,
 or a previous conversation:**
