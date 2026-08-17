@@ -870,6 +870,167 @@ test("R9: the required webhook subscription list matches the switch's handled ca
   }
 });
 
+/**
+ * A stateful stub: TransactWriteItems is actually APPLIED to the row store, so a
+ * withdraw-then-reinstate round trip can be asserted end to end. walletDdb above
+ * returns a fixed snapshot, which is right for single-event tests but cannot
+ * express "the second event sees what the first one wrote" — and that sequence is
+ * exactly where the dispute arithmetic goes wrong.
+ *
+ * Only the expression shapes this handler actually emits are supported:
+ * `SET a = :x, b = :y` and `ADD credits :amt, clawbackOwedCredits :owed`.
+ */
+function ledgerDdb(rows = {}) {
+  const store = new Map(Object.entries(rows));
+  const num = (item, k) => Number(item?.[k]?.N ?? 0);
+  return {
+    store,
+    wallet: (sub) => store.get(`WALLET#${sub}`),
+    receipt: (pi) => store.get(`RECEIPT#${pi}`),
+    async send(cmd) {
+      const name = cmd.constructor.name;
+      if (name === "GetItemCommand") {
+        const item = store.get(cmd.input.Key.pk.S);
+        return item ? { Item: item } : {};
+      }
+      if (name !== "TransactWriteItemsCommand") return {};
+      // Validate every condition BEFORE applying anything (transaction semantics).
+      for (const leg of cmd.input.TransactItems) {
+        const op = leg.Put ?? leg.Update ?? leg.ConditionCheck;
+        const pk = (leg.Put ? leg.Put.Item.pk : op.Key.pk).S;
+        const cond = op.ConditionExpression;
+        if (!cond) continue;
+        const cur = store.get(pk);
+        if (cond.includes("attribute_not_exists(pk)") && cur) {
+          const e = new Error("cancelled");
+          e.name = "TransactionCanceledException";
+          e.CancellationReasons = cmd.input.TransactItems.map((l) =>
+            l === leg ? { Code: "ConditionalCheckFailed" } : { Code: "None" }
+          );
+          throw e;
+        }
+        const eq = cond.match(/(\w+) = (:\w+)/);
+        if (eq && cur && num(cur, eq[1]) !== Number(op.ExpressionAttributeValues[eq[2]].N)) {
+          const e = new Error("cancelled");
+          e.name = "TransactionCanceledException";
+          e.CancellationReasons = cmd.input.TransactItems.map((l) =>
+            l === leg ? { Code: "ConditionalCheckFailed" } : { Code: "None" }
+          );
+          throw e;
+        }
+      }
+      for (const leg of cmd.input.TransactItems) {
+        if (leg.Put) {
+          store.set(leg.Put.Item.pk.S, { ...leg.Put.Item });
+          continue;
+        }
+        if (!leg.Update) continue;
+        const pk = leg.Update.Key.pk.S;
+        const item = { ...(store.get(pk) ?? { pk: { S: pk } }) };
+        const vals = leg.Update.ExpressionAttributeValues ?? {};
+        const expr = leg.Update.UpdateExpression;
+        const setPart = expr.match(/SET (.*?)(?= ADD |$)/)?.[1];
+        for (const a of setPart ? setPart.split(",") : []) {
+          const [k, v] = a.split("=").map((s) => s.trim());
+          if (vals[v]) item[k] = { ...vals[v] };
+        }
+        const addPart = expr.match(/ADD (.*)$/)?.[1];
+        for (const a of addPart ? addPart.split(",") : []) {
+          const [k, v] = a.trim().split(/\s+/);
+          item[k] = { N: String(num(item, k) + Number(vals[v].N)) };
+        }
+        store.set(pk, item);
+      }
+      return {};
+    },
+  };
+}
+
+const disputeEvt = (id, type) => ({
+  id,
+  type,
+  data: { object: { id: "dp_1", charge: "ch_1", payment_intent: "pi_1", amount: 2000 } },
+});
+
+test("R10: a reinstated dispute returns the wallet to EXACTLY its pre-dispute state", async () => {
+  // The learner bought 2000 and spent 1500, so the clawback cannot come out of
+  // credits alone: 500 is taken and 1500 becomes debt. Winning the dispute must
+  // undo both halves. Restoring the full 2000 while leaving the debt standing
+  // hands back credits the hard gate then refuses to let them spend
+  // (qpu-core.mjs:398, tutor/index.mjs:390) — a learner who WON is locked out
+  // until they buy their way clear.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": {
+      pk: { S: "RECEIPT#pi_1" },
+      sub: { S: "user-9" },
+      purchasedCredits: { N: "2000" },
+      refundedCredits: { N: "0" },
+      disputedCredits: { N: "0" },
+    },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "500" } },
+  });
+
+  await deliver(ddb, disputeEvt("evt_dw", "charge.dispute.funds_withdrawn"));
+  assert.equal(ddb.wallet("user-9").credits.N, "0", "credits floor at zero");
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits.N, "1500", "the shortfall becomes debt");
+
+  await deliver(ddb, disputeEvt("evt_dr", "charge.dispute.funds_reinstated"));
+  assert.equal(ddb.wallet("user-9").credits.N, "500", "only what was TAKEN comes back");
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits.N, "0", "the debt the dispute created is cleared");
+  assert.equal(ddb.receipt("pi_1").disputedCredits.N, "0");
+});
+
+test("R11: a reinstated dispute that took only credits restores exactly those credits", async () => {
+  // The control case: the wallet covered the whole clawback, so no debt was ever
+  // created and the restore is a plain credit return. This is what the code
+  // already gets right, and the fix must not disturb it.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": {
+      pk: { S: "RECEIPT#pi_1" },
+      sub: { S: "user-9" },
+      purchasedCredits: { N: "2000" },
+      refundedCredits: { N: "0" },
+      disputedCredits: { N: "0" },
+    },
+    "WALLET#user-9": { pk: { S: "WALLET#user-9" }, credits: { N: "5000" } },
+  });
+
+  await deliver(ddb, disputeEvt("evt_dw2", "charge.dispute.funds_withdrawn"));
+  assert.equal(ddb.wallet("user-9").credits.N, "3000");
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits?.N ?? "0", "0", "no debt when credits cover it");
+
+  await deliver(ddb, disputeEvt("evt_dr2", "charge.dispute.funds_reinstated"));
+  assert.equal(ddb.wallet("user-9").credits.N, "5000", "back where it started");
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits?.N ?? "0", "0");
+});
+
+test("R12: a debt already paid down before the reinstate is not cleared twice", async () => {
+  // The learner bought their way out mid-dispute: 1000 of the 1500 debt is gone
+  // and that top-up bought them no spendable credits. Winning the dispute must
+  // clear only the 500 still standing and return the rest as credits — clearing
+  // the full 1500 would drive clawbackOwedCredits negative, and the gate tests
+  // `= 0`, so a negative debt locks the learner out exactly as a positive one does.
+  const ddb = ledgerDdb({
+    "RECEIPT#pi_1": {
+      pk: { S: "RECEIPT#pi_1" },
+      sub: { S: "user-9" },
+      purchasedCredits: { N: "2000" },
+      refundedCredits: { N: "0" },
+      disputedCredits: { N: "2000" },
+      disputedCreditsUnrecovered: { N: "1500" },
+    },
+    "WALLET#user-9": {
+      pk: { S: "WALLET#user-9" },
+      credits: { N: "0" },
+      clawbackOwedCredits: { N: "500" },
+    },
+  });
+
+  await deliver(ddb, disputeEvt("evt_dr3", "charge.dispute.funds_reinstated"));
+  assert.equal(ddb.wallet("user-9").clawbackOwedCredits.N, "0", "never negative");
+  assert.equal(ddb.wallet("user-9").credits.N, "1500", "the rest returns as spendable credits");
+});
+
 // ---- debt clearing ------------------------------------------------------------
 // Product decision: an owing learner MUST clear the debt. So a purchase pays
 // down clawbackOwedCredits BEFORE it adds spendable credits, and the spend
