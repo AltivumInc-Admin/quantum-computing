@@ -596,7 +596,9 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   assert.equal(res.statusCode, 202);
   const body = JSON.parse(res.body);
   assert.equal(body.fundedBy, "wallet");
-  assert.equal(body.creditsCharged, 175);
+  // Derived from the public constants (peg + IQM list rates), never pinned, so
+  // a future conversion factor flows through instead of forcing an integer here.
+  assert.equal(body.creditsCharged, RUN_CREDITS);
 
   const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
   assert.equal(tx.length, 4);
@@ -605,18 +607,19 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   assert.equal(debit.TableName, "wallet");
   assert.equal(debit.Key.pk.S, "WALLET#u1");
   assert.match(debit.UpdateExpression, /ADD credits :neg/);
-  assert.equal(debit.ExpressionAttributeValues[":neg"].N, "-175");
+  assert.equal(debit.ExpressionAttributeValues[":neg"].N, String(-RUN_CREDITS));
   // Asserted clause-by-clause rather than as one exact string: the expression
   // grew a clawback-debt guard, and pinning the whole literal would force an
   // unrelated edit here every time a new guard is added.
   assert.match(debit.ConditionExpression, /attribute_exists\(pk\)/, "no phantom wallet row");
   assert.match(debit.ConditionExpression, /credits >= :need/, "never below zero");
-  assert.equal(debit.ExpressionAttributeValues[":need"].N, "175");
+  assert.equal(debit.ExpressionAttributeValues[":need"].N, String(RUN_CREDITS));
   // leg 1: the GLOBAL day cap still binds a wallet-funded run (real account spend)
   assert.equal(tx[1].Update.Key.pk.S, "DAY#2026-07-07");
-  // leg 2: task row records funding provenance for release/reconcile
+  // leg 2: task row records funding provenance for release/reconcile — the SAME
+  // figure the debit charged, which is what the release later refunds.
   assert.equal(tx[2].Put.Item.fundedBy.S, "wallet");
-  assert.equal(tx[2].Put.Item.creditsCharged.N, "175");
+  assert.equal(tx[2].Put.Item.creditsCharged.N, debit.ExpressionAttributeValues[":need"].N);
   // leg 3: kill-switch
   assert.equal(tx[3].ConditionCheck.Key.pk.S, "KILL");
   // the sponsored ledger row is NOT charged for a wallet-funded run
@@ -640,7 +643,7 @@ test("insufficient wallet credits → 402 insufficient-credits with the shortfal
   assert.equal(res.statusCode, 402);
   const body = JSON.parse(res.body);
   assert.equal(body.error, "insufficient-credits");
-  assert.equal(body.creditsNeeded, 175);
+  assert.equal(body.creditsNeeded, RUN_CREDITS); // derived, not pinned
   assert.equal(braket.calls.length, 0, "no Braket call without a committed reservation");
 });
 
