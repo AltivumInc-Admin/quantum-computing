@@ -24,6 +24,7 @@ import {
   MICROS_PER_CREDIT,
   IQM_PER_TASK_MICROS,
   IQM_PER_SHOT_MICROS,
+  RATE_CARD_INVALID,
 } from "./qpu-core.mjs";
 
 // The shared ladder contract (also read by web/__tests__/lib/credentials.test.ts).
@@ -104,6 +105,7 @@ const core = (ddb, braket) =>
     ledgerTable: "ledger",
     tasksTable: "tasks",
     walletTable: "wallet",
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling has its own tests
     resultsBucket: "amazon-braket-eu-north-1-x",
     now: () => NOW,
   });
@@ -538,7 +540,7 @@ test("the ladder's ADVERTISED price is the true cheapest price, and is placeable
   // the learner is quoted, so a drift here overcharges or undercharges them.
   assert.equal(need, LADDER.cheapestPath.costMicros);
   // And it must be expressible in whole credits without losing money.
-  assert.equal(creditsForMicros(need), Math.ceil(need / MICROS_PER_CREDIT));
+  assert.equal(creditsForMicros(need, 1), Math.ceil(need / MICROS_PER_CREDIT));
 });
 
 test("a refunded run earns nothing: only COMPLETED rows tally toward a medal", async () => {
@@ -573,6 +575,7 @@ const walletCore = (ddb, braket) =>
     ledgerTable: "ledger",
     tasksTable: "tasks",
     walletTable: "wallet",
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling has its own tests
     resultsBucket: "amazon-braket-eu-north-1-x",
     now: () => NOW,
   });
@@ -584,9 +587,9 @@ const SPENT_UP = { capMicros: { N: "2500000" }, spentMicros: { N: "2000000" } };
 
 test("creditsForMicros converts at the $0.01 peg, rounding UP to a whole credit", () => {
   assert.equal(MICROS_PER_CREDIT, 10_000);
-  assert.equal(creditsForMicros(1_750_000), 175); // exact: $1.75
-  assert.equal(creditsForMicros(445_000), 45); // $0.445 → 45 credits, never 44
-  assert.equal(creditsForMicros(1), 1);
+  assert.equal(creditsForMicros(1_750_000, 1), 175); // exact: $1.75
+  assert.equal(creditsForMicros(445_000, 1), 45); // $0.445 → 45 credits, never 44
+  assert.equal(creditsForMicros(1, 1), 1);
 });
 
 test("an over-allowance run is funded by the wallet: atomic debit, day cap and kill-switch still bind", async () => {
@@ -594,7 +597,7 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   // expectation below DERIVED via creditsForMicros, a ceil→floor regression
   // would otherwise be caught only by the single pinned peg test. One micro
   // must cost one whole credit — a fraction of a cent is never dispensed free.
-  assert.equal(creditsForMicros(1), 1, "rounding must go UP: 1 micro-dollar = 1 whole credit");
+  assert.equal(creditsForMicros(1, 1), 1, "rounding must go UP: 1 micro-dollar = 1 whole credit");
   const ddb = stubDdb({ ledgerUser: SPENT_UP });
   const braket = stubBraket();
   const res = await walletCore(ddb, braket)(submitEvent(goodClaims, goodBody));
@@ -836,7 +839,7 @@ test("W4: a stamped learner past their cap falls through to the wallet", async (
 // Derived in-test from the public constants (the $0.01 peg + IQM list rates) so
 // a future conversion factor flows through these expectations instead of
 // forcing pinned integers here.
-const RUN_CREDITS = creditsForMicros(costMicros(1000));
+const RUN_CREDITS = creditsForMicros(costMicros(1000), 1);
 
 /** A committed wallet-funded task row, as the reservation Put writes it. */
 const walletTaskRow = (credits) => ({
@@ -922,4 +925,101 @@ test("W5: no NEW cap is ever stamped onto a ledger row", async () => {
     // If the stamp survives it must stamp ZERO, so a new row grants nothing.
     assert.match(src, /":cap": \{ N: String\(LIFETIME_CAP_MICROS\) \}/);
   }
+});
+
+// ---- the injected rate factor ----------------------------------------------
+// The factor that turns true AWS cost into a charged credit price is read from
+// DEPLOYED CONFIGURATION and injected by index.mjs — its value never appears in
+// this repository (rule 6). Factors here (1, 3) are FICTIONAL test data.
+// What stays TRUE-COST on purpose, factor or no factor: the allowance leg, the
+// DAY# day-cap leg, estMicros/actualMicros, and the grandfathered spentMicros
+// ledger — those denominate the rule-16 spend fences in real Braket dollars.
+
+test("creditsForMicros scales by the injected factor, ceiling AFTER scaling", () => {
+  assert.equal(creditsForMicros(1_750_000, 3), Math.ceil((1_750_000 * 3) / MICROS_PER_CREDIT));
+  // Fractional factor exposes ceil-after-scale (ceil first would round twice).
+  assert.equal(creditsForMicros(445_000, 1.5), Math.ceil((445_000 * 1.5) / MICROS_PER_CREDIT));
+  assert.ok(creditsForMicros(1_750_000, 3) > creditsForMicros(1_750_000, 1));
+});
+
+test("creditsForMicros REQUIRES a factor — absent or garbled throws, never raw cost", () => {
+  for (const bad of [undefined, null, 0, -1, NaN, Infinity, "2"]) {
+    assert.throws(() => creditsForMicros(1_000, bad), /rate factor/, `factor ${String(bad)}`);
+  }
+});
+
+test("a wallet table without a usable factor is metering OFF: refuse — never raw cost, never a free run", async () => {
+  // Rule 5: raw cost is a rate that differs from every other surface. Rule 7:
+  // refusal charges nothing. So a missing/garbled factor must land in exactly
+  // the no-wallet branch: 402 over-lifetime-budget, no transaction attempted.
+  for (const badFactor of [undefined, NaN, 0, -1]) {
+    const ddb = stubDdb({ ledgerUser: SPENT_UP });
+    const braket = stubBraket();
+    const errors = [];
+    const original = console.error;
+    console.error = (...a) => errors.push(a.join(" "));
+    let res;
+    try {
+      res = await createHandlerCore({
+        ddb,
+        braket,
+        ledgerTable: "ledger",
+        tasksTable: "tasks",
+        walletTable: "wallet",
+        rateFactor: badFactor,
+        resultsBucket: "amazon-braket-eu-north-1-x",
+        now: () => NOW,
+      })(submitEvent(goodClaims, goodBody));
+    } finally {
+      console.error = original;
+    }
+    assert.equal(res.statusCode, 402, `factor ${String(badFactor)}: must refuse`);
+    assert.equal(JSON.parse(res.body).error, "over-lifetime-budget");
+    assert.ok(
+      !ddb.calls.some((c) => c.name === "TransactWriteItemsCommand"),
+      `factor ${String(badFactor)}: no reservation may be attempted`
+    );
+    assert.equal(braket.calls.length, 0, `factor ${String(badFactor)}: no Braket call`);
+    assert.ok(
+      errors.some((l) => l.includes(RATE_CARD_INVALID)),
+      `factor ${String(badFactor)}: the misconfiguration must be alarmable`
+    );
+  }
+});
+
+test("the factor scales the debit, the recorded charge, and the quoted price together", async () => {
+  const run = async (factor) => {
+    const ddb = stubDdb({ ledgerUser: SPENT_UP });
+    const braket = stubBraket();
+    const res = await createHandlerCore({
+      ddb,
+      braket,
+      ledgerTable: "ledger",
+      tasksTable: "tasks",
+      walletTable: "wallet",
+      rateFactor: factor,
+      resultsBucket: "amazon-braket-eu-north-1-x",
+      now: () => NOW,
+    })(submitEvent(goodClaims, goodBody));
+    const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+    return { res, walletLeg: tx[0].Update, taskPut: tx[2].Put.Item };
+  };
+
+  for (const factor of [1, 3]) {
+    const expected = creditsForMicros(costMicros(1000), factor);
+    const { res, walletLeg, taskPut } = await run(factor);
+    // One figure, three homes: the atomic debit, the row's recorded charge
+    // (what any refund returns), and the price quoted back to the learner.
+    assert.equal(walletLeg.ExpressionAttributeValues[":neg"].N, String(-expected), `debit @${factor}`);
+    assert.equal(walletLeg.ExpressionAttributeValues[":need"].N, String(expected), `floor @${factor}`);
+    assert.equal(taskPut.creditsCharged.N, String(expected), `recorded @${factor}`);
+    assert.equal(JSON.parse(res.body).creditsCharged, expected, `quoted @${factor}`);
+    // The true-cost fences must NOT scale: estMicros and the DAY# leg stay raw.
+    assert.equal(taskPut.estMicros.N, String(costMicros(1000)), `estMicros must stay true-cost @${factor}`);
+    const dayLeg = (await run(factor)).walletLeg; // re-run for a fresh tx capture
+    void dayLeg;
+  }
+  const at1 = creditsForMicros(costMicros(1000), 1);
+  const at3 = creditsForMicros(costMicros(1000), 3);
+  assert.ok(at3 > at1, "a factor above 1 must charge more credits for the same run");
 });

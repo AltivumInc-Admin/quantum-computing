@@ -190,3 +190,33 @@ test("CORS allows the auth header the metered client sends", () => {
   // fails and every paid-model request dies in the browser.
   assert.match(body("TutorFunction"), /- x-tutor-auth/);
 });
+
+test("the rate factor rides deployed configuration, and its default is metering OFF", () => {
+  // Rule 6: the value that turns provider cost into a charged price lives in
+  // Secrets Manager, resolved AT DEPLOY TIME by CloudFormation — it never
+  // passes through a CLI argument, a samconfig, or this repository. The empty
+  // default keeps the env var ABSENT (AWS::NoValue), which the handler treats
+  // as metering off: paid models refuse, the free path is untouched.
+  const params = blocks(section(template, "Parameters"));
+  const p = (params.RateCardSecret ?? []).join("\n");
+  assert.ok(p, "RateCardSecret parameter missing");
+  // Default must be EXACTLY the empty string. A Default carrying a real value
+  // would satisfy the handler-wiring guard while publishing the spread.
+  assert.match(p, /^\s+Default:\s*""\s*$/m, 'RateCardSecret must default to ""');
+
+  const conditions = section(template, "Conditions").join("\n");
+  assert.match(conditions, /HasRateCard: !Not \[!Equals \[!Ref RateCardSecret, ""\]\]/);
+
+  const fn = body("TutorFunction");
+  assert.match(
+    fn,
+    /RATE_CARD: !If\s*\[HasRateCard, !Sub "\{\{resolve:secretsmanager:\$\{RateCardSecret\}:SecretString:factor\}\}", !Ref AWS::NoValue\]/,
+    "RATE_CARD must resolve from the named secret's `factor` key, or vanish entirely"
+  );
+  // Deploy-time resolution runs with the DEPLOYER's credentials, not the
+  // function role — the execution role must NOT gain a grant on this secret.
+  const arns = fn.match(/arn:aws:secretsmanager:[^\n"]*/g) ?? [];
+  for (const arn of arns) {
+    assert.ok(!arn.includes("RateCardSecret"), `the function role must not read the rate secret: ${arn}`);
+  }
+});

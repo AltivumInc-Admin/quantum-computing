@@ -153,3 +153,36 @@ test("the budget resource declares no fixed BudgetName (subscriber changes force
   const propLines = (resources.QpuBudget ?? []).filter((l) => !l.trim().startsWith("#"));
   assert.ok(!propLines.some((l) => /^\s+BudgetName:/.test(l)), "QpuBudget must not pin BudgetName");
 });
+
+test("the rate factor rides deployed configuration, on the ONE function that prices", () => {
+  // Rule 6: the value converting true cost into charged credits resolves out of
+  // Secrets Manager at deploy time and never exists in this repository. Rule 5:
+  // the tutor stack reads the SAME secret through the SAME env key — the
+  // cross-stack lockstep is asserted in web/__tests__/infra, and the deployed
+  // pair by scripts/check-rate-parity.mjs.
+  const params = blocks(section(template, "Parameters"));
+  const p = (params.RateCardSecret ?? []).join("\n");
+  assert.ok(p, "RateCardSecret parameter missing");
+  // Default must be EXACTLY "": a Default carrying a real value would deploy
+  // the spread from version control.
+  assert.match(p, /^\s+Default:\s*""\s*$/m, 'RateCardSecret must default to ""');
+
+  const conditions = section(template, "Conditions").join("\n");
+  assert.match(conditions, /HasRateCard: !Not \[!Equals \[!Ref RateCardSecret, ""\]\]/);
+
+  const resolveLine =
+    /RATE_CARD: !If\s*\[HasRateCard, !Sub "\{\{resolve:secretsmanager:\$\{RateCardSecret\}:SecretString:factor\}\}", !Ref AWS::NoValue\]/;
+  assert.match(body("QpuFunction"), resolveLine, "the submit function prices, so it reads the factor");
+
+  // The reconciler must NOT carry RATE_CARD: it never prices — it refunds the
+  // creditsCharged RECORDED on the task row (reconcile.mjs), exactly so a
+  // repricing between debit and refund cannot diverge them. Dead config on a
+  // function that never reads it is drift surface, and a parity check that
+  // "verified" the reconciler would be verifying nothing.
+  assert.ok(!/RATE_CARD/.test(body("ReconcileFunction")), "reconcile refunds recorded figures only");
+
+  // Deploy-time resolution runs with the DEPLOYER's credentials — no function
+  // role may hold a grant on the rate secret.
+  assert.ok(!/RateCardSecret/.test(body("QpuFunction").match(/Policies:[\s\S]*/)?.[0] ?? ""),
+    "the submit role must not read the rate secret at runtime");
+});

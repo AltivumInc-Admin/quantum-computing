@@ -247,6 +247,13 @@ export function readUsage(usage) {
   return Object.values(out).every(Number.isFinite) ? out : null;
 }
 
+/** Pinned throw message: a metered pricing call without a usable factor is a
+ *  bug in the CALLER (the composition root gates on the deployed config), and
+ *  it must fail loudly — raw provider cost is a rate that differs from every
+ *  other surface (rule 5), and defaulting to it would be invisible. */
+export const RATE_FACTOR_REQUIRED =
+  "tutor-billing: rate factor missing or invalid; metered pricing refused";
+
 /**
  * Credits owed for one completed generation, from the REAL token usage the
  * provider reports — never an estimate, and never the request's `max_tokens`.
@@ -255,9 +262,18 @@ export function readUsage(usage) {
  *
  * The free tier is metered at zero regardless of usage: free learning is the
  * funnel, and the platform eats Haiku's cost as customer acquisition.
+ *
+ * `factor` converts provider cost into what the learner is charged. It is
+ * REQUIRED for any non-free call, and its value lives in DEPLOYED CONFIGURATION
+ * only (rule 6): index.mjs reads it from the environment and injects it here.
+ * This module stays pure — no env reads, no imports — because it is copied
+ * verbatim into the public web bundle (see the kernel-purity guard).
+ * The factor multiplies the micro-dollar cost BEFORE the ceil: ceiling first
+ * and scaling second would hand back the rounding headroom factor-fold.
  */
-export function creditsForUsage(model, usage, { free = false } = {}) {
+export function creditsForUsage(model, usage, { free = false, factor } = {}) {
   if (free) return 0;
+  if (!Number.isFinite(factor) || factor <= 0) throw new TypeError(RATE_FACTOR_REQUIRED);
   const rate = RATES[model];
   if (!rate) return 0; // unpriced model: never charge for what we can't price
   const u = readUsage(usage);
@@ -268,7 +284,7 @@ export function creditsForUsage(model, usage, { free = false } = {}) {
       u.cacheRead * rate.in * CACHE_READ_MULTIPLIER +
       u.cacheWrite * rate.in * CACHE_WRITE_MULTIPLIER) /
     1_000_000;
-  return Math.ceil(micros / MICROS_PER_CREDIT);
+  return Math.ceil((micros * factor) / MICROS_PER_CREDIT);
 }
 
 /** Conservative char→token estimate for the pre-flight reserve. English prose
@@ -296,15 +312,23 @@ export function estimateTokens(chars) {
  * Thinking bills as output, so on fable-5 — which cannot be told not to think —
  * the ceiling and therefore the reserve are several times the others'.
  */
-export function maxCreditsFor(model, { inputTokens, maxOutputTokens }) {
+export function maxCreditsFor(model, { inputTokens, maxOutputTokens, factor }) {
   // The worst case is a cache WRITE, not an uncached send: writing the prefix bills at
   // CACHE_WRITE_MULTIPLIER x the input rate. Reserving the uncached figure would
   // under-reserve on precisely the first question of every lesson — the one that writes
   // the cache — and the settle path caps the charge at the reserve, so the shortfall
   // would be silently absorbed rather than billed.
-  return creditsForUsage(model, {
-    input_tokens: 0,
-    output_tokens: maxOutputTokens,
-    cache_creation_input_tokens: inputTokens,
-  });
+  //
+  // The factor rides the same delegation: reserve and settle scale through ONE
+  // expression (creditsForUsage), so they can never drift apart — a factor
+  // applied to one leg but not the other silently under-bills or mints credits.
+  return creditsForUsage(
+    model,
+    {
+      input_tokens: 0,
+      output_tokens: maxOutputTokens,
+      cache_creation_input_tokens: inputTokens,
+    },
+    { factor },
+  );
 }

@@ -71,9 +71,25 @@ Parameters:
       learner's PAID credits — debited atomically in the same reservation
       transaction, refunded by the same compensating paths. Both functions get
       a Get/Update grant scoped to this ONE table, only when set.
+  RateCardSecret:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the Secrets Manager secret holding the rate factor that converts
+      true AWS cost into charged credits, as {"factor": "..."}. Empty (the
+      default) = RATE_CARD is ABSENT and wallet funding stays off even if
+      WalletTableName is set: over-allowance submits 402, never a raw-cost
+      debit. Resolved at deploy time with the DEPLOYER's credentials — never a
+      CLI argument, never a samconfig, no runtime grant. The tutor stack reads
+      the SAME secret through the SAME env key: every metered surface converts
+      at one shared factor (rule 5), proven by scripts/check-rate-parity.mjs.
+      The reconciler deliberately does NOT read it — refunds return the
+      creditsCharged recorded on the task row, so a repricing between debit
+      and refund can never diverge them.
 
 Conditions:
   HasWalletTable: !Not [!Equals [!Ref WalletTableName, ""]]
+  HasRateCard: !Not [!Equals [!Ref RateCardSecret, ""]]
 
 Resources:
   # Spend ledger: USER#<sub> rows (cap/spent), DAY#<date> rows (global daily
@@ -173,6 +189,11 @@ Resources:
           RESULTS_BUCKET: !Ref ResultsBucket
           EDGE_SECRET: !Sub "{{resolve:secretsmanager:${EdgeSecretName}:SecretString}}"
           WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
+          # Deploy-time resolve; the unselected !If branch is never resolved
+          # (verified empirically, 2026-08-17), so the empty default deploys
+          # clean with the variable simply absent. Submit function ONLY — the
+          # reconciler refunds recorded figures and never prices.
+          RATE_CARD: !If [HasRateCard, !Sub "{{resolve:secretsmanager:${RateCardSecret}:SecretString:factor}}", !Ref AWS::NoValue]
       Policies:
         # The spend ledger (USER#/DAY#/KILL/CRED# rows) + tasks table.
         # TransactWriteItems is authorized via its constituent item actions

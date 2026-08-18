@@ -120,19 +120,22 @@ test("resolveModel serves the tier default rather than failing the question", ()
 
 // ---- metering --------------------------------------------------------------
 
+// NOTE: `factor: 1` below is EXPLICIT, not a default — the kernel refuses to
+// price without one. 1 isolates the peg/rate arithmetic under test; the
+// factor's own behaviour is exercised in the injected-rate-factor block.
 test("credits are computed from REAL usage at the $0.01 peg, rounded up", () => {
   assert.equal(MICROS_PER_CREDIT, 10_000);
   // Derived, not pinned: in + out at the model's own list rates, ceil'd at the peg.
   assert.equal(
-    creditsForUsage("haiku-4-5", { input_tokens: 10_000, output_tokens: 2_000 }),
+    creditsForUsage("haiku-4-5", { input_tokens: 10_000, output_tokens: 2_000 }, { factor: 1 }),
     expectedCredits("haiku-4-5", { input: 10_000, output: 2_000 }),
   );
   // A tiny generation still costs at least 1 credit, never 0 — no free fractions.
-  const tiny = creditsForUsage("opus-5", { input_tokens: 1, output_tokens: 1 });
+  const tiny = creditsForUsage("opus-5", { input_tokens: 1, output_tokens: 1 }, { factor: 1 });
   assert.equal(tiny, expectedCredits("opus-5", { input: 1, output: 1 }));
   assert.ok(tiny >= 1, "any nonzero usage costs at least one credit");
   // Zero usage costs zero.
-  assert.equal(creditsForUsage("opus-5", { input_tokens: 0, output_tokens: 0 }), 0);
+  assert.equal(creditsForUsage("opus-5", { input_tokens: 0, output_tokens: 0 }, { factor: 1 }), 0);
 });
 
 test("the charge always covers the exact cost, and never by a full credit too much", () => {
@@ -155,7 +158,7 @@ test("the charge always covers the exact cost, and never by a full credit too mu
   });
   for (const model of Object.keys(RATES)) {
     for (const s of samples) {
-      const credits = creditsForUsage(model, wire(s));
+      const credits = creditsForUsage(model, wire(s), { factor: 1 });
       const cost = exactMicros(model, s);
       assert.ok(
         credits * MICROS_PER_CREDIT >= cost,
@@ -179,17 +182,17 @@ test("the free tier is metered at zero no matter how much it used", () => {
 test("a malformed or missing usage report never invents a charge", () => {
   // The failure direction matters: if the provider's usage report is missing
   // or garbled we must under-charge, never guess a number onto a paid wallet.
-  assert.equal(creditsForUsage("opus-5", undefined), 0);
-  assert.equal(creditsForUsage("opus-5", { input_tokens: "lots", output_tokens: 5 }), 0);
-  assert.equal(creditsForUsage("opus-5", { input_tokens: NaN, output_tokens: 5 }), 0);
+  assert.equal(creditsForUsage("opus-5", undefined, { factor: 1 }), 0);
+  assert.equal(creditsForUsage("opus-5", { input_tokens: "lots", output_tokens: 5 }, { factor: 1 }), 0);
+  assert.equal(creditsForUsage("opus-5", { input_tokens: NaN, output_tokens: 5 }, { factor: 1 }), 0);
 });
 
 test("an unpriced model is served free rather than charged a guessed rate", () => {
-  assert.equal(creditsForUsage("some-unlisted-model", { input_tokens: 9_999, output_tokens: 9_999 }), 0);
+  assert.equal(creditsForUsage("some-unlisted-model", { input_tokens: 9_999, output_tokens: 9_999 }, { factor: 1 }), 0);
 });
 
 test("maxCreditsFor bounds a generation by its worst case, for the pre-flight check", () => {
-  const worst = maxCreditsFor("opus-5", { inputTokens: 6_000, maxOutputTokens: 800 });
+  const worst = maxCreditsFor("opus-5", { inputTokens: 6_000, maxOutputTokens: 800, factor: 1 });
   // Worst case is a cache WRITE, which bills at CACHE_WRITE_MULTIPLIER x input —
   // dearer than an uncached send, and exactly what the first question on a
   // lesson does. Derived from the exported constants, not pinned.
@@ -204,7 +207,7 @@ test("maxCreditsFor bounds a generation by its worst case, for the pre-flight ch
     ["cache read", { input_tokens: 14, cache_read_input_tokens: 5_986, output_tokens: 800 }],
   ]) {
     assert.ok(
-      worst >= creditsForUsage("opus-5", usage),
+      worst >= creditsForUsage("opus-5", usage, { factor: 1 }),
       `the pre-flight bound must not be below actual cost (${label})`,
     );
   }
@@ -214,9 +217,9 @@ test("cache reads and writes are priced, not free", () => {
   // `input_tokens` is the UNCACHED REMAINDER — verified against the live service.
   // Billing it alone would charge ~nothing for a cached prompt, so switching caching on
   // would quietly turn the tutor into a giveaway. These assertions guard against that.
-  const uncached = creditsForUsage("opus-5", { input_tokens: 10_000, output_tokens: 0 });
-  const read = creditsForUsage("opus-5", { input_tokens: 0, cache_read_input_tokens: 10_000, output_tokens: 0 });
-  const write = creditsForUsage("opus-5", { input_tokens: 0, cache_creation_input_tokens: 10_000, output_tokens: 0 });
+  const uncached = creditsForUsage("opus-5", { input_tokens: 10_000, output_tokens: 0 }, { factor: 1 });
+  const read = creditsForUsage("opus-5", { input_tokens: 0, cache_read_input_tokens: 10_000, output_tokens: 0 }, { factor: 1 });
+  const write = creditsForUsage("opus-5", { input_tokens: 0, cache_creation_input_tokens: 10_000, output_tokens: 0 }, { factor: 1 });
 
   assert.ok(read > 0, "a cache read must cost something");
   assert.ok(read < uncached, "a cache read must be cheaper than an uncached send");
@@ -235,13 +238,82 @@ test("cache reads and writes are priced, not free", () => {
   );
 });
 
+// ---- the injected rate factor --------------------------------------------
+// The factor that turns provider cost into what a learner is charged is read
+// from DEPLOYED CONFIGURATION and injected by the composition root — its value
+// never appears in this repository (rule 6). Every factor below (3, 1.5) is
+// FICTIONAL, chosen only to exercise the arithmetic.
+
+test("a metered charge scales by the injected factor, ceiling AFTER scaling", () => {
+  const usage = { input_tokens: 10_000, output_tokens: 0 };
+  const rawMicros = (10_000 * RATES["opus-5"].in) / 1_000_000;
+  assert.equal(
+    creditsForUsage("opus-5", usage, { factor: 3 }),
+    Math.ceil((rawMicros * 3) / MICROS_PER_CREDIT),
+  );
+  // Ceil after scaling, not before: ceil(x * f) <= ceil(x) * f would otherwise
+  // hand back the rounding headroom f-fold. A fractional factor exposes it.
+  assert.equal(
+    creditsForUsage("opus-5", usage, { factor: 1.5 }),
+    Math.ceil((rawMicros * 1.5) / MICROS_PER_CREDIT),
+  );
+  assert.ok(
+    creditsForUsage("opus-5", usage, { factor: 3 }) >
+      creditsForUsage("opus-5", usage, { factor: 1 }),
+    "a factor above 1 must charge more than the same usage at 1",
+  );
+});
+
+test("the factor is REQUIRED for a metered charge — absent or garbled throws, never raw cost", () => {
+  // A call site that forgets the factor must fail loudly, not silently meter at
+  // provider cost: raw cost IS a rate that differs from every other surface
+  // (rule 5), and it is invisible from the outside. The composition root only
+  // builds a wallet when the deployed config parses, so this throw is the
+  // tripwire for a future call site bypassing that gate.
+  const usage = { input_tokens: 100, output_tokens: 5 };
+  for (const bad of [undefined, null, 0, -2, NaN, Infinity, "1.4"]) {
+    assert.throws(
+      () => creditsForUsage("opus-5", usage, { factor: bad }),
+      /rate factor/,
+      `factor ${String(bad)} must throw`,
+    );
+  }
+  assert.throws(() => creditsForUsage("opus-5", usage), /rate factor/, "no opts at all must throw");
+});
+
+test("the free tier ignores the factor entirely", () => {
+  const usage = { input_tokens: 1_000_000, output_tokens: 800 };
+  assert.equal(creditsForUsage("haiku-4-5", usage, { free: true }), 0);
+  assert.equal(creditsForUsage("haiku-4-5", usage, { free: true, factor: 3 }), 0);
+  // free:true must not even require a factor — the free path runs when the
+  // deployed config is absent, and must behave byte-identically to today.
+  assert.doesNotThrow(() => creditsForUsage("haiku-4-5", usage, { free: true }));
+});
+
+test("maxCreditsFor threads the factor, so the reserve scales with the charge", () => {
+  const shape = { inputTokens: 5_000, maxOutputTokens: 800 };
+  const at1 = maxCreditsFor("opus-5", { ...shape, factor: 1 });
+  const at3 = maxCreditsFor("opus-5", { ...shape, factor: 3 });
+  assert.ok(at3 > at1, "the reserve must scale with the factor");
+  // Reserve and settle must scale through the SAME expression: a factor applied
+  // to one leg but not the other silently under-bills or mints credits.
+  assert.equal(
+    at3,
+    creditsForUsage(
+      "opus-5",
+      { input_tokens: 0, output_tokens: 800, cache_creation_input_tokens: 5_000 },
+      { factor: 3 },
+    ),
+  );
+});
+
 test("a garbled cache field voids the charge rather than guessing", () => {
   // Fail toward undercharging: usage we cannot read is usage we do not bill.
-  assert.equal(creditsForUsage("opus-5", { input_tokens: 100, cache_read_input_tokens: "some", output_tokens: 5 }), 0);
-  assert.equal(creditsForUsage("opus-5", { input_tokens: 100, cache_creation_input_tokens: NaN, output_tokens: 5 }), 0);
+  assert.equal(creditsForUsage("opus-5", { input_tokens: 100, cache_read_input_tokens: "some", output_tokens: 5 }, { factor: 1 }), 0);
+  assert.equal(creditsForUsage("opus-5", { input_tokens: 100, cache_creation_input_tokens: NaN, output_tokens: 5 }, { factor: 1 }), 0);
   // Absent cache fields are simply zero — the pre-caching wire shape still prices correctly.
   assert.equal(
-    creditsForUsage("haiku-4-5", { input_tokens: 10_000, output_tokens: 2_000 }),
+    creditsForUsage("haiku-4-5", { input_tokens: 10_000, output_tokens: 2_000 }, { factor: 1 }),
     expectedCredits("haiku-4-5", { input: 10_000, output: 2_000 }),
   );
 });
@@ -279,7 +351,7 @@ test("usage is read from Anthropic's field names", () => {
     output_tokens: 0,
     cache_read_input_tokens: 0,
     cache_creation_input_tokens: 0,
-  });
+  }, { factor: 1 });
   assert.equal(credits, expectedCredits("opus-5", { input: 10_000 }));
   assert.ok(credits > 0, "the uncached input leg must be read and priced");
 
@@ -287,7 +359,7 @@ test("usage is read from Anthropic's field names", () => {
     input_tokens: 0,
     output_tokens: 0,
     cache_read_input_tokens: 10_000,
-  });
+  }, { factor: 1 });
   assert.equal(read, expectedCredits("opus-5", { cacheRead: 10_000 }));
   assert.ok(read > 0, "the cache-read leg must be read and priced");
 
@@ -295,7 +367,7 @@ test("usage is read from Anthropic's field names", () => {
     input_tokens: 0,
     output_tokens: 0,
     cache_creation_input_tokens: 10_000,
-  });
+  }, { factor: 1 });
   assert.equal(write, expectedCredits("opus-5", { cacheWrite: 10_000 }));
   assert.ok(write > read, "cache creation must be priced above a cache read");
 });
@@ -312,7 +384,7 @@ test("a Bedrock-shaped usage report is REFUSED, not silently charged zero", () =
   // (rule 7 — fail toward undercharging), but it is no longer silent.
   const bedrockShaped = { inputTokens: 10_000, outputTokens: 2_000, cacheReadInputTokens: 500 };
   assert.equal(readUsage(bedrockShaped), null, "a Bedrock usage report must not be readable");
-  assert.equal(creditsForUsage("opus-5", bedrockShaped), 0, "and must not invent a charge");
+  assert.equal(creditsForUsage("opus-5", bedrockShaped, { factor: 1 }), 0, "and must not invent a charge");
 
   // A well-formed Anthropic report reads cleanly.
   assert.deepEqual(readUsage({ input_tokens: 3, output_tokens: 4, cache_read_input_tokens: 5, cache_creation_input_tokens: 6 }), {
@@ -361,12 +433,12 @@ test("the reserve covers thinking, so an overrun is never absorbed silently", ()
   // a different route.
   const inputTokens = 6_000;
   for (const model of ROSTER.pro) {
-    const reserve = maxCreditsFor(model, { inputTokens, maxOutputTokens: MAX_OUTPUT_TOKENS[model] });
+    const reserve = maxCreditsFor(model, { inputTokens, maxOutputTokens: MAX_OUTPUT_TOKENS[model], factor: 1 });
     const worstReal = creditsForUsage(model, {
       input_tokens: 0,
       cache_creation_input_tokens: inputTokens,
       output_tokens: MAX_OUTPUT_TOKENS[model], // thinking + text, to the cap
-    });
+    }, { factor: 1 });
     assert.ok(reserve >= worstReal, `${model}: reserve ${reserve} < worst real cost ${worstReal}`);
   }
 });

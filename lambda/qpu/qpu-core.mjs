@@ -71,11 +71,32 @@ export const KILL_KEY = "KILL";
 // split funding — a run is entirely allowance or entirely wallet.
 export const MICROS_PER_CREDIT = 10_000;
 
+/** Pinned throw message: metered pricing without a usable factor is a bug in
+ *  the CALLER — the composition gate below refuses metering when the deployed
+ *  config is absent, so a bare call here means a path bypassed that gate. */
+export const RATE_FACTOR_REQUIRED =
+  "qpu-core: rate factor missing or invalid; metered pricing refused";
+
+/** Pinned log line for a wallet table configured WITHOUT a usable rate factor.
+ *  Emitted once per cold start so the misconfiguration is alarmable — its
+ *  runtime symptom (every over-allowance submit 402s) is indistinguishable
+ *  from metering being off on purpose. Never logs the offending value. */
+export const RATE_CARD_INVALID =
+  "qpu: rate card missing or invalid; wallet funding disabled";
+
 /** Whole credits for a micro-dollar cost — rounded UP, so a fraction of a cent
  *  can never be dispensed free. Worst case the learner pays 1 credit ($0.01)
- *  above the metered price; the response names the exact creditsCharged. */
-export function creditsForMicros(micros) {
-  return Math.ceil(micros / MICROS_PER_CREDIT);
+ *  above the metered price; the response names the exact creditsCharged.
+ *
+ *  `factor` converts true AWS cost into the charged credit price. REQUIRED —
+ *  its value lives in deployed configuration only (rule 6; index.mjs reads
+ *  RATE_CARD from the environment). It multiplies BEFORE the ceil, and it
+ *  applies ONLY here: the allowance leg, the DAY# day cap, estMicros and
+ *  spentMicros all stay denominated in true cost — those are the rule-16
+ *  fences, and pricing must never be able to move a fence. */
+export function creditsForMicros(micros, factor) {
+  if (!Number.isFinite(factor) || factor <= 0) throw new TypeError(RATE_FACTOR_REQUIRED);
+  return Math.ceil((micros * factor) / MICROS_PER_CREDIT);
 }
 
 /** Total committed cost of a run, in micro-dollars (integer). */
@@ -208,7 +229,11 @@ export function createHandlerCore({
   // The quantum-stripe wallet table (WALLET#<sub> rows). Unset = metering
   // disabled: over-allowance runs 402 exactly as before, env-gated like every
   // other integration in this repo.
-  walletTable,
+  walletTable: walletTableRaw,
+  // The factor that converts true AWS cost into charged credits. Injected from
+  // deployed configuration (RATE_CARD, resolved out of Secrets Manager at
+  // deploy time); its value never appears in this repository (rule 6).
+  rateFactor,
   resultsBucket,
   // When set, every request must carry this secret in the x-qpu-edge header —
   // CloudFront (which fronts the WAF) injects it, so a direct hit on the public
@@ -217,6 +242,19 @@ export function createHandlerCore({
   edgeSecret,
   now = () => Date.now(),
 }) {
+  // Metering is the PAIR (wallet table, rate factor). A wallet without a
+  // usable factor must never fund a run at raw provider cost — raw cost is a
+  // rate that differs from every other surface (rule 5) — so it degrades to
+  // exactly the no-wallet behaviour: over-allowance submits 402 (rule 7:
+  // refusal charges nothing). Said out loud once per cold start so the
+  // misconfiguration is alarmable rather than indistinguishable from
+  // metering-off-on-purpose. Downstream code reads `walletTable` and never
+  // needs to re-check the factor: gated here, at the single entry point.
+  const factorUsable = Number.isFinite(rateFactor) && rateFactor > 0;
+  if (walletTableRaw && !factorUsable) {
+    console.error(JSON.stringify({ message: RATE_CARD_INVALID }));
+  }
+  const walletTable = walletTableRaw && factorUsable ? walletTableRaw : undefined;
   const credKey = (sub) => ({ pk: { S: `CRED#${sub}` } });
 
   async function isCredentialed(sub) {
@@ -386,7 +424,11 @@ export function createHandlerCore({
         },
       },
     };
-    const creditsNeeded = creditsForMicros(cost);
+    // Priced ONLY when the wallet path exists: pricing is meaningless without
+    // metering, and creditsForMicros deliberately throws rather than default —
+    // computing this unconditionally is exactly the gate-bypass it polices.
+    // (walletTable is the GATED value, so it implies a usable factor.)
+    const creditsNeeded = walletTable ? creditsForMicros(cost, rateFactor) : 0;
     const walletLeg = {
       Update: {
         TableName: walletTable,
@@ -595,7 +637,10 @@ export function createHandlerCore({
       estMicros: cost,
       circuitHash: hash,
       fundedBy: funding,
-      creditsCharged: funding === "wallet" ? creditsForMicros(cost) : 0,
+      // The SAME figure as the debit — threaded, never recomputed: two
+      // computations of one charge is the re-derivation disease the release
+      // path already caught once.
+      creditsCharged: funding === "wallet" ? creditsNeeded : 0,
     });
   }
 
@@ -622,7 +667,7 @@ export function createHandlerCore({
         // on a wallet-funded row. Log it (an unrecorded charge is an audit
         // gap), then fall back to the derivation rather than strand the money.
         console.error("qpu-release-credits-unrecorded", { sub, idempotencyKey, funding });
-        refundCredits = creditsForMicros(cost);
+        refundCredits = creditsForMicros(cost, rateFactor);
       }
       refundLeg = {
         Update: {
