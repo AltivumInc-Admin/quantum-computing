@@ -80,10 +80,17 @@ for (const slug of ["03-algorithms", "05-quantum-chemistry"]) {
       ? `  => CACHING ENGAGED: ${cached} tokens read from cache`
       : `  => NO CACHE HIT — this lesson is under ${MODEL}'s minimum cacheable prefix`,
   );
+  // The inclusive/exclusive question is only answerable when something actually
+  // cached. Below the minimum prefix both runs bill the same full input, and the
+  // naive comparison lands in the "INCLUDE" branch and cries double-counting on a
+  // perfectly healthy lesson. Say "unanswered" rather than raise a false alarm.
   console.log(
-    `  => input_tokens ${base.input_tokens} (no cache) vs ${r.input_tokens} (cache read): ` +
-      (cached > 0 && r.input_tokens < base.input_tokens * 0.5
-        ? "EXCLUSIVE — input_tokens is the UNCACHED REMAINDER, which is what readUsage assumes"
-        : "input_tokens appears to INCLUDE cached tokens — readUsage would DOUBLE-COUNT, fix it"),
+    cached === 0
+      ? `  => input_tokens ${base.input_tokens} (no cache) vs ${r.input_tokens} (cache read): ` +
+        "UNANSWERED — nothing cached, so this run cannot tell inclusive from exclusive"
+      : `  => input_tokens ${base.input_tokens} (no cache) vs ${r.input_tokens} (cache read): ` +
+        (r.input_tokens < base.input_tokens * 0.5
+          ? "EXCLUSIVE — input_tokens is the UNCACHED REMAINDER, which is what readUsage assumes"
+          : "input_tokens appears to INCLUDE cached tokens — readUsage would DOUBLE-COUNT, fix it"),
   );
 }

@@ -43,7 +43,7 @@ for (const [slug, section] of Object.entries(corpus)) {
   const system = buildSystemPrompt(section);
   // Count against the cheapest roster model; the tokenizer is shared across the
   // current generation, so one count answers for all of them.
-  const res = await client.messages.count_tokens({
+  const res = await client.messages.countTokens({
     model: MODEL_IDS["haiku-4-5"],
     system: [{ type: "text", text: system }],
     messages: [{ role: "user", content: "." }],
