@@ -602,7 +602,7 @@ export const en: TranslationDict = {
     masteryBlurb: "Skills held in proven, spaced-repetition retention.",
     consistencyBlurb: "Weeks of showing up, unbroken.",
     hardwareBlurb:
-      "Circuits run on a real quantum computer. The platform pays Amazon Braket for every one of these runs.",
+      "Circuits run on a real quantum computer, through Amazon Braket.",
     // The four medal states. Each is the medal's own chip WORD, so every one of
     // them reaches a screen reader — translating three and leaving one English
     // would break exactly that guarantee.
@@ -624,10 +624,10 @@ export const en: TranslationDict = {
       other: "{{n}} shots",
     },
     recordDevice: "on IQM Garnet.",
-    allowanceLead: "All three fit inside the sponsored allowance:",
+    allowanceLead: "Earning all three takes:",
     allowancePlan: "{{runs}} runs totalling {{shots}} shots — {{cost}}",
     allowanceTail:
-      "The allowance is one-time and does not refill, so how you spend it decides which of these you can still earn.",
+      "If your account holds a hardware allowance, it is one-time and does not refill — how you spend it decides which of these you can still earn.",
     runOnGarnet: "Run on IQM Garnet",
     unverifiedNote:
       "Couldn't verify your hardware record — these medals show as unverified, not locked. Reload to retry.",
@@ -728,7 +728,7 @@ export const en: TranslationDict = {
     // safe, and the retry) are exactly what a learner needs where medals are spent.
     recordUnavailable:
       "Your hardware record is unavailable right now, so medal progress can't be shown. Your completed runs are unaffected — reload to retry.",
-    // Credit metering (wallet-funded runs beyond the sponsored allowance).
+    // Credit metering (wallet-funded runs).
     // "no credits were taken" is deliberate: the reservation was refused before
     // any debit, and the panel's copy contract bans unqualified "charged".
     walletBalance: "Wallet: {{credits}} credits",
@@ -741,14 +741,14 @@ export const en: TranslationDict = {
     headlineBefore: "The learning is",
     headlineFree: "free",
     // FUTURE TENSE ON PURPOSE. Nothing is metered yet: the tutor answers free and
-    // curriculum hardware runs are platform-sponsored (lambda/qpu LIFETIME_CAP_MICROS).
+    // hardware runs are not available (lambda/qpu LIFETIME_CAP_MICROS is 0).
     // This said "is metered" through five rounds of copy audit — the largest text on
     // the page asserting the one thing the page was being corrected for, invisible
     // because the suite pinned the exact string. Flip back to "is metered" in the same
     // commit that lands wallet billing, not before.
     headlineAfter: ". The metal will be metered.",
     heroBody:
-      "The entire curriculum, simulator, and playground are free with a free account — forever. One credit wallet will meter what actually costs real money: AI tutoring and paid cloud compute — real quantum hardware and the managed simulators in the rate table below. None of it is metered yet: today the tutor is free to try and curriculum hardware runs are platform-sponsored. One credit is one cent, always.",
+      "The entire curriculum, simulator, and playground are free with a free account — forever. One credit wallet will meter what actually costs real money: AI tutoring and paid cloud compute — real quantum hardware and the managed simulators in the rate table below. None of it is metered yet: today the tutor is free to try, and hardware runs are not currently available. One credit is one cent, always.",
     creditPeg: "1 credit = $0.01",
     topUpFrom: "Top up from {{amount}}",
     principleLearning: "Learning is the product",
@@ -778,10 +778,10 @@ export const en: TranslationDict = {
     signUpSoon: "Sign-up coming soon",
     launchPricing: "Before you buy:",
     launchPricingBody:
-      " wallets are live, but nothing draws them down yet. The in-lesson tutor is free to try and curriculum hardware runs stay platform-sponsored, so a balance you buy today buys nothing today. Credits never expire and start metering when tutor and hardware billing ship.",
+      " wallets are live, but nothing draws them down yet. The in-lesson tutor is free to try and hardware runs are not currently available, so a balance you buy today buys nothing today. Credits never expire and start metering when tutor and hardware billing ship.",
     earlyAccess: "Early access:",
     earlyAccessBody:
-      " billing has not launched yet — these are launch prices. Today the tutor is free to try, and hardware runs inside the curriculum are sponsored. When wallets go live, you fund your own from a top-up or a plan.",
+      " billing has not launched yet — these are launch prices. Today the tutor is free to try, and hardware runs are not currently available. When wallets go live, you fund your own from a top-up or a plan.",
     estimatorHeading: "Know the number before you run",
     estimatorIntro:
       "No quantum platform should surprise you with a bill. Price any published backend and any tutor habit here. Before a real hardware run, the workspace shows you its cost and makes you approve it.",
@@ -806,13 +806,13 @@ export const en: TranslationDict = {
       "Yes. The full curriculum, the browser simulator, the playground, the glossary, and spaced-repetition review are free with a free account — email or Google, no credit card. That is the product, not a trial.",
     faqCreditsQ: "What do credits buy?",
     faqCreditsA:
-      "Nothing yet — that is the honest answer. No part of the platform debits your wallet today: the AI tutor is free to try and curriculum hardware runs are platform-sponsored. When metering ships, credits will buy exactly two things: AI tutor questions and real quantum compute (QPU runs and managed cloud simulators). One credit equals one cent. Hardware runs already show you the exact cost and make you approve it before anything executes.",
+      "Nothing yet — that is the honest answer. No part of the platform debits your wallet today: the AI tutor is free to try, and hardware runs are not currently available. When metering ships, credits will buy exactly two things: AI tutor questions and real quantum compute (QPU runs and managed cloud simulators). One credit equals one cent. The workspace shows the exact cost of any hardware run and makes you approve it before anything executes.",
     faqExpireQ: "Do credits expire?",
     faqExpireA:
       "Purchased credits never expire. Monthly Plus and Pro credits roll over for as long as the subscription is active.",
     faqBackendsQ: "Why do backends cost such different amounts?",
     faqBackendsA:
-      "Because the machines really do. A trapped-ion shot on IonQ lists at roughly 180 times a superconducting shot on Rigetti. We publish every backend's rate so the price of the physics is never a mystery. Today the curriculum's sponsored runs all go to IQM Garnet; choosing your own backend arrives with wallet metering. Before one of those sponsored runs executes, the workspace quotes it in AWS dollars from its own table and waits for your approval.",
+      "Because the machines really do. A trapped-ion shot on IonQ lists at roughly 180 times a superconducting shot on Rigetti. We publish every backend's rate so the price of the physics is never a mystery. Today only IQM Garnet is wired up, and hardware runs are not currently available; choosing your own backend arrives with wallet metering. Before any hardware run executes, the workspace quotes it in AWS dollars from its own table and waits for your approval.",
     faqProviderQ: "What happens when a provider changes its prices?",
     faqProviderA:
       "Hardware rates track the providers' published price sheets (currently the {{date}} revision). Nothing on this page is fetched from a provider: these credit rates are compiled into the site, and the pre-flight check before a hardware run reads its own separate table of AWS dollar rates, also compiled in. A reprice reaches either table only through a new release — which is what the revision date on the rate table records.",
@@ -821,7 +821,7 @@ export const en: TranslationDict = {
       "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire — and nothing draws them down yet, so a balance today is a balance waiting for metering to ship.",
     faqWhenQ: "When can I buy credits?",
     faqWhenA:
-      "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs inside the curriculum are sponsored — create your free account now so you are ready the moment wallets go live.",
+      "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs are not currently available — create your free account now so you are ready the moment wallets go live.",
     ctaHeading: "Start learning today. The wallet can wait.",
     ctaBody:
       "Everything you need to learn quantum computing is already free — just a free account. Email or Google, no credit card.",
@@ -842,12 +842,12 @@ export const en: TranslationDict = {
     presets: "Presets",
     priceHardware: "Price a hardware run",
     // A forecast, and only a forecast. This pane prices eight backends in credits;
-    // exactly one of them (IQM Garnet) accepts a submission today, and its pre-flight
-    // quotes AWS dollars from a different table, so it does NOT show this number.
-    // Claiming "the same estimate appears before every real submission" was false twice
-    // over. The approval gate is real and stays.
+    // only one of them (IQM Garnet) is wired to the submit path at all, and the
+    // pre-flight quotes AWS dollars from a different table, so it does NOT show this
+    // number. Claiming "the same estimate appears before every real submission" was
+    // false twice over. The approval gate is real and stays.
     priceHardwareBody:
-      "A forecast of metered pricing, not a charge. Only IQM Garnet accepts submissions today, and its pre-flight quotes that sponsored run in dollars at the AWS list rate — not the credit figure shown here. Nothing runs until you approve the number you are shown there.",
+      "A forecast of metered pricing, not a charge. Hardware runs are not currently available; before any run executes, the workspace pre-flight quotes it in dollars at the AWS list rate — not the credit figure shown here — and nothing runs until you approve that number.",
     shots: "Shots",
     shotsValue: "{{n}} shots",
     priceTutorMonth: "Price a month of tutoring",
@@ -882,7 +882,7 @@ export const en: TranslationDict = {
     freeF1: "Unlimited browser simulation — circuits run on your machine",
     freeF2: "Playground, glossary, spaced-repetition review",
     freeF3: "Progress and saved circuits synced across devices",
-    freeF4: "The AI tutor is free to try, and curriculum hardware runs are platform-sponsored",
+    freeF4: "The AI tutor is free to try",
     plusTagline: "Monthly credits, included with your subscription.",
     plusFootnote: "Cancel anytime. Purchased credits never expire.",
     plusF0: "Everything in Free",
@@ -926,9 +926,9 @@ export const en: TranslationDict = {
     storePrefs:
       "your review-reminder email preference — off unless you turn it on — and, if you do, the date we last emailed you",
     storeHardware:
-      "if you run a circuit on real quantum hardware, a record of that run (device, shot count, cost, and a hash of the circuit) to enforce the sponsored hardware budget",
+      "if you run a circuit on real quantum hardware, a record of that run (device, shot count, cost, and a hash of the circuit) to enforce hardware spending limits",
     storeTutor:
-      "If you ask the lesson tutor a question, the question and the surrounding lesson context are sent to our tutor service (AWS Bedrock, us-east-2) to generate the answer.",
+      "If you ask the lesson tutor a question, the question and the surrounding lesson context are sent to our tutor service (AWS, us-east-2), which forwards them to Anthropic, the AI provider, to generate the answer.",
     whatWeDont: "What we don't collect",
     noAnalytics:
       "No analytics or tracking scripts — none exist anywhere on this site.",

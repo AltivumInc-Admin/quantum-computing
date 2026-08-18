@@ -190,3 +190,114 @@ test("CORS allows the auth header the metered client sends", () => {
   // fails and every paid-model request dies in the browser.
   assert.match(body("TutorFunction"), /- x-tutor-auth/);
 });
+
+test("the rate factor rides deployed configuration, and its default is metering OFF", () => {
+  // Rule 6: the value that turns provider cost into a charged price lives in
+  // Secrets Manager, resolved AT DEPLOY TIME by CloudFormation — it never
+  // passes through a CLI argument, a samconfig, or this repository. The empty
+  // default keeps the env var ABSENT (AWS::NoValue), which the handler treats
+  // as metering off: paid models refuse, the free path is untouched.
+  const params = blocks(section(template, "Parameters"));
+  const p = (params.RateCardSecret ?? []).join("\n");
+  assert.ok(p, "RateCardSecret parameter missing");
+  // Default must be EXACTLY the empty string. A Default carrying a real value
+  // would satisfy the handler-wiring guard while publishing the spread.
+  assert.match(p, /^\s+Default:\s*""\s*$/m, 'RateCardSecret must default to ""');
+
+  const conditions = section(template, "Conditions").join("\n");
+  assert.match(conditions, /HasRateCard: !Not \[!Equals \[!Ref RateCardSecret, ""\]\]/);
+
+  const fn = body("TutorFunction");
+  assert.match(
+    fn,
+    /RATE_CARD: !If\s*\[HasRateCard, !Sub "\{\{resolve:secretsmanager:\$\{RateCardSecret\}:SecretString:factor\}\}", !Ref AWS::NoValue\]/,
+    "RATE_CARD must resolve from the named secret's `factor` key, or vanish entirely"
+  );
+  // Deploy-time resolution runs with the DEPLOYER's credentials, not the
+  // function role — the execution role must NOT gain a grant on this secret.
+  const arns = fn.match(/arn:aws:secretsmanager:[^\n"]*/g) ?? [];
+  for (const arn of arns) {
+    assert.ok(!arn.includes("RateCardSecret"), `the function role must not read the rate secret: ${arn}`);
+  }
+});
+
+test("a reserve with no matching settle is alarmable — filters + the difference alarm", () => {
+  // index.mjs:~310's own comment says a reserve with no matching settle is how
+  // you find a stranded reservation, "nothing sweeps those today". These three
+  // resources are the sweep: count both log lines, alarm when an hour ends
+  // with more reserves than settles (a process death between debit and refund
+  // — real learner money silently held).
+  for (const [id, phrase, metric] of [
+    ["TutorReserveMetricFilter", "tutorReserve", "TutorReserve"],
+    ["TutorSettleMetricFilter", "tutorSettle", "TutorSettle"],
+  ]) {
+    const b = body(id);
+    assert.ok(b, `${id} missing`);
+    assert.match(b, /LogGroupName: !Ref TutorLogGroup/);
+    assert.match(b, new RegExp(`FilterPattern: '"${phrase}"'`), `${id}: literal-term pattern`);
+    assert.match(b, new RegExp(`MetricName: ${metric}\\b`));
+    assert.match(b, /MetricNamespace: QuantumTutor/);
+    // Same drift-proofing as the tutorError filter: the term must literally
+    // appear in index.mjs's emission, or an edit disconnects alarm from code.
+    const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+    assert.ok(src.includes(phrase), `index.mjs no longer logs "${phrase}"`);
+  }
+  const a = body("TutorOrphanReserveAlarm");
+  assert.ok(a, "TutorOrphanReserveAlarm missing");
+  // Metric math over hour buckets; FILL so a missing settle series cannot
+  // turn a real orphan into "insufficient data" under notBreaching.
+  assert.match(a, /Expression: "FILL\(reserves, ?0\) - FILL\(settles, ?0\)"/);
+  assert.match(a, /Period: 3600/);
+  assert.match(a, /Threshold: 0\b/);
+  assert.match(a, /ComparisonOperator: GreaterThanThreshold/);
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a wallet deployed without a usable rate card is alarmable, not just greppable", () => {
+  // The handler logs RATE_CARD_INVALID once per cold start; without a filter
+  // that promise of "alarmable" is only a grep. The pattern is the shared
+  // phrase inside the pinned constant, so the assertion below ties it to code.
+  const b = body("TutorRateCardMetricFilter");
+  assert.ok(b, "TutorRateCardMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref TutorLogGroup/);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "rate card missing or invalid");
+  const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+  assert.ok(src.includes(phrase), "index.mjs no longer logs the rate-card phrase");
+  const a = body("TutorRateCardAlarm");
+  assert.ok(a, "TutorRateCardAlarm missing");
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a failed refund is alarmable — money owed a learner is never just a grep", () => {
+  // Two emissions share the literal stem: tutorRefundFailed (the settle-path
+  // credit threw) and tutorRefundNoWalletRow (the row vanished — a refund that
+  // must NOT mint it). Both are bounded, real money owed a person.
+  const b = body("TutorRefundFailureMetricFilter");
+  assert.ok(b, "TutorRefundFailureMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref TutorLogGroup/);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "tutorRefund");
+  const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+  assert.ok(src.includes("tutorRefundFailed"), "index.mjs lost the settle-path refund log");
+  assert.ok(src.includes("tutorRefundNoWalletRow"), "index.mjs lost the missing-row refund log");
+  const a = body("TutorRefundFailureAlarm");
+  assert.ok(a, "TutorRefundFailureAlarm missing");
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("the orphan-reserve alarm has a wide-window backstop for what hour buckets miss", () => {
+  // The hourly alarm compares line COUNTS, so a real orphan in hour H is
+  // masked by an unrelated settle landing in H from a reserve taken in H-1 —
+  // and a boundary-split pair can false-fire. A day-wide window makes the
+  // splits cancel and the real orphans accumulate past cancellation.
+  const a = body("TutorOrphanReserveDailyAlarm");
+  assert.ok(a, "TutorOrphanReserveDailyAlarm missing");
+  assert.match(a, /Expression: "FILL\(reserves, ?0\) - FILL\(settles, ?0\)"/);
+  assert.match(a, /Period: 86400/);
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});

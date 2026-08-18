@@ -117,11 +117,15 @@ describe("CredentialsWall", () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false); // reset for other tests
   });
 
-  it("states that the platform pays for the hardware runs", () => {
+  it("describes the hardware medals without claiming the platform pays for runs", () => {
     render(<CredentialsWall />);
-    expect(screen.getByLabelText("Hardware")).toHaveTextContent(
-      /The platform pays Amazon Braket for every one of these runs/i,
-    );
+    const hardware = screen.getByLabelText("Hardware");
+    expect(hardware).toHaveTextContent(/Circuits run on a real quantum computer/i);
+    // The withdrawn promise must not resurface: qpu-core.mjs LIFETIME_CAP_MICROS is 0,
+    // so a blanket "the platform pays" is false for every learner without a
+    // grandfathered allowance — and this blurb renders unconditionally.
+    expect(hardware).not.toHaveTextContent(/the platform pays/i);
+    expect(hardware).not.toHaveTextContent(/sponsored/i);
   });
 
   it("waits out the Amplify-bridge race: no fetch while configuring, fetch on authenticated", async () => {
@@ -257,15 +261,20 @@ describe("CredentialsWall", () => {
     (qpu.isQpuConfigured as jest.Mock).mockReturnValue(false);
   });
 
-  it("routes out of the dead end: the plan, the finite allowance, and the way to run", () => {
+  it("routes out of the dead end: the plan, the finite money, and the way to run", () => {
     // The group listed three requirements, named no surface that grants them, and never
     // said the money behind them is finite. Numbers derive from the ladder + PRICING.
+    // This prose renders UNCONDITIONALLY, so it may not claim a sponsored allowance —
+    // LIFETIME_CAP_MICROS is 0 and most learners hold none. The non-refill warning
+    // survives for grandfathered allowance-holders, framed conditionally ("if your
+    // account holds…") so it promises nothing to a learner without one.
     render(<CredentialsWall />);
     const hardware = screen.getByLabelText("Hardware");
     expect(hardware).toHaveTextContent(
-      /All three fit inside the sponsored allowance: 3 runs totalling 1,000 shots — \$2\.35/i,
+      /Earning all three takes: 3 runs totalling 1,000 shots — \$2\.35/i,
     );
     expect(hardware).toHaveTextContent(/one-time and does not refill/i);
+    expect(hardware).not.toHaveTextContent(/sponsored allowance/i);
     expect(screen.getByRole("link", { name: /run on iqm garnet/i })).toHaveAttribute(
       "href",
       "/workspace",
@@ -469,7 +478,7 @@ describe("CredentialsWall", () => {
     expect(mastery).not.toHaveTextContent(/Locked/i);
     // The wall's own prose, not just the medal kernel's.
     expect(screen.getByLabelText("Hardware")).toHaveTextContent(
-      /Las tres caben en el presupuesto patrocinado/,
+      /Obtener las tres requiere/,
     );
     expect(screen.getByRole("link", { name: "Ejecutar en IQM Garnet" })).toBeInTheDocument();
   });

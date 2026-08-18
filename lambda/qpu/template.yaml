@@ -71,9 +71,25 @@ Parameters:
       learner's PAID credits — debited atomically in the same reservation
       transaction, refunded by the same compensating paths. Both functions get
       a Get/Update grant scoped to this ONE table, only when set.
+  RateCardSecret:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the Secrets Manager secret holding the rate factor that converts
+      true AWS cost into charged credits, as {"factor": "..."}. Empty (the
+      default) = RATE_CARD is ABSENT and wallet funding stays off even if
+      WalletTableName is set: over-allowance submits 402, never a raw-cost
+      debit. Resolved at deploy time with the DEPLOYER's credentials — never a
+      CLI argument, never a samconfig, no runtime grant. The tutor stack reads
+      the SAME secret through the SAME env key: every metered surface converts
+      at one shared factor (rule 5), proven by scripts/check-rate-parity.mjs.
+      The reconciler deliberately does NOT read it — refunds return the
+      creditsCharged recorded on the task row, so a repricing between debit
+      and refund can never diverge them.
 
 Conditions:
   HasWalletTable: !Not [!Equals [!Ref WalletTableName, ""]]
+  HasRateCard: !Not [!Equals [!Ref RateCardSecret, ""]]
 
 Resources:
   # Spend ledger: USER#<sub> rows (cap/spent), DAY#<date> rows (global daily
@@ -173,6 +189,11 @@ Resources:
           RESULTS_BUCKET: !Ref ResultsBucket
           EDGE_SECRET: !Sub "{{resolve:secretsmanager:${EdgeSecretName}:SecretString}}"
           WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
+          # Deploy-time resolve; the unselected !If branch is never resolved
+          # (verified empirically, 2026-08-17), so the empty default deploys
+          # clean with the variable simply absent. Submit function ONLY — the
+          # reconciler refunds recorded figures and never prices.
+          RATE_CARD: !If [HasRateCard, !Sub "{{resolve:secretsmanager:${RateCardSecret}:SecretString:factor}}", !Ref AWS::NoValue]
       Policies:
         # The spend ledger (USER#/DAY#/KILL/CRED# rows) + tasks table.
         # TransactWriteItems is authorized via its constituent item actions
@@ -554,6 +575,104 @@ Resources:
           MetricName: OrphanedMoneyRow
           MetricValue: "1"
           Unit: Count
+
+  # A failed wallet refund on the submit path is money owed a learner:
+  # qpu-release-failed = the whole compensating release threw after a Braket
+  # rejection; qpu-refund-wallet-row-missing = the refund found no row to land
+  # on (and correctly refused to mint one). ?-terms OR the two phrases.
+  QpuRefundFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref QpuLogGroup
+      FilterPattern: '?"qpu-release-failed" ?"qpu-refund-wallet-row-missing"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: QpuRefundFailure
+          MetricValue: "1"
+          Unit: Count
+
+  QpuRefundFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-refund-failure
+      AlarmDescription: >-
+        A wallet refund on the submit path failed or found no wallet row. The
+        learner paid for a run Braket rejected and did not get the credits
+        back. The log line carries sub, idempotencyKey and amount; credit
+        manually and check the task row's status.
+      Namespace: QuantumQpu
+      MetricName: QpuRefundFailure
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # Same failure on the reconciler's refund leg. It logs through the injected
+  # log (console.log in production), so severity-based alerting would miss it;
+  # this is a literal-term filter and does not care about severity.
+  ReconcileRefundFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ReconcileLogGroup
+      FilterPattern: '"wallet row missing for refund"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: ReconcileRefundFailure
+          MetricValue: "1"
+          Unit: Count
+
+  ReconcileRefundFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-reconcile-refund-failure
+      AlarmDescription: >-
+        The reconciler tried to refund a FAILED/CANCELLED wallet-funded run and
+        the wallet row was missing. The task row stays SUBMITTED so this
+        re-fires every poll until resolved — money owed the learner needs
+        manual review in the wallet table.
+      Namespace: QuantumQpu
+      MetricName: ReconcileRefundFailure
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  QpuRateCardMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref QpuLogGroup
+      FilterPattern: '"rate card missing or invalid"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: QpuRateCardInvalid
+          MetricValue: "1"
+          Unit: Count
+
+  QpuRateCardAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-rate-card-invalid
+      AlarmDescription: >-
+        WalletTableName is set but RATE_CARD is absent or unusable, so every
+        over-allowance submit is 402ing while the deploy looks configured.
+        Check the RateCardSecret parameter and the secret's {"factor": "..."}
+        shape, then redeploy; scripts/check-rate-parity.mjs shows both
+        surfaces' state without printing the value.
+      Namespace: QuantumQpu
+      MetricName: QpuRateCardInvalid
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
 
   OrphanedRowAlarm:
     Type: AWS::CloudWatch::Alarm

@@ -153,3 +153,80 @@ test("the budget resource declares no fixed BudgetName (subscriber changes force
   const propLines = (resources.QpuBudget ?? []).filter((l) => !l.trim().startsWith("#"));
   assert.ok(!propLines.some((l) => /^\s+BudgetName:/.test(l)), "QpuBudget must not pin BudgetName");
 });
+
+test("the rate factor rides deployed configuration, on the ONE function that prices", () => {
+  // Rule 6: the value converting true cost into charged credits resolves out of
+  // Secrets Manager at deploy time and never exists in this repository. Rule 5:
+  // the tutor stack reads the SAME secret through the SAME env key — the
+  // cross-stack lockstep is asserted in web/__tests__/infra, and the deployed
+  // pair by scripts/check-rate-parity.mjs.
+  const params = blocks(section(template, "Parameters"));
+  const p = (params.RateCardSecret ?? []).join("\n");
+  assert.ok(p, "RateCardSecret parameter missing");
+  // Default must be EXACTLY "": a Default carrying a real value would deploy
+  // the spread from version control.
+  assert.match(p, /^\s+Default:\s*""\s*$/m, 'RateCardSecret must default to ""');
+
+  const conditions = section(template, "Conditions").join("\n");
+  assert.match(conditions, /HasRateCard: !Not \[!Equals \[!Ref RateCardSecret, ""\]\]/);
+
+  const resolveLine =
+    /RATE_CARD: !If\s*\[HasRateCard, !Sub "\{\{resolve:secretsmanager:\$\{RateCardSecret\}:SecretString:factor\}\}", !Ref AWS::NoValue\]/;
+  assert.match(body("QpuFunction"), resolveLine, "the submit function prices, so it reads the factor");
+
+  // The reconciler must NOT carry RATE_CARD: it never prices — it refunds the
+  // creditsCharged RECORDED on the task row (reconcile.mjs), exactly so a
+  // repricing between debit and refund cannot diverge them. Dead config on a
+  // function that never reads it is drift surface, and a parity check that
+  // "verified" the reconciler would be verifying nothing.
+  assert.ok(!/RATE_CARD/.test(body("ReconcileFunction")), "reconcile refunds recorded figures only");
+
+  // Deploy-time resolution runs with the DEPLOYER's credentials — no function
+  // role may hold a grant on the rate secret.
+  assert.ok(!/RateCardSecret/.test(body("QpuFunction").match(/Policies:[\s\S]*/)?.[0] ?? ""),
+    "the submit role must not read the rate secret at runtime");
+});
+
+test("a wallet deployed without a usable rate card is alarmable, not just greppable", () => {
+  // qpu-core logs RATE_CARD_INVALID once per cold start when WalletTableName
+  // is set but the factor is absent/garbled — a state in which every
+  // over-allowance submit 402s while the deploy LOOKS configured. Filter +
+  // alarm make that visible; the phrase is pinned to the packaged source.
+  const b = body("QpuRateCardMetricFilter");
+  assert.ok(b, "QpuRateCardMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref QpuLogGroup/);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "rate card missing or invalid");
+  const src = readFileSync(new URL("./qpu-core.mjs", import.meta.url), "utf8");
+  assert.ok(src.includes(phrase), "qpu-core.mjs no longer logs the rate-card phrase");
+  const a = body("QpuRateCardAlarm");
+  assert.ok(a, "QpuRateCardAlarm missing");
+  assert.match(a, /Namespace: QuantumQpu/);
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a failed wallet refund is alarmable on both QPU log groups", () => {
+  // Submit path: qpu-release-failed (the whole compensating release threw) and
+  // qpu-refund-wallet-row-missing (the row vanished; refund must not mint it).
+  const b = body("QpuRefundFailureMetricFilter");
+  assert.ok(b, "QpuRefundFailureMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref QpuLogGroup/);
+  assert.match(b, /FilterPattern: '\?"qpu-release-failed" \?"qpu-refund-wallet-row-missing"'/);
+  const core = readFileSync(new URL("./qpu-core.mjs", import.meta.url), "utf8");
+  assert.ok(core.includes("qpu-release-failed"), "qpu-core.mjs lost the release-failed log");
+  assert.ok(core.includes("qpu-refund-wallet-row-missing"), "qpu-core.mjs lost the missing-row log");
+  assert.match(body("QpuRefundFailureAlarm") ?? "", /AlarmActions: \[!Ref AlertsTopic\]/);
+
+  // Reconcile path: its refund leg logs through the injected log (console.log
+  // in production — a severity-based filter would miss it; this term filter
+  // does not care about severity).
+  const r = body("ReconcileRefundFailureMetricFilter");
+  assert.ok(r, "ReconcileRefundFailureMetricFilter missing");
+  assert.match(r, /LogGroupName: !Ref ReconcileLogGroup/);
+  const phrase = r.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "wallet row missing for refund");
+  const rec = readFileSync(new URL("./reconcile.mjs", import.meta.url), "utf8");
+  assert.ok(rec.includes(phrase), "reconcile.mjs lost the missing-row refund log");
+  assert.match(body("ReconcileRefundFailureAlarm") ?? "", /AlarmActions: \[!Ref AlertsTopic\]/);
+});

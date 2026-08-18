@@ -186,21 +186,54 @@ Two facts from it that change how you write code, and are worth carrying in your
 
 ### Open work to reopen the storefront
 
-- **FIRST — the shipped copy is now false.** Both locales still say curriculum hardware runs
-  are platform-sponsored (14 strings in `en.ts`, 12 in `es.ts`; one is test-locked, so the
-  test changes too). Since the 2026-08-05 QPU deploy that is no longer merely stale, it is
-  **wrong**: `LIFETIME_CAP_MICROS` is `0` and no wallet table is wired, so every submit
-  returns 402. Rule 13 says never advertise what the deployed system cannot do — this is
-  that, live on the pricing page today. Fix the copy or wire the funding; do not leave both.
+- ~~FIRST — the shipped copy is now false~~ — **copy corrected 2026-08-17** (live once the
+  next Amplify deploy from main ships). The sponsorship family was **14 keys in `en.ts` and
+  14 in `es.ts`** — the "12 in es" previously recorded here was stale; parity was already
+  full. 12 of the 14 now state the present truth ("hardware runs are not currently
+  available"; the credentials wall states the ladder plan without claiming an allowance
+  funds it), and the privacy page names **Anthropic**, not AWS Bedrock, as the tutor's
+  processor in both locales. Deliberately kept, because they are true for their only
+  audience: `credentialsUi.outOfReachDetail` ("remaining sponsored budget") renders only
+  for grandfathered allowance-holders (`capMicros > 0` stamped on the ledger row), and
+  `workspaceUi.outOfAllowance` is a refusal chip, not an advertisement (the submit panel's
+  sponsor note is likewise conditional and stays). The pricing page's copy-honesty guard
+  now **bars** `/sponsor|patrocinad/` across both locales and the metadata export — the old
+  tests locked the promise's PRESENCE, which is exactly how it outlived the withdrawal.
+  Still open: wire the funding path (wallet metering) before advertising hardware again.
 - ~~Correct `RATES` to true Bedrock cost~~ — **done 2026-08-17**, by moving the tutor off
   Bedrock entirely. Anthropic's published rates are the cost basis on that provider, so
-  `RATES` is now verified rather than a documented placeholder. Still outstanding: read
-  the shared markup from **deployed configuration** (an env var, like `SECRET_ID`) in both
-  metering paths — never a committed constant, per rule 6. One value, injected once,
-  consumed by both.
-- Move QPU debit rates onto the same markup. Until this lands, both stacks' `WalletTableName`
-  stays `""` on purpose — enabling the wallet at raw cost would introduce a metered surface at
-  a markup that differs from the others, which rule 5 forbids.
+  `RATES` is now verified rather than a documented placeholder.
+- ~~Read the shared markup from deployed configuration in both metering paths~~ — **done
+  2026-08-17 (mechanism), metering still OFF.** Both stacks read the SAME Secrets Manager
+  secret through the SAME env key (`RATE_CARD`, parameter `RateCardSecret`, default `""`),
+  resolved by CloudFormation at deploy time; both kernels REQUIRE the injected factor and
+  throw rather than default to raw cost (raw cost is itself a divergent rate — rule 5).
+  Absent/garbled config = refusal, alarmed by `quantum-*-rate-card-invalid`. This also
+  closes the "QPU debits raw cost" item: the QPU converts through the same factor when it
+  converts at all. Lockstep is guarded three ways: `web/__tests__/infra/rate-card-parity`
+  (templates + handlers), `scripts/check-rate-parity.mjs` in `make drift` (deployed env,
+  value-blind — prints hashes, never the value), and the reconciler deliberately carries
+  no `RATE_CARD` (it refunds the `creditsCharged` recorded on the task row, never a
+  re-derivation). **The cutover itself remains** (create the secret, set
+  `RateCardSecret` + `WalletTableName` on both stacks in one deploy, re-run parity) and
+  it is blocked behind rule 14 (buying must work first), the tier gate below, and two
+  things the mechanism exposed:
+  - **The QPU confirm step quotes a client-derived figure** (`web/src/lib/qpu-budget.ts`
+    re-derives credits from raw cost, and rule 6 means the client can never hold the
+    factor). Under any deployed factor the confirm screen would understate the debit —
+    the server must publish the priced quote and the panel must render it BEFORE the
+    flip. Its own comment claims quote-must-equal-debit; that claim is only true today
+    because both are off.
+  - **The published hardware sheet and a single scalar factor need reconciling.** The
+    published per-task and per-shot credit figures do not stand in one common ratio to
+    the provider's two list rates (both sets are public; the arithmetic stays out of
+    this file), so no single factor reproduces the sheet exactly, and integer-credit
+    debits can exceed a fractional advertised figure. Decide once at cutover: derive
+    the published display figures from the same factored formula the server debits
+    with, or pick the factor so every debit stays at or under the sheet (rule 7/13
+    direction) and update the sheet's figures — including `TUTOR_RATES`'
+    `typicalCreditsPerQuestion`, which today matches RAW-cost typical charges and goes
+    stale under any factor above 1.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
   tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs`).
 - **Create the `quantum-tutor` secret and deploy the tutor.** The handler now reads its
@@ -290,7 +323,7 @@ Managed via pyproject.toml. Key packages:
 - Fonts: Sora (display) + Geist (body) + Geist Mono (code/data) via `next/font/google` — the Instrument type system, exposed as `--font-sora`/`--font-geist`/`--font-geist-mono`
 - Dark mode: `next-themes` with `@variant dark (&:where(.dark, .dark *));` in globals.css
 - Deployment: AWS Amplify (auto-deploys from git push, `amplify.yml` at repo root)
-- Optional lesson tutor ("Ask the margin"): a streaming Bedrock Lambda in `lambda/tutor/` (deploy separately; see its README). The `<AskTutor />` affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set in Amplify env, so the static site is unaffected when it is absent.
+- Optional lesson tutor ("Ask the margin"): a streaming Lambda in `lambda/tutor/` calling Anthropic's first-party API (deploy separately; see its README). The `<AskTutor />` affordance stays hidden until `NEXT_PUBLIC_TUTOR_URL` is set in Amplify env, so the static site is unaffected when it is absent.
 
 ### Key Patterns
 - `@theme inline` values compile statically — they cannot be overridden at runtime via CSS classes. Use standard Tailwind `dark:` utilities for theme-dependent values.

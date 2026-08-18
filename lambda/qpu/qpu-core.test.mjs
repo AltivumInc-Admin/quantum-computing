@@ -24,6 +24,7 @@ import {
   MICROS_PER_CREDIT,
   IQM_PER_TASK_MICROS,
   IQM_PER_SHOT_MICROS,
+  RATE_CARD_INVALID,
 } from "./qpu-core.mjs";
 
 // The shared ladder contract (also read by web/__tests__/lib/credentials.test.ts).
@@ -104,6 +105,7 @@ const core = (ddb, braket) =>
     ledgerTable: "ledger",
     tasksTable: "tasks",
     walletTable: "wallet",
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling has its own tests
     resultsBucket: "amazon-braket-eu-north-1-x",
     now: () => NOW,
   });
@@ -538,7 +540,7 @@ test("the ladder's ADVERTISED price is the true cheapest price, and is placeable
   // the learner is quoted, so a drift here overcharges or undercharges them.
   assert.equal(need, LADDER.cheapestPath.costMicros);
   // And it must be expressible in whole credits without losing money.
-  assert.equal(creditsForMicros(need), Math.ceil(need / MICROS_PER_CREDIT));
+  assert.equal(creditsForMicros(need, 1), Math.ceil(need / MICROS_PER_CREDIT));
 });
 
 test("a refunded run earns nothing: only COMPLETED rows tally toward a medal", async () => {
@@ -573,6 +575,7 @@ const walletCore = (ddb, braket) =>
     ledgerTable: "ledger",
     tasksTable: "tasks",
     walletTable: "wallet",
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling has its own tests
     resultsBucket: "amazon-braket-eu-north-1-x",
     now: () => NOW,
   });
@@ -584,19 +587,26 @@ const SPENT_UP = { capMicros: { N: "2500000" }, spentMicros: { N: "2000000" } };
 
 test("creditsForMicros converts at the $0.01 peg, rounding UP to a whole credit", () => {
   assert.equal(MICROS_PER_CREDIT, 10_000);
-  assert.equal(creditsForMicros(1_750_000), 175); // exact: $1.75
-  assert.equal(creditsForMicros(445_000), 45); // $0.445 → 45 credits, never 44
-  assert.equal(creditsForMicros(1), 1);
+  assert.equal(creditsForMicros(1_750_000, 1), 175); // exact: $1.75
+  assert.equal(creditsForMicros(445_000, 1), 45); // $0.445 → 45 credits, never 44
+  assert.equal(creditsForMicros(1, 1), 1);
 });
 
 test("an over-allowance run is funded by the wallet: atomic debit, day cap and kill-switch still bind", async () => {
+  // Second, independent bind on the rounding direction: with every wallet
+  // expectation below DERIVED via creditsForMicros, a ceil→floor regression
+  // would otherwise be caught only by the single pinned peg test. One micro
+  // must cost one whole credit — a fraction of a cent is never dispensed free.
+  assert.equal(creditsForMicros(1, 1), 1, "rounding must go UP: 1 micro-dollar = 1 whole credit");
   const ddb = stubDdb({ ledgerUser: SPENT_UP });
   const braket = stubBraket();
   const res = await walletCore(ddb, braket)(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 202);
   const body = JSON.parse(res.body);
   assert.equal(body.fundedBy, "wallet");
-  assert.equal(body.creditsCharged, 175);
+  // Derived from the public constants (peg + IQM list rates), never pinned, so
+  // a future conversion factor flows through instead of forcing an integer here.
+  assert.equal(body.creditsCharged, RUN_CREDITS);
 
   const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
   assert.equal(tx.length, 4);
@@ -605,18 +615,19 @@ test("an over-allowance run is funded by the wallet: atomic debit, day cap and k
   assert.equal(debit.TableName, "wallet");
   assert.equal(debit.Key.pk.S, "WALLET#u1");
   assert.match(debit.UpdateExpression, /ADD credits :neg/);
-  assert.equal(debit.ExpressionAttributeValues[":neg"].N, "-175");
+  assert.equal(debit.ExpressionAttributeValues[":neg"].N, String(-RUN_CREDITS));
   // Asserted clause-by-clause rather than as one exact string: the expression
   // grew a clawback-debt guard, and pinning the whole literal would force an
   // unrelated edit here every time a new guard is added.
   assert.match(debit.ConditionExpression, /attribute_exists\(pk\)/, "no phantom wallet row");
   assert.match(debit.ConditionExpression, /credits >= :need/, "never below zero");
-  assert.equal(debit.ExpressionAttributeValues[":need"].N, "175");
+  assert.equal(debit.ExpressionAttributeValues[":need"].N, String(RUN_CREDITS));
   // leg 1: the GLOBAL day cap still binds a wallet-funded run (real account spend)
   assert.equal(tx[1].Update.Key.pk.S, "DAY#2026-07-07");
-  // leg 2: task row records funding provenance for release/reconcile
+  // leg 2: task row records funding provenance for release/reconcile — the SAME
+  // figure the debit charged, which is what the release later refunds.
   assert.equal(tx[2].Put.Item.fundedBy.S, "wallet");
-  assert.equal(tx[2].Put.Item.creditsCharged.N, "175");
+  assert.equal(tx[2].Put.Item.creditsCharged.N, debit.ExpressionAttributeValues[":need"].N);
   // leg 3: kill-switch
   assert.equal(tx[3].ConditionCheck.Key.pk.S, "KILL");
   // the sponsored ledger row is NOT charged for a wallet-funded run
@@ -640,7 +651,7 @@ test("insufficient wallet credits → 402 insufficient-credits with the shortfal
   assert.equal(res.statusCode, 402);
   const body = JSON.parse(res.body);
   assert.equal(body.error, "insufficient-credits");
-  assert.equal(body.creditsNeeded, 175);
+  assert.equal(body.creditsNeeded, RUN_CREDITS); // derived, not pinned
   assert.equal(braket.calls.length, 0, "no Braket call without a committed reservation");
 });
 
@@ -669,7 +680,9 @@ test("an allowance race falls back to the wallet exactly once", async () => {
 
 test("a Braket failure on a wallet-funded run refunds the CREDITS, not the sponsored ledger", async () => {
   const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
-  const ddb = stubDdb({ ledgerUser: SPENT_UP });
+  // The reservation Put always records the charge on the row; seed it the way
+  // the committed transaction leaves it, since the release reads it back.
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, existingTask: walletTaskRow(RUN_CREDITS) });
   const res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
   assert.equal(res.statusCode, 502);
   const txs = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
@@ -678,7 +691,7 @@ test("a Braket failure on a wallet-funded run refunds the CREDITS, not the spons
   const refund = release[0].Update;
   assert.equal(refund.TableName, "wallet");
   assert.equal(refund.Key.pk.S, "WALLET#u1");
-  assert.equal(refund.ExpressionAttributeValues[":pos"].N, "175");
+  assert.equal(refund.ExpressionAttributeValues[":pos"].N, String(RUN_CREDITS));
   // the release is still guarded on the task row being RESERVED (idempotent)
   const guard = release.find((l) => l.Update?.TableName === "tasks").Update;
   assert.match(guard.ConditionExpression, /:reserved/);
@@ -816,6 +829,92 @@ test("W4: a stamped learner past their cap falls through to the wallet", async (
   assert.equal(JSON.parse(res.body).fundedBy, "wallet");
 });
 
+// ---- the compensating release: recorded figure, no minting ------------------
+// The debit computes the charge ONCE and records it on the task row as
+// creditsCharged. The release must refund THAT figure, read back off the row —
+// exactly as reconcile.mjs already does — because re-deriving from cost
+// diverges the moment the credit conversion changes between debit and release,
+// and it diverges in the OVERCHARGING direction (rule 7).
+
+// Derived in-test from the public constants (the $0.01 peg + IQM list rates) so
+// a future conversion factor flows through these expectations instead of
+// forcing pinned integers here.
+const RUN_CREDITS = creditsForMicros(costMicros(1000), 1);
+
+/** A committed wallet-funded task row, as the reservation Put writes it. */
+const walletTaskRow = (credits) => ({
+  idempotencyKey: { S: "abcd-1234-efgh" },
+  userId: { S: "u1" },
+  device: { S: DEVICE },
+  shots: { N: "1000" },
+  estMicros: { N: String(costMicros(1000)) },
+  status: { S: "RESERVED" },
+  createdAt: { N: String(NOW) },
+  fundedBy: { S: "wallet" },
+  creditsCharged: { N: String(credits) },
+});
+
+test("the release refunds the creditsCharged RECORDED on the task row, never a re-derivation", async () => {
+  // A task row whose recorded charge DELIBERATELY differs from what re-deriving
+  // from cost would produce (999 is fictional test data, not a price, and not
+  // derivable from any rate): if the release re-derives, it refunds
+  // creditsForMicros(cost) instead and this reddens.
+  const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
+  const ddb = stubDdb({ ledgerUser: SPENT_UP, existingTask: walletTaskRow(999) });
+  const res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
+  assert.equal(res.statusCode, 502);
+  const txs = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand");
+  assert.equal(txs.length, 2, "reservation + compensating release");
+  const refund = txs[1].input.TransactItems[0].Update;
+  assert.equal(refund.TableName, "wallet");
+  assert.equal(refund.ExpressionAttributeValues[":pos"].N, "999", "refund the RECORDED figure");
+});
+
+test("a release against a MISSING wallet row mints nothing: conditional, logged loudly, never thrown", async () => {
+  // Rule 11: a refund must never CREATE a wallet row — an unconditional ADD
+  // against a missing key materializes a row holding credits nobody paid for.
+  // The refund leg therefore carries attribute_exists(pk); when it fails, the
+  // money owed the learner is logged loudly (the log line is the alarm hook)
+  // and the 502 still returns without an unhandled throw.
+  const boom = Object.assign(new Error("device offline"), { name: "DeviceOfflineException" });
+  const releaseCancel = canceled([
+    { Code: "ConditionalCheckFailed" }, // leg 0: the wallet refund — row missing
+    { Code: "None" },
+    { Code: "None" },
+  ]);
+  const ddb = stubDdb({
+    ledgerUser: SPENT_UP,
+    existingTask: walletTaskRow(RUN_CREDITS),
+    transact: [{}, releaseCancel], // reservation commits; the release cancels
+  });
+  const errors = [];
+  const original = console.error;
+  console.error = (...a) =>
+    errors.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  let res;
+  try {
+    res = await walletCore(ddb, stubBraket(undefined, boom))(submitEvent(goodClaims, goodBody));
+  } finally {
+    console.error = original;
+  }
+  assert.equal(res.statusCode, 502);
+  const release = ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand")[1].input
+    .TransactItems;
+  assert.match(
+    release[0].Update.ConditionExpression ?? "",
+    /attribute_exists\(pk\)/,
+    "the refund leg must refuse to mint a missing wallet row",
+  );
+  assert.ok(
+    errors.some((l) => l.includes("qpu-refund-wallet-row-missing")),
+    "money owed a learner must be logged loudly",
+  );
+  assert.ok(
+    !errors.some((l) => l.includes("qpu-release-failed")),
+    "the missing-row case is handled, not rethrown into the generic release-failure log",
+  );
+});
+
 test("W5: no NEW cap is ever stamped onto a ledger row", async () => {
   // The if_not_exists stamp is what created the grandfathered allowances. With
   // the programme withdrawn it must never write a non-zero cap again.
@@ -826,4 +925,135 @@ test("W5: no NEW cap is ever stamped onto a ledger row", async () => {
     // If the stamp survives it must stamp ZERO, so a new row grants nothing.
     assert.match(src, /":cap": \{ N: String\(LIFETIME_CAP_MICROS\) \}/);
   }
+});
+
+// ---- the injected rate factor ----------------------------------------------
+// The factor that turns true AWS cost into a charged credit price is read from
+// DEPLOYED CONFIGURATION and injected by index.mjs — its value never appears in
+// this repository (rule 6). Factors here (1, 3) are FICTIONAL test data.
+// What stays TRUE-COST on purpose, factor or no factor: the allowance leg, the
+// DAY# day-cap leg, estMicros/actualMicros, and the grandfathered spentMicros
+// ledger — those denominate the rule-16 spend fences in real Braket dollars.
+
+test("creditsForMicros scales by the injected factor, ceiling AFTER scaling", () => {
+  assert.equal(creditsForMicros(1_750_000, 3), Math.ceil((1_750_000 * 3) / MICROS_PER_CREDIT));
+  // Fractional factor exposes ceil-after-scale (ceil first would round twice).
+  assert.equal(creditsForMicros(445_000, 1.5), Math.ceil((445_000 * 1.5) / MICROS_PER_CREDIT));
+  assert.ok(creditsForMicros(1_750_000, 3) > creditsForMicros(1_750_000, 1));
+});
+
+test("creditsForMicros REQUIRES a factor — absent or garbled throws, never raw cost", () => {
+  for (const bad of [undefined, null, 0, -1, NaN, Infinity, "2"]) {
+    assert.throws(() => creditsForMicros(1_000, bad), /rate factor/, `factor ${String(bad)}`);
+  }
+});
+
+test("a wallet table without a usable factor is metering OFF: refuse — never raw cost, never a free run", async () => {
+  // Rule 5: raw cost is a rate that differs from every other surface. Rule 7:
+  // refusal charges nothing. So a missing/garbled factor must land in exactly
+  // the no-wallet branch: 402 over-lifetime-budget, no transaction attempted.
+  for (const badFactor of [undefined, NaN, 0, -1]) {
+    const ddb = stubDdb({ ledgerUser: SPENT_UP });
+    const braket = stubBraket();
+    const errors = [];
+    const original = console.error;
+    console.error = (...a) => errors.push(a.join(" "));
+    let res;
+    try {
+      res = await createHandlerCore({
+        ddb,
+        braket,
+        ledgerTable: "ledger",
+        tasksTable: "tasks",
+        walletTable: "wallet",
+        rateFactor: badFactor,
+        resultsBucket: "amazon-braket-eu-north-1-x",
+        now: () => NOW,
+      })(submitEvent(goodClaims, goodBody));
+    } finally {
+      console.error = original;
+    }
+    assert.equal(res.statusCode, 402, `factor ${String(badFactor)}: must refuse`);
+    assert.equal(JSON.parse(res.body).error, "over-lifetime-budget");
+    assert.ok(
+      !ddb.calls.some((c) => c.name === "TransactWriteItemsCommand"),
+      `factor ${String(badFactor)}: no reservation may be attempted`
+    );
+    assert.equal(braket.calls.length, 0, `factor ${String(badFactor)}: no Braket call`);
+    assert.ok(
+      errors.some((l) => l.includes(RATE_CARD_INVALID)),
+      `factor ${String(badFactor)}: the misconfiguration must be alarmable`
+    );
+  }
+});
+
+test("the factor scales the debit, the recorded charge, and the quoted price together", async () => {
+  const run = async (factor) => {
+    const ddb = stubDdb({ ledgerUser: SPENT_UP });
+    const braket = stubBraket();
+    const res = await createHandlerCore({
+      ddb,
+      braket,
+      ledgerTable: "ledger",
+      tasksTable: "tasks",
+      walletTable: "wallet",
+      rateFactor: factor,
+      resultsBucket: "amazon-braket-eu-north-1-x",
+      now: () => NOW,
+    })(submitEvent(goodClaims, goodBody));
+    const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
+    return { res, walletLeg: tx[0].Update, dayLeg: tx[1].Update, taskPut: tx[2].Put.Item };
+  };
+
+  for (const factor of [1, 3]) {
+    const expected = creditsForMicros(costMicros(1000), factor);
+    const { res, walletLeg, dayLeg, taskPut } = await run(factor);
+    // One figure, three homes: the atomic debit, the row's recorded charge
+    // (what any refund returns), and the price quoted back to the learner.
+    assert.equal(walletLeg.ExpressionAttributeValues[":neg"].N, String(-expected), `debit @${factor}`);
+    assert.equal(walletLeg.ExpressionAttributeValues[":need"].N, String(expected), `floor @${factor}`);
+    assert.equal(taskPut.creditsCharged.N, String(expected), `recorded @${factor}`);
+    assert.equal(JSON.parse(res.body).creditsCharged, expected, `quoted @${factor}`);
+    // The true-cost fences must NOT scale (rule 16): estMicros AND both sides
+    // of the DAY# day-cap leg stay raw micro-dollars at every factor. These
+    // bind the fence — a factor leaking into the day cap would let a pricing
+    // change move the account-level spend brake, invisibly.
+    assert.equal(taskPut.estMicros.N, String(costMicros(1000)), `estMicros must stay true-cost @${factor}`);
+    assert.equal(
+      dayLeg.ExpressionAttributeValues[":cost"].N,
+      String(costMicros(1000)),
+      `DAY# debit must stay true-cost @${factor}`,
+    );
+    assert.equal(
+      dayLeg.ExpressionAttributeValues[":dayMinusCost"].N,
+      String(DAILY_CAP_MICROS - costMicros(1000)),
+      `DAY# threshold must stay true-cost @${factor}`,
+    );
+  }
+
+  // The 402 shortfall quote must ride the SAME factored figure as the debit —
+  // quoting raw cost would both understate the shortfall and disclose the raw
+  // basis to the client one division away from the charged price.
+  {
+    const ddb402 = stubDdb({ ledgerUser: SPENT_UP, transact: canceled(R(0)) });
+    const res402 = await createHandlerCore({
+      ddb: ddb402,
+      braket: stubBraket(),
+      ledgerTable: "ledger",
+      tasksTable: "tasks",
+      walletTable: "wallet",
+      rateFactor: 3,
+      resultsBucket: "amazon-braket-eu-north-1-x",
+      now: () => NOW,
+    })(submitEvent(goodClaims, goodBody));
+    assert.equal(res402.statusCode, 402);
+    assert.equal(
+      JSON.parse(res402.body).creditsNeeded,
+      creditsForMicros(costMicros(1000), 3),
+      "the insufficient-credits quote must be the factored figure",
+    );
+  }
+  const at1 = creditsForMicros(costMicros(1000), 1);
+  const at3 = creditsForMicros(costMicros(1000), 3);
+  assert.ok(at3 > at1, "a factor above 1 must charge more credits for the same run");
 });

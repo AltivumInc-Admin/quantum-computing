@@ -283,6 +283,8 @@ import {
   INSUFFICIENT_CREDITS_MESSAGE,
   SIGN_IN_REQUIRED_MESSAGE,
   NOT_IN_PLAN_MESSAGE,
+  METERING_UNAVAILABLE_MESSAGE,
+  RATE_CARD_INVALID,
 } from "./index.mjs";
 import { MODEL_IDS, MODEL_LABELS, MAX_OUTPUT_TOKENS, creditsForUsage } from "./tutor-billing.mjs";
 
@@ -355,6 +357,7 @@ test("M1: a legacy request is byte-identical — no wallet, no verifier, no trai
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })({ body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) }, stream);
   assert.equal(stream.text(), "Hello"); // exactly today's bytes
   assert.equal(client.sent[0].model, MODEL_IDS["haiku-4-5"]); // the free-tier default
@@ -367,7 +370,7 @@ test("M2: a Pro caller on a paid model reserves, streams, settles, and gets the 
   // billing kernel rather than hardcoded, so a rate change cannot silently
   // turn this into the overshoot case (that case is M9's).
   const usage = { input_tokens: 200, output_tokens: 400 };
-  const actual = creditsForUsage("opus-5", usage);
+  const actual = creditsForUsage("opus-5", usage, { factor: 1 });
   const client = meteredClient(usage);
   const wallet = stubWallet({ tier: "pro", credits: 1_000 });
   const stream = makeStream();
@@ -376,6 +379,7 @@ test("M2: a Pro caller on a paid model reserves, streams, settles, and gets the 
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent(), stream);
 
   // the paid model was actually invoked (its inference profile, not the default)
@@ -412,7 +416,7 @@ test("M12: a metered debit leaves a durable trace of both the reserve and the se
   // Two lines make it a Logs Insights query. A reserve with no matching settle
   // is also how you find a stranded reservation, which nothing sweeps today.
   const usage = { input_tokens: 200, output_tokens: 400 };
-  const actual = creditsForUsage("opus-5", usage);
+  const actual = creditsForUsage("opus-5", usage, { factor: 1 });
   const wallet = stubWallet({ tier: "pro", credits: 1_000 });
   const lines = [];
   const original = console.log;
@@ -423,6 +427,7 @@ test("M12: a metered debit leaves a durable trace of both the reserve and the se
       corpus: FIXTURE_CORPUS,
       verifier: okVerifier,
       wallet,
+      rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
     })(paidEvent(), makeStream());
   } finally {
     console.log = original;
@@ -486,6 +491,7 @@ test("M3: insufficient credits refuses BEFORE any model call, with the exact mes
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent(), stream);
   assert.equal(client.sent.length, 0, "no paid generation without a committed reserve");
   assert.ok(stream.text().includes(TUTOR_ERROR_SENTINEL));
@@ -501,6 +507,7 @@ test("M4: a paid-model request without a valid token is refused, never silently 
     corpus: FIXTURE_CORPUS,
     verifier: badVerifier,
     wallet: stubWallet(),
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent(), stream);
   assert.equal(client.sent.length, 0);
   assert.ok(stream.text().includes(SIGN_IN_REQUIRED_MESSAGE));
@@ -512,6 +519,7 @@ test("M4: a paid-model request without a valid token is refused, never silently 
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet: stubWallet(),
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })({ body: paidEvent().body }, stream2);
   assert.ok(stream2.text().includes(SIGN_IN_REQUIRED_MESSAGE));
 });
@@ -527,6 +535,7 @@ test("M5: a tier explicitly asking for a model above it is refused, not substitu
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent({ model: "fable-5" }), stream);
   assert.equal(client.sent.length, 0);
   assert.ok(stream.text().includes(NOT_IN_PLAN_MESSAGE));
@@ -542,6 +551,7 @@ test("M6: haiku is free for a signed-in caller — answered, metered at zero, no
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent({ model: "haiku-4-5" }), stream);
   assert.equal(client.sent[0].model, MODEL_IDS["haiku-4-5"], "haiku answers the free request");
   assert.equal(wallet.calls.debits.length, 0, "the funnel model never debits");
@@ -566,6 +576,7 @@ test("M7: a mid-stream failure settles at zero — the reserve is fully refunded
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent(), stream);
   assert.ok(stream.text().includes(TUTOR_ERROR_SENTINEL));
   assert.equal(wallet.calls.debits.length, 1);
@@ -599,6 +610,7 @@ test("M9: the settle never charges more than the reserve, even if usage overshoo
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent(), stream);
   const reserved = wallet.calls.debits[0].n;
   // charged is capped at the reserve, so there is nothing to refund — and a
@@ -631,9 +643,52 @@ test("M10: a learner owing clawback credits cannot spend on a paid model", async
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet,
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent(), stream);
   assert.equal(client.sent.length, 0, "no paid generation while a debt stands");
   assert.ok(stream.text().includes(INSUFFICIENT_CREDITS_MESSAGE));
+});
+
+// ---- the REAL wallet wiring (buildWallet) -----------------------------------
+// The stub wallets above prove the handler's sequencing; this proves the
+// DynamoDB shape the production wallet actually sends. The refund (credit) leg
+// is the one that can MINT: an unconditional ADD against a missing WALLET# key
+// materializes a row holding credits nobody paid for (rule 11).
+
+import { buildWallet } from "./index.mjs";
+
+test("N1: buildWallet.credit never mints a missing wallet row — conditional, logged loudly, not thrown", async () => {
+  const sent = [];
+  const ddb = {
+    send: async (cmd) => {
+      sent.push(cmd.input);
+      throw Object.assign(new Error("The conditional request failed"), {
+        name: "ConditionalCheckFailedException",
+      });
+    },
+  };
+  const wallet = buildWallet({ table: "wallet", ddb });
+  const errors = [];
+  const original = console.error;
+  console.error = (...a) => errors.push(a.join(" "));
+  try {
+    // Must NOT throw: this is the refund path — the learner already lost the
+    // generation, and a throw here would fail a response that already streamed.
+    await wallet.credit("user-1", 40);
+  } finally {
+    console.error = original;
+  }
+  assert.match(
+    sent[0].ConditionExpression ?? "",
+    /attribute_exists\(pk\)/,
+    "a refund must never create the wallet row",
+  );
+  assert.match(sent[0].UpdateExpression, /ADD credits :pos/);
+  assert.equal(sent[0].ExpressionAttributeValues[":pos"].N, "40");
+  assert.ok(
+    errors.some((l) => l.includes("tutorRefundNoWalletRow")),
+    "money owed a learner must alarm — the log line is the metric-filter hook",
+  );
 });
 
 // ---- the request shape itself ---------------------------------------------
@@ -679,6 +734,7 @@ test("W3: fable-5 is sent no thinking config and a ceiling that fits its thinkin
     corpus: FIXTURE_CORPUS,
     verifier: okVerifier,
     wallet: stubWallet({ tier: "pro" }),
+    rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
   })(paidEvent({ model: "fable-5" }), makeStream());
 
   const sent = client.sent[0];
@@ -703,6 +759,7 @@ test("W4: the reserve is sized against the model's OWN ceiling, not a shared con
       corpus: FIXTURE_CORPUS,
       verifier: okVerifier,
       wallet,
+      rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
     })(paidEvent({ model }), makeStream());
     return { reserved: wallet.calls.debits[0].n, sentCeiling: client.sent[0].max_tokens };
   };
@@ -716,7 +773,7 @@ test("W4: the reserve is sized against the model's OWN ceiling, not a shared con
       input_tokens: 0,
       output_tokens: sentCeiling,
       cache_creation_input_tokens: 0,
-    });
+    }, { factor: 1 });
     assert.ok(
       reserved >= worstRealCost,
       `${model}: reserved ${reserved} < ${worstRealCost}, the cost of output alone at the ceiling`
@@ -752,6 +809,7 @@ test("W5: a paid generation whose usage cannot be read alarms instead of going q
       corpus: FIXTURE_CORPUS,
       verifier: okVerifier,
       wallet,
+      rateFactor: 1, // FICTIONAL: isolates flow under test; scaling is M15's job
     })(paidEvent(), makeStream());
   } finally {
     console.error = original;
@@ -763,4 +821,94 @@ test("W5: a paid generation whose usage cannot be read alarms instead of going q
   );
   // And it still fails toward undercharging: the whole reserve comes back.
   assert.equal(wallet.calls.credits[0].n, wallet.calls.debits[0].n);
+});
+
+// ---- the injected rate factor at the handler boundary ----------------------
+// The factor's VALUE lives in deployed configuration only (rule 6); these tests
+// use FICTIONAL factors (1, 3) to exercise the wiring. The invariant under
+// test: a wallet without a usable factor is NOT metering-at-raw-cost — it is
+// metering OFF, taking the same refusal path as no wallet at all (rule 5: raw
+// cost is a rate that differs from every other surface; rule 7: refusal
+// charges nothing, which is the strongest form of failing toward undercharging).
+
+test("M14: a wallet without a usable rate factor refuses paid models — never meters at raw cost", async () => {
+  for (const badFactor of [undefined, NaN, 0, -1, Infinity]) {
+    const client = meteredClient();
+    const wallet = stubWallet({ tier: "pro" });
+    const stream = makeStream();
+    const errors = [];
+    const original = console.error;
+    console.error = (...a) => errors.push(a.join(" "));
+    try {
+      await createHandlerCore({
+        client,
+        corpus: FIXTURE_CORPUS,
+        verifier: okVerifier,
+        wallet,
+        rateFactor: badFactor,
+      })(paidEvent(), stream);
+    } finally {
+      console.error = original;
+    }
+    assert.equal(client.sent.length, 0, `factor ${String(badFactor)}: no paid generation`);
+    assert.ok(
+      stream.text().includes(METERING_UNAVAILABLE_MESSAGE),
+      `factor ${String(badFactor)}: must refuse with the metering-unavailable message`
+    );
+    assert.equal(
+      wallet.calls.reads.length + wallet.calls.debits.length,
+      0,
+      `factor ${String(badFactor)}: the wallet must not even be read`
+    );
+    assert.ok(
+      errors.some((l) => l.includes(RATE_CARD_INVALID)),
+      `factor ${String(badFactor)}: the misconfiguration must be said out loud (alarmable)`
+    );
+  }
+});
+
+test("M15: the factor scales the reserve and the settle together, through one expression", async () => {
+  // Same request, factors 1 and 3 (both fictional). The debit, the charge and
+  // the refund must all move together — a factor applied to one leg but not
+  // the other silently under-bills or mints credits.
+  const usage = { input_tokens: 200, output_tokens: 400 };
+  const run = async (factor) => {
+    const wallet = stubWallet({ tier: "pro", credits: 100_000 });
+    const stream = makeStream();
+    await createHandlerCore({
+      client: meteredClient(usage),
+      corpus: FIXTURE_CORPUS,
+      verifier: okVerifier,
+      wallet,
+      rateFactor: factor,
+    })(paidEvent(), stream);
+    return wallet;
+  };
+  const at1 = await run(1);
+  const at3 = await run(3);
+
+  const reserved1 = at1.calls.debits[0].n;
+  const reserved3 = at3.calls.debits[0].n;
+  assert.ok(reserved3 > reserved1, "the reserve must scale with the factor");
+
+  const charged3 = reserved3 - at3.calls.credits[0].n;
+  assert.equal(
+    charged3,
+    creditsForUsage("opus-5", usage, { factor: 3 }),
+    "the settle must charge through the same factored expression as the kernel"
+  );
+  const charged1 = reserved1 - at1.calls.credits[0].n;
+  assert.equal(charged1, creditsForUsage("opus-5", usage, { factor: 1 }));
+  assert.ok(charged3 > charged1, "a factor above 1 charges more for identical usage");
+});
+
+test("M16: the free path neither needs nor sees the factor — byte-identical without one", async () => {
+  const client = okClient();
+  const stream = makeStream();
+  await createHandlerCore({ client, corpus: FIXTURE_CORPUS })(
+    { body: JSON.stringify({ slug: "00-prereqs", question: "hi" }) },
+    stream
+  );
+  assert.equal(stream.text(), "Hello");
+  assert.equal(client.sent[0].model, MODEL_IDS["haiku-4-5"]);
 });
