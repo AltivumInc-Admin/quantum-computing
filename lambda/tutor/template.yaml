@@ -365,6 +365,106 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # ---- reserve/settle pairing (the stranded-reservation sweep) --------------
+  # Every metered generation logs tutorReserve at debit and tutorSettle at
+  # settle. A reserve with no settle in the same hour means the process died
+  # between the two — learner money silently held, the exact gap index.mjs's
+  # own comment says nothing sweeps. A pair split across an hour boundary can
+  # false-fire once; the alarm email says how to check.
+  TutorReserveMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorReserve"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorReserve
+          MetricValue: "1"
+          Unit: Count
+
+  TutorSettleMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorSettle"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorSettle
+          MetricValue: "1"
+          Unit: Count
+
+  TutorOrphanReserveAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-orphan-reserve
+      AlarmDescription: >-
+        An hour ended with more tutorReserve lines than tutorSettle lines: a
+        debit was taken and never settled or refunded — usually a Lambda
+        timeout or OOM between the two. Find the tutorReserve entries without
+        a matching tutorSettle (same sub) in /aws/lambda/quantum-tutor and
+        refund manually. A reserve/settle pair split across the hour boundary
+        false-fires once; verify before refunding.
+      Metrics:
+        - Id: reserves
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorReserve
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: settles
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorSettle
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: orphans
+          # FILL: a missing settle series must read as 0, not as "insufficient
+          # data" — notBreaching would swallow exactly the real orphan case.
+          Expression: "FILL(reserves, 0) - FILL(settles, 0)"
+          Label: reserves without a settle
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # ---- deployed-but-misconfigured metering -----------------------------------
+  TutorRateCardMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"rate card missing or invalid"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorRateCardInvalid
+          MetricValue: "1"
+          Unit: Count
+
+  TutorRateCardAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-rate-card-invalid
+      AlarmDescription: >-
+        A wallet table is configured but the RATE_CARD env var is absent or
+        unusable, so every paid-model request is refusing while the deploy
+        looks configured. Check the RateCardSecret parameter and the secret's
+        {"factor": "..."} shape, then redeploy; scripts/check-rate-parity.mjs
+        shows both surfaces' state without printing the value.
+      Namespace: QuantumTutor
+      MetricName: TutorRateCardInvalid
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   HighInvocationsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

@@ -220,3 +220,53 @@ test("the rate factor rides deployed configuration, and its default is metering 
     assert.ok(!arn.includes("RateCardSecret"), `the function role must not read the rate secret: ${arn}`);
   }
 });
+
+test("a reserve with no matching settle is alarmable — filters + the difference alarm", () => {
+  // index.mjs:~310's own comment says a reserve with no matching settle is how
+  // you find a stranded reservation, "nothing sweeps those today". These three
+  // resources are the sweep: count both log lines, alarm when an hour ends
+  // with more reserves than settles (a process death between debit and refund
+  // — real learner money silently held).
+  for (const [id, phrase, metric] of [
+    ["TutorReserveMetricFilter", "tutorReserve", "TutorReserve"],
+    ["TutorSettleMetricFilter", "tutorSettle", "TutorSettle"],
+  ]) {
+    const b = body(id);
+    assert.ok(b, `${id} missing`);
+    assert.match(b, /LogGroupName: !Ref TutorLogGroup/);
+    assert.match(b, new RegExp(`FilterPattern: '"${phrase}"'`), `${id}: literal-term pattern`);
+    assert.match(b, new RegExp(`MetricName: ${metric}\\b`));
+    assert.match(b, /MetricNamespace: QuantumTutor/);
+    // Same drift-proofing as the tutorError filter: the term must literally
+    // appear in index.mjs's emission, or an edit disconnects alarm from code.
+    const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+    assert.ok(src.includes(phrase), `index.mjs no longer logs "${phrase}"`);
+  }
+  const a = body("TutorOrphanReserveAlarm");
+  assert.ok(a, "TutorOrphanReserveAlarm missing");
+  // Metric math over hour buckets; FILL so a missing settle series cannot
+  // turn a real orphan into "insufficient data" under notBreaching.
+  assert.match(a, /Expression: "FILL\(reserves, ?0\) - FILL\(settles, ?0\)"/);
+  assert.match(a, /Period: 3600/);
+  assert.match(a, /Threshold: 0\b/);
+  assert.match(a, /ComparisonOperator: GreaterThanThreshold/);
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("a wallet deployed without a usable rate card is alarmable, not just greppable", () => {
+  // The handler logs RATE_CARD_INVALID once per cold start; without a filter
+  // that promise of "alarmable" is only a grep. The pattern is the shared
+  // phrase inside the pinned constant, so the assertion below ties it to code.
+  const b = body("TutorRateCardMetricFilter");
+  assert.ok(b, "TutorRateCardMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref TutorLogGroup/);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "rate card missing or invalid");
+  const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+  assert.ok(src.includes(phrase), "index.mjs no longer logs the rate-card phrase");
+  const a = body("TutorRateCardAlarm");
+  assert.ok(a, "TutorRateCardAlarm missing");
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});

@@ -202,13 +202,21 @@ Two facts from it that change how you write code, and are worth carrying in your
   Still open: wire the funding path (wallet metering) before advertising hardware again.
 - ~~Correct `RATES` to true Bedrock cost~~ — **done 2026-08-17**, by moving the tutor off
   Bedrock entirely. Anthropic's published rates are the cost basis on that provider, so
-  `RATES` is now verified rather than a documented placeholder. Still outstanding: read
-  the shared markup from **deployed configuration** (an env var, like `SECRET_ID`) in both
-  metering paths — never a committed constant, per rule 6. One value, injected once,
-  consumed by both.
-- Move QPU debit rates onto the same markup. Until this lands, both stacks' `WalletTableName`
-  stays `""` on purpose — enabling the wallet at raw cost would introduce a metered surface at
-  a markup that differs from the others, which rule 5 forbids.
+  `RATES` is now verified rather than a documented placeholder.
+- ~~Read the shared markup from deployed configuration in both metering paths~~ — **done
+  2026-08-17 (mechanism), metering still OFF.** Both stacks read the SAME Secrets Manager
+  secret through the SAME env key (`RATE_CARD`, parameter `RateCardSecret`, default `""`),
+  resolved by CloudFormation at deploy time; both kernels REQUIRE the injected factor and
+  throw rather than default to raw cost (raw cost is itself a divergent rate — rule 5).
+  Absent/garbled config = refusal, alarmed by `quantum-*-rate-card-invalid`. This also
+  closes the "QPU debits raw cost" item: the QPU converts through the same factor when it
+  converts at all. Lockstep is guarded three ways: `web/__tests__/infra/rate-card-parity`
+  (templates + handlers), `scripts/check-rate-parity.mjs` in `make drift` (deployed env,
+  value-blind — prints hashes, never the value), and the reconciler deliberately carries
+  no `RATE_CARD` (it refunds the `creditsCharged` recorded on the task row, never a
+  re-derivation). **Remaining is the cutover itself** (create the secret, set
+  `RateCardSecret` + `WalletTableName` on both stacks in one deploy, re-run parity) —
+  blocked behind rule 14 (buying must work first) and the tier gate below.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
   tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs`).
 - **Create the `quantum-tutor` secret and deploy the tutor.** The handler now reads its

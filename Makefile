@@ -42,6 +42,10 @@ drift:
 	@# closed PR plus an UPDATE_COMPLETE stack can all be true while production runs
 	@# week-old code. Needs AWS read access; exits non-zero on drift.
 	node scripts/check-lambda-drift.mjs
+	@# And is the DEPLOYED CONFIGURATION consistent? Code parity says nothing about the
+	@# rate factor the two pricing functions were configured with (rule 5); this compares
+	@# them value-blind (hashes only, rule 6) and fails on divergence.
+	node scripts/check-rate-parity.mjs
 
 deploy-infra:
 	bash infra/scripts/deploy-infra.sh

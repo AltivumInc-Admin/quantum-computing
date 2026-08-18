@@ -576,6 +576,37 @@ Resources:
           MetricValue: "1"
           Unit: Count
 
+  QpuRateCardMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref QpuLogGroup
+      FilterPattern: '"rate card missing or invalid"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: QpuRateCardInvalid
+          MetricValue: "1"
+          Unit: Count
+
+  QpuRateCardAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-rate-card-invalid
+      AlarmDescription: >-
+        WalletTableName is set but RATE_CARD is absent or unusable, so every
+        over-allowance submit is 402ing while the deploy looks configured.
+        Check the RateCardSecret parameter and the secret's {"factor": "..."}
+        shape, then redeploy; scripts/check-rate-parity.mjs shows both
+        surfaces' state without printing the value.
+      Namespace: QuantumQpu
+      MetricName: QpuRateCardInvalid
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   OrphanedRowAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

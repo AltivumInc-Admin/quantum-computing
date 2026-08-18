@@ -186,3 +186,22 @@ test("the rate factor rides deployed configuration, on the ONE function that pri
   assert.ok(!/RateCardSecret/.test(body("QpuFunction").match(/Policies:[\s\S]*/)?.[0] ?? ""),
     "the submit role must not read the rate secret at runtime");
 });
+
+test("a wallet deployed without a usable rate card is alarmable, not just greppable", () => {
+  // qpu-core logs RATE_CARD_INVALID once per cold start when WalletTableName
+  // is set but the factor is absent/garbled — a state in which every
+  // over-allowance submit 402s while the deploy LOOKS configured. Filter +
+  // alarm make that visible; the phrase is pinned to the packaged source.
+  const b = body("QpuRateCardMetricFilter");
+  assert.ok(b, "QpuRateCardMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref QpuLogGroup/);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "rate card missing or invalid");
+  const src = readFileSync(new URL("./qpu-core.mjs", import.meta.url), "utf8");
+  assert.ok(src.includes(phrase), "qpu-core.mjs no longer logs the rate-card phrase");
+  const a = body("QpuRateCardAlarm");
+  assert.ok(a, "QpuRateCardAlarm missing");
+  assert.match(a, /Namespace: QuantumQpu/);
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
