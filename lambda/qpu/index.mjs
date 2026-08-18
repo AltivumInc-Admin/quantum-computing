@@ -12,6 +12,12 @@ const core = createHandlerCore({
   tasksTable: process.env.TASKS_TABLE,
   // Unset = credit metering disabled (over-allowance runs 402 as before).
   walletTable: process.env.WALLET_TABLE || undefined,
+  // RATE_CARD is injected at deploy time from Secrets Manager (template.yaml
+  // resolves it behind an !If), so the value never exists in this repository.
+  // Number("")/Number(undefined) are unusable, which the core gates as
+  // metering OFF — refusal, never raw cost. Same env key as the tutor, on
+  // purpose: one shared factor for every metered surface (rule 5).
+  rateFactor: Number(process.env.RATE_CARD),
   resultsBucket: process.env.RESULTS_BUCKET,
   edgeSecret: process.env.EDGE_SECRET || undefined,
 });

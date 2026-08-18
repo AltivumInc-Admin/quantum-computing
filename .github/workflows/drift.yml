@@ -69,6 +69,14 @@ jobs:
         if: steps.cfg.outputs.ready == 'true'
         run: node scripts/check-lambda-drift.mjs
 
+      - name: Compare the deployed rate configuration across pricing functions
+        # Runs even when code drift failed above (mid-cutover, code drift is the
+        # normal state — exactly when rate parity matters most). Value-blind by
+        # construction: the script prints presence and MATCH/MISMATCH, never the
+        # value and never a digest of it, so it is safe in a public Actions log.
+        if: always() && steps.cfg.outputs.ready == 'true'
+        run: node scripts/check-rate-parity.mjs
+
       - name: Explain a failure
         if: failure() && steps.cfg.outputs.ready == 'true'
         run: |

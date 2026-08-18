@@ -587,7 +587,7 @@ export const es: TranslationDict = {
     masteryBlurb: "Habilidades mantenidas en retención comprobada por repetición espaciada.",
     consistencyBlurb: "Semanas de constancia, sin interrupciones.",
     hardwareBlurb:
-      "Circuitos ejecutados en una computadora cuántica real. La plataforma paga a Amazon Braket por cada una de estas ejecuciones.",
+      "Circuitos ejecutados en una computadora cuántica real, a través de Amazon Braket.",
     earned: "Obtenida",
     locked: "Bloqueada",
     outOfReach: "Fuera de alcance",
@@ -604,10 +604,10 @@ export const es: TranslationDict = {
       other: "{{n}} disparos",
     },
     recordDevice: "en IQM Garnet.",
-    allowanceLead: "Las tres caben en el presupuesto patrocinado:",
+    allowanceLead: "Obtener las tres requiere:",
     allowancePlan: "{{runs}} ejecuciones con un total de {{shots}} disparos — {{cost}}",
     allowanceTail:
-      "El presupuesto es único y no se recarga, así que cómo lo gastas decide cuáles de estas puedes obtener todavía.",
+      "Si tu cuenta tiene un presupuesto de hardware, es único y no se recarga — cómo lo gastas decide cuáles de estas puedes obtener todavía.",
     runOnGarnet: "Ejecutar en IQM Garnet",
     unverifiedNote:
       "No se pudo verificar tu registro de hardware — estas medallas aparecen como sin verificar, no bloqueadas. Recarga para reintentar.",
@@ -693,7 +693,7 @@ export const es: TranslationDict = {
     // Futuro a propósito — ver la nota en en.ts headlineAfter. Nada se mide todavía.
     headlineAfter: ". El metal se medirá.",
     heroBody:
-      "Todo el currículo, el simulador y el playground son gratuitos con una cuenta gratis — para siempre. Una billetera de créditos medirá lo que de verdad cuesta dinero: la tutoría de IA y el cómputo en la nube de pago — hardware cuántico real y los simuladores gestionados de la tabla de tarifas. Nada de eso se mide todavía: hoy el tutor es gratis para probar y las ejecuciones de hardware del currículo están patrocinadas por la plataforma. Un crédito es un centavo, siempre.",
+      "Todo el currículo, el simulador y el playground son gratuitos con una cuenta gratis — para siempre. Una billetera de créditos medirá lo que de verdad cuesta dinero: la tutoría de IA y el cómputo en la nube de pago — hardware cuántico real y los simuladores gestionados de la tabla de tarifas. Nada de eso se mide todavía: hoy el tutor es gratis para probar, y las ejecuciones de hardware no están disponibles por ahora. Un crédito es un centavo, siempre.",
     creditPeg: "1 crédito = $0.01",
     topUpFrom: "Recarga desde {{amount}}",
     principleLearning: "Aprender es el producto",
@@ -722,10 +722,10 @@ export const es: TranslationDict = {
     signUpSoon: "Registro próximamente",
     launchPricing: "Antes de comprar:",
     launchPricingBody:
-      " las billeteras ya están activas, pero todavía nada las descuenta. El tutor en la lección es gratis para probar y las ejecuciones de hardware del currículo siguen patrocinadas por la plataforma, así que un saldo que compres hoy no compra nada hoy. Los créditos no expiran y empiezan a medirse cuando se lance la facturación del tutor y del hardware.",
+      " las billeteras ya están activas, pero todavía nada las descuenta. El tutor en la lección es gratis para probar y las ejecuciones de hardware no están disponibles por ahora, así que un saldo que compres hoy no compra nada hoy. Los créditos no expiran y empiezan a medirse cuando se lance la facturación del tutor y del hardware.",
     earlyAccess: "Acceso anticipado:",
     earlyAccessBody:
-      " la facturación aún no se ha lanzado — estos son precios de lanzamiento. Hoy el tutor es gratis para probar, y las ejecuciones de hardware dentro del currículo están patrocinadas. Cuando las billeteras estén activas, las financiares tú con una recarga o un plan.",
+      " la facturación aún no se ha lanzado — estos son precios de lanzamiento. Hoy el tutor es gratis para probar, y las ejecuciones de hardware no están disponibles por ahora. Cuando las billeteras estén activas, las financiarás tú con una recarga o un plan.",
     estimatorHeading: "Conoce el número antes de ejecutar",
     estimatorIntro:
       "Ninguna plataforma cuántica debería sorprenderte con una factura. Calcula aquí cualquier backend publicado y cualquier hábito de tutor. Antes de una ejecución real de hardware, el espacio de trabajo te muestra su costo y te hace aprobarlo.",
@@ -750,13 +750,13 @@ export const es: TranslationDict = {
       "Sí. El currículo completo, el simulador del navegador, el playground, el glosario y el repaso de repetición espaciada son gratis con una cuenta gratuita — correo o Google, sin tarjeta de crédito. Ese es el producto, no una prueba.",
     faqCreditsQ: "¿Qué compran los créditos?",
     faqCreditsA:
-      "Nada todavía — esa es la respuesta honesta. Hoy ninguna parte de la plataforma descuenta tu billetera: el tutor de IA es gratis para probar y las ejecuciones de hardware del currículo están patrocinadas por la plataforma. Cuando se lance la medición, los créditos comprarán exactamente dos cosas: preguntas al tutor de IA y cómputo cuántico real (ejecuciones en QPU y simuladores en la nube gestionados). Un crédito equivale a un centavo. Las ejecuciones de hardware ya te muestran el costo exacto y te hacen aprobarlo antes de que algo se ejecute.",
+      "Nada todavía — esa es la respuesta honesta. Hoy ninguna parte de la plataforma descuenta tu billetera: el tutor de IA es gratis para probar, y las ejecuciones de hardware no están disponibles por ahora. Cuando se lance la medición, los créditos comprarán exactamente dos cosas: preguntas al tutor de IA y cómputo cuántico real (ejecuciones en QPU y simuladores en la nube gestionados). Un crédito equivale a un centavo. El espacio de trabajo te muestra el costo exacto de cualquier ejecución de hardware y te hace aprobarlo antes de que algo se ejecute.",
     faqExpireQ: "¿Expiran los créditos?",
     faqExpireA:
       "Los créditos comprados no expiran. Los créditos mensuales de Plus y Pro se acumulan mientras la suscripción esté activa.",
     faqBackendsQ: "¿Por qué los backends cuestan tan distinto?",
     faqBackendsA:
-      "Porque las máquinas realmente cuestan distinto. Un disparo de iones atrapados en IonQ lista aproximadamente 180 veces un disparo superconductor en Rigetti. Publicamos la tarifa de cada backend para que el precio de la física nunca sea un misterio. Hoy todas las ejecuciones patrocinadas del currículo van a IQM Garnet; elegir tu propio backend llega con la medición de la billetera. Antes de que se ejecute una de esas corridas patrocinadas, el espacio de trabajo la cotiza en dólares de AWS desde su propia tabla y espera tu aprobación.",
+      "Porque las máquinas realmente cuestan distinto. Un disparo de iones atrapados en IonQ lista aproximadamente 180 veces un disparo superconductor en Rigetti. Publicamos la tarifa de cada backend para que el precio de la física nunca sea un misterio. Hoy solo IQM Garnet está conectado, y las ejecuciones de hardware no están disponibles por ahora; elegir tu propio backend llega con la medición de la billetera. Antes de que se ejecute cualquier corrida de hardware, el espacio de trabajo la cotiza en dólares de AWS desde su propia tabla y espera tu aprobación.",
     faqProviderQ: "¿Qué pasa cuando un proveedor cambia sus precios?",
     faqProviderA:
       "Las tarifas de hardware siguen las hojas de precios publicadas de los proveedores (actualmente la revisión de {{date}}). Nada en esta página se consulta al proveedor: estas tarifas en créditos están compiladas en el sitio, y la comprobación previa a una ejecución de hardware lee su propia tabla aparte de tarifas en dólares de AWS, también compilada. Un cambio de precio llega a cualquiera de las dos tablas solo con una nueva versión — que es lo que registra la fecha de revisión de la tabla de tarifas.",
@@ -765,7 +765,7 @@ export const es: TranslationDict = {
       "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de $5 a $500 — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran — y todavía nada los descuenta, así que un saldo de hoy es un saldo que espera a que se lance la medición.",
     faqWhenQ: "¿Cuándo puedo comprar créditos?",
     faqWhenA:
-      "La facturación se lanza pronto; los precios de esta página son de lanzamiento. Hasta entonces, el tutor es gratis para probar y las ejecuciones de hardware dentro del currículo están patrocinadas — crea tu cuenta gratis ahora para estar listo en cuanto las billeteras se activen.",
+      "La facturación se lanza pronto; los precios de esta página son de lanzamiento. Hasta entonces, el tutor es gratis para probar y las ejecuciones de hardware no están disponibles por ahora — crea tu cuenta gratis ahora para estar listo en cuanto las billeteras se activen.",
     ctaHeading: "Empieza a aprender hoy. La billetera puede esperar.",
     ctaBody:
       "Todo lo que necesitas para aprender computación cuántica ya es gratis — solo una cuenta gratuita. Correo o Google, sin tarjeta de crédito.",
@@ -784,7 +784,7 @@ export const es: TranslationDict = {
     presets: "Preajustes",
     priceHardware: "Precio de una ejecución de hardware",
     priceHardwareBody:
-      "Una proyección de la tarifa medida, no un cobro. Hoy solo IQM Garnet acepta envíos, y su comprobación previa cotiza esa ejecución patrocinada en dólares a la tarifa de lista de AWS — no la cifra en créditos que se muestra aquí. Nada se ejecuta hasta que apruebes el número que ves allí.",
+      "Una proyección de la tarifa medida, no un cobro. Las ejecuciones de hardware no están disponibles por ahora; antes de que cualquier ejecución se lleve a cabo, la comprobación previa del espacio de trabajo la cotiza en dólares a la tarifa de lista de AWS — no la cifra en créditos que se muestra aquí — y nada se ejecuta hasta que apruebes ese número.",
     shots: "Disparos",
     shotsValue: "{{n}} disparos",
     priceTutorMonth: "Precio de un mes de tutoría",
@@ -813,8 +813,7 @@ export const es: TranslationDict = {
     freeF1: "Simulación ilimitada en el navegador — los circuitos corren en tu máquina",
     freeF2: "Playground, glosario, repaso de repetición espaciada",
     freeF3: "Progreso y circuitos guardados sincronizados entre dispositivos",
-    freeF4:
-      "El tutor de IA es gratis para probar, y las ejecuciones de hardware del currículo están patrocinadas por la plataforma",
+    freeF4: "El tutor de IA es gratis para probar",
     plusTagline: "Créditos mensuales, incluidos en tu suscripción.",
     plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
     plusF0: "Todo lo de Gratis",
@@ -855,9 +854,9 @@ export const es: TranslationDict = {
     storePrefs:
       "tu preferencia de recordatorios por correo — desactivada salvo que la enciendas — y, si la activas, la fecha del último correo que te enviamos",
     storeHardware:
-      "si ejecutas un circuito en hardware cuántico real, un registro de esa ejecución (dispositivo, número de disparos, costo y un hash del circuito) para aplicar el presupuesto de hardware patrocinado",
+      "si ejecutas un circuito en hardware cuántico real, un registro de esa ejecución (dispositivo, número de disparos, costo y un hash del circuito) para aplicar los límites de gasto de hardware",
     storeTutor:
-      "Si le haces una pregunta al tutor de la lección, la pregunta y el contexto de la lección se envían a nuestro servicio de tutor (AWS Bedrock, us-east-2) para generar la respuesta.",
+      "Si le haces una pregunta al tutor de la lección, la pregunta y el contexto de la lección se envían a nuestro servicio de tutor (AWS, us-east-2), que los reenvía a Anthropic, el proveedor de IA, para generar la respuesta.",
     whatWeDont: "Qué no recopilamos",
     noAnalytics:
       "Sin analítica ni scripts de seguimiento — no existen en ningún lugar de este sitio.",

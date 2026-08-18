@@ -91,6 +91,20 @@ Parameters:
       the handler verifies the caller's ID token in-process against this
       pool's JWKS (aws-jwt-verify). Empty = paid models require sign-in and
       always refuse; the anonymous free path never authenticates at all.
+  RateCardSecret:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the Secrets Manager secret holding the rate factor that converts
+      provider cost into charged credits, as {"factor": "..."}. Empty (the
+      default) = the RATE_CARD env var is ABSENT and metering stays off: paid
+      models refuse, the free path is untouched. CloudFormation resolves the
+      value at deploy time with the DEPLOYER's credentials — it never passes
+      through a CLI argument or a samconfig, never lands in this repository
+      (rule 6), and the function's execution role gets NO grant on it. The QPU
+      stack reads the SAME secret through the SAME env key; every metered
+      surface must convert at one shared factor (rule 5) — check-rate-parity
+      proves the two deployed functions agree without printing the value.
   UserPoolClientId:
     Type: String
     Default: ""
@@ -99,6 +113,9 @@ Parameters:
 Conditions:
   HasWalletTable: !Not [!Equals [!Ref WalletTableName, ""]]
   HasUserPool: !Not [!Equals [!Ref UserPoolId, ""]]
+  # One condition per parameter, deliberately (see the USER_POOL_CLIENT_ID
+  # lesson: two vars riding one condition reach half-on states).
+  HasRateCard: !Not [!Equals [!Ref RateCardSecret, ""]]
 
 Resources:
   TutorFunction:
@@ -126,6 +143,12 @@ Resources:
         Variables:
           SECRET_ID: !Ref SecretId
           WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
+          # Resolved at deploy time; the unselected branch is never resolved
+          # (verified empirically against a nonexistent secret, 2026-08-17), so
+          # the empty default deploys clean with the variable simply absent. A
+          # typo'd secret name fails the DEPLOY, loudly — never a silent
+          # mis-config. Value rotation = update the secret + redeploy.
+          RATE_CARD: !If [HasRateCard, !Sub "{{resolve:secretsmanager:${RateCardSecret}:SecretString:factor}}", !Ref AWS::NoValue]
           USER_POOL_ID: !If [HasUserPool, !Ref UserPoolId, !Ref AWS::NoValue]
           USER_POOL_CLIENT_ID: !If [HasUserPool, !Ref UserPoolClientId, !Ref AWS::NoValue]
       Policies:
@@ -334,6 +357,180 @@ Resources:
         tutor-billing.mjs.
       Namespace: QuantumTutor
       MetricName: TutorUsageShapeUnrecognized
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # ---- reserve/settle pairing (the stranded-reservation sweep) --------------
+  # Every metered generation logs tutorReserve at debit and tutorSettle at
+  # settle. A reserve with no settle in the same hour means the process died
+  # between the two — learner money silently held, the exact gap index.mjs's
+  # own comment says nothing sweeps. A pair split across an hour boundary can
+  # false-fire once; the alarm email says how to check.
+  TutorReserveMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorReserve"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorReserve
+          MetricValue: "1"
+          Unit: Count
+
+  TutorSettleMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorSettle"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorSettle
+          MetricValue: "1"
+          Unit: Count
+
+  TutorOrphanReserveAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-orphan-reserve
+      AlarmDescription: >-
+        An hour ended with more tutorReserve lines than tutorSettle lines: a
+        debit was taken and never settled or refunded — usually a Lambda
+        timeout or OOM between the two. Find the tutorReserve entries without
+        a matching tutorSettle (same sub) in /aws/lambda/quantum-tutor and
+        refund manually. A reserve/settle pair split across the hour boundary
+        false-fires once; verify before refunding.
+      Metrics:
+        - Id: reserves
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorReserve
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: settles
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorSettle
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: orphans
+          # FILL: a missing settle series must read as 0, not as "insufficient
+          # data" — notBreaching would swallow exactly the real orphan case.
+          Expression: "FILL(reserves, 0) - FILL(settles, 0)"
+          Label: reserves without a settle
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # Day-wide backstop: the hourly alarm compares line COUNTS, so a real orphan
+  # can be masked by an unrelated settle landing in the same hour from a
+  # reserve taken the hour before, and a boundary-split pair can false-fire.
+  # Over a day the splits cancel and real orphans accumulate past cancellation.
+  TutorOrphanReserveDailyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-orphan-reserve-daily
+      AlarmDescription: >-
+        A UTC day ended with more tutorReserve lines than tutorSettle lines.
+        Unlike the hourly alarm, boundary splits cancel in this window, so a
+        breach here is almost certainly a real stranded reservation. Pair the
+        tutorReserve/tutorSettle lines by sub in /aws/lambda/quantum-tutor and
+        refund the unmatched reserves.
+      Metrics:
+        - Id: reserves
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorReserve
+            Period: 86400
+            Stat: Sum
+          ReturnData: false
+        - Id: settles
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorSettle
+            Period: 86400
+            Stat: Sum
+          ReturnData: false
+        - Id: orphans
+          Expression: "FILL(reserves, 0) - FILL(settles, 0)"
+          Label: reserves without a settle (day window)
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # A failed refund is real money owed a learner — bounded by one generation's
+  # worst case, but never just a grep. Matches both emissions by their shared
+  # literal stem: tutorRefundFailed and tutorRefundNoWalletRow.
+  TutorRefundFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorRefund"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorRefundFailure
+          MetricValue: "1"
+          Unit: Count
+
+  TutorRefundFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-refund-failure
+      AlarmDescription: >-
+        A settle-path refund failed (tutorRefundFailed) or found no wallet row
+        to land on (tutorRefundNoWalletRow). Either way a learner is owed
+        credits the system could not return. The log line carries sub and the
+        credit amount; credit it manually via the stripe wallet tooling.
+      Namespace: QuantumTutor
+      MetricName: TutorRefundFailure
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # ---- deployed-but-misconfigured metering -----------------------------------
+  TutorRateCardMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"rate card missing or invalid"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorRateCardInvalid
+          MetricValue: "1"
+          Unit: Count
+
+  TutorRateCardAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-rate-card-invalid
+      AlarmDescription: >-
+        A wallet table is configured but the RATE_CARD env var is absent or
+        unusable, so every paid-model request is refusing while the deploy
+        looks configured. Check the RateCardSecret parameter and the secret's
+        {"factor": "..."} shape, then redeploy; scripts/check-rate-parity.mjs
+        shows both surfaces' state without printing the value.
+      Namespace: QuantumTutor
+      MetricName: TutorRateCardInvalid
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1

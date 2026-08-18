@@ -71,11 +71,32 @@ export const KILL_KEY = "KILL";
 // split funding — a run is entirely allowance or entirely wallet.
 export const MICROS_PER_CREDIT = 10_000;
 
+/** Pinned throw message: metered pricing without a usable factor is a bug in
+ *  the CALLER — the composition gate below refuses metering when the deployed
+ *  config is absent, so a bare call here means a path bypassed that gate. */
+export const RATE_FACTOR_REQUIRED =
+  "qpu-core: rate factor missing or invalid; metered pricing refused";
+
+/** Pinned log line for a wallet table configured WITHOUT a usable rate factor.
+ *  Emitted once per cold start so the misconfiguration is alarmable — its
+ *  runtime symptom (every over-allowance submit 402s) is indistinguishable
+ *  from metering being off on purpose. Never logs the offending value. */
+export const RATE_CARD_INVALID =
+  "qpu: rate card missing or invalid; wallet funding disabled";
+
 /** Whole credits for a micro-dollar cost — rounded UP, so a fraction of a cent
  *  can never be dispensed free. Worst case the learner pays 1 credit ($0.01)
- *  above the metered price; the response names the exact creditsCharged. */
-export function creditsForMicros(micros) {
-  return Math.ceil(micros / MICROS_PER_CREDIT);
+ *  above the metered price; the response names the exact creditsCharged.
+ *
+ *  `factor` converts true AWS cost into the charged credit price. REQUIRED —
+ *  its value lives in deployed configuration only (rule 6; index.mjs reads
+ *  RATE_CARD from the environment). It multiplies BEFORE the ceil, and it
+ *  applies ONLY here: the allowance leg, the DAY# day cap, estMicros and
+ *  spentMicros all stay denominated in true cost — those are the rule-16
+ *  fences, and pricing must never be able to move a fence. */
+export function creditsForMicros(micros, factor) {
+  if (!Number.isFinite(factor) || factor <= 0) throw new TypeError(RATE_FACTOR_REQUIRED);
+  return Math.ceil((micros * factor) / MICROS_PER_CREDIT);
 }
 
 /** Total committed cost of a run, in micro-dollars (integer). */
@@ -208,7 +229,11 @@ export function createHandlerCore({
   // The quantum-stripe wallet table (WALLET#<sub> rows). Unset = metering
   // disabled: over-allowance runs 402 exactly as before, env-gated like every
   // other integration in this repo.
-  walletTable,
+  walletTable: walletTableRaw,
+  // The factor that converts true AWS cost into charged credits. Injected from
+  // deployed configuration (RATE_CARD, resolved out of Secrets Manager at
+  // deploy time); its value never appears in this repository (rule 6).
+  rateFactor,
   resultsBucket,
   // When set, every request must carry this secret in the x-qpu-edge header —
   // CloudFront (which fronts the WAF) injects it, so a direct hit on the public
@@ -217,6 +242,19 @@ export function createHandlerCore({
   edgeSecret,
   now = () => Date.now(),
 }) {
+  // Metering is the PAIR (wallet table, rate factor). A wallet without a
+  // usable factor must never fund a run at raw provider cost — raw cost is a
+  // rate that differs from every other surface (rule 5) — so it degrades to
+  // exactly the no-wallet behaviour: over-allowance submits 402 (rule 7:
+  // refusal charges nothing). Said out loud once per cold start so the
+  // misconfiguration is alarmable rather than indistinguishable from
+  // metering-off-on-purpose. Downstream code reads `walletTable` and never
+  // needs to re-check the factor: gated here, at the single entry point.
+  const factorUsable = Number.isFinite(rateFactor) && rateFactor > 0;
+  if (walletTableRaw && !factorUsable) {
+    console.error(JSON.stringify({ message: RATE_CARD_INVALID }));
+  }
+  const walletTable = walletTableRaw && factorUsable ? walletTableRaw : undefined;
   const credKey = (sub) => ({ pk: { S: `CRED#${sub}` } });
 
   async function isCredentialed(sub) {
@@ -386,7 +424,11 @@ export function createHandlerCore({
         },
       },
     };
-    const creditsNeeded = creditsForMicros(cost);
+    // Priced ONLY when the wallet path exists: pricing is meaningless without
+    // metering, and creditsForMicros deliberately throws rather than default —
+    // computing this unconditionally is exactly the gate-bypass it polices.
+    // (walletTable is the GATED value, so it implies a usable factor.)
+    const creditsNeeded = walletTable ? creditsForMicros(cost, rateFactor) : 0;
     const walletLeg = {
       Update: {
         TableName: walletTable,
@@ -595,62 +637,119 @@ export function createHandlerCore({
       estMicros: cost,
       circuitHash: hash,
       fundedBy: funding,
-      creditsCharged: funding === "wallet" ? creditsForMicros(cost) : 0,
+      // The SAME figure as the debit — threaded, never recomputed: two
+      // computations of one charge is the re-derivation disease the release
+      // path already caught once.
+      creditsCharged: funding === "wallet" ? creditsNeeded : 0,
     });
   }
 
   async function releaseReservation(sub, day, cost, idempotencyKey, funding = "allowance") {
     // Refund whichever source actually paid. The task-row RESERVED→RELEASED
     // guard below makes the WHOLE release idempotent for both shapes.
-    const refundLeg =
-      funding === "wallet"
-        ? {
-            Update: {
-              TableName: walletTable,
-              Key: { pk: { S: `WALLET#${sub}` } },
-              UpdateExpression: "ADD credits :pos",
-              ExpressionAttributeValues: { ":pos": { N: String(creditsForMicros(cost)) } },
-            },
-          }
-        : {
-            Update: {
-              TableName: ledgerTable,
-              Key: { pk: { S: `USER#${sub}` } },
-              UpdateExpression: "ADD spentMicros :neg",
-              ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
-            },
-          };
-    await ddb.send(
-      new TransactWriteItemsCommand({
-        TransactItems: [
-          refundLeg,
-          {
-            Update: {
-              TableName: ledgerTable,
-              Key: { pk: { S: `DAY#${day}` } },
-              UpdateExpression: "ADD dayMicros :neg",
-              ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
-            },
-          },
-          {
-            Update: {
-              TableName: tasksTable,
-              Key: { idempotencyKey: { S: idempotencyKey } },
-              // Idempotent refund: the whole all-or-none release only fires while
-              // the task is still RESERVED, so a retry (or the PR-4 sweeper)
-              // running after a successful release can't double-decrement.
-              UpdateExpression: "SET #s = :released",
-              ConditionExpression: "attribute_exists(idempotencyKey) AND #s = :reserved",
-              ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: {
-                ":released": { S: "RELEASED" },
-                ":reserved": { S: "RESERVED" },
+    let refundLeg;
+    let refundCredits = 0;
+    if (funding === "wallet") {
+      // Refund the credits RECORDED on the task row at debit time — never a
+      // re-derivation from cost. The debit computed the charge once and wrote
+      // it as creditsCharged; re-deriving here is identical today but diverges
+      // the moment the credit conversion changes between debit and release,
+      // and it diverges in the OVERCHARGING direction (rule 7). Same pattern
+      // as reconcile.mjs, which reads the recorded figure off the row.
+      const row = await ddb.send(
+        new GetItemCommand({
+          TableName: tasksTable,
+          Key: { idempotencyKey: { S: idempotencyKey } },
+          // Strongly consistent: this reads a row the reservation transaction
+          // wrote milliseconds ago. An eventually-consistent miss would fire
+          // the "unrecorded" audit log below spuriously — noise on an alarm.
+          ConsistentRead: true,
+        }),
+      );
+      const recorded = Number(row.Item?.creditsCharged?.N);
+      if (Number.isFinite(recorded) && recorded > 0) {
+        refundCredits = recorded;
+      } else {
+        // Should be impossible — the reservation Put always records the charge
+        // on a wallet-funded row. Log it (an unrecorded charge is an audit
+        // gap), then fall back to the derivation rather than strand the money.
+        console.error("qpu-release-credits-unrecorded", { sub, idempotencyKey, funding });
+        refundCredits = creditsForMicros(cost, rateFactor);
+      }
+      refundLeg = {
+        Update: {
+          TableName: walletTable,
+          Key: { pk: { S: `WALLET#${sub}` } },
+          UpdateExpression: "ADD credits :pos",
+          // A refund must never MINT a wallet row (rule 11): an unconditional
+          // ADD against a missing key would materialize credits nobody paid
+          // for. The catch below turns this leg's failure into a loud log.
+          ConditionExpression: "attribute_exists(pk)",
+          ExpressionAttributeValues: { ":pos": { N: String(refundCredits) } },
+        },
+      };
+    } else {
+      refundLeg = {
+        Update: {
+          TableName: ledgerTable,
+          Key: { pk: { S: `USER#${sub}` } },
+          UpdateExpression: "ADD spentMicros :neg",
+          ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
+        },
+      };
+    }
+    try {
+      await ddb.send(
+        new TransactWriteItemsCommand({
+          TransactItems: [
+            refundLeg,
+            {
+              Update: {
+                TableName: ledgerTable,
+                Key: { pk: { S: `DAY#${day}` } },
+                UpdateExpression: "ADD dayMicros :neg",
+                ExpressionAttributeValues: { ":neg": { N: String(-cost) } },
               },
             },
-          },
-        ],
-      }),
-    );
+            {
+              Update: {
+                TableName: tasksTable,
+                Key: { idempotencyKey: { S: idempotencyKey } },
+                // Idempotent refund: the whole all-or-none release only fires while
+                // the task is still RESERVED, so a retry (or the PR-4 sweeper)
+                // running after a successful release can't double-decrement.
+                UpdateExpression: "SET #s = :released",
+                ConditionExpression: "attribute_exists(idempotencyKey) AND #s = :reserved",
+                ExpressionAttributeNames: { "#s": "status" },
+                ExpressionAttributeValues: {
+                  ":released": { S: "RELEASED" },
+                  ":reserved": { S: "RESERVED" },
+                },
+              },
+            },
+          ],
+        }),
+      );
+    } catch (err) {
+      // The one condition handled HERE rather than rethrown to the caller's
+      // generic qpu-release-failed log: the wallet row is gone, so the refund
+      // cannot be delivered without minting a row nobody paid for (rule 11).
+      // This is money owed a learner — the log line is the alarm hook.
+      if (
+        funding === "wallet" &&
+        err?.name === "TransactionCanceledException" &&
+        err.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed"
+      ) {
+        console.error("qpu-refund-wallet-row-missing", {
+          sub,
+          idempotencyKey,
+          day,
+          credits: refundCredits,
+        });
+        return;
+      }
+      throw err;
+    }
   }
 
   return async function core(event) {

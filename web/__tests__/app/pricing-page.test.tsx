@@ -91,10 +91,10 @@ describe("PricingPage", () => {
     expect(screen.getAllByText("Launching soon")).toHaveLength(2);
   });
 
-  it("carries the early-access honesty note (sponsored runs, free tutor today)", () => {
+  it("carries the early-access honesty note (no hardware runs, free tutor today)", () => {
     renderPricing();
     const note = screen.getByText(/billing has not launched yet/i);
-    expect(note.parentElement?.textContent).toMatch(/sponsored/i);
+    expect(note.parentElement?.textContent).toMatch(/hardware runs are not currently available/i);
     expect(note.parentElement?.textContent).toMatch(/tutor is free to try/i);
   });
 
@@ -281,8 +281,9 @@ const modelEntitlement = new RegExp(
 
 /**
  * Metering asserted in the PRESENT tense. Nothing meters anything: lambda/tutor answers
- * every question on one hardcoded model and charges nothing, lambda/qpu runs are
- * platform-sponsored, and no code path outside lambda/stripe touches the wallet. So
+ * every question on one hardcoded model and charges nothing, lambda/qpu grants no
+ * allowance (LIFETIME_CAP_MICROS = 0) and refuses every submit it cannot fund, and no
+ * code path outside lambda/stripe touches the wallet. So
  * every metering sentence on this page has to be future tense, and this is the pattern
  * the page metadata needed — its description read "one credit wallet METERS the only two
  * things that cost real money" for four review rounds.
@@ -308,7 +309,18 @@ const presentTenseMetering = new RegExp(
 const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
   {
     pattern: presentTenseMetering,
-    why: "present-tense metering: the tutor charges nothing, curriculum QPU runs are sponsored, and nothing outside lambda/stripe reads the wallet",
+    why: "present-tense metering: the tutor charges nothing, the QPU lambda refuses unfunded submits, and nothing outside lambda/stripe reads the wallet",
+  },
+  {
+    // The withdrawn promise. lambda/qpu/qpu-core.mjs sets LIFETIME_CAP_MICROS = 0 and
+    // no wallet table is wired, so no new learner holds a platform-funded allowance and
+    // every hardware submit without one is refused (402). Sponsorship copy kept
+    // shipping for weeks after the withdrawal precisely because the old tests locked
+    // its PRESENCE — this bars it from coming back, in either locale.
+    // Stem-matched (\w*): "sponsoring", "sponsorships" and Spanish finite verb
+    // forms (patrocina, patrocinamos) must not walk past a suffix list.
+    pattern: /\b(sponsor\w*|patrocin\w*)\b/i,
+    why: "sponsored hardware: LIFETIME_CAP_MICROS is 0 and no wallet is wired — nobody gets a platform-funded run",
   },
   {
     // lib/pricing.ts SIMULATOR_RATES publishes SV1 and DM1 at 8.4 credits/minute and
@@ -592,7 +604,7 @@ describe("PricingPage copy honesty", () => {
     // only honest if the not-yet status is unmistakable next to the price, so the note
     // under the tier grid must carry it whether or not checkout is open.
     const { container: closed } = renderPricing();
-    expect(closed.textContent).toMatch(/hardware runs inside the curriculum are sponsored/i);
+    expect(closed.textContent).toMatch(/hardware runs are not currently available/i);
     expect(closed.textContent).toMatch(/tutor is free to try/i);
 
     setAuthEnv(true);

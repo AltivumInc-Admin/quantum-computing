@@ -40,8 +40,14 @@ stripe-parity:
 drift:
 	@# Is what is RUNNING what is in git? Merging is not shipping, and a green CI plus a
 	@# closed PR plus an UPDATE_COMPLETE stack can all be true while production runs
-	@# week-old code. Needs AWS read access; exits non-zero on drift.
-	node scripts/check-lambda-drift.mjs
+	@# week-old code. And is the DEPLOYED CONFIGURATION consistent? Code parity says
+	@# nothing about the rate factor the two pricing functions carry (rule 5); the
+	@# second check compares them value-blind (no value, no digest — rule 6).
+	@# Both ALWAYS run — code drift is the normal state mid-cutover, and stopping there
+	@# would leave rate parity unchecked in exactly the window it matters most.
+	@code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
+	 node scripts/check-rate-parity.mjs || code=$$?; \
+	 exit $$code
 
 deploy-infra:
 	bash infra/scripts/deploy-infra.sh
