@@ -657,7 +657,14 @@ export function createHandlerCore({
       // and it diverges in the OVERCHARGING direction (rule 7). Same pattern
       // as reconcile.mjs, which reads the recorded figure off the row.
       const row = await ddb.send(
-        new GetItemCommand({ TableName: tasksTable, Key: { idempotencyKey: { S: idempotencyKey } } }),
+        new GetItemCommand({
+          TableName: tasksTable,
+          Key: { idempotencyKey: { S: idempotencyKey } },
+          // Strongly consistent: this reads a row the reservation transaction
+          // wrote milliseconds ago. An eventually-consistent miss would fire
+          // the "unrecorded" audit log below spuriously — noise on an alarm.
+          ConsistentRead: true,
+        }),
       );
       const recorded = Number(row.Item?.creditsCharged?.N);
       if (Number.isFinite(recorded) && recorded > 0) {

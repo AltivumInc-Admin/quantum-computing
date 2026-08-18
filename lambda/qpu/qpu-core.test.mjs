@@ -1002,22 +1002,56 @@ test("the factor scales the debit, the recorded charge, and the quoted price tog
       now: () => NOW,
     })(submitEvent(goodClaims, goodBody));
     const tx = ddb.calls.find((c) => c.name === "TransactWriteItemsCommand").input.TransactItems;
-    return { res, walletLeg: tx[0].Update, taskPut: tx[2].Put.Item };
+    return { res, walletLeg: tx[0].Update, dayLeg: tx[1].Update, taskPut: tx[2].Put.Item };
   };
 
   for (const factor of [1, 3]) {
     const expected = creditsForMicros(costMicros(1000), factor);
-    const { res, walletLeg, taskPut } = await run(factor);
+    const { res, walletLeg, dayLeg, taskPut } = await run(factor);
     // One figure, three homes: the atomic debit, the row's recorded charge
     // (what any refund returns), and the price quoted back to the learner.
     assert.equal(walletLeg.ExpressionAttributeValues[":neg"].N, String(-expected), `debit @${factor}`);
     assert.equal(walletLeg.ExpressionAttributeValues[":need"].N, String(expected), `floor @${factor}`);
     assert.equal(taskPut.creditsCharged.N, String(expected), `recorded @${factor}`);
     assert.equal(JSON.parse(res.body).creditsCharged, expected, `quoted @${factor}`);
-    // The true-cost fences must NOT scale: estMicros and the DAY# leg stay raw.
+    // The true-cost fences must NOT scale (rule 16): estMicros AND both sides
+    // of the DAY# day-cap leg stay raw micro-dollars at every factor. These
+    // bind the fence — a factor leaking into the day cap would let a pricing
+    // change move the account-level spend brake, invisibly.
     assert.equal(taskPut.estMicros.N, String(costMicros(1000)), `estMicros must stay true-cost @${factor}`);
-    const dayLeg = (await run(factor)).walletLeg; // re-run for a fresh tx capture
-    void dayLeg;
+    assert.equal(
+      dayLeg.ExpressionAttributeValues[":cost"].N,
+      String(costMicros(1000)),
+      `DAY# debit must stay true-cost @${factor}`,
+    );
+    assert.equal(
+      dayLeg.ExpressionAttributeValues[":dayMinusCost"].N,
+      String(DAILY_CAP_MICROS - costMicros(1000)),
+      `DAY# threshold must stay true-cost @${factor}`,
+    );
+  }
+
+  // The 402 shortfall quote must ride the SAME factored figure as the debit —
+  // quoting raw cost would both understate the shortfall and disclose the raw
+  // basis to the client one division away from the charged price.
+  {
+    const ddb402 = stubDdb({ ledgerUser: SPENT_UP, transact: canceled(R(0)) });
+    const res402 = await createHandlerCore({
+      ddb: ddb402,
+      braket: stubBraket(),
+      ledgerTable: "ledger",
+      tasksTable: "tasks",
+      walletTable: "wallet",
+      rateFactor: 3,
+      resultsBucket: "amazon-braket-eu-north-1-x",
+      now: () => NOW,
+    })(submitEvent(goodClaims, goodBody));
+    assert.equal(res402.statusCode, 402);
+    assert.equal(
+      JSON.parse(res402.body).creditsNeeded,
+      creditsForMicros(costMicros(1000), 3),
+      "the insufficient-credits quote must be the factored figure",
+    );
   }
   const at1 = creditsForMicros(costMicros(1000), 1);
   const at3 = creditsForMicros(costMicros(1000), 3);

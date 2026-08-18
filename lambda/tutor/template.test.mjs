@@ -270,3 +270,34 @@ test("a wallet deployed without a usable rate card is alarmable, not just greppa
   assert.match(a, /TreatMissingData: notBreaching/);
   assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
+
+test("a failed refund is alarmable — money owed a learner is never just a grep", () => {
+  // Two emissions share the literal stem: tutorRefundFailed (the settle-path
+  // credit threw) and tutorRefundNoWalletRow (the row vanished — a refund that
+  // must NOT mint it). Both are bounded, real money owed a person.
+  const b = body("TutorRefundFailureMetricFilter");
+  assert.ok(b, "TutorRefundFailureMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref TutorLogGroup/);
+  const phrase = b.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "tutorRefund");
+  const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+  assert.ok(src.includes("tutorRefundFailed"), "index.mjs lost the settle-path refund log");
+  assert.ok(src.includes("tutorRefundNoWalletRow"), "index.mjs lost the missing-row refund log");
+  const a = body("TutorRefundFailureAlarm");
+  assert.ok(a, "TutorRefundFailureAlarm missing");
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("the orphan-reserve alarm has a wide-window backstop for what hour buckets miss", () => {
+  // The hourly alarm compares line COUNTS, so a real orphan in hour H is
+  // masked by an unrelated settle landing in H from a reserve taken in H-1 —
+  // and a boundary-split pair can false-fire. A day-wide window makes the
+  // splits cancel and the real orphans accumulate past cancellation.
+  const a = body("TutorOrphanReserveDailyAlarm");
+  assert.ok(a, "TutorOrphanReserveDailyAlarm missing");
+  assert.match(a, /Expression: "FILL\(reserves, ?0\) - FILL\(settles, ?0\)"/);
+  assert.match(a, /Period: 86400/);
+  assert.match(a, /TreatMissingData: notBreaching/);
+  assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
+});

@@ -100,6 +100,26 @@ const BANNED: Array<{ name: string; re: RegExp }> = [
     name: "a breakeven identifier assignment",
     re: /(?<![\w$])[\w$]*break_?even[\w$]*\s*[:=](?!=)/i,
   },
+  // ── The metering seam's OWN vocabulary ────────────────────────────────────
+  // Added 2026-08-17, when the RATE_CARD mechanism landed: the most likely
+  // future disclosure vector for the deployed factor is someone pinning it
+  // under the names the system actually uses — a test fixture, a runbook
+  // example, a template fallback. The legitimate uses stay legal by
+  // construction: RATE_CARD's RHS in the templates is `!If [...]` and in the
+  // handlers `Number(process.env.RATE_CARD)` (neither starts with a digit),
+  // and the FICTIONAL integer factors in tests (1, 3) carry no decimal.
+  {
+    // The deployed env-var name with ANY numeric RHS — never legitimate.
+    name: "a RATE_CARD value assignment",
+    re: /(?<![\w$])RATE_?CARD[\w$]*\s*[:=](?!=)\s*["']?\d/,
+  },
+  {
+    // A factor-family identifier with a DECIMAL RHS. Real conversion factors
+    // are fractional; the decimal requirement is what spares the labelled
+    // fictional integers that the flow tests inject.
+    name: "a rate-factor decimal assignment",
+    re: /(?<![\w$])[\w$]*rate_?(?:card|factor)[\w$]*\s*[:=](?!=)\s*["']?\d+\.\d/i,
+  },
   // ── Prose forms of the same disclosure ────────────────────────────────────
   {
     // "the markup is 1.3", "marked up 30%", "we mark up by 1.3x". Either the
@@ -234,20 +254,25 @@ describe("the banned patterns catch what they must and spare what they must", ()
     // Widened 2026-08-17: all of the below passed the old guard clean, because the
     // constant pattern was case-sensitive and word-boundary bounded — camelCase and
     // suffixed spellings of the same identifiers walked straight past \bMARKUP\b.
-    ["a camelCase markup identifier", "const tutorMarkup = 1.3;"],
-    ["a snake_case markup identifier", "markup_factor: 1.3,"],
+    ["a camelCase markup identifier", "const tutorMarkup = 9.9;"],
+    ["a snake_case markup identifier", "markup_factor: 4.2,"],
     ["a suffixed SCREAMING markup identifier", "export const QPU_MARKUP_X = 1.2;"],
     ["a markup identifier with a non-literal RHS", "const markupOverCost = base * perUnit;"],
     ["a camelCase gross-margin identifier", "grossMargin = 0.12;"],
     ["a snake_case margin-percent identifier", "const gross_margin_pct = 12;"],
     ["a margin-pct field", "marginPct: 12,"],
     ["a handling-fee identifier", "handlingFee = 40;"],
-    ["a credit-cost identifier", "creditCostUsd = 0.0072;"],
+    ["a credit-cost identifier", "creditCostUsd = 0.9876;"],
+    // The metering seam's own vocabulary (all figures fictional):
+    ["the deployed env name with a value", 'RATE_CARD = "7.7"'],
+    ["the deployed env name, integer value", "RATE_CARD: 5"],
+    ["a rate-factor decimal assignment", "const rateFactor = 8.25;"],
+    ["a rate-card decimal in config prose", "rate_card_value: 3.15,"],
     ["a cost-to-serve identifier", "const costToServe = 812;"],
     ["a breakeven identifier", "breakEvenSubscribers = 340;"],
-    ["the spread stated as prose markup", "the markup is 1.3 on every surface"],
-    ["the spread as a marked-up percentage", "prices are marked up 30% before publish"],
-    ["the spread as a mark-up verb phrase", "we mark up by 1.3x across surfaces"],
+    ["the spread stated as prose markup", "the markup is 2.75 on every surface"],
+    ["the spread as a marked-up percentage", "prices are marked up 85% before publish"],
+    ["the spread as a mark-up verb phrase", "we mark up by 6.5x across surfaces"],
     ["the spread named as a spread", "a spread of 2.1 cents on each credit"],
   ])("trips on %s", (_label, sample) => {
     expect(trips(sample)).toBe(true);

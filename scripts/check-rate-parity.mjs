@@ -11,9 +11,12 @@
  * values with a green drift report every morning. This closes that gap.
  *
  * VALUE-BLIND by construction (rule 6 — this output lands in CI logs): the
- * value is read into memory, hashed, and discarded. What prints is presence,
- * usability (would the handler's Number() gate accept it), and a hash prefix.
- * Never the value, never its length beyond "usable".
+ * values are read into memory, compared there, and discarded. What prints is
+ * presence, usability (would the handler's Number() gate accept it), and
+ * MATCH/MISMATCH across the functions. Never the value — and never a digest
+ * of it either: a rate factor is a short low-entropy string, so even an
+ * unsalted hash PREFIX is dictionary-recoverable in milliseconds. Equality
+ * never requires a printable token.
  *
  * quantum-qpu-reconcile is deliberately NOT checked: it refunds the
  * creditsCharged recorded on the task row and never prices, so it carries no
@@ -25,7 +28,6 @@
  *         1 = divergent or unusable   2 = could not check
  */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 
 const REGION = process.env.AWS_REGION ?? "us-east-2";
 const FUNCTIONS = ["quantum-tutor", "quantum-qpu-submit"];
@@ -52,37 +54,33 @@ function readRateCard(fn) {
   return out === "None" || out === "" ? undefined : out;
 }
 
-let failed = false;
 const rows = [];
 for (const fn of FUNCTIONS) {
   let value;
   try {
     value = readRateCard(fn);
   } catch (e) {
+    // The CLI's error text can echo command output; keep it to the first line,
+    // which for auth/permission failures never contains an env value.
     console.error(`  ERROR  ${fn}: ${e.message?.split("\n")[0] ?? e}`);
     process.exit(2);
   }
-  if (value === undefined) {
-    rows.push({ fn, state: "ABSENT", hash: null });
-    continue;
-  }
   const n = Number(value);
-  const usable = Number.isFinite(n) && n > 0;
-  rows.push({
-    fn,
-    state: usable ? "PRESENT" : "PRESENT-UNUSABLE",
-    hash: createHash("sha256").update(value, "utf8").digest("hex").slice(0, 12),
-  });
-  if (!usable) failed = true; // deployed-but-refusing is a misconfiguration, say so
+  const state =
+    value === undefined ? "ABSENT" : Number.isFinite(n) && n > 0 ? "PRESENT" : "PRESENT-UNUSABLE";
+  rows.push({ fn, state, value });
 }
+
+// Values compared HERE, in memory, and never referenced again.
+const distinctValues = new Set(rows.filter((r) => r.value !== undefined).map((r) => r.value)).size;
+for (const r of rows) delete r.value;
 
 console.log(`\n  Rate-card parity  (region ${REGION})\n`);
 for (const r of rows) {
-  console.log(`  ${r.state.padEnd(17)} ${r.fn}${r.hash ? `   sha256:${r.hash}` : ""}`);
+  console.log(`  ${r.state.padEnd(17)} ${r.fn}`);
 }
 
 const states = new Set(rows.map((r) => r.state));
-const hashes = new Set(rows.filter((r) => r.hash).map((r) => r.hash));
 
 if (states.has("PRESENT-UNUSABLE")) {
   console.log("\n  FAIL: a deployed RATE_CARD would be refused by the handler's gate.");
@@ -94,7 +92,7 @@ if (states.size > 1) {
   console.log("  Both must flip in the same cutover — see the billing runbook.\n");
   process.exit(1);
 }
-if (hashes.size > 1) {
+if (distinctValues > 1) {
   console.log("\n  FAIL: the two surfaces carry DIFFERENT values (rule 5).");
   console.log("  One wallet + two conversion rates = every rational learner spends");
   console.log("  through the cheaper surface. Redeploy both from the same secret.\n");
@@ -103,6 +101,5 @@ if (hashes.size > 1) {
 console.log(
   states.has("ABSENT")
     ? "\n  OK: metering is off on both surfaces — consistent.\n"
-    : "\n  OK: both surfaces carry the identical rate configuration.\n",
+    : "\n  OK: both surfaces carry the identical rate configuration (MATCH).\n",
 );
-process.exit(failed ? 1 : 0);

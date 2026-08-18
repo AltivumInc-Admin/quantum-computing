@@ -576,6 +576,73 @@ Resources:
           MetricValue: "1"
           Unit: Count
 
+  # A failed wallet refund on the submit path is money owed a learner:
+  # qpu-release-failed = the whole compensating release threw after a Braket
+  # rejection; qpu-refund-wallet-row-missing = the refund found no row to land
+  # on (and correctly refused to mint one). ?-terms OR the two phrases.
+  QpuRefundFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref QpuLogGroup
+      FilterPattern: '?"qpu-release-failed" ?"qpu-refund-wallet-row-missing"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: QpuRefundFailure
+          MetricValue: "1"
+          Unit: Count
+
+  QpuRefundFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-refund-failure
+      AlarmDescription: >-
+        A wallet refund on the submit path failed or found no wallet row. The
+        learner paid for a run Braket rejected and did not get the credits
+        back. The log line carries sub, idempotencyKey and amount; credit
+        manually and check the task row's status.
+      Namespace: QuantumQpu
+      MetricName: QpuRefundFailure
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # Same failure on the reconciler's refund leg. It logs through the injected
+  # log (console.log in production), so severity-based alerting would miss it;
+  # this is a literal-term filter and does not care about severity.
+  ReconcileRefundFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ReconcileLogGroup
+      FilterPattern: '"wallet row missing for refund"'
+      MetricTransformations:
+        - MetricNamespace: QuantumQpu
+          MetricName: ReconcileRefundFailure
+          MetricValue: "1"
+          Unit: Count
+
+  ReconcileRefundFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-qpu-reconcile-refund-failure
+      AlarmDescription: >-
+        The reconciler tried to refund a FAILED/CANCELLED wallet-funded run and
+        the wallet row was missing. The task row stays SUBMITTED so this
+        re-fires every poll until resolved — money owed the learner needs
+        manual review in the wallet table.
+      Namespace: QuantumQpu
+      MetricName: ReconcileRefundFailure
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   QpuRateCardMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:

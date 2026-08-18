@@ -214,9 +214,26 @@ Two facts from it that change how you write code, and are worth carrying in your
   (templates + handlers), `scripts/check-rate-parity.mjs` in `make drift` (deployed env,
   value-blind — prints hashes, never the value), and the reconciler deliberately carries
   no `RATE_CARD` (it refunds the `creditsCharged` recorded on the task row, never a
-  re-derivation). **Remaining is the cutover itself** (create the secret, set
-  `RateCardSecret` + `WalletTableName` on both stacks in one deploy, re-run parity) —
-  blocked behind rule 14 (buying must work first) and the tier gate below.
+  re-derivation). **The cutover itself remains** (create the secret, set
+  `RateCardSecret` + `WalletTableName` on both stacks in one deploy, re-run parity) and
+  it is blocked behind rule 14 (buying must work first), the tier gate below, and two
+  things the mechanism exposed:
+  - **The QPU confirm step quotes a client-derived figure** (`web/src/lib/qpu-budget.ts`
+    re-derives credits from raw cost, and rule 6 means the client can never hold the
+    factor). Under any deployed factor the confirm screen would understate the debit —
+    the server must publish the priced quote and the panel must render it BEFORE the
+    flip. Its own comment claims quote-must-equal-debit; that claim is only true today
+    because both are off.
+  - **The published hardware sheet and a single scalar factor need reconciling.** The
+    published per-task and per-shot credit figures do not stand in one common ratio to
+    the provider's two list rates (both sets are public; the arithmetic stays out of
+    this file), so no single factor reproduces the sheet exactly, and integer-credit
+    debits can exceed a fractional advertised figure. Decide once at cutover: derive
+    the published display figures from the same factored formula the server debits
+    with, or pick the factor so every debit stays at or under the sheet (rule 7/13
+    direction) and update the sheet's figures — including `TUTOR_RATES`'
+    `typicalCreditsPerQuestion`, which today matches RAW-cost typical charges and goes
+    stale under any factor above 1.
 - Gate `<AskTutor />` on tier; add the free-trial question counter; drop `free` from the
   tutor `ROSTER` (`lambda/tutor/tutor-billing.mjs`).
 - **Create the `quantum-tutor` secret and deploy the tutor.** The handler now reads its

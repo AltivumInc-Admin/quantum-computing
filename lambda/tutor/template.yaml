@@ -433,6 +433,80 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # Day-wide backstop: the hourly alarm compares line COUNTS, so a real orphan
+  # can be masked by an unrelated settle landing in the same hour from a
+  # reserve taken the hour before, and a boundary-split pair can false-fire.
+  # Over a day the splits cancel and real orphans accumulate past cancellation.
+  TutorOrphanReserveDailyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-orphan-reserve-daily
+      AlarmDescription: >-
+        A UTC day ended with more tutorReserve lines than tutorSettle lines.
+        Unlike the hourly alarm, boundary splits cancel in this window, so a
+        breach here is almost certainly a real stranded reservation. Pair the
+        tutorReserve/tutorSettle lines by sub in /aws/lambda/quantum-tutor and
+        refund the unmatched reserves.
+      Metrics:
+        - Id: reserves
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorReserve
+            Period: 86400
+            Stat: Sum
+          ReturnData: false
+        - Id: settles
+          MetricStat:
+            Metric:
+              Namespace: QuantumTutor
+              MetricName: TutorSettle
+            Period: 86400
+            Stat: Sum
+          ReturnData: false
+        - Id: orphans
+          Expression: "FILL(reserves, 0) - FILL(settles, 0)"
+          Label: reserves without a settle (day window)
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # A failed refund is real money owed a learner — bounded by one generation's
+  # worst case, but never just a grep. Matches both emissions by their shared
+  # literal stem: tutorRefundFailed and tutorRefundNoWalletRow.
+  TutorRefundFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref TutorLogGroup
+      FilterPattern: '"tutorRefund"'
+      MetricTransformations:
+        - MetricNamespace: QuantumTutor
+          MetricName: TutorRefundFailure
+          MetricValue: "1"
+          Unit: Count
+
+  TutorRefundFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-tutor-refund-failure
+      AlarmDescription: >-
+        A settle-path refund failed (tutorRefundFailed) or found no wallet row
+        to land on (tutorRefundNoWalletRow). Either way a learner is owed
+        credits the system could not return. The log line carries sub and the
+        credit amount; credit it manually via the stripe wallet tooling.
+      Namespace: QuantumTutor
+      MetricName: TutorRefundFailure
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   # ---- deployed-but-misconfigured metering -----------------------------------
   TutorRateCardMetricFilter:
     Type: AWS::Logs::MetricFilter

@@ -75,6 +75,24 @@ describe("the shared rate factor is one mechanism across both metered stacks", (
     expect(reconcileBlock).not.toMatch(/RATE_CARD/);
   });
 
+  it.each([
+    ["lambda/tutor/template.yaml", tutorTemplate],
+    ["lambda/qpu/template.yaml", qpuTemplate],
+  ])("%s: no parameter carries a numeric Default", (_name, template) => {
+    // The vector the name-based guards cannot see: a sibling parameter
+    // (RateFactorFallback: Type: Number, Default: 1.4) carrying the factor
+    // under a name nobody banned. Every parameter in both templates is a
+    // string today, and money constants live in code where the rule-6 guard
+    // scans them — a numeric template Default has no legitimate use here.
+    const numericDefaults = [...template.matchAll(/^ {4}Default:\s*([\d.]+)\s*$/gm)]
+      .map((m) => m[1])
+      // Operational knobs, not money — the only numeric defaults grandfathered
+      // in: LogRetentionInDays (30), MaxConcurrency (5), MonthlyBraketBudget
+      // (150, our AWS budget threshold, not a customer-facing figure).
+      .filter((v) => !["30", "5", "150"].includes(v));
+    expect(numericDefaults).toEqual([]);
+  });
+
   it("both kernels REQUIRE the injected factor — no unity default anywhere", () => {
     // The kernels throw a pinned message rather than default to raw cost. The
     // assertion here is textual (each lambda's own suite proves the behaviour):

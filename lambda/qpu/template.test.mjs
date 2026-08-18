@@ -205,3 +205,28 @@ test("a wallet deployed without a usable rate card is alarmable, not just greppa
   assert.match(a, /TreatMissingData: notBreaching/);
   assert.match(a, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
+
+test("a failed wallet refund is alarmable on both QPU log groups", () => {
+  // Submit path: qpu-release-failed (the whole compensating release threw) and
+  // qpu-refund-wallet-row-missing (the row vanished; refund must not mint it).
+  const b = body("QpuRefundFailureMetricFilter");
+  assert.ok(b, "QpuRefundFailureMetricFilter missing");
+  assert.match(b, /LogGroupName: !Ref QpuLogGroup/);
+  assert.match(b, /FilterPattern: '\?"qpu-release-failed" \?"qpu-refund-wallet-row-missing"'/);
+  const core = readFileSync(new URL("./qpu-core.mjs", import.meta.url), "utf8");
+  assert.ok(core.includes("qpu-release-failed"), "qpu-core.mjs lost the release-failed log");
+  assert.ok(core.includes("qpu-refund-wallet-row-missing"), "qpu-core.mjs lost the missing-row log");
+  assert.match(body("QpuRefundFailureAlarm") ?? "", /AlarmActions: \[!Ref AlertsTopic\]/);
+
+  // Reconcile path: its refund leg logs through the injected log (console.log
+  // in production — a severity-based filter would miss it; this term filter
+  // does not care about severity).
+  const r = body("ReconcileRefundFailureMetricFilter");
+  assert.ok(r, "ReconcileRefundFailureMetricFilter missing");
+  assert.match(r, /LogGroupName: !Ref ReconcileLogGroup/);
+  const phrase = r.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.equal(phrase, "wallet row missing for refund");
+  const rec = readFileSync(new URL("./reconcile.mjs", import.meta.url), "utf8");
+  assert.ok(rec.includes(phrase), "reconcile.mjs lost the missing-row refund log");
+  assert.match(body("ReconcileRefundFailureAlarm") ?? "", /AlarmActions: \[!Ref AlertsTopic\]/);
+});

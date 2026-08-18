@@ -269,7 +269,9 @@ export const RATE_FACTOR_REQUIRED =
  * This module stays pure — no env reads, no imports — because it is copied
  * verbatim into the public web bundle (see the kernel-purity guard).
  * The factor multiplies the micro-dollar cost BEFORE the ceil: ceiling first
- * and scaling second would hand back the rounding headroom factor-fold.
+ * and scaling second would multiply the up-to-one-credit round-up by the
+ * factor — an overcharge (rule 7). Scale first, so the single round-up stays
+ * at most one credit regardless of the factor.
  */
 export function creditsForUsage(model, usage, { free = false, factor } = {}) {
   if (free) return 0;
