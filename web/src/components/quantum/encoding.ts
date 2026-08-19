@@ -22,16 +22,25 @@ export function amplitudeState(features: number[]): Complex[] {
   return v.map((x) => [x / norm, 0] as Complex);
 }
 
-/** IQP / ZZ feature map (Havlicek): per rep on |00>: H both; RZ(2x_i); CX; RZ(2(pi-x0)(pi-x1)) on q1; CX. */
+/**
+ * IQP feature map — the SAME unitary as lib/ml/feature_maps.iqp_encoding, the
+ * workspace's canonical IQP convention: per rep on |00>: H both; RZ(x_i); CX;
+ * RZ(x0*x1) on q1; CX. The angle convention is pinned cross-language by
+ * __fixtures__/iqp-states.json (generated from the Python side by
+ * scripts/gen_iqp_fixture.py and asserted from BOTH sides), because the two
+ * implementations once diverged silently under the same "IQP" name — this file
+ * carried the Havlicek 2x/(pi-x) angles while the notebooks taught x_i and
+ * x_i*x_j, so the widget's kernel matrix never matched the learner's own.
+ */
 export function iqpState(x0: number, x1: number, reps = 2): Complex[] {
   let s = zeroState(2);
   for (let r = 0; r < reps; r++) {
     s = applyGate1(s, H, 0, 2);
     s = applyGate1(s, H, 1, 2);
-    s = applyGate1(s, rz(2 * x0), 0, 2);
-    s = applyGate1(s, rz(2 * x1), 1, 2);
+    s = applyGate1(s, rz(x0), 0, 2);
+    s = applyGate1(s, rz(x1), 1, 2);
     s = applyCNOT(s, 0, 1, 2);
-    s = applyGate1(s, rz(2 * (Math.PI - x0) * (Math.PI - x1)), 1, 2);
+    s = applyGate1(s, rz(x0 * x1), 1, 2);
     s = applyCNOT(s, 0, 1, 2);
   }
   return s;

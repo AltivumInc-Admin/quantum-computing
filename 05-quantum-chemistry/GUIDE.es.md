@@ -324,8 +324,8 @@ El hilo conductor de todo este módulo es el único movimiento que hicimos con e
 
 **Scripts:**
 - `scripts/hamiltonians.py` — Pipeline de construcción de Hamiltonianos moleculares (geometría -> integrales -> operador de qubits)
-- `scripts/ansatz.py` — Constructores de circuitos de ansatz parametrizados (UCCSD, HEA, personalizado)
-- `scripts/vqe_runner.py` — Ejecutor VQE de extremo a extremo con barrido de energía vs. geometría
+- `scripts/ansatz.py` — Constructores de circuitos de ansatz parametrizados (inspirado en UCCSD solo con excitaciones simples, hardware-eficiente)
+- `scripts/vqe_runner.py` — Ejecutor VQE de extremo a extremo (Hamiltoniano de qubits + ansatz -> energía del estado base optimizada)
 
 ---
 

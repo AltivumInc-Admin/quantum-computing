@@ -43,21 +43,24 @@ describe("KernelExplorer", () => {
   });
 
   /**
-   * The scale caption used to assert "the boundary starts to alias" regardless
-   * of the selected map. Measured over the slider's own 0.3-2.0 range on the
-   * shipped dataset, that holds for `iqp` (in-sample 88 -> 98 -> 83%) but is
-   * false for `angle`, which improves monotonically (68 -> 98%) because its
-   * rotation argument never reaches the pi wrap-around. These two pin the
-   * caption to the selected map so it can never re-generalize.
+   * The scale caption is keyed to the selected map so neither map's measured
+   * behaviour is asserted for the other. Under the canonical IQP convention
+   * (pinned to lib.ml.feature_maps.iqp_encoding by __fixtures__/iqp-states.json)
+   * both maps eventually alias over the slider's 0.3-5.0 range, but not alike:
+   * iqp's product phases grow quadratically with scale (in-sample 100% by 2,
+   * 78% at 5) while angle's grow linearly and wrap later and gentler (100% at
+   * 3, 80% at 5) — measurements in kernel-explorer.tsx's SCALE_LESSON comment.
+   * These pin each caption's distinctive claim to its map.
    */
   it("warns about over-encoding only for the entangling iqp map", () => {
     render(<KernelExplorer source={JSON.stringify({ dataset: "circles", map: "iqp" })} />);
     expect(screen.getByText(/over-encodes/i)).toBeInTheDocument();
-    expect(screen.queryByText(/cannot over-encode/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/wraps much later/i)).not.toBeInTheDocument();
   });
-  it("tells the truth for the angle map: pushing the scale only helps", () => {
+  it("tells the truth for the angle map: linear phases wrap later, not never", () => {
     render(<KernelExplorer source={JSON.stringify({ dataset: "circles", map: "angle" })} />);
-    expect(screen.getByText(/cannot over-encode/i)).toBeInTheDocument();
+    expect(screen.getByText(/wraps much later/i)).toBeInTheDocument();
+    expect(screen.queryByText(/over-encodes/i)).not.toBeInTheDocument();
   });
   it("swapping the map via the select swaps the scale lesson with it", () => {
     render(<KernelExplorer source={JSON.stringify({ dataset: "circles", map: "iqp" })} />);
@@ -67,7 +70,7 @@ describe("KernelExplorer", () => {
         target: { value: "angle" },
       });
     });
-    expect(screen.getByText(/cannot over-encode/i)).toBeInTheDocument();
+    expect(screen.getByText(/wraps much later/i)).toBeInTheDocument();
   });
   it("moving the scale slider recomputes the boundary and settles un-busied", () => {
     render(<KernelExplorer source={JSON.stringify({ dataset: "circles", map: "iqp" })} />);

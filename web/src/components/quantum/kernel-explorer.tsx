@@ -21,8 +21,9 @@ import { formatPercent } from "./format";
  * training set, and evaluates the fidelity kernel classifier
  * sign( sum_i y_i K(x, x_i) + bias ) over a 36x36 grid of the plane entirely in
  * the browser. A feature-scale slider stretches the feature map: pushed high the
- * entangling `iqp` map visibly aliases the boundary (the plain `angle` product
- * map does not — see SCALE_LESSON). The reported accuracy is IN-SAMPLE and is
+ * entangling `iqp` map aliases first — its product phases grow quadratically
+ * with scale — while the plain `angle` map wraps later and gentler (see
+ * SCALE_LESSON). The reported accuracy is IN-SAMPLE and is
  * labeled as such, compared against a linear nearest-mean baseline scored the
  * same way. No backend, no SSR.
  *
@@ -112,24 +113,32 @@ function nearestMeanAccuracy(train: Point[]): number {
 // ---------------------------------------------------------------------------
 // Scale lesson
 //
-// The caption used to assert "push the scale high and the boundary starts to
-// alias" for BOTH maps. Measured on the shipped dataset (circles, seed 1) over
-// the slider's own 0.3-2.0 range, that is true only of `iqp` — in-sample
-// accuracy 88 -> 98 -> 83% with boundary sign-flips climbing 100 -> 261 — while
-// `angle` improves monotonically (68 -> 98%) with a flat flip count (65 -> 88).
-// The reason is structural, not statistical: the angle map's rotation argument
-// tops out at scale x max|x_i| = 2.0 x 1.08 = 2.17 rad, short of the pi
-// wrap-around that makes a product feature map fold onto itself. So the caption
-// is keyed off the selected map rather than asserting one map's behaviour for both.
+// Measured on the shipped dataset (circles, train seed 1 / held-out seed 2)
+// over the slider's 0.3-5.0 range under the canonical IQP convention (the one
+// lib.ml.feature_maps.iqp_encoding implements, pinned by
+// __fixtures__/iqp-states.json): `iqp` in-sample accuracy climbs 73 -> 98 ->
+// 100% (scales 0.3 / 1 / 2), holds through ~3, then aliases away — 95% at 4,
+// 78% at 5 (held-out peaks 100% near 2-2.5, then 90 -> 75%). `angle` climbs
+// later (68 -> 80 -> 98%) and holds longer — 100% at 3, 97% at 4 — before its
+// own wrap bites at the top of the range (80% at 5). The contrast is
+// structural, not statistical: iqp's ZZ phase carries the feature PRODUCT, so
+// it grows with the SQUARE of the scale and folds onto itself first, while the
+// angle map's rotation argument grows only linearly. The caption is keyed off
+// the selected map so neither map's behaviour is asserted for the other, and
+// the slider range extends to 5.0 exactly so the fall-off both captions
+// describe is reachable in-widget rather than taken on faith.
 // ---------------------------------------------------------------------------
 
 const SCALE_LESSON: Record<FeatureMap, string> = {
   iqp:
-    "Push the scale high and the entangling map over-encodes: the boundary gains " +
-    "structure it cannot justify and accuracy falls away again.",
+    "Push the scale past ~3 and the entangling map over-encodes: its ZZ phase " +
+    "carries the feature product, so it grows with the square of the scale — the " +
+    "boundary gains structure it cannot justify and accuracy falls away again.",
   angle:
-    "Pushing the scale only helps here — this product map's rotations never reach " +
-    "the pi wrap-around, so it cannot over-encode. Switch to iqp to see a map that can.",
+    "This map wraps much later — its rotation angles grow only linearly with " +
+    "scale, so accuracy keeps climbing well past where the entangling map has " +
+    "already folded onto itself. Only near the top of the slider does it begin " +
+    "to alias too.",
 };
 
 // ---------------------------------------------------------------------------
@@ -256,10 +265,13 @@ function KernelView({ config }: { config: Config }) {
         <div className="min-w-0 flex-1">
           {/* Both figures are scored on the training points themselves (each
               point's own kernel term K(x_i, x_i) = 1 is the largest in its sum,
-              so it always votes for its own label) — measured 11-13 points above
-              held-out accuracy. Labeled "training" so the widget does not teach
-              a training score as generalization. aria-busy + the dim keep the
-              number visibly provisional while the deferred recompute lags. */}
+              so it always votes for its own label) — under the canonical IQP
+              convention the training-vs-held-out gap is +5.0 points for iqp and
+              +13.3 for angle at the default scale 1.0, ranging -3.4 to +13.3
+              across the 0.3-5.0 slider (circles, train seed 1 / test seed 2).
+              Labeled "training" so the widget does not teach a training score
+              as generalization. aria-busy + the dim keep the number visibly
+              provisional while the deferred recompute lags. */}
           <div role="status" aria-live="polite" aria-busy={stale} className={`transition-opacity ${dimClass}`}>
             <p className="text-sm text-(--ink)">
               quantum-kernel training accuracy ={" "}
@@ -293,7 +305,7 @@ function KernelView({ config }: { config: Config }) {
             label="scale"
             value={scale}
             min={0.3}
-            max={2.0}
+            max={5.0}
             step={0.05}
             onChange={setScale}
             ariaLabel="Feature-map scale"
