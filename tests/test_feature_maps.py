@@ -111,6 +111,38 @@ def test_iqp_encoding_reps_changes_the_state():
     assert not np.allclose(one, two, atol=1e-6)
 
 
+def test_iqp_encoding_matches_the_committed_cross_language_fixture():
+    """The fixture web/.../__fixtures__/iqp-states.json pins iqp_encoding's exact
+    states, and encoding.test.ts asserts the browser widget's iqpState against
+    the same file — so the Python library and the lesson widget can never again
+    diverge silently under the same "IQP" name (the 2026-08-18 audit found them
+    0.746 fidelity apart at the GUIDE's own worked point). Regenerate with
+    scripts/gen_iqp_fixture.py after a deliberate convention change.
+    """
+    import json
+    from pathlib import Path
+
+    fixture_path = (
+        Path(__file__).resolve().parent.parent
+        / "web"
+        / "src"
+        / "components"
+        / "quantum"
+        / "__fixtures__"
+        / "iqp-states.json"
+    )
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert fixture["cases"], "empty fixture would guard nothing"
+    for case in fixture["cases"]:
+        sv = statevector(iqp_encoding(np.array(case["x"]), reps=case["reps"]))
+        expected = np.array([complex(re, im) for re, im in case["state"]])
+        assert np.allclose(sv, expected, atol=1e-10), (
+            f"x={case['x']} reps={case['reps']}: iqp_encoding diverged from the "
+            f"committed fixture — if the convention change is deliberate, "
+            f"regenerate with scripts/gen_iqp_fixture.py and update encoding.ts"
+        )
+
+
 def test_iqp_encoding_is_unitary(run_local):
     # phi(x) followed by phi(x).adjoint() must return the all-zero state.
     features = np.array([0.7, -0.3, 0.5])

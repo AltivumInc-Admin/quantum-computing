@@ -37,16 +37,34 @@ def run_vqe(
     import sys
     from pathlib import Path
 
-    algorithms_scripts = Path(__file__).resolve().parents[2] / "03-algorithms" / "scripts"
+    repo_root = Path(__file__).resolve().parents[2]
+    algorithms_scripts = repo_root / "03-algorithms" / "scripts"
     if str(algorithms_scripts) not in sys.path:
         sys.path.insert(0, str(algorithms_scripts))
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
     from variational_utils import optimize_cobyla, optimize_spsa
+
+    from lib.utils.results import parse_counts
+
+    # Fail on an out-of-range Pauli term BEFORE the optimizer spends any
+    # evaluations: a term on qubit >= n_qubits can only ever mis-index (Z) or
+    # silently widen the register (X/Y).
+    for term in qubit_hamiltonian.terms:
+        for qubit_idx, _ in term:
+            if qubit_idx >= n_qubits:
+                raise ValueError(
+                    f"Hamiltonian term {term} acts on qubit {qubit_idx}, but "
+                    f"n_qubits={n_qubits} — the bitstring column for that qubit "
+                    f"does not exist. Pass the Hamiltonian's true qubit count."
+                )
 
     device = LocalSimulator()
 
     def energy_cost(params):
         """Compute <H> by measuring each Pauli term."""
         circuit = ansatz_fn(params)
+        _validate_ansatz_span(circuit, n_qubits)
         total_energy = 0.0
 
         for term, coeff in qubit_hamiltonian.terms.items():
@@ -58,8 +76,13 @@ def run_vqe(
             meas_circuit = circuit + _pauli_measurement_circuit(term, n_qubits)
             result = device.run(meas_circuit, shots=shots).result()
 
-            # Compute expectation value
-            counts = result.measurement_counts
+            # parse_counts owns the bitstring-column contract the parity loop
+            # below depends on: indexing a key by absolute qubit index is valid
+            # only when the measured qubits are exactly 0..n-1 in order, and
+            # parse_counts raises when they are not instead of silently
+            # mislabelling every outcome. Same construction as the hardened
+            # twin in 06-hybrid-jobs/algorithms/vqe_chemistry_job.py.
+            counts = parse_counts(result)
             exp_val = _expectation_from_pauli_counts(counts, term, n_qubits)
             total_energy += np.real(coeff) * exp_val
 
@@ -78,6 +101,28 @@ def run_vqe(
         "history": [h["cost"] for h in result["history"]],
         "n_evaluations": result["n_evals"],
     }
+
+
+def _validate_ansatz_span(circuit: Circuit, n_qubits: int) -> None:
+    """Require the ansatz to span exactly qubits 0..n_qubits-1.
+
+    Braket COMPACTS the measured register: a circuit touching qubits {0, 2}
+    measures two columns, and column 1 of each bitstring is qubit 2, not
+    qubit 1. Every parity computed by absolute qubit index downstream would
+    then be silently wrong (or a bare IndexError). Both repo ansatz builders
+    (uccsd_singles_circuit, hardware_efficient_ansatz) always span 0..n-1, so
+    this rejects only learner-written ansatze that skip a qubit — with the fix
+    spelled out instead of a mislabelled energy.
+    """
+    spanned = sorted(int(q) for q in circuit.qubits)
+    if spanned != list(range(n_qubits)):
+        raise ValueError(
+            f"ansatz spans qubits {spanned}, but VQE on n_qubits={n_qubits} "
+            f"requires exactly 0..{n_qubits - 1}: Braket compacts the measured "
+            f"register, so a skipped qubit shifts every bitstring column and "
+            f"mislabels every outcome. Touch each qubit (an identity placeholder "
+            f"circuit.i(q) is enough)."
+        )
 
 
 def _pauli_measurement_circuit(pauli_term: tuple, n_qubits: int) -> Circuit:
