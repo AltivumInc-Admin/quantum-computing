@@ -11,7 +11,9 @@ import type { SectionSlug } from "@/lib/glossary";
  *    do not. No test can check this — the field name is the whole enforcement.
  *  - Never announce a surface the deployed system does not expose. The repo is
  *    public and this page is indexed, so an entry here is a rule 13 claim with
- *    SEO reach. The ban list lives in __tests__/lib/changelog.test.ts.
+ *    SEO reach. The ban list lives in __tests__/_support/changelog-ban-list.ts
+ *    and is run over three surfaces: these strings, the rendered page in both
+ *    locales, and the page's metadata export.
  *
  * The record is forward-only. It begins at its first entry and makes no claim
  * about anything before that date; the page's lede says so.
@@ -72,6 +74,11 @@ export interface SilentChange {
  * landing here. That is deliberately more work than a magic string in a PR
  * description, and deliberately reviewable: the decision NOT to announce ends
  * up in version control next to the decisions to announce.
+ *
+ * `pr` is the PULL REQUEST's own number, which does not exist until the pull
+ * request does — and the guard fails on the first push, before that. So the
+ * order is: push, open the pull request, read the number off it, add the line,
+ * push again. The first red check is the expected path here, not a mistake.
  */
 export const SILENT: readonly SilentChange[] = [];
 

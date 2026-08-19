@@ -131,10 +131,23 @@ jobs:
       # rules unit-testable with no repository.
       #
       # pull_request only — a push to main has no base to diff against.
+      #
+      # `shell: bash` is load-bearing, not decoration: the default runner shell
+      # is `bash -e {0}`, WITHOUT pipefail, so a failing `git diff` would be
+      # swallowed and the step's status would be node's alone. Naming the shell
+      # turns on `-o pipefail`, which is what makes the git half of this pipeline
+      # able to fail the build. The guard still fails closed either way — an
+      # empty stdin exits 2 — but that is one layer, and this is meant to be two.
+      #
+      # core.quotePath=false: git otherwise C-quotes any path holding non-ASCII
+      # bytes, and the leading quote makes isLearnerVisible() miss a prefix it
+      # should have matched. No such path is tracked today; the flag costs
+      # nothing and the failure mode is silent.
       - name: Changelog guard
         if: github.event_name == 'pull_request'
         working-directory: .
-        run: git diff --name-only HEAD^1 HEAD | node scripts/changelog/check.mjs
+        shell: bash
+        run: git -c core.quotePath=false diff --name-only HEAD^1 HEAD | node scripts/changelog/check.mjs
 
   lambdas:
     name: Lambda tests
