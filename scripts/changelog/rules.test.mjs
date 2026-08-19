@@ -62,6 +62,57 @@ test("curriculum notebooks, guides and scripts are learner-visible", () => {
   }
 });
 
+test("the lib/ modules that ARE rendered copy are learner-visible", () => {
+  // pricing.ts first and deliberately: TIERS, HARDWARE_RATES and TUTOR_RATES are
+  // the public /pricing page. This list asserted the OPPOSITE of that line until
+  // 2026-08-19 — it pinned the claim that a repricing needs no announcement,
+  // which in a repo whose rule 13 exists because a stale grant once rendered
+  // beside a new price is the worst thing the guard could have been taught.
+  for (const p of [
+    "web/src/lib/pricing.ts",
+    "web/src/lib/sections.ts",
+    "web/src/lib/content.ts",
+    "web/src/lib/section-pitch.ts",
+    "web/src/lib/runbook.ts",
+    "web/src/lib/credentials.ts",
+    "web/src/lib/founding-ten.ts",
+    "web/src/data/founding-ten.json",
+    "web/src/hooks/use-progress.ts",
+  ]) {
+    assert.equal(isLearnerVisible(p), true, p);
+  }
+});
+
+test("the lib/ modules that are machinery are not", () => {
+  // web/src/lib is listed file by file precisely because it holds both. A grader,
+  // a transport or a hash is announced (or not) by whatever renders it.
+  for (const p of [
+    "web/src/lib/circuit-store.ts",
+    "web/src/lib/sha256.ts",
+    "web/src/lib/predict-grade.ts",
+    "web/src/lib/sync-client.ts",
+    "web/src/lib/pyodide-runtime.ts",
+  ]) {
+    assert.equal(isLearnerVisible(p), false, p);
+  }
+});
+
+test("the deliberate exclusions stay excluded", () => {
+  // Decisions, documented in rules.mjs. content/reps/ is the community
+  // contribution path README documents as "add one file, open a pull request";
+  // web/public/ is generated JupyterLite and Pyodide output that moves on every
+  // build; changelog-es.ts alone is a correction to an announcement that already
+  // shipped, not a new announcement.
+  for (const p of [
+    "content/reps/community-ghz-reachable-1.json",
+    "web/public/lab/index.html",
+    "web/public/pyodide/pyodide.asm.wasm",
+    "web/src/lib/changelog-es.ts",
+  ]) {
+    assert.equal(isLearnerVisible(p), false, p);
+  }
+});
+
 test("tests, infra, docs, scripts and the Lambdas are not learner-visible", () => {
   for (const p of [
     "web/__tests__/components/footer.test.tsx",
@@ -71,7 +122,6 @@ test("tests, infra, docs, scripts and the Lambdas are not learner-visible", () =
     "infra/template.yaml",
     ".github/workflows/ci.yml",
     "scripts/changelog/rules.mjs",
-    "web/src/lib/pricing.ts",
     "web/src/i18n/translate.ts",
     "Makefile",
   ]) {
@@ -83,7 +133,18 @@ test("a directory prefix never matches a sibling that merely starts the same way
   assert.equal(isLearnerVisible("web/src/app-shell/thing.ts"), false);
   assert.equal(isLearnerVisible("web/src/components-legacy/x.tsx"), false);
   assert.equal(isLearnerVisible("web/src/libs/glossary.ts"), false);
+  assert.equal(isLearnerVisible("web/src/database/seed.ts"), false);
+  assert.equal(isLearnerVisible("web/src/hooks-legacy/use-x.ts"), false);
   assert.equal(isLearnerVisible("01-foundations-old/GUIDE.md"), false);
+});
+
+test("an exact-path entry matches that file and nothing near it", () => {
+  // The lib/ entries carry no trailing slash, so they are exact paths. A
+  // neighbour that merely shares the prefix must not match.
+  assert.equal(isLearnerVisible("web/src/lib/pricing.ts"), true);
+  assert.equal(isLearnerVisible("web/src/lib/pricing.test.ts"), false);
+  assert.equal(isLearnerVisible("web/src/lib/pricing-helpers.ts"), false);
+  assert.equal(isLearnerVisible("web/src/lib/sections-legacy.ts"), false);
 });
 
 test("every watched path still exists in the repo it guards", () => {
