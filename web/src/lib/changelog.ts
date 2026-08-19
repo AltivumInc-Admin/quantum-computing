@@ -1,0 +1,120 @@
+import type { SectionSlug } from "@/lib/glossary";
+
+/**
+ * The learner-facing record of what changed in Quantum Learner.
+ *
+ * English is canonical and carries the structure; changelog-es.ts holds the
+ * Spanish twin, keyed by entry id. Two rules this file exists to hold:
+ *
+ *  - `shipped` means VISIBLE TO A LEARNER IN PRODUCTION, not merged. For web
+ *    changes the two coincide (Amplify deploys from main); for the Lambdas they
+ *    do not. No test can check this — the field name is the whole enforcement.
+ *  - Never announce a surface the deployed system does not expose. The repo is
+ *    public and this page is indexed, so an entry here is a rule 13 claim with
+ *    SEO reach. The ban list lives in __tests__/lib/changelog.test.ts.
+ *
+ * The record is forward-only. It begins at its first entry and makes no claim
+ * about anything before that date; the page's lede says so.
+ */
+
+/** new = new stuff · improved = refinements · fixed = fixes */
+export type ChangeKind = "new" | "improved" | "fixed";
+
+export interface ChangeEntry {
+  /**
+   * Stable, URL-safe, NEVER reused or renamed: `/changelog#<id>` is a permanent
+   * deep link and the Spanish twin is keyed by it. Convention: the ship date,
+   * then a short slug.
+   *
+   * Note the id begins with a digit. That is a valid HTML id and a valid URL
+   * fragment, but an INVALID bare CSS selector — reach these elements with
+   * getElementById, never querySelector("#" + id).
+   */
+  id: string;
+  /** ISO yyyy-mm-dd. See the note above — production, not merge. */
+  shipped: string;
+  kind: ChangeKind;
+  /** One line, learner voice. No PR numbers, no file paths, no jargon. */
+  title: string;
+  /** One to three sentences: what changed, and what it means for them. */
+  body: string;
+  /** Optional internal route to go and see it. Must start with "/". */
+  href?: string;
+  /** Optional curriculum section, reusing the glossary's slug union. */
+  section?: SectionSlug;
+}
+
+/** Entry ids are permanent deep links, so their shape is pinned by a test. */
+export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
+
+/** Newest first, as authored. A test asserts the ordering. */
+export const CHANGELOG: readonly ChangeEntry[] = [
+  {
+    id: "2026-08-19-grover-amplification",
+    shipped: "2026-08-19",
+    kind: "fixed",
+    title: "Grover's search now amplifies correctly at four qubits and above",
+    body: "The oracle and diffusion steps quietly did nothing on circuits larger than three qubits, so the algorithm returned an even spread instead of finding the marked item. Both now build the correct operation at any size, and the Algorithms lesson demonstrates real amplification.",
+    href: "/learn/03-algorithms",
+    section: "03-algorithms",
+  },
+];
+
+export interface SilentChange {
+  pr: number;
+  reason: string;
+}
+
+/**
+ * Learner-visible paths changed WITHOUT an announcement, and why.
+ *
+ * scripts/changelog/ requires every learner-path pull request to touch THIS
+ * file. A change nobody should hear about — an internal refactor, a test-only
+ * edit that happened to sit under a watched directory — satisfies the guard by
+ * landing here. That is deliberately more work than a magic string in a PR
+ * description, and deliberately reviewable: the decision NOT to announce ends
+ * up in version control next to the decisions to announce.
+ */
+export const SILENT: readonly SilentChange[] = [];
+
+/** Newest first. Ties keep their authored order. */
+export function sortedEntries(entries: readonly ChangeEntry[] = CHANGELOG): ChangeEntry[] {
+  return [...entries].sort((a, b) =>
+    a.shipped < b.shipped ? 1 : a.shipped > b.shipped ? -1 : 0,
+  );
+}
+
+export interface MonthGroup {
+  /** "2026-08" — a sort key and a stable React key, never display text. */
+  key: string;
+  entries: ChangeEntry[];
+}
+
+/** Group newest-first entries into newest-first months. */
+export function groupByMonth(entries: readonly ChangeEntry[] = CHANGELOG): MonthGroup[] {
+  const groups: MonthGroup[] = [];
+  for (const entry of sortedEntries(entries)) {
+    const key = entry.shipped.slice(0, 7);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.entries.push(entry);
+    else groups.push({ key, entries: [entry] });
+  }
+  return groups;
+}
+
+/**
+ * Display heading for a month group, e.g. "August 2026" / "agosto de 2026".
+ *
+ * Takes a BCP 47 tag (feed it localeCode(locale)), and formats at UTC because
+ * "2026-08-01" parses as midnight UTC — formatting it west of UTC without this
+ * would file the group under July. The two locales differ in word order AND in
+ * capitalization, so never post-process the result by hand.
+ */
+export function monthLabel(key: string, localeTag: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Intl.DateTimeFormat(localeTag, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
