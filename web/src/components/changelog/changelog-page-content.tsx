@@ -29,7 +29,7 @@ export function ChangelogPageContent({
 }: {
   /** Defaults to CHANGELOG. Present so the empty state is reachable in a test. */
   entries?: readonly ChangeEntry[];
-} = {}) {
+}) {
   const { t, locale } = useLocale();
   const tag = localeCode(locale);
   const groups = groupByMonth(entries);

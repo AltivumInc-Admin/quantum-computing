@@ -42,9 +42,16 @@ describe("ChangelogPageContent", () => {
   it("renders the Spanish twin, not the English text, in Spanish", () => {
     // useLocale() falls back to a working English-only value with no provider,
     // so an en-only test passes while asserting nothing about localization.
+    //
+    // TITLE as well as body: a twin whose title was never translated satisfies
+    // both the body assertion here and the data test's parity check (which asks
+    // only that the title be non-empty), so the untranslated half would render
+    // to every Spanish reader with the suite green.
     renderChangelog("es");
     for (const entry of CHANGELOG) {
+      expect(screen.getByText(CHANGELOG_ES[entry.id].title)).toBeInTheDocument();
       expect(screen.getByText(CHANGELOG_ES[entry.id].body)).toBeInTheDocument();
+      expect(screen.queryByText(entry.title)).not.toBeInTheDocument();
       expect(screen.queryByText(entry.body)).not.toBeInTheDocument();
     }
   });
@@ -107,11 +114,18 @@ describe("ChangelogPageContent", () => {
   });
 
   it.each(["en", "es"] as const)("states in %s that the record starts here", (locale) => {
-    // Forward-only: the page backfills nothing, so a two-entry list must read as
-    // deliberate rather than abandoned. The lede is the only thing that does that.
+    // Forward-only: the page backfills nothing, so a short list must read as
+    // deliberate rather than abandoned. The lede is the only thing that does
+    // that, and spec section 2 assigns it that job specifically.
+    //
+    // Asserted on the CLAIM, not on a length. "length > 40" passes for any
+    // paragraph of any prose — the forward-only sentence could be deleted
+    // wholesale and this would stay green, which is the one regression it
+    // exists to catch.
     const { container } = renderChangelog(locale);
     const lede = container.querySelector("header p:last-of-type");
-    expect(lede?.textContent?.length ?? 0).toBeGreaterThan(40);
+    const expected = locale === "en" ? "The record starts here" : "El registro empieza aquí";
+    expect(lede?.textContent ?? "").toContain(expected);
   });
 
   it("says so plainly when there is nothing to show", () => {
