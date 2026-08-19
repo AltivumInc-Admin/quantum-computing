@@ -10,9 +10,14 @@ describe("sitemap", () => {
       `${SITE_URL}/pricing`,
       `${SITE_URL}/privacy`,
       `${SITE_URL}/founding-ten`,
+      `${SITE_URL}/changelog`,
       `${SITE_URL}/founding-ten/charter-01`,
     ]);
     expect(urls.every((u) => u.startsWith("https://"))).toBe(true);
+  });
+
+  it("advertises the changelog — it is public, and it is the freshness signal", () => {
+    expect(sitemap().map((e) => e.url)).toContain(`${SITE_URL}/changelog`);
   });
 
   it("excludes every route behind the sign-up wall", () => {

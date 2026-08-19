@@ -8,14 +8,23 @@ import { useLocale } from "@/i18n";
 /**
  * Routes that never require an account. The marketing funnel (`/`, `/pricing`)
  * is the conversion surface; the auth routes (`/login`, `/auth/callback`) would
- * loop if gated; `/privacy` is legal and must always be reachable; the
- * `/e2e-fixtures/*` pages are Playwright scaffolding. Everything else — the
- * whole learning platform — sits behind the sign-up wall.
+ * loop if gated; `/privacy` is legal and must always be reachable; `/changelog`
+ * is the public record of what shipped, and a changelog only signals a living
+ * product if a prospective learner can read it; the `/e2e-fixtures/*` pages are
+ * Playwright scaffolding. Everything else — the whole learning platform — sits
+ * behind the sign-up wall.
  *
  * `/founding-ten/*` is proof of record: a third party verifying a holder's
  * credential must reach it without an account, so it cannot sit behind the wall.
  */
-const PUBLIC_PATHS = new Set(["/", "/pricing", "/login", "/auth/callback", "/privacy"]);
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/pricing",
+  "/login",
+  "/auth/callback",
+  "/privacy",
+  "/changelog",
+]);
 const PUBLIC_PREFIXES = ["/e2e-fixtures", "/founding-ten"];
 
 function isPublicPath(pathname: string): boolean {

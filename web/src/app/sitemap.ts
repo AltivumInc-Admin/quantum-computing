@@ -16,7 +16,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // indexable — a credential nobody can find is not proof of anything. Badge
   // URLs are derived from the registry, never hardcoded, so an open slot
   // never gets a sitemap entry and a newly issued one is picked up for free.
-  const staticPaths = ["", "/pricing", "/privacy", "/founding-ten"];
+  //
+  // /changelog is public for the same reason: it is the freshness signal a
+  // prospective learner checks, and it is registered in auth-wall.tsx's
+  // PUBLIC_PATHS. These two lists must always move together — advertising a
+  // walled route would only send crawlers into a redirect.
+  const staticPaths = ["", "/pricing", "/privacy", "/founding-ten", "/changelog"];
   const badgePaths = allBadges().map((b) => `/founding-ten/${badgeSlug(b)}`);
   return [...staticPaths, ...badgePaths].map((p) => ({ url: `${SITE_URL}${p}` }));
 }

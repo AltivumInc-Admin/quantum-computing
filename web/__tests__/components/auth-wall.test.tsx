@@ -45,6 +45,13 @@ describe("AuthWall", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it("leaves /changelog public — a signed-out visitor is exactly who it is for", () => {
+    mockPathname = "/changelog";
+    renderWall();
+    expect(screen.getByText(CHILD)).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("leaves the Founding Ten proof pages public — they are third-party verifiable", () => {
     for (const p of ["/founding-ten", "/founding-ten/charter-01"]) {
       mockPathname = p;
