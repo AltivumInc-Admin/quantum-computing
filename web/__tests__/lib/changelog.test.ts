@@ -9,6 +9,11 @@ import {
 } from "@/lib/changelog";
 import { CHANGELOG_ES } from "@/lib/changelog-es";
 import { getSectionBySlug } from "@/lib/sections";
+import {
+  BANNED_CLAIMS,
+  affirmativeHit,
+  bannedClaimHits,
+} from "../_support/changelog-ban-list";
 
 const KINDS = ["new", "improved", "fixed"];
 
@@ -145,43 +150,13 @@ describe("month grouping", () => {
 });
 
 describe("rule 13 — the page may not advertise what the deployed system cannot do", () => {
-  // A BAN list, deliberately not a presence assertion. The 2026-08-17 audit
-  // established that locking a promise's PRESENCE in a test is exactly how a
-  // withdrawn promise outlived its withdrawal. Re-verify these when the
-  // storefront opens; do not delete them.
-  const BANNED: { pattern: RegExp; why: string }[] = [
-    {
-      pattern: /\b(buy|purchase|top.?up|recharge)\b[\w\s]{0,100}\b(credits|plan|subscription|wallet|balance)\b/i,
-      why: "the storefront is closed — no NEXT_PUBLIC_BILLING_URL in the live env",
-    },
-    {
-      pattern: /\b(comprar|adquirir|recargar)\b[\w\s]{0,100}\b(créditos|plan|suscripción|cartera|saldo)\b/i,
-      why: "the storefront is closed (Spanish)",
-    },
-    {
-      pattern: /\b(run|execute)\b.{0,50}\bon\s+(quantum\s+)?hardware\b/i,
-      why: "LIFETIME_CAP_MICROS is 0 — no learner can run a QPU task",
-    },
-    {
-      pattern: /\bejecutar? .{0,20}en hardware\b/i,
-      why: "no learner can run a QPU task (Spanish)",
-    },
-    { pattern: /sponsor\w*/i, why: "the sponsored-QPU promise was withdrawn 2026-08-17" },
-    { pattern: /patrocin\w*/i, why: "the sponsored-QPU promise was withdrawn (Spanish)" },
-  ];
-
-  // A denylist over raw text cannot see a negation, and the pricing page's guard
-  // documents two real sentences that were honest and still matched. Narrow the
-  // hit to affirmative constructions: ignore a match with a negation earlier in
-  // the same sentence. A heuristic, and better than none.
-  const NEGATION = /\b(no|not|never|cannot|can't|without|nunca|sin|tampoco|todavía no|aún no)\b/i;
-
-  function affirmativeHit(text: string, pattern: RegExp): boolean {
-    const m = pattern.exec(text);
-    if (!m) return false;
-    const sentenceStart = text.lastIndexOf(".", m.index) + 1;
-    return !NEGATION.test(text.slice(sentenceStart, m.index));
-  }
+  // The list and the matcher live in __tests__/_support/changelog-ban-list.ts,
+  // because three surfaces must be scanned with the SAME list and three copies
+  // would drift: the data strings here, the RENDERED page in both locales
+  // (__tests__/components/changelog/changelog-page-content.test.tsx) and the
+  // METADATA export (__tests__/app/changelog-page.test.tsx). Spec section 6 asks
+  // for rendered text in both locales; data alone never reaches the page chrome
+  // or the share-card copy.
 
   function allCopy(): { label: string; text: string }[] {
     const rows: { label: string; text: string }[] = [];
@@ -204,53 +179,70 @@ describe("rule 13 — the page may not advertise what the deployed system cannot
     expect(allCopy().length).toBeGreaterThan(0);
   });
 
-  it.each(BANNED)("never claims what it cannot deliver: $why", ({ pattern }) => {
+  it.each(BANNED_CLAIMS)("never claims what it cannot deliver: $why", ({ pattern }) => {
     expect(allCopy().filter((r) => affirmativeHit(r.text, pattern)).map((r) => r.label)).toEqual([]);
   });
+});
 
-  it("still catches an affirmative claim (the guard is not inert)", () => {
-    expect(affirmativeHit("You can buy credits today.", BANNED[0].pattern)).toBe(true);
-    expect(affirmativeHit("You cannot buy credits yet.", BANNED[0].pattern)).toBe(false);
+describe("the ban list's matcher", () => {
+  const [PURCHASE, PURCHASE_ES, HARDWARE, HARDWARE_ES] = BANNED_CLAIMS;
+
+  it("catches a plain affirmative claim (the guard is not inert)", () => {
+    expect(affirmativeHit("You can buy credits today.", PURCHASE.pattern)).toBe(true);
   });
 
   it("catches evasions using house vocabulary — purchase", () => {
-    // The site's own copy uses "top up", "purchase", "topup" where the original
-    // pattern only caught "buy". Verify the widened pattern catches them.
-    expect(affirmativeHit("You can now top up your wallet from the Pricing page.", BANNED[0].pattern)).toBe(true);
-    expect(affirmativeHit("You can now purchase credits directly.", BANNED[0].pattern)).toBe(true);
-    expect(affirmativeHit("Top up your balance to unlock premium features.", BANNED[0].pattern)).toBe(true);
+    // The site's own copy says "top up", "purchase", "topup" where the original
+    // pattern only caught "buy".
+    expect(affirmativeHit("You can now top up your wallet from the Pricing page.", PURCHASE.pattern)).toBe(true);
+    expect(affirmativeHit("You can now purchase credits directly.", PURCHASE.pattern)).toBe(true);
+    expect(affirmativeHit("Top up your balance to unlock premium features.", PURCHASE.pattern)).toBe(true);
   });
 
-  it("catches evasions using house vocabulary — hardware (Spanish purchase)", () => {
-    // Verify Spanish purchase pattern catches house vocab too.
-    expect(affirmativeHit("Ahora puedes recargar tu cartera desde la página de Precios.", BANNED[1].pattern)).toBe(true);
-    expect(affirmativeHit("Puedes adquirir créditos directamente.", BANNED[1].pattern)).toBe(true);
+  it("catches evasions using house vocabulary — Spanish purchase", () => {
+    expect(affirmativeHit("Ahora puedes recargar tu cartera desde la página de Precios.", PURCHASE_ES.pattern)).toBe(true);
+    expect(affirmativeHit("Puedes adquirir créditos directamente.", PURCHASE_ES.pattern)).toBe(true);
   });
 
-  it("catches hardware runs without 'real' or 'actual' modifier", () => {
-    // Original pattern required "real" or "actual" before "hardware", which let
-    // "You can run your circuit on hardware" slip through. Verify the widened
-    // pattern catches it.
-    expect(affirmativeHit("You can now run your circuit on hardware.", BANNED[2].pattern)).toBe(true);
-    expect(affirmativeHit("Execute them on hardware directly from the browser.", BANNED[2].pattern)).toBe(true);
+  it("catches hardware runs without a 'real' or 'actual' modifier", () => {
+    expect(affirmativeHit("You can now run your circuit on hardware.", HARDWARE.pattern)).toBe(true);
+    expect(affirmativeHit("Execute them on hardware directly from the browser.", HARDWARE.pattern)).toBe(true);
   });
 
-  it("catches hardware runs in Spanish without real/cuántico modifier", () => {
-    // Spanish hardware pattern widened the same way.
-    expect(affirmativeHit("Ahora puedes ejecutar en hardware directamente.", BANNED[3].pattern)).toBe(true);
+  it("catches hardware runs in Spanish without a real/cuántico modifier", () => {
+    expect(affirmativeHit("Ahora puedes ejecutar en hardware directamente.", HARDWARE_ES.pattern)).toBe(true);
   });
 
   it("does not match bare 'hardware' in curriculum contexts", () => {
-    // The guard must not trip on legitimate entries about the Hardware curriculum.
-    // The pattern requires the run/execute action near "on hardware", not just the word.
-    expect(affirmativeHit("The Hardware lesson now covers IQM's connectivity graph.", BANNED[2].pattern)).toBe(false);
-    expect(affirmativeHit("A new page on hardware noise and how it limits circuit depth.", BANNED[2].pattern)).toBe(false);
+    // The guard must not trip on legitimate entries about the Hardware section.
+    // The pattern requires the run/execute action near "on hardware", not the word.
+    expect(affirmativeHit("The Hardware lesson now covers IQM's connectivity graph.", HARDWARE.pattern)).toBe(false);
+    expect(affirmativeHit("A new page on hardware noise and how it limits circuit depth.", HARDWARE.pattern)).toBe(false);
   });
 
-  it("still respects negations after widening", () => {
-    // Negations must still work: "You cannot buy" remains false.
-    expect(affirmativeHit("You cannot buy credits yet.", BANNED[0].pattern)).toBe(false);
-    expect(affirmativeHit("You still cannot top up your wallet.", BANNED[0].pattern)).toBe(false);
-    expect(affirmativeHit("You can't purchase a subscription in this region yet.", BANNED[0].pattern)).toBe(false);
+  it("respects a negation in the same clause", () => {
+    expect(affirmativeHit("You cannot buy credits yet.", PURCHASE.pattern)).toBe(false);
+    expect(affirmativeHit("You still cannot top up your wallet.", PURCHASE.pattern)).toBe(false);
+    expect(affirmativeHit("You can't purchase a subscription in this region yet.", PURCHASE.pattern)).toBe(false);
+  });
+
+  it("is not immunized by a negated mention EARLIER in the text", () => {
+    // exec() on a non-global regex returns match #1 and stops, so the honest
+    // first sentence used to cover every affirmative sentence after it.
+    expect(affirmativeHit("You cannot buy credits yet. You can purchase a plan today.", PURCHASE.pattern)).toBe(true);
+  });
+
+  it("is not immunized by an honest LEADING CLAUSE of the same sentence", () => {
+    // "X is not available yet, but you can now Y" is the single most common shape
+    // this prose takes. A sentence-wide negation window let all of it through.
+    expect(affirmativeHit("Credits are not sold yet, but you can now top up your wallet.", PURCHASE.pattern)).toBe(true);
+    expect(affirmativeHit("Hardware is not open to everyone; you can run a circuit on hardware from any lesson.", HARDWARE.pattern)).toBe(true);
+  });
+
+  it("reports the matched text and the reason, so a failure names the defect", () => {
+    expect(bannedClaimHits("You can buy credits today.", "en")).toEqual([
+      `[en] advertised "buy credits" — ${PURCHASE.why}`,
+    ]);
+    expect(bannedClaimHits("Nothing here is for sale.", "en")).toEqual([]);
   });
 });

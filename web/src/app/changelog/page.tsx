@@ -5,6 +5,12 @@ import { ChangelogPageContent } from "@/components/changelog/changelog-page-cont
 export const metadata: Metadata = {
   title: `Changelog — ${SITE_NAME}`,
   description: `What is new, what got better, and what got fixed in ${SITE_NAME} — every change a learner can see, newest first.`,
+  // A page whose whole job is freshness must name its own canonical URL: it is
+  // in the sitemap, it is linked from every footer, and a changelog is exactly
+  // the kind of page a crawler reaches through a fragment (/changelog#<id>) or
+  // a tracking parameter. Matches the pricing page, the repo's other indexed
+  // public funnel route.
+  alternates: { canonical: "/changelog" },
 };
 
 /**

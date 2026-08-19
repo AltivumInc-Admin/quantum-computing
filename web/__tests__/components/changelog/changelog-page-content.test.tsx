@@ -2,11 +2,12 @@
  * @jest-environment jsdom
  */
 import "@testing-library/jest-dom";
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { ChangelogPageContent } from "@/components/changelog/changelog-page-content";
 import { LocaleProvider } from "@/i18n";
 import { CHANGELOG, type ChangeEntry } from "@/lib/changelog";
 import { CHANGELOG_ES } from "@/lib/changelog-es";
+import { bannedClaimHits } from "../../_support/changelog-ban-list";
 
 jest.mock("next/link", () => {
   const React = require("react");
@@ -120,6 +121,34 @@ describe("ChangelogPageContent", () => {
     renderChangelog("en", []);
     expect(screen.getByText(/nothing has shipped/i)).toBeInTheDocument();
   });
+
+  it.each(["en", "es"] as const)(
+    "advertises nothing the deployed system cannot do, in RENDERED %s",
+    (locale) => {
+      // Spec section 6 asks for the ban list over rendered text in both locales,
+      // in the shape the pricing page uses. The data scan in
+      // __tests__/lib/changelog.test.ts reads CHANGELOG and CHANGELOG_ES only,
+      // which leaves the page chrome unguarded — changelogUi.lead, .eyebrow,
+      // .seeIt and .empty are i18n strings shipping to the same public, indexed
+      // page as the entries, and a promise reads the same to a learner whichever
+      // module it came from.
+      const populated = renderChangelog(locale).container.textContent ?? "";
+      // Non-vacuity: a scan over an empty tree passes while asserting nothing,
+      // and it has to be THIS locale's copy — an es render that fell back to
+      // English would still be a long string full of words.
+      const shown = locale === "en" ? CHANGELOG[0] : CHANGELOG_ES[CHANGELOG[0].id];
+      expect(populated).toContain(shown.title);
+      expect(populated).toContain(shown.body);
+      expect(populated.length).toBeGreaterThan(200);
+      expect(bannedClaimHits(populated, locale)).toEqual([]);
+
+      // The empty state is copy too, and it renders on no other path.
+      cleanup();
+      const empty = renderChangelog(locale, []).container.textContent ?? "";
+      expect(empty.length).toBeGreaterThan(100);
+      expect(bannedClaimHits(empty, `${locale} (empty state)`)).toEqual([]);
+    },
+  );
 
   it("renders no emoji anywhere", () => {
     const { container } = renderChangelog("en");
