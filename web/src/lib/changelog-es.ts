@@ -17,8 +17,8 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
-  "2026-08-19-grover-amplification": {
-    title: "La búsqueda de Grover ahora amplifica correctamente con cuatro cúbits o más",
-    body: "Los pasos de oráculo y difusión no hacían nada en circuitos de más de tres cúbits, así que el algoritmo devolvía una distribución uniforme en lugar de encontrar el elemento marcado. Ambos construyen ahora la operación correcta en cualquier tamaño, y la lección de Algoritmos demuestra una amplificación real.",
+  "2026-08-19-changelog-page": {
+    title: "Un registro público de lo que cambia aquí",
+    body: "Esta página enumera lo nuevo, lo que mejoró y lo que se corrigió, de lo más reciente a lo más antiguo, en inglés y en español. Está abierta a cualquiera: no hace falta una cuenta. El registro comienza con esta entrada; nada anterior aparece en la lista.",
   },
 };

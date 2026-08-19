@@ -75,14 +75,34 @@ describe("ChangelogPageContent", () => {
     expect(screen.getByRole("heading", { name: expected })).toBeInTheDocument();
   });
 
-  it("links an entry to the place you can go and see it", () => {
-    renderChangelog("en");
-    const withHref = CHANGELOG.filter((e) => e.href);
-    for (const entry of withHref) {
-      const article = document.getElementById(entry.id)!.closest("article")!;
-      const link = within(article as HTMLElement).getByRole("link");
-      expect(link).toHaveAttribute("href", entry.href!);
-    }
+  it("links an entry to the place you can go and see it, and only that entry", () => {
+    // Driven by synthetic entries rather than CHANGELOG: `href` is optional, so
+    // a record whose entries all omit it would leave a loop over CHANGELOG
+    // iterating zero times and passing green over a link that never renders.
+    const linked: ChangeEntry = {
+      id: "2026-08-19-linked",
+      shipped: "2026-08-19",
+      kind: "new",
+      title: "Carries a link",
+      body: "Has somewhere to send you.",
+      href: "/learn/03-algorithms",
+    };
+    const unlinked: ChangeEntry = {
+      id: "2026-08-19-unlinked",
+      shipped: "2026-08-19",
+      kind: "fixed",
+      title: "Carries no link",
+      body: "Has nowhere to send you.",
+    };
+    renderChangelog("en", [linked, unlinked]);
+
+    const withHref = document.getElementById(linked.id)!.closest("article")!;
+    expect(within(withHref as HTMLElement).getByRole("link")).toHaveAttribute(
+      "href",
+      "/learn/03-algorithms",
+    );
+    const withoutHref = document.getElementById(unlinked.id)!.closest("article")!;
+    expect(within(withoutHref as HTMLElement).queryByRole("link")).toBeNull();
   });
 
   it.each(["en", "es"] as const)("states in %s that the record starts here", (locale) => {
