@@ -14,10 +14,15 @@
  * prefix; anything else is an exact path.
  *
  * No test-file exclusions are needed, and that was checked rather than assumed:
- * there are zero colocated *.test.ts(x) files under web/src (every web test
- * lives in web/__tests__, outside these roots), and the seven curriculum
- * directories hold only notebooks/, scripts/, GUIDE.md and GUIDE.es.md. Add an
- * exclusion here if colocated tests are ever introduced.
+ * there are zero *.test.* files anywhere under any of the seven curriculum
+ * directories, and zero colocated *.test.ts(x) files under web/src (every web
+ * test lives in web/__tests__, outside these roots). The seven curriculum
+ * directories are not uniform, for the record: 00-prereqs through
+ * 05-quantum-chemistry each hold notebooks/, scripts/, GUIDE.md and
+ * GUIDE.es.md, but 06-hybrid-jobs holds algorithms/, containers/, notebooks/,
+ * GUIDE.md and GUIDE.es.md instead — no scripts/ subdirectory at all — and is
+ * equally test-free. Add an exclusion here if colocated tests are ever
+ * introduced.
  */
 export const LEARNER_VISIBLE = [
   "web/src/app/",
