@@ -151,19 +151,19 @@ describe("rule 13 — the page may not advertise what the deployed system cannot
   // storefront opens; do not delete them.
   const BANNED: { pattern: RegExp; why: string }[] = [
     {
-      pattern: /\bbuy (credits|a plan|a subscription)\b/i,
+      pattern: /\b(buy|purchase|top.?up|recharge)\b[\w\s]{0,100}\b(credits|plan|subscription|wallet|balance)\b/i,
       why: "the storefront is closed — no NEXT_PUBLIC_BILLING_URL in the live env",
     },
     {
-      pattern: /\bcomprar? (créditos|un plan|una suscripción)\b/i,
+      pattern: /\b(comprar|adquirir|recargar)\b[\w\s]{0,100}\b(créditos|plan|suscripción|cartera|saldo)\b/i,
       why: "the storefront is closed (Spanish)",
     },
     {
-      pattern: /\brun (it |them )?on (real|actual) (quantum )?hardware\b/i,
+      pattern: /\b(run|execute)\b.{0,50}\bon\s+(quantum\s+)?hardware\b/i,
       why: "LIFETIME_CAP_MICROS is 0 — no learner can run a QPU task",
     },
     {
-      pattern: /\bejecutar? .{0,20}en hardware (real|cuántico)\b/i,
+      pattern: /\bejecutar? .{0,20}en hardware\b/i,
       why: "no learner can run a QPU task (Spanish)",
     },
     { pattern: /sponsor\w*/i, why: "the sponsored-QPU promise was withdrawn 2026-08-17" },
@@ -211,5 +211,46 @@ describe("rule 13 — the page may not advertise what the deployed system cannot
   it("still catches an affirmative claim (the guard is not inert)", () => {
     expect(affirmativeHit("You can buy credits today.", BANNED[0].pattern)).toBe(true);
     expect(affirmativeHit("You cannot buy credits yet.", BANNED[0].pattern)).toBe(false);
+  });
+
+  it("catches evasions using house vocabulary — purchase", () => {
+    // The site's own copy uses "top up", "purchase", "topup" where the original
+    // pattern only caught "buy". Verify the widened pattern catches them.
+    expect(affirmativeHit("You can now top up your wallet from the Pricing page.", BANNED[0].pattern)).toBe(true);
+    expect(affirmativeHit("You can now purchase credits directly.", BANNED[0].pattern)).toBe(true);
+    expect(affirmativeHit("Top up your balance to unlock premium features.", BANNED[0].pattern)).toBe(true);
+  });
+
+  it("catches evasions using house vocabulary — hardware (Spanish purchase)", () => {
+    // Verify Spanish purchase pattern catches house vocab too.
+    expect(affirmativeHit("Ahora puedes recargar tu cartera desde la página de Precios.", BANNED[1].pattern)).toBe(true);
+    expect(affirmativeHit("Puedes adquirir créditos directamente.", BANNED[1].pattern)).toBe(true);
+  });
+
+  it("catches hardware runs without 'real' or 'actual' modifier", () => {
+    // Original pattern required "real" or "actual" before "hardware", which let
+    // "You can run your circuit on hardware" slip through. Verify the widened
+    // pattern catches it.
+    expect(affirmativeHit("You can now run your circuit on hardware.", BANNED[2].pattern)).toBe(true);
+    expect(affirmativeHit("Execute them on hardware directly from the browser.", BANNED[2].pattern)).toBe(true);
+  });
+
+  it("catches hardware runs in Spanish without real/cuántico modifier", () => {
+    // Spanish hardware pattern widened the same way.
+    expect(affirmativeHit("Ahora puedes ejecutar en hardware directamente.", BANNED[3].pattern)).toBe(true);
+  });
+
+  it("does not match bare 'hardware' in curriculum contexts", () => {
+    // The guard must not trip on legitimate entries about the Hardware curriculum.
+    // The pattern requires the run/execute action near "on hardware", not just the word.
+    expect(affirmativeHit("The Hardware lesson now covers IQM's connectivity graph.", BANNED[2].pattern)).toBe(false);
+    expect(affirmativeHit("A new page on hardware noise and how it limits circuit depth.", BANNED[2].pattern)).toBe(false);
+  });
+
+  it("still respects negations after widening", () => {
+    // Negations must still work: "You cannot buy" remains false.
+    expect(affirmativeHit("You cannot buy credits yet.", BANNED[0].pattern)).toBe(false);
+    expect(affirmativeHit("You still cannot top up your wallet.", BANNED[0].pattern)).toBe(false);
+    expect(affirmativeHit("You can't purchase a subscription in this region yet.", BANNED[0].pattern)).toBe(false);
   });
 });
