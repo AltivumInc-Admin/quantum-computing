@@ -957,7 +957,6 @@ export const en: TranslationDict = {
     kindNew: "New",
     kindImproved: "Improved",
     kindFixed: "Fixed",
-    kindLabel: "Type of change",
     seeIt: "Go and see it",
     empty: "Nothing has shipped since this page began. Check back soon.",
   },
