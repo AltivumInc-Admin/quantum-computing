@@ -41,6 +41,11 @@ describe("Footer", () => {
     expect(screen.getByRole("link", { name: "Glossary" })).toHaveAttribute("href", "/glossary");
   });
 
+  it("links to the changelog", () => {
+    render(<Footer />);
+    expect(screen.getByRole("link", { name: "Changelog" })).toHaveAttribute("href", "/changelog");
+  });
+
   it("links to the review dashboard", () => {
     render(<Footer />);
     expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/review");
@@ -56,7 +61,7 @@ describe("Footer", () => {
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
   });
 
-  it("lets the nav row wrap so eight links fit on narrow viewports", () => {
+  it("lets the nav row wrap so nine links fit on narrow viewports", () => {
     render(<Footer />);
     const nav = screen.getByRole("navigation", { name: "Footer" });
     expect(nav).toHaveClass("flex-wrap");

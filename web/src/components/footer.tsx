@@ -41,6 +41,9 @@ export function Footer() {
           <Link href="/glossary" className={linkClass}>
             {t("nav.glossary")}
           </Link>
+          <Link href="/changelog" className={linkClass}>
+            {t("nav.changelog")}
+          </Link>
           <Link href="/review" className={linkClass}>
             {t("nav.review")}
           </Link>
