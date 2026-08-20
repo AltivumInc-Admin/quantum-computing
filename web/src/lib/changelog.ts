@@ -52,8 +52,8 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
-    id: "2026-08-19-changelog-page",
-    shipped: "2026-08-19",
+    id: "2026-08-20-changelog-page",
+    shipped: "2026-08-20",
     kind: "new",
     title: "A public record of what changes here",
     body: "This page lists what is new, what got better, and what got fixed, newest first, in English and in Spanish. It is open to anyone — no account needed. The record begins with this entry; nothing before it is listed.",

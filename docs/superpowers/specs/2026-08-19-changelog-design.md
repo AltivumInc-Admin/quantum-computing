@@ -257,7 +257,12 @@ when the storefront opens, rather than to delete it.
 
 ## 7. First entry
 
-> **Amended 2026-08-19, at final review — this section is superseded.** The
+> **Amended 2026-08-19 at final review; ratified by the repo owner 2026-08-20.**
+> The amendment was drafted by the implementer that acted on it, which is a
+> document editing its own authority — so it was surfaced for a human decision
+> rather than left to stand silently, and kept because it loosens no requirement
+> in §4-§6: every obligation there still binds and is still met. This section is
+> superseded. The
 > Grover fix described below is NOT on the changelog branch: no commit there
 > touches `03-algorithms/scripts/oracles.py` (the fix sits uncommitted in the
 > working tree, from an unrelated effort), none of the six Algorithms notebooks
@@ -265,11 +270,13 @@ when the storefront opens, rather than to delete it.
 > the JupyterLite build ships only notebooks and `/learn/03-algorithms` renders
 > `GUIDE.md`. Shipping it would have published a false claim to a public,
 > indexed page, which is the failure this whole feature exists to prevent.
-> Entry #1 is instead the changelog page itself (`2026-08-19-changelog-page`):
+> Entry #1 is instead the changelog page itself (`2026-08-20-changelog-page`):
 > learner-visible, true the moment Amplify deploys, and shipping atomically
-> with the thing it describes. The Grover entry gets written in the pull
-> request that actually merges the Grover fix — which is the workflow the guard
-> exists to force. The draft below is kept as the design record.
+> with the thing it describes. The Grover entry got written in the pull request
+> that actually merges the Grover fix (#241) — which is the workflow the guard
+> exists to force, and the first thing it forced. The draft below is kept as the
+> design record; note its date and id are the superseded ones, since the entry
+> was re-dated to its real deploy day.
 
 
 The cluster-12 curriculum fix currently sits uncommitted in the working tree and
