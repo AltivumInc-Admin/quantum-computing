@@ -357,7 +357,7 @@ $\epsilon$). It's the basis of quantum approaches to option pricing and risk ana
 
 **Scripts:**
 - `scripts/oracles.py` — Reusable functions to build oracle circuits (constant, balanced, marking)
-- `scripts/variational_utils.py` — Classical optimizer wrappers (COBYLA, SPSA, Adam) with logging
+- `scripts/variational_utils.py` — Classical optimizer wrappers (COBYLA, SPSA) with per-iteration history and callbacks
 
 ## Where this goes next
 

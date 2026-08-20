@@ -99,7 +99,18 @@ def test_runnable_notebook_executes_under_qcsim(nb_path: Path, contract_kernel: 
     bootstrap = nbformat.v4.new_code_cell(
         "import sys\n"
         f"sys.path.insert(0, {str(REPO_ROOT)!r})\n"
+        # qcsim/src directly: with only REPO_ROOT on the path, `import qcsim`
+        # resolves to the bare namespace directory qcsim/ (no __init__, no
+        # Circuit, no aliases) whenever the package is not pip-installed, and
+        # the notebook then executes under the real SDK while this test's name
+        # still says qcsim. The assert makes that failure loud instead.
+        f"sys.path.insert(1, {str(REPO_ROOT / 'qcsim' / 'src')!r})\n"
         "import qcsim  # registers braket.* aliases before any braket import\n"
+        "from braket.circuits import Circuit as _AliasProbe\n"
+        "assert _AliasProbe.__module__.startswith('qcsim'), (\n"
+        "    'notebook would execute under the real SDK, not qcsim: '\n"
+        "    + _AliasProbe.__module__\n"
+        ")\n"
     )
     nb.cells.insert(0, bootstrap)
 

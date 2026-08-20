@@ -1,5 +1,17 @@
+import { readFileSync } from "fs";
+import path from "path";
 import { angleState, amplitudeState, iqpState, fidelity, reducedBloch } from "@/components/quantum/encoding";
 import { blochVector } from "@/components/quantum/math";
+
+// Generated from lib.ml.feature_maps.iqp_encoding by scripts/gen_iqp_fixture.py;
+// tests/test_feature_maps.py asserts the Python side against the same file, so
+// the widget and the library are locked to one IQP convention from both sides.
+const IQP_FIXTURE = JSON.parse(
+  readFileSync(
+    path.join(__dirname, "../../../src/components/quantum/__fixtures__/iqp-states.json"),
+    "utf-8"
+  )
+) as { cases: { x: [number, number]; reps: number; state: [number, number][] }[] };
 
 describe("encoding", () => {
   it("angleState(pi,0): qubit 0 -> |1> (amplitude on |10>, index 2)", () => {
@@ -21,6 +33,16 @@ describe("encoding", () => {
     expect(s.reduce((acc, c) => acc + c[0] * c[0] + c[1] * c[1], 0)).toBeCloseTo(1, 9);
     const z = amplitudeState([0, 0]);
     expect(z[0][0]).toBeCloseTo(1, 9); // falls back to |0>
+  });
+  it("iqpState matches the Python iqp_encoding states pinned in the fixture", () => {
+    expect(IQP_FIXTURE.cases.length).toBeGreaterThan(0);
+    for (const { x, reps, state } of IQP_FIXTURE.cases) {
+      const s = iqpState(x[0], x[1], reps);
+      for (let k = 0; k < state.length; k++) {
+        expect(s[k][0]).toBeCloseTo(state[k][0], 10);
+        expect(s[k][1]).toBeCloseTo(state[k][1], 10);
+      }
+    }
   });
   it("iqpState has norm 1", () => {
     const s = iqpState(0.7, 1.1);

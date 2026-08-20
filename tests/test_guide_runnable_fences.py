@@ -16,8 +16,14 @@ The two checks mirror ``tests/test_notebook_contract.py``:
   ``scripts/validate_runnable.py``, so a fence cannot import PennyLane, reach
   for real hardware, or call a Braket result type qcsim does not implement.
 * ``test_runnable_fence_executes_under_qcsim`` — actually executes the fence
-  with qcsim forced ahead of any real Braket import, asserting it does not
-  raise.
+  under qcsim IN A SUBPROCESS, asserting it does not raise. The subprocess is
+  load-bearing: ``tests/conftest.py`` imports ``braket`` at collection time, so
+  an in-process ``import qcsim`` hits the ``if "braket" in sys.modules: return``
+  guard and the aliases never register — which is exactly how this test spent
+  months executing fences against the real SDK while its docstring claimed
+  qcsim. The runner inserts ``qcsim/src`` directly (no install required) and
+  asserts ``Circuit`` resolved to qcsim before executing anything, so the
+  guarantee is itself tested rather than assumed.
 
 ONE DELIBERATE DIVERGENCE from the notebook contract: ``vr.DIVERGENT_CALL_ATTRS``
 (today just ``Circuit.state_vector()``) is NOT applied here. A runnable notebook
@@ -31,10 +37,9 @@ with the divergence spelled out in the surrounding prose.
 from __future__ import annotations
 
 import ast
-import io
 import re
+import subprocess
 import sys
-from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -106,25 +111,43 @@ def test_runnable_fence_static_contract(fence_id: str, source: str):
 
 
 @pytest.mark.parametrize(("fence_id", "source"), FENCES, ids=_IDS)
-def test_runnable_fence_executes_under_qcsim(fence_id: str, source: str):
+def test_runnable_fence_executes_under_qcsim(fence_id: str, source: str, tmp_path: Path):
     """Each fence executes end-to-end under qcsim without raising.
 
-    Forcing qcsim: importing it registers the ``braket.*`` aliases, so the
-    fence's ``from braket.circuits import Circuit`` resolves to qcsim even when
-    the real ``amazon-braket-sdk`` is installed — the same trick
-    test_notebook_contract.py uses. The fence runs in a fresh module namespace,
-    matching the runtime (runSerialized allocates one per Run), with stdout
-    captured so a fence's prints do not pollute the test log.
+    A FRESH INTERPRETER is the only place the alias trick works from this
+    suite: conftest.py imports ``braket`` at collection time, so qcsim's
+    ``_register_braket_aliases`` no-ops in-process and an in-process exec runs
+    the fence against the real SDK (the pre-2026-08-18 behaviour — silently,
+    since every fence that runs under qcsim also runs under real Braket except
+    for ``state_vector()``'s divergent return). ``qcsim/src`` is inserted
+    directly so no editable install is needed, mirroring
+    test_statevector_helper.py, and the runner ASSERTS the alias took before
+    executing anything — if it did not, the test must fail rather than quietly
+    prove the wrong engine. The fence runs in a fresh __main__ namespace,
+    matching the runtime (runSerialized allocates one per Run).
     """
-    sys.path.insert(0, str(REPO_ROOT))
-    import qcsim  # noqa: F401  (registers braket.* aliases)
-
-    namespace: dict = {"__name__": "__main__"}
-    try:
-        with redirect_stdout(io.StringIO()):
-            exec(compile(source, fence_id, "exec"), namespace)  # noqa: S102
-    except Exception as exc:  # pragma: no cover - the failure path is the point
-        pytest.fail(
-            f"{fence_id} is rendered as a runnable sandbox but raised when "
-            f"executed under qcsim: {type(exc).__name__}: {exc}"
-        )
+    fence_file = tmp_path / "fence.py"
+    fence_file.write_text(source, encoding="utf-8")
+    runner = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(REPO_ROOT)!r})\n"
+        f"sys.path.insert(1, {str(REPO_ROOT / 'qcsim' / 'src')!r})\n"
+        "import qcsim  # registers braket.* aliases before any braket import\n"
+        "from braket.circuits import Circuit\n"
+        "assert Circuit.__module__.startswith('qcsim'), (\n"
+        "    'fence would execute under the real SDK, not qcsim: ' + Circuit.__module__\n"
+        ")\n"
+        f"src = open({str(fence_file)!r}, encoding='utf-8').read()\n"
+        f"exec(compile(src, {fence_id!r}, 'exec'), {{'__name__': '__main__'}})\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", runner],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        timeout=120,
+    )
+    assert proc.returncode == 0, (
+        f"{fence_id} is rendered as a runnable sandbox but failed under qcsim:\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )

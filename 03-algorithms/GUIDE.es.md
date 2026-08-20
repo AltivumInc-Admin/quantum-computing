@@ -357,7 +357,7 @@ $\epsilon$). Es la base de enfoques cuánticos a la valuación de opciones y el 
 
 **Scripts:**
 - `scripts/oracles.py` — Funciones reutilizables para construir circuitos de oráculo (constante, balanceado, de marcado)
-- `scripts/variational_utils.py` — Envoltorios de optimizadores clásicos (COBYLA, SPSA, Adam) con registro (logging)
+- `scripts/variational_utils.py` — Envoltorios de optimizadores clásicos (COBYLA, SPSA) con historial por iteración y callbacks
 
 ## A dónde va esto después
 

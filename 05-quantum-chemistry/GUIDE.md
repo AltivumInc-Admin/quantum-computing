@@ -324,8 +324,8 @@ The throughline of this entire module is the one move we made with hydrogen: a m
 
 **Scripts:**
 - `scripts/hamiltonians.py` — Molecular Hamiltonian construction pipeline (geometry -> integrals -> qubit operator)
-- `scripts/ansatz.py` — Parameterized ansatz circuit builders (UCCSD, HEA, custom)
-- `scripts/vqe_runner.py` — End-to-end VQE runner with energy vs. geometry scanning
+- `scripts/ansatz.py` — Parameterized ansatz circuit builders (UCCSD-inspired singles-only, hardware-efficient)
+- `scripts/vqe_runner.py` — End-to-end VQE runner (qubit Hamiltonian + ansatz -> optimized ground-state energy)
 
 ---
 

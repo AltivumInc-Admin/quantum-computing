@@ -52,6 +52,22 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-20-example-scripts-correctness",
+    shipped: "2026-08-20",
+    kind: "fixed",
+    title: "Grover and VQE example scripts no longer give silently wrong answers",
+    body: "The Grover's search example returned an even spread instead of finding the marked item on circuits of four or more qubits, and the VQE example could mislabel measurement results when a circuit skipped a qubit. Both now compute the correct answer at any size — or stop with a clear error rather than report a wrong number.",
+  },
+  {
+    id: "2026-08-20-kernel-explorer-convention",
+    shipped: "2026-08-20",
+    kind: "fixed",
+    title: "The kernel explorer now prepares the same states as the course library",
+    body: "The interactive kernel widget encoded data with a different feature-map convention than the one the course teaches, so the same inputs produced different quantum states in the widget and in your own code. They now match exactly, and the scale slider reaches further so you can watch where over-encoding really begins.",
+    href: "/learn/04-quantum-ml",
+    section: "04-quantum-ml",
+  },
+  {
     id: "2026-08-20-changelog-page",
     shipped: "2026-08-20",
     kind: "new",

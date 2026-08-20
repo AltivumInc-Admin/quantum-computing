@@ -135,11 +135,22 @@ def find_runnable_notebooks() -> list[Path]:
     return found
 
 
+# A genuine IPython line magic / shell escape is %name or !cmd — the sigil is
+# followed immediately by an identifier character. A bare "%" that opens a
+# printf-style continuation line ("% (values...)") is ordinary Python and MUST
+# be kept: stripping it used to make the whole cell unparseable, and the
+# SyntaxError swallow below then exempted the cell from the contract scan
+# entirely.
+_MAGIC_LINE_RE = re.compile(r"^\s*(?:%%?|!)[A-Za-z_]")
+
+
 def _strip_magics(source: str) -> str | None:
     """Drop IPython line magics / shell escapes so the cell parses as Python.
 
     Returns ``None`` for a cell magic (``%%bash`` etc.) whose body is not
-    Python and should be skipped entirely.
+    Python and should be skipped entirely. Only lines whose sigil is followed
+    by an identifier character are stripped — a ``%`` continuation of a
+    multi-line printf expression is Python, not a magic.
     """
     lines = source.splitlines()
     for line in lines:
@@ -147,7 +158,7 @@ def _strip_magics(source: str) -> str | None:
             if line.lstrip().startswith("%%"):
                 return None  # whole-cell magic, not Python
             break
-    kept = [ln for ln in lines if not ln.lstrip().startswith(("%", "!"))]
+    kept = [ln for ln in lines if not _MAGIC_LINE_RE.match(ln)]
     return "\n".join(kept)
 
 
@@ -175,12 +186,14 @@ def scan_notebook(notebook_path: Path) -> list[str]:
         try:
             tree = ast.parse(source)
         except SyntaxError as exc:
-            # Unparseable after magic-stripping; the execution test is the
-            # backstop. Surface as a warning, not a hard violation.
-            print(
-                f"  warning: {notebook_path.name} cell {idx} did not parse "
-                f"({exc.msg}); relying on execution test",
-                file=sys.stderr,
+            # An unparseable cell cannot be scanned, which means it cannot be
+            # cleared: treat it as a violation, not a warning. The old
+            # warn-and-continue path let a cell exempt itself from the whole
+            # contract by failing to parse (and main() still exited 0).
+            violations.append(
+                f"cell {idx}: does not parse as Python after magic-stripping "
+                f"({exc.msg}) — the static qcsim contract cannot scan an "
+                f"unparseable cell"
             )
             continue
 
