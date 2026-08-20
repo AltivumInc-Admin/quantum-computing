@@ -515,6 +515,63 @@ describe("PricingPage copy honesty", () => {
     },
   );
 
+  /**
+   * The ban list itself is not inert — pinned so the question stops being
+   * re-litigated. The 2026-08-19 changelog audit found its (differently built)
+   * copy-honesty matcher evadable by two-clause prose — "X isn't metered yet,
+   * but the wallet meters Y" — because that matcher judged only the FIRST regex
+   * match and let a negated early mention exonerate a later affirmative one.
+   * This file's matcher was then suspected of the same class, twice, by two
+   * separate reviewers.
+   *
+   * It is not vulnerable, and the reason is structural, not luck: this matcher
+   * never exonerates. `text.match(pattern)` fires on a match at ANY position,
+   * and negation handling lives inside each pattern as an immediate-word
+   * lookbehind (`will meter`, `no se mide`), so a negated clause suppresses
+   * only itself — the regex engine walks past it to any later affirmative use.
+   * These cases hold that property in place; if someone ever "simplifies" the
+   * matcher into a first-match-with-window shape, they go red.
+   *
+   * Known, accepted residual (shared by every regex denylist including the
+   * changelog's rebuilt one): a pronoun across a sentence boundary — "You hold
+   * one wallet. It meters both surfaces." — is invisible, because every pattern
+   * anchors on the noun. Human review owns that case.
+   */
+  describe("the ban list survives negate-then-claim prose", () => {
+    const meteringPattern = UNDELIVERABLE_CLAIMS[0].pattern; // presentTenseMetering
+    const entitlementPattern = UNDELIVERABLE_CLAIMS.find(
+      (c) => c.pattern === modelEntitlement,
+    )!.pattern;
+
+    it("is scanning the patterns it thinks it is (non-vacuity)", () => {
+      expect(meteringPattern).toBe(presentTenseMetering);
+      expect(entitlementPattern).toBe(modelEntitlement);
+    });
+
+    it.each([
+      ["Nothing is metered today, but your wallet meters every tutor question."],
+      ["Your wallet will meter tutor questions, and it meters QPU runs today."],
+      ["Hoy no se mide nada, pero la billetera mide cada pregunta."],
+    ])("still fires when an honest negation precedes the claim: %s", (text) => {
+      expect(meteringPattern.test(text)).toBe(true);
+    });
+
+    it("still fires on negate-then-claim entitlement across sentences", () => {
+      expect(
+        entitlementPattern.test("No plan includes Opus today. Plus includes Opus at launch."),
+      ).toBe(true);
+    });
+
+    it.each([
+      ["Your wallet will meter the only two things that cost real money."],
+      ["Credits never meter anything on the free tier."],
+      // The documented Spanish trap that once false-positived a truthful sentence.
+      ["Nada más costará créditos jamás — y hoy tampoco se mide ninguna de esas dos."],
+    ])("stays silent on honest copy: %s", (text) => {
+      expect(meteringPattern.test(text)).toBe(false);
+    });
+  });
+
   it.each(SHIPPED_LOCALES)(
     "frames the tutor model chips as a forecast, not a purchasable selection (%s)",
     (locale) => {
