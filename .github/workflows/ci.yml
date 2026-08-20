@@ -175,15 +175,22 @@ jobs:
       # would have shipped a lab that cannot boot its kernel. Caching a build
       # database without its outputs is never sound — don't add it back.
       #
-      # Key is versioned (-v2) because dropping a path does not stop an EXISTING
-      # cache archive from restoring that file; only a new key gives a clean tree.
+      # Key is versioned because dropping a path does not stop an EXISTING cache
+      # archive from restoring that file; only a new key gives a clean tree.
+      #
+      # -v3 (2026-08-19): the -v2 archive holds a .venv built against a Python
+      # patch the runner image no longer ships, so its bin/ shebangs point at a
+      # missing interpreter and pip exits 127. build.sh now detects and rebuilds
+      # an unusable venv, which makes the build green either way — but on a key
+      # HIT nothing new is saved, so it would rebuild from scratch on every run
+      # forever. Bumping the key stores one good archive and ends that.
       - name: Cache JupyterLite build environment
         uses: actions/cache@v4
         with:
           path: |
             web/jupyterlite-build/.venv
             web/jupyterlite-build/.cache
-          key: jupyterlite-v2-${{ runner.os }}-${{ hashFiles('web/jupyterlite-build/requirements.txt', 'qcsim/**/*.py', 'qcsim/pyproject.toml') }}
+          key: jupyterlite-v3-${{ runner.os }}-${{ hashFiles('web/jupyterlite-build/requirements.txt', 'qcsim/**/*.py', 'qcsim/pyproject.toml') }}
 
       - name: Build JupyterLite distribution (qcsim wheel -> Pyodide)
         run: bash web/jupyterlite-build/build.sh

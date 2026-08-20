@@ -7,8 +7,22 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# 1) Build venv if missing, install build deps.
-if [[ ! -d .venv ]]; then
+# 1) Build venv if missing OR UNUSABLE, install build deps.
+#
+# Testing for the directory alone is not enough, and CI proved it: the venv is
+# restored from an actions/cache archive, and every script in .venv/bin carries
+# a shebang naming the absolute interpreter path it was built against
+# (/opt/hostedtoolcache/Python/3.12.<patch>/x64/bin/python on a GitHub runner).
+# When the hosted image rolls that patch version forward, the old path is gone.
+# The directory still exists, so a `-d` test skips the rebuild, and the very
+# next line fails with `.venv/bin/pip: cannot execute: required file not found`
+# -- exit 127, which reads like a missing package rather than a stale cache.
+#
+# Probe the interpreter instead: if it cannot run, the venv is scrap. Rebuilding
+# costs one pip install; the alternative is a red build nobody can reproduce
+# locally, because a local .venv's shebang always points at a live interpreter.
+if [[ ! -x .venv/bin/python ]] || ! .venv/bin/python -c '' 2>/dev/null; then
+  rm -rf .venv
   python3 -m venv .venv
 fi
 # shellcheck disable=SC1091
