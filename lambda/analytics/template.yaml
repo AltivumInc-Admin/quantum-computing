@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  quantum-analytics: a daily count of who actually reached quantum.altivum.ai.
+  Amplify's GenerateAccessLogs serves roughly one day per call and refuses wider
+  windows, so history only exists if something collects it daily. This reads the
+  previous day's access logs, classifies each visitor, and writes ONE row of
+  aggregate counts — never an address, a user agent or a path. Nothing is added
+  to the browser: no script, no cookie, no beacon, so the privacy policy's "no
+  analytics or tracking scripts" remains true as written. Deploy in us-east-2.
+
+Parameters:
+  AmplifyAppId:
+    Type: String
+    Default: d1ao02to23x85y
+    Description: The Amplify app serving quantum.altivum.ai.
+  AmplifyDomain:
+    Type: String
+    Default: altivum.ai
+    Description: >
+      The DOMAIN ASSOCIATION, which is the apex — passing quantum.altivum.ai
+      returns NotFoundException. The subdomain is filtered inside the handler
+      by x-host-header.
+  ScheduleExpression:
+    Type: String
+    Default: cron(30 13 * * ? *)
+    Description: >
+      Daily, after the previous UTC day has certainly closed. 13:30 UTC also
+      keeps it clear of the 13:00 drift workflow.
+  MaxConcurrency:
+    Type: Number
+    Default: 2
+    Description: Reserved concurrency — a hard ceiling on cost and abuse.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+  AlertEmail:
+    Type: String
+    Default: hq@quantumlearner.dev
+    Description: >
+      Operator email for the human notification path. Receives every CloudWatch
+      alarm in this stack. Each SNS email subscription must be confirmed once
+      from the inbox before it delivers.
+
+Resources:
+  AnalyticsTable:
+    Type: AWS::DynamoDB::Table
+    # The only copy of the history. Raw logs age out on AWS's schedule and
+    # cannot be re-fetched beyond their retention, so a dropped table is
+    # unrecoverable.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: quantum-analytics-daily
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: day
+          AttributeType: S
+      KeySchema:
+        - AttributeName: day
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      # DELIBERATELY NO TimeToLiveSpecification. TTL is table-wide and keyed on
+      # an attribute name, and the wallet table's expiresAt is the standing
+      # example of how that deletes rows nobody meant to lose. These rows are a
+      # few hundred bytes each and are meant to be permanent: one row per day
+      # forever is well under a megabyte a decade.
+      Tags:
+        - { Key: Project, Value: quantum }
+        - { Key: Feature, Value: analytics }
+        - { Key: CostCategory, Value: workspace }
+
+  AnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: quantum-analytics
+      Runtime: nodejs22.x
+      Handler: index.handler
+      MemorySize: 512
+      # Parsing a day is milliseconds; GenerateAccessLogs plus a ~2 MB download
+      # is the slow part. Generous, but bounded by reserved concurrency.
+      Timeout: 120
+      ReservedConcurrentExecutions: !Ref MaxConcurrency
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref AnalyticsTable
+          AMPLIFY_APP_ID: !Ref AmplifyAppId
+          AMPLIFY_DOMAIN: !Ref AmplifyDomain
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt AnalyticsTable.Arn
+            - Effect: Allow
+              Action: amplify:GenerateAccessLogs
+              Resource: !Sub arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${AmplifyAppId}
+      Events:
+        Daily:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref ScheduleExpression
+            Description: Count yesterday's real visitors.
+      Tags:
+        Project: quantum
+        Feature: analytics
+        CostCategory: workspace
+
+  AnalyticsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AnalyticsFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-analytics-alerts
+      DisplayName: Quantum analytics
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  AnalyticsErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-errors
+      AlarmDescription: >-
+        The quantum-analytics function threw. Yesterday's visitor counts were
+        not recorded, and that day's access logs will age out of Amplify's
+        retention before long. Check the function's log group and re-run it with
+        {"day":"YYYY-MM-DD"} once the cause is fixed.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AnalyticsFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  AnalyticsThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-throttles
+      AlarmDescription: >-
+        The quantum-analytics function was throttled, so a scheduled run may
+        have been dropped. Check for a stuck concurrent execution.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AnalyticsFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  AnalyticsSilentAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-did-not-run
+      AlarmDescription: >-
+        The quantum-analytics function has not been invoked in over a day. A
+        collector that silently stops looks exactly like a site with no
+        visitors, which is the one failure this stack must never produce.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AnalyticsFunction
+      Statistic: Sum
+      # 26 hours: one daily run, plus slack, so a late run does not page.
+      Period: 93600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      # The ONLY alarm here that breaches on missing data, deliberately: absent
+      # invocations ARE the symptom. Every other alarm treats quiet as healthy.
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  AnalyticsDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-slow
+      AlarmDescription: >-
+        The quantum-analytics function is running close to its 120s timeout.
+        Traffic volume or the log download has grown; raise the timeout before
+        runs start failing outright.
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref AnalyticsFunction
+      Statistic: Maximum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 90000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+Outputs:
+  AnalyticsTableName:
+    Description: >-
+      Read the history with: aws dynamodb scan --table-name quantum-analytics-daily
+    Value: !Ref AnalyticsTable
+  BackfillCommand:
+    Description: >-
+      Populate history before this stack existed (reads only; writes no rows).
+    Value: node scripts/analytics/backfill.mjs

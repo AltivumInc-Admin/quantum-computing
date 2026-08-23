@@ -7,6 +7,38 @@ It follows a progressive learning path from circuit fundamentals (01-foundations
 production hybrid quantum-classical workloads (06-hybrid-jobs), with focused tracks on
 Quantum Machine Learning and Quantum Chemistry.
 
+## Project email addresses
+
+This project has **two** addresses on its own domain, and they are not
+interchangeable. Neither is the founder's Altivum address.
+
+| Address | Use |
+|---|---|
+| `hq@quantumlearner.dev` | **Business / operational.** Automated mail: SNS alarm notifications, signup alerts, anything a system sends. Prefer this for `AlertEmail` parameters — it survives a person being unavailable. |
+| `christian.perez@quantumlearner.dev` | **Project-specific personal.** Correspondence addressed to a human about this project. |
+
+- **`christian.perez@altivum.io` is the ALTIVUM address, not this project's.** It is
+  still the default of the `AlertEmail` parameter in five Lambda templates
+  (`tutor`, `sync`, `qpu`, `review-email`, `stripe`) and in
+  `infra/workspace/cognito.yaml`, and it is the contact address rendered on the
+  public privacy page. Those are deliberate leftovers, not decisions — migrate one
+  when you are already deploying that stack, never as a drive-by.
+  `lambda/analytics` was moved to `hq@` on 2026-08-23 and is the pattern to follow.
+- **An SNS email subscription delivers NOTHING until it is confirmed** from the
+  inbox, once, per topic. Changing `AlertEmail` and redeploying replaces the
+  subscription, which means the new address starts unconfirmed and the alarms go
+  silent until someone clicks the link. Check with
+  `aws sns list-subscriptions-by-topic` after any such change; a
+  `PendingConfirmation` subscription ARN is the symptom.
+- **`INTERNAL_DOMAIN` in `infra/workspace/cognito.yaml` is still `altivum.ai`.** It
+  is what the signup alert uses to say "internal account, does not occupy a
+  founding-cohort slot". A future `@quantumlearner.dev` team account would be
+  reported as an external signup. Decide that when the signup alert actually
+  deploys — it never has (see below).
+- This repo is PUBLIC. These addresses are already published (the privacy page
+  renders one), so naming them here discloses nothing new — but do not add a
+  personal address that is not already public.
+
 ## Monetization — the settled model
 
 Founder decisions, settled 2026-08-03 against a verified cost basis. `PRODUCT.md` carries
