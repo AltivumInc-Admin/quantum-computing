@@ -118,7 +118,10 @@ function MagnitudeBars({
     <div className="space-y-1.5">
       {values.map((v, idx) => {
         const hot = highlight ? highlight(idx) : false;
-        const fillClass = hot ? "bg-warm" : accent ? "bar-fill" : NEUTRAL_BAR_FILL;
+        // A spike bin is THE detected frequency — solid gold (a data bar, so
+        // the flat accent is legal), never the oxblood caution tier, which
+        // would read as an error.
+        const fillClass = hot ? "bg-accent" : accent ? "bar-fill" : NEUTRAL_BAR_FILL;
         return (
           <Bar
             key={idx}
@@ -186,7 +189,7 @@ export function QftVisualizer({ source }: { source: string }) {
           below, which already reaches AT. */}
       <div className="grid grid-cols-1 gap-6 px-4 py-4 sm:grid-cols-2">
         <div className="min-w-0">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-caption">
+          <p className="mb-2 eyebrow eyebrow-mut">
             {/* "Input |x>" mislabels the default period-comb superposition as
                 a basis state; only the {"basis": j} config is one. */}
             Input state
@@ -194,7 +197,7 @@ export function QftVisualizer({ source }: { source: string }) {
           <MagnitudeBars values={inMag} n={n} />
         </div>
         <div className="min-w-0">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-caption">
+          <p className="mb-2 eyebrow eyebrow-mut">
             QFT output (magnitude)
           </p>
           <MagnitudeBars values={outMag} n={n} highlight={isSpike} accent />

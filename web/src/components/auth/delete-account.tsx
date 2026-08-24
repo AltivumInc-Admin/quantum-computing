@@ -146,7 +146,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
           ref={triggerRef}
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center rounded-control border border-red-300/70 dark:border-red-500/30 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 interactive focus-ring"
+          className="inline-flex items-center rounded-control border border-danger/40 dark:border-danger/30 px-4 py-2 text-sm font-medium text-danger-dark dark:text-danger-light interactive focus-ring"
         >
           {t("deleteAccount.title")}
         </button>
@@ -160,7 +160,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
   return (
     <section
       aria-label={t("deleteAccount.ariaLabel")}
-      className={`rounded-card border border-red-300/70 dark:border-red-500/30 bg-(--surface-1) p-6 shadow-(--shadow-resting) ${className}`}
+      className={`rounded-card border border-danger/40 dark:border-danger/30 bg-(--surface-1) p-6 shadow-(--shadow-resting) ${className}`}
     >
       <h2
         ref={headingRef}
@@ -198,7 +198,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
       />
 
       {error && (
-        <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-3 text-sm text-danger-dark dark:text-danger-light">
           {error}
         </p>
       )}
@@ -208,7 +208,7 @@ export function DeleteAccount({ className = "" }: { className?: string }) {
           type="button"
           onClick={() => void handleDelete()}
           disabled={!confirmed || busy}
-          className="inline-flex items-center rounded-control border border-red-700 dark:border-red-500/50 bg-red-700 px-4 py-2 text-sm font-medium text-white interactive focus-ring disabled:opacity-50"
+          className="inline-flex items-center rounded-control border border-danger-dark dark:border-danger/50 bg-danger-dark px-4 py-2 text-sm font-medium text-white interactive focus-ring disabled:opacity-50"
         >
           {busy ? t("deleteAccount.deleting") : t("deleteAccount.submit")}
         </button>

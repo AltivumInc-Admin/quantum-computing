@@ -132,8 +132,8 @@ export function Sidebar() {
     // is position:fixed, so the div itself takes no space in the page flow.
     <div ref={wrapRef}>
       {/* Mobile toggle — the system's primary-control recipe (.surface-accent:
-          neutral high-contrast fill, theme-aware icon ink). Never the olive
-          gradient: white-on-accent fails WCAG 1.4.11 non-text contrast (see
+          neutral high-contrast fill, theme-aware icon ink). Never a gold
+          fill: white-on-accent fails WCAG 1.4.11 non-text contrast (see
           contrast-guard.test.ts). Lifted above the modal scrim while open. */}
       <button
         ref={toggleRef}
@@ -181,7 +181,7 @@ export function Sidebar() {
             : "z-40 -translate-x-full max-lg:invisible"
         }`}
       >
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono mb-3">
+        <p className="eyebrow mb-3">
           {t("sidebar.learningPath")}
         </p>
 
@@ -191,7 +191,7 @@ export function Sidebar() {
             <span className="text-xs font-medium text-caption">
               {t("sidebar.ofComplete", { completed, total })}
             </span>
-            <span className="text-sm font-semibold text-accent-dark dark:text-accent-light tabular-nums">
+            <span className="font-mono text-sm font-medium text-accent-dark dark:text-accent-light tabular-nums">
               {pct}%
             </span>
           </div>
@@ -204,13 +204,9 @@ export function Sidebar() {
             className="h-1.5 w-full overflow-hidden rounded-full bg-(--track)"
           >
             <div
-              className="h-full rounded-full bg-gradient-to-r from-accent to-accent-dark transition-[width] duration-700 ease-out motion-reduce:transition-none"
-              style={{
-                width: `${pct}%`,
-                // Theme-aware glow token — matches the bar's olive fill (the
-                // hardcoded teal here predated the PR #169 accent change).
-                boxShadow: pct > 0 ? "0 0 8px var(--bar-glow)" : undefined,
-              }}
+              // The shared magnitude recipe: the bronze→gold ramp, glow included.
+              className="h-full rounded-full bar-fill transition-[width] duration-700 ease-out motion-reduce:transition-none"
+              style={{ width: `${pct}%` }}
             />
           </div>
         </div>

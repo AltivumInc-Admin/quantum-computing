@@ -43,7 +43,7 @@ export function ChangelogPageContent({
   return (
     <div className="mx-auto max-w-3xl px-4 py-24 sm:px-6 lg:px-8">
       <header className="mb-12">
-        <p className="mb-4 text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light">
+        <p className="eyebrow mb-4">
           {t("changelogUi.eyebrow")}
         </p>
         <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">
@@ -63,7 +63,7 @@ export function ChangelogPageContent({
           <section key={group.key} aria-labelledby={`month-${group.key}`} className="mt-10">
             <h2
               id={`month-${group.key}`}
-              className="scroll-mt-24 font-display text-display-lg tabular-nums text-accent-dark dark:text-accent-light"
+              className="scroll-mt-24 font-mono text-display-lg tabular-nums text-accent-dark dark:text-accent-light"
             >
               {monthLabel(group.key, tag)}
             </h2>

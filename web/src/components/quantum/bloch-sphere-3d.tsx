@@ -24,7 +24,7 @@ import { SPHERE_BOX } from "./bloch-sphere-3d-lazy";
  * three.js stays out of the main bundle and never runs on the server.
  */
 
-const RING = "#94a3b8"; // slate-400: legible on both themes at low opacity
+const RING = "#93A198"; // green-tinted silver: legible on both themes at low opacity
 
 /** State-vector chase time constant, in seconds. See the useFrame note below. */
 const TAU = 0.084;
@@ -196,10 +196,10 @@ function Scene({ state, ghost, accent }: { state: Complex[]; ghost?: Complex[]; 
   );
 }
 
-// Approximates the light theme's --accent, oklch(0.66 0.1 118). Only reached
-// if the probe below throws (no document, no layout); kept in the olive family
-// so a failure degrades to an off-by-a-hair vector rather than a foreign hue.
-const ACCENT_FALLBACK = "#8d9b51";
+// The light theme's --accent (#A38560). Only reached if the probe below
+// throws (no document, no layout); kept in the gold family so a failure
+// degrades to an off-by-a-hair vector rather than a foreign hue.
+const ACCENT_FALLBACK = "#A38560";
 
 function resolveAccent(): string {
   // Resolve the design-token accent color to an rgb string three can parse.
@@ -224,11 +224,11 @@ function resolveAccent(): string {
  *
  * Why a store at all: before #169 `--color-accent` was a compile-time @theme
  * value identical in both themes, so resolving it once at mount was correct.
- * It is now a runtime per-theme var (light oklch(0.66 0.1 118), dark
- * oklch(0.85 0.11 118)), and none of the five consumers remount on a theme
- * toggle — so a one-shot probe left the vector and target ghost wearing the
- * other theme's olive (~1.6:1 on the light glass) while every surrounding 2D
- * element updated instantly. The class attribute on <html> is the theme
+ * It is now a runtime per-theme var (light #A38560, dark #C2A379), and none
+ * of the five consumers remount on a theme toggle — so a one-shot probe left
+ * the vector and target ghost wearing the other theme's gold (low-contrast
+ * on the light glass) while every surrounding 2D element updated instantly.
+ * The class attribute on <html> is the theme
  * signal, so a MutationObserver on it is the actual external system to
  * subscribe to; the resolved color flows in as a prop and R3F's demand loop
  * repaints through the normal re-render.

@@ -69,10 +69,10 @@ type UnverifiedCause = null | "unknown" | "throttled";
 // One enamel hue per group — the wall reads as a collection of distinct medal
 // types (an oklch hue angle; earned seals only, locked stay neutral).
 const GROUP_HUE: Record<CredentialGroup, number> = {
-  completion: 118, // olive — the platform accent (globals.css --accent)
+  completion: 78, // gold — the platform accent (globals.css --accent)
   mastery: 158, // green
   consistency: 288, // violet
-  hardware: 42, // gold — the run-on-real-hardware prestige
+  hardware: 42, // amber — the run-on-real-hardware prestige, distinct from the brand gold at 78
 };
 // Group headings and blurbs are locale-derived: the module-level constants hold
 // dictionary KEYS, and the text is resolved per render. Keyed by CredentialGroup
@@ -259,7 +259,7 @@ export function CredentialsWall() {
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
       <header className="mb-10">
-        <p className="font-mono text-sm font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light mb-3">
+        <p className="eyebrow mb-3">
           {t("credentialsUi.title")}
         </p>
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">

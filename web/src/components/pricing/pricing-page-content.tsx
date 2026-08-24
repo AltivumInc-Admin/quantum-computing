@@ -120,12 +120,12 @@ export function PricingPageContent() {
 
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
         <header className="max-w-3xl animate-hero-enter">
-          <p className="text-sm font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light font-mono mb-5">
+          <p className="eyebrow mb-5">
             {t("pricingUi.eyebrow")}
           </p>
           <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">
             {t("pricingUi.headlineBefore")}{" "}
-            <span className="bg-gradient-to-br from-accent-dark to-warm-dark dark:from-accent-light dark:to-warm-light bg-clip-text text-transparent">
+            <span className="bg-gradient-to-br from-(--bar-fill-a) to-accent-dark dark:to-(--bar-fill-b) bg-clip-text text-transparent">
               {t("pricingUi.headlineFree")}
             </span>
             {t("pricingUi.headlineAfter")}
@@ -212,7 +212,7 @@ export function PricingPageContent() {
                   </h3>
                   <p className="mt-1 text-sm text-(--mut) min-h-10">{copy.tagline}</p>
                   <p className="mt-5 flex items-baseline gap-1.5 tabular-nums">
-                    <span className="font-display text-display-lg text-(--ink)">
+                    <span className="font-mono text-display-lg text-(--ink)">
                       {tier.priceUsdPerMonth === 0
                         ? "$0"
                         : formatUsd(tier.priceUsdPerMonth).replace(".00", "")}
@@ -224,7 +224,7 @@ export function PricingPageContent() {
                     </span>
                   </p>
                   {tier.monthlyCredits > 0 && (
-                    <p className="mt-1 text-sm text-accent-dark dark:text-accent-light font-medium tabular-nums">
+                    <p className="mt-1 font-mono text-sm text-accent-dark dark:text-accent-light font-medium tabular-nums">
                       {t("pricingUi.creditsEveryMonth", {
                         credits: formatCredits(tier.monthlyCredits),
                       })}

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LogoMark } from "@/components/logo";
 import { SITE_NAME } from "@/lib/site";
 import { SITE_FOOTER_ID } from "@/lib/layout-regions";
 import { useLocale } from "@/i18n";
@@ -20,9 +21,14 @@ export function Footer() {
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-caption">
-            {t("footer.tagline", { site: SITE_NAME })}
-          </p>
+          {/* The mono |Q⟩ mark, one-ink in the muted tier — decorative: the
+              tagline beside it carries the name. */}
+          <div className="flex items-center gap-3">
+            <LogoMark size={20} tone="mono" className="shrink-0 text-(--mut)" />
+            <p className="text-sm text-caption">
+              {t("footer.tagline", { site: SITE_NAME })}
+            </p>
+          </div>
           <FoundingTenLink locale={locale} />
         </div>
         <nav

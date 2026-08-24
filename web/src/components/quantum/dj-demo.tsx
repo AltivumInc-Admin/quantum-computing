@@ -88,7 +88,7 @@ export function DjDemo({ source }: { source: string }) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor={selectId}
-            className="text-[11px] font-medium uppercase tracking-wide text-caption"
+            className="eyebrow eyebrow-mut"
           >
             Oracle
           </label>

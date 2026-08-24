@@ -163,7 +163,7 @@ export function NoiseVisualizer({ source }: { source: string }) {
                   <span className="w-8 shrink-0 text-[10px] text-caption">noisy</span>
                   <span className="relative h-2.5 flex-1 rounded-full bg-(--track) overflow-hidden">
                     <span
-                      className="absolute inset-y-0 left-0 rounded-full bg-amber-500"
+                      className="absolute inset-y-0 left-0 rounded-full bg-gray-300 dark:bg-gray-600"
                       style={{ width: `${(noisyP * 100).toFixed(2)}%` }}
                     />
                   </span>

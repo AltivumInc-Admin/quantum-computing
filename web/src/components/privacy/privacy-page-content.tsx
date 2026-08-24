@@ -11,7 +11,7 @@ export function PrivacyPageContent() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-24 sm:px-6 lg:px-8">
       <header>
-        <p className="mb-4 text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light">
+        <p className="eyebrow mb-4">
           {t("privacyUi.eyebrow")}
         </p>
         <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">

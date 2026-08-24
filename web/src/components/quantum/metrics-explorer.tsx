@@ -281,12 +281,18 @@ export function MetricsExplorer({ source }: { source: string }) {
           <span
             className={
               phase === "met"
-                ? "rounded-chip bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[11px] font-mono text-emerald-700 dark:text-emerald-300"
+                ? "rounded-chip bg-success/12 px-2 py-0.5 text-[11px] font-mono text-success-dark dark:text-success-light"
                 : phase === "running"
-                  ? "rounded-chip bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 text-[11px] font-mono text-amber-700 dark:text-amber-300"
+                  ? "inline-flex items-center gap-1.5 rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-[11px] font-mono text-caption"
                   : "rounded-chip border border-(--bd) bg-(--field) px-2 py-0.5 text-[11px] font-mono text-caption"
             }
           >
+            {phase === "running" && (
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-accent-dark dark:bg-accent animate-signal"
+                aria-hidden="true"
+              />
+            )}
             {phaseLabel}
           </span>
         </>
@@ -336,14 +342,14 @@ export function MetricsExplorer({ source }: { source: string }) {
               stroke="currentColor"
               strokeWidth={1}
               strokeDasharray="4 3"
-              className="text-amber-500 dark:text-amber-400"
+              className="text-warm-dark dark:text-warm-light"
             />
             <text
               x={PLOT.w - PLOT.padR}
               y={thresholdY - 3}
               textAnchor="end"
               fontSize={8}
-              className="fill-amber-600 dark:fill-amber-400 font-mono"
+              className="fill-warm-dark dark:fill-warm-light font-mono"
               aria-hidden="true"
             >
               convergence tol

@@ -191,7 +191,7 @@ function Panel({ className }: { className?: string }) {
   return (
     <section aria-label="Run on real quantum hardware" className={className}>
       <header className="mb-4">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent-dark dark:text-accent font-mono">
+        <p className="eyebrow">
           Real hardware
         </p>
         <h2 className="mt-1 font-display text-display-md tracking-tight text-(--ink)">
@@ -875,12 +875,12 @@ function CredentialGate({
         </p>
       )}
       {state === "expired" && (
-        <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300 animate-fade-up">
+        <p role="alert" className="mt-2 text-xs text-danger-dark dark:text-danger-light animate-fade-up">
           Your session expired. Sign in again.
         </p>
       )}
       {state === "unreachable" && (
-        <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300 animate-fade-up">
+        <p role="alert" className="mt-2 text-xs text-danger-dark dark:text-danger-light animate-fade-up">
           Couldn&apos;t reach the hardware service. Try again.
         </p>
       )}
@@ -1206,14 +1206,14 @@ function SubmitForm({ budget, onSubmitted }: { budget: Budget; onSubmitted: () =
         // overBudget implies remaining < micros <= $1.75, and below $1.75 the frontier
         // is always achieved in a single run — so this figure and the budget bar's can
         // never disagree on screen.
-        <p role="status" className="mt-2 text-xs tabular-nums text-red-700 dark:text-red-300">
+        <p role="status" className="mt-2 text-xs tabular-nums text-danger-dark dark:text-danger-light">
           This run ({usd(micros)}) is more than your remaining budget (
           {usd(budget.remainingMicros)}), which covers at most{" "}
           {maxShotsAffordable(budget.remainingMicros).toLocaleString("en-US")} shots.
         </p>
       )}
       {outcome && !outcome.ok && (
-        <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300 animate-fade-up">
+        <p role="alert" className="mt-2 text-sm text-danger-dark dark:text-danger-light animate-fade-up">
           {outcome.msg}
         </p>
       )}
@@ -1367,7 +1367,7 @@ function StatusChip({ status }: { status: string }) {
       ? "bg-accent/12 text-accent-dark dark:text-accent-light"
       : status === "FAILED" || status === "RELEASED"
         ? "bg-gray-200/70 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400"
-        : "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+        : "border border-(--bd) bg-(--field) text-caption";
   return (
     <span className={`rounded-chip px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide ${tone}`}>
       {status.toLowerCase()}

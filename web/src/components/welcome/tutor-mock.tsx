@@ -13,10 +13,13 @@ export function TutorMock() {
   return (
     <div
       aria-hidden="true"
-      className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-smoke shadow-(--shadow-resting) p-6 sm:p-8"
+      className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-abyss shadow-(--shadow-resting) p-6 sm:p-8"
     >
       <div className="flex items-center justify-between gap-4 mb-5">
-        <p className="text-xs font-semibold tracking-widest uppercase text-accent-light">
+        {/* The frame pins the abyss in both app themes, so the eyebrow must
+            carry dark-ground gold in both: the recipe's light color would be
+            sub-AA here (utilities override the components-layer recipe). */}
+        <p className="eyebrow text-accent-light dark:text-accent">
           {t("home.tutorMockTitle")}
         </p>
         <span className="flex items-center gap-1">
@@ -28,7 +31,7 @@ export function TutorMock() {
           </kbd>
         </span>
       </div>
-      {/* The frame pins the smoke ground in both themes, so both resting
+      {/* The frame pins the abyss ground in both themes, so both resting
           colors here sit on that dark ground — .text-caption's gray-500
           light value would be sub-AA on it. */}
       <p className="text-[11px] text-gray-400 dark:text-gray-300 mb-2">

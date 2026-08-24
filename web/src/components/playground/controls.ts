@@ -14,5 +14,4 @@ export const benchFieldClass =
   "dark:border-gray-700/50 dark:bg-gray-900/50 dark:text-gray-100 focus-ring";
 
 /** Tiny uppercase group label for palette / preset rows. */
-export const benchGroupLabelClass =
-  "w-16 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-caption";
+export const benchGroupLabelClass = "eyebrow eyebrow-mut w-16 shrink-0";

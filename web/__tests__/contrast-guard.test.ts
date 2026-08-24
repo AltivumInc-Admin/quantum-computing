@@ -3,12 +3,14 @@ import { join } from "path";
 
 /**
  * Repo-wide guard for the WCAG fix in Rec 1 (accessible filled accent). White
- * text on a solid `bg-accent` fill computes sub-AA (2.25:1 on the original
- * palette). The sanctioned primary CTA is `.surface-accent`, which since the
- * Instrument rebuild (#169) is a NEUTRAL high-contrast button — background
- * var(--btn-fill) with color var(--btn-ink), a near-white fill with near-black
- * text on the dark theme and the inverse on light, clearing AAA (16:1) on its
- * own fill in both themes. Olive is signal, never a button fill. The deepened
+ * text on a solid `bg-accent` fill computes sub-AA (2.38:1 on the dark gold
+ * #C2A379, 3.45:1 on the light gold #A38560). The sanctioned primary CTA is
+ * `.surface-accent`, which since the Instrument rebuild (#169) is a NEUTRAL
+ * high-contrast button — background var(--btn-fill) with color var(--btn-ink),
+ * a silver fill with green-black text on the dark theme and the inverse on
+ * light, clearing AAA on its own fill in both themes. This mechanically
+ * enforces the design system's signature rule: gold is a signal — eyebrows,
+ * status dots, active chips, focus — never a fill under text. The deepened
  * `bg-accent-dark` / `bg-accent-light` variants carry their own legible text
  * colors, and the translucent `bg-accent/<n>` tints are not solid fills.
  * (Token values themselves are computed and pinned by token-contrast.test.ts.)
@@ -30,7 +32,7 @@ const WHITE_TEXT = /\btext-white\b/;
 
 // The same sub-AA pairing spelled as SVG paint utilities. `fill-accent` on a
 // node with a `fill-white` label is exactly the failure above (white on the
-// light --accent computes 3.04:1), but it escaped the class-string form twice:
+// light --accent computes 3.45:1), but it escaped the class-string form twice:
 // the utilities differ, and a JSX <circle> and its sibling <text> sit on
 // different lines. So this pair is matched over a WINDOW of lines rather than
 // one line — both the QAOA graph vertices and the topology gate nodes shipped

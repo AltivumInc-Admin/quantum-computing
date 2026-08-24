@@ -59,14 +59,15 @@ const SIZE = {
 // competing `text-*` utilities on one element would reintroduce the same
 // stylesheet-order coin flip this component exists to avoid.
 const TONE = {
-  // On the page's own surfaces: the shared muted tier, olive on hover.
+  // On the page's own surfaces: the shared muted tier, gold on hover.
   default: {
     surface: "",
     text: "text-caption hover:bg-accent/10 hover:text-accent dark:hover:text-accent-light",
   },
   // On a pinned-dark chip (the code-fence chrome strip, identical in both
-  // themes): gray-300 measures 10.4:1 on gray-800/80 over gray-900.
-  "on-dark": { surface: "bg-gray-800/80", text: "text-gray-300 hover:text-white" },
+  // themes): the fence's green-black chip ground with green-silver ink
+  // (#B9C4BD measures ~11:1 on rgb(10 22 17)).
+  "on-dark": { surface: "bg-[rgb(10_22_17/0.8)]", text: "text-[#B9C4BD] hover:text-white" },
 } as const;
 
 const FAILED_TEXT = "text-warm-dark dark:text-warm-light";

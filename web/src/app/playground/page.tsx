@@ -15,7 +15,7 @@ export default function PlaygroundPage() {
       <div className="absolute inset-0 bg-atmosphere" />
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <header className="mb-8">
-          <p className="text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light mb-4">
+          <p className="eyebrow mb-4">
             Sandbox
           </p>
           <h1 className="font-display text-display-xl tracking-tight text-(--ink)">

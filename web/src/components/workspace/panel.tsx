@@ -44,7 +44,7 @@ export function Panel({
       <div className="flex items-baseline justify-between gap-3 px-5 pt-4">
         <h2
           id={headingId}
-          className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-caption"
+          className="eyebrow"
         >
           {title}
         </h2>

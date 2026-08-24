@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { getSections } from "@/lib/sections";
 import { getContentSummary } from "@/lib/content";
 import { SITE_NAME, OG_IMAGE } from "@/lib/site";
-import { PALETTE } from "@/components/playground/palette";
 import { HomePageContent } from "@/components/welcome/home-page-content";
 
 const HOME_TITLE = SITE_NAME;
@@ -42,13 +41,11 @@ export default async function HomePage() {
     await Promise.all(sections.map((s) => getContentSummary(s.slug)))
   ).map((s) => s ?? "");
   const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
-  const playgroundGates = PALETTE.reduce((n, group) => n + group.chips.length, 0);
 
   return (
     <HomePageContent
       sections={sections}
       summaries={summaries}
-      playgroundGates={playgroundGates}
       notebookTotal={notebookTotal}
     />
   );

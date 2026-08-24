@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-24-after-dark-redesign",
+    shipped: "2026-08-24",
+    kind: "improved",
+    title: "A new look, and a curriculum you can steer",
+    body: "Quantum Learner has been redrawn: a deep green-black ground, a gold accent kept for the things worth noticing, and a new |Q⟩ mark. The welcome page's curriculum is now a dial — choose any section number and the needle moves to it with a short description, so you can weigh a module before you open it. Everything reads the same way in both themes.",
+    href: "/",
+  },
+  {
     id: "2026-08-20-example-scripts-correctness",
     shipped: "2026-08-20",
     kind: "fixed",

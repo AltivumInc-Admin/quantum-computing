@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-08-24-after-dark-redesign": {
+    title: "Una nueva imagen, y un currículo que puedes pilotar",
+    body: "Quantum Learner se ha redibujado: un fondo verde-negro profundo, un acento dorado reservado para lo que vale la pena notar, y una nueva marca |Q⟩. El currículo de la página de inicio es ahora un dial: elige el número de cualquier sección y la aguja se mueve hasta ella con una breve descripción, para que puedas sopesar un módulo antes de abrirlo. Todo se lee igual en ambos temas.",
+  },
   "2026-08-20-example-scripts-correctness": {
     title:
       "Los ejemplos de Grover y VQE ya no dan respuestas silenciosamente incorrectas",

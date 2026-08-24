@@ -201,7 +201,7 @@ export function Quiz({ source }: { source: string }) {
           const outcome = outcomes.get(item.id);
           return (
             <li key={item.id} className="flex gap-3 sm:gap-4 px-4 sm:px-5 py-4">
-              <span className="shrink-0 w-9 h-9 rounded-chip bg-accent/10 text-accent-dark dark:text-accent-light font-bold text-sm flex items-center justify-center font-mono tabular-nums">
+              <span className="shrink-0 w-9 h-9 rounded-chip bg-accent/10 text-accent-dark dark:text-accent-light font-medium text-sm flex items-center justify-center font-mono tabular-nums">
                 {String(i + 1).padStart(2, "0")}
               </span>
 

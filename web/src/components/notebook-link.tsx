@@ -72,7 +72,7 @@ export function NotebookLink({
             size="sm"
           />
           {browserRunnable && (
-            <span className="text-[10px] font-semibold tracking-wide uppercase px-1.5 py-0.5 rounded bg-accent/10 text-accent-dark dark:text-accent-light">
+            <span className="font-mono text-[10px] font-medium tracking-[0.2em] uppercase px-1.5 py-0.5 rounded bg-accent/10 text-accent-dark dark:text-accent-light">
               {t("lesson.pyodide")}
             </span>
           )}

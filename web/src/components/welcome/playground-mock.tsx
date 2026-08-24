@@ -173,15 +173,15 @@ export function PlaygroundMock() {
   return (
     // A self-dark island like the hero: the embedded diagram and bars resolve
     // their theme tokens to the dark values in BOTH app themes, matching the
-    // pinned-smoke card chrome the band visuals share.
+    // pinned-abyss card chrome the band visuals share.
     <div
       ref={rootRef}
       aria-hidden="true"
       inert
-      className="dark rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-smoke shadow-(--shadow-resting) p-6 sm:p-8"
+      className="dark rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-abyss shadow-(--shadow-resting) p-6 sm:p-8"
     >
       <div className="mb-5 flex items-center justify-between gap-4">
-        <p className="flex items-center gap-2 text-xs font-semibold tracking-widest uppercase text-accent-light">
+        <p className="eyebrow flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-accent animate-signal" />
           {t("home.playgroundMockTitle")}
         </p>
@@ -225,7 +225,7 @@ export function PlaygroundMock() {
         </div>
 
         <div className="mt-1">
-          <p className="mb-2.5 font-mono text-[10px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-300">
+          <p className="eyebrow eyebrow-mut mb-2.5">
             {t("home.playgroundMockProbs")}
           </p>
           {/* Four fixed slots (the final frame's outcome count). */}
