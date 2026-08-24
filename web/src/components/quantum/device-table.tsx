@@ -77,7 +77,7 @@ export function DeviceTable() {
       <div {...regionProps}>
         <table className="w-full text-sm border-collapse">
           <caption className="sr-only">
-            Quantum devices by technology. Rows tinted amber are analog
+            Quantum devices by technology. Rows with a tinted background are analog
             (non-gate-model) hardware.
           </caption>
           <thead>
@@ -108,7 +108,7 @@ export function DeviceTable() {
                   className={[
                     "border-b border-(--bd) last:border-0 transition-colors",
                     isAnalog
-                      ? "bg-amber-50/60 dark:bg-amber-900/10"
+                      ? "bg-warm/10 dark:bg-warm/15"
                       : "hover:bg-gray-50 dark:hover:bg-gray-900/30",
                   ].join(" ")}
                 >
@@ -143,7 +143,7 @@ export function DeviceTable() {
       {hasAnalog && (
         <div className="flex items-center gap-1.5 border-t border-(--bd) px-4 py-2">
           <span
-            className="inline-block h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/30 ring-1 ring-amber-300/60 dark:ring-amber-700/40"
+            className="inline-block h-3 w-3 rounded bg-warm/10 dark:bg-warm/25 ring-1 ring-warm/40 dark:ring-warm-dark/50"
             aria-hidden="true"
           />
           <span className="text-[11px] text-caption">

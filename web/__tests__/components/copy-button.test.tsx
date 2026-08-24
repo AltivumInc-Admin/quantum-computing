@@ -89,7 +89,7 @@ describe("CopyButton", () => {
     it("selects the on-dark tone instead of emitting a competing text color", () => {
       const { container } = render(<CopyButton getText={() => "x"} tone="on-dark" />);
       const cls = container.querySelector("button")!.className;
-      expect(cls).toContain("text-gray-300");
+      expect(cls).toContain("text-[#B9C4BD]");
       expect(cls).not.toContain("text-caption");
     });
 

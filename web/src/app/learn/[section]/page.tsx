@@ -60,7 +60,7 @@ export default async function SectionPage({ params }: PageProps) {
           (pure CSS scroll-driven animation; collapsed/invisible where unsupported). */}
       <div
         aria-hidden="true"
-        className="read-progress fixed inset-x-0 top-16 z-40 h-0.5 bg-gradient-to-r from-accent to-warm"
+        className="read-progress fixed inset-x-0 top-16 z-40 h-0.5 bar-fill"
       />
       <div id={LESSON_CONTENT_ID} className="min-w-0 flex-1 lg:ml-72">
         <LessonBody

@@ -159,12 +159,22 @@ describe("ProbBars", () => {
 });
 
 describe("EyebrowLabel", () => {
-  it("renders a span by default", () => {
+  it("renders a span carrying the shared eyebrow recipe", () => {
     render(<EyebrowLabel>Circuit</EyebrowLabel>);
     const el = screen.getByText("Circuit");
     expect(el.tagName).toBe("SPAN");
-    expect(el.className).toContain("text-accent");
-    expect(el.className).toContain("uppercase");
+    // The micro-label tier is the ONE .eyebrow recipe (globals.css: mono
+    // 10px, 0.2em tracked caps, gold pair) — never a re-typed inline dialect.
+    // toHaveClass is token-exact: the color-only modifiers (eyebrow-mut,
+    // eyebrow-warm) do NOT satisfy it, so the base class carrying all the
+    // geometry cannot silently drop out. (A /\beyebrow\b/ regex would match
+    // "eyebrow-mut" — \b sits before the hyphen.) The recipe's own geometry
+    // is pinned by eyebrow-recipe.test.ts.
+    expect(el).toHaveClass("eyebrow");
+    // Ban re-typing the retired inline dialect alongside the recipe. No \b
+    // after the bracket form — "]" is a non-word char, so a trailing \b can
+    // never match and the arm would be vacuous.
+    expect(el.className).not.toMatch(/\btext-(?:xs|sm)\b|text-\[10px\]/);
   });
 
   it('renders an h3 with id when as="h3"', () => {
@@ -206,7 +216,9 @@ describe("WidgetCard", () => {
     const outer = container.firstElementChild!;
     expect(outer.className).toContain("overflow-hidden");
     expect(screen.getByText("Test")).toBeInTheDocument();
-    expect(screen.getByText("Test").className).toContain("uppercase");
+    // The header label rides the shared .eyebrow recipe (mono tracked caps).
+    // Token-exact: a color-only modifier cannot satisfy this.
+    expect(screen.getByText("Test")).toHaveClass("eyebrow");
   });
 
   it("renders chips in the header alongside the eyebrow", () => {
@@ -272,9 +284,10 @@ describe("fieldClass", () => {
 });
 
 describe("primaryActionClass", () => {
-  // Guards the WCAG fix: the primary button must ride the accessible filled
-  // surface (.surface-accent → accent-dark base, white text 5.09:1), never the
-  // flat bg-accent it replaced (white text 2.25:1, sub-AA). See globals.css.
+  // Guards the WCAG fix: the primary button must ride .surface-accent — the
+  // NEUTRAL high-contrast fill (btn-fill/btn-ink, AAA on its own fill in both
+  // themes) — never the flat bg-accent it replaced (white text on gold is
+  // sub-AA, and gold is a signal, not a button fill). See globals.css.
   it("uses the accessible .surface-accent and not the flat bg-accent fill", () => {
     expect(primaryActionClass).toContain("surface-accent");
     // Forbid the flat `bg-accent` fill only — not the accessible bg-accent-dark /

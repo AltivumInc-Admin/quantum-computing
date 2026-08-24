@@ -127,7 +127,7 @@ function Explorable({ beats }: { beats: Beat[] }) {
           {/* progress rail */}
           <div className="mt-6 h-0.5 w-full max-w-xs overflow-hidden rounded-full bg-(--track)">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-accent to-warm"
+              className="h-full rounded-full bar-fill"
               style={{ width: `${(progress * 100).toFixed(1)}%` }}
             />
           </div>

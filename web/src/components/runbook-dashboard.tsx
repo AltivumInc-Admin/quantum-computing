@@ -118,7 +118,7 @@ export function RunbookDashboard() {
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
       <header className="mb-10">
-        <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light mb-3">
+        <p className="eyebrow mb-3">
           Mastery
         </p>
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
@@ -176,11 +176,11 @@ function Ledger({ data }: { data: Ledger }) {
       >
         <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-caption">
+            <p className="eyebrow eyebrow-mut">
               Skills in proven retention
             </p>
             <p className="mt-1 flex items-baseline gap-3">
-              <span className="font-display text-display-2xl leading-none tracking-tight text-(--ink) tabular-nums">
+              <span className="font-mono text-display-2xl leading-none tracking-tight text-(--ink) tabular-nums">
                 {data.mastery}
               </span>
               {data.reinforcedThisWeek > 0 && (
@@ -230,7 +230,7 @@ function Ledger({ data }: { data: Ledger }) {
         className="mt-4 rounded-card glass px-5 py-6 shadow-(--shadow-resting) sm:px-6"
       >
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-widest text-caption">
+          <h2 className="eyebrow eyebrow-mut">
             Last {WEEKS} weeks
           </h2>
           <p className="text-xs tabular-nums text-caption">
@@ -256,10 +256,10 @@ function StreakBadge({
 }) {
   return (
     <div className="rounded-control border border-accent/25 bg-accent/[0.06] px-4 py-3 dark:bg-accent/10">
-      <p className="text-[0.68rem] font-medium uppercase tracking-widest text-accent-dark/80 dark:text-accent-light/80">
+      <p className="eyebrow">
         Week streak
       </p>
-      <p className="mt-0.5 font-display text-display-md leading-none tracking-tight text-accent-dark tabular-nums dark:text-accent-light">
+      <p className="mt-0.5 font-mono text-display-md leading-none tracking-tight text-accent-dark tabular-nums dark:text-accent-light">
         {weeks}
         <span className="ml-1 align-baseline text-sm font-sans">{weeks === 1 ? "week" : "weeks"}</span>
       </p>
@@ -287,9 +287,9 @@ function Stat({
 }) {
   const body = (
     <div className="h-full bg-(--surface-1) px-4 py-4 transition-colors group-hover:bg-(--surface-2)">
-      <dt className="text-[0.68rem] font-medium uppercase tracking-widest text-caption">{label}</dt>
+      <dt className="eyebrow eyebrow-mut">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-1.5">
-        <span className="font-display text-display-md leading-none tracking-tight text-(--ink) tabular-nums">
+        <span className="font-mono text-display-md leading-none tracking-tight text-(--ink) tabular-nums">
           {value}
         </span>
         <span className="text-xs text-caption">{unit}</span>

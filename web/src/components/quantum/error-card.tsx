@@ -22,7 +22,7 @@ export const cardShell = "rounded-card glass";
 
 /**
  * The failure state for a widget: a bad fence config, a parse error, or a
- * widget chunk that threw. Styled on the warm tier (the system's failure hue,
+ * widget chunk that threw. Styled on the warm tier (the oxblood caution tier,
  * shared with CopyButton's failed state and the incorrect-verdict chips) so a
  * broken explorable is visually distinct from an ordinary muted caption.
  */
@@ -121,13 +121,13 @@ export const REVEAL_PANEL: Record<"accent" | "warm", string> = {
 };
 
 /**
- * The micro-label above a widget or a section inside one. `strong` is the
- * heavier activity/Rep idiom (font-semibold) the challenge/quiz/predict family
- * uses; the default font-medium is the explorable idiom. Both spellings were
- * copy-pasted across nine files and had already drifted on the dark-mode color
- * (`dark:text-accent` vs `dark:text-accent-light`) — `dark:text-accent` is
- * canonical, so two Rep widgets in one lesson can no longer render different
- * header colors.
+ * The micro-label above a widget or a section inside one, riding the shared
+ * `.eyebrow` recipe (Geist Mono, weight 500, 0.2em tracking — see globals.css).
+ * Mono loads only weights 400/500, so nothing here may exceed font-medium:
+ * `strong`, the heavier activity/Rep idiom the challenge/quiz/predict family
+ * uses, is expressed by lifting the accent-tone label onto the ink color
+ * rather than a synthetic bold. On the warm tone `strong` adds nothing — the
+ * caution hue is itself the emphasis, and ink would erase it.
  *
  * `tone` picks the hue pair. It exists because `className` is layout-only, so
  * quiz's warm "Hint" caption could not be expressed and had hand-rolled the
@@ -135,8 +135,8 @@ export const REVEAL_PANEL: Record<"accent" | "warm", string> = {
  * this component was created to stop.
  */
 const EYEBROW_TONE: Record<"accent" | "warm", string> = {
-  accent: "text-accent-dark dark:text-accent",
-  warm: "text-warm-dark dark:text-warm-light",
+  accent: "eyebrow",
+  warm: "eyebrow eyebrow-warm",
 };
 
 export function EyebrowLabel({
@@ -158,11 +158,9 @@ export function EyebrowLabel({
   return (
     <Tag
       id={id}
-      className={`font-mono text-[10px] ${
-        strong ? "font-semibold" : "font-medium"
-      } uppercase tracking-[0.2em] ${EYEBROW_TONE[tone]}${
-        className ? ` ${className}` : ""
-      }`}
+      className={`${EYEBROW_TONE[tone]}${
+        strong && tone === "accent" ? " text-(--ink)" : ""
+      }${className ? ` ${className}` : ""}`}
     >
       {children}
     </Tag>

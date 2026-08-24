@@ -22,7 +22,7 @@ export function BadgeProof({ badge }: { badge: FoundingBadge }) {
       />
 
       <div className="mt-8 text-center">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-caption">
+        <p className="eyebrow eyebrow-mut">
           {label} · {serial} / {COHORT_SIZE}
         </p>
         <h1 className="mt-2 font-display text-display-lg tracking-tight text-(--ink)">

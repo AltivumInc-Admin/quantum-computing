@@ -385,7 +385,7 @@ export function AskTutor({ wallet, authToken }: AskTutorProps = {}) {
               to lack entirely on touch, where the close button was the only way
               out. Matches section-gate-modal's treatment. */}
           <div
-            className="animate-backdrop-fade fixed inset-0 z-50 bg-smoke/70 backdrop-blur-sm"
+            className="animate-backdrop-fade fixed inset-0 z-50 bg-abyss/70 backdrop-blur-sm"
             aria-hidden="true"
             onMouseDown={close}
           />

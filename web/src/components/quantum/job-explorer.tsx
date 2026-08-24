@@ -199,7 +199,7 @@ function CompareBar({
   return (
     <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-caption">
+        <span className="eyebrow eyebrow-mut">
           {label}
         </span>
         <span className="text-[11px] text-caption">{note}</span>
@@ -253,7 +253,7 @@ function SubBar({
     <div className={className}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[11px] text-caption">{title}</span>
-        <span className="font-mono text-sm font-semibold tabular-nums text-(--ink)">
+        <span className="font-mono text-sm font-medium tabular-nums text-(--ink)">
           {valueText}
         </span>
       </div>

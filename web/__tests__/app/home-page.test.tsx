@@ -3,12 +3,11 @@
  */
 // web/__tests__/app/home-page.test.tsx
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import HomePage, { metadata } from "@/app/page";
 import { getSections } from "@/lib/sections";
 import { GLOSSARY } from "@/lib/glossary";
 import { SITE_NAME, OG_IMAGE } from "@/lib/site";
-import { PALETTE } from "@/components/playground/palette";
 
 jest.mock("@/components/transition-link", () => {
   const React = require("react");
@@ -43,10 +42,10 @@ async function renderHome() {
 
 describe("HomePage (welcome page)", () => {
   beforeEach(() => {
-    // The hero's CountUp and the playground mock read the reduced-motion
-    // media query through usePrefersReducedMotion; jsdom has no matchMedia.
-    // `matches: true` keeps both on their static final frames, so assertions
-    // see the real numbers without animation timing in the way.
+    // The playground mock reads the reduced-motion media query through
+    // usePrefersReducedMotion; jsdom has no matchMedia. `matches: true`
+    // keeps it on its static final frame, so assertions see the real
+    // numbers without animation timing in the way.
     window.matchMedia = jest.fn().mockReturnValue({
       matches: true,
       addEventListener: jest.fn(),
@@ -85,10 +84,10 @@ describe("HomePage (welcome page)", () => {
     expect(twitter.images as string[]).toContain("/og.jpg");
   });
 
-  it("renders the hero headline and eyebrow", async () => {
+  it("renders the hero headline (with the gold |0⟩ ket) and kicker", async () => {
     await renderHome();
     expect(
-      screen.getByRole("heading", { level: 1, name: /master quantum computing from first principles/i })
+      screen.getByRole("heading", { level: 1, name: /master quantum computing from \|0⟩ to production/i })
     ).toBeInTheDocument();
     expect(screen.getByText(/learn quantum computing, hands-on/i)).toBeInTheDocument();
   });
@@ -142,9 +141,13 @@ describe("HomePage (welcome page)", () => {
     await renderHome();
     const sections = getSections();
     for (const section of sections) {
-      expect(
-        screen.getByRole("link", { name: new RegExp(section.title, "i") })
-      ).toHaveAttribute("href", `/learn/${section.slug}`);
+      // Two links may share the section's name now: its card and its dial
+      // station. Every one of them must point at the section.
+      const links = screen.getAllByRole("link", { name: new RegExp(section.title, "i") });
+      expect(links.length).toBeGreaterThanOrEqual(1);
+      for (const link of links) {
+        expect(link).toHaveAttribute("href", `/learn/${section.slug}`);
+      }
     }
     expect(
       screen.getByRole("link", { name: /glossary, an a to z reference/i })
@@ -152,70 +155,78 @@ describe("HomePage (welcome page)", () => {
     expect(document.getElementById("curriculum")).toBeInTheDocument();
   });
 
-  it("derives hero stats from the real content sources", async () => {
+  it("derives the dial HUD telemetry from the manifest and keeps its claims honest", async () => {
     await renderHome();
     const sections = getSections();
     const notebookTotal = sections.reduce((n, s) => n + s.notebookCount, 0);
-    // Each stat renders twice by design: CountUp's sr-only truth plus its
-    // aria-hidden animated twin (static here under the reduced-motion mock).
-    expect(screen.getAllByText(String(notebookTotal)).length).toBeGreaterThanOrEqual(2);
-    // The third stat is the playground's gate count. It must equal what a
-    // visitor can actually count there — the compose palette's chips — NOT
-    // the DSL registry alone (which also holds the identity gate the palette
-    // never surfaces). Adding a gate to either side without the other breaks
-    // this on purpose.
-    const paletteGates = PALETTE.reduce((n, group) => n + group.chips.length, 0);
-    expect(paletteGates).toBe(10);
-    expect(screen.getAllByText(String(paletteGates)).length).toBeGreaterThanOrEqual(2);
-    // The label appears twice in the DOM by design: an sr-only <dt> plus the
-    // visible (aria-hidden) <dd> — screen readers announce it once.
-    expect(screen.getAllByText(/gates in the live playground/i)).toHaveLength(2);
+    // The instrument-face HUD replaced the old CountUp stat row; its counts
+    // still derive from the manifest so the decoration can never lie. (The
+    // playground gate count left the hero with the dial redesign — the
+    // palette-vs-registry cross-check lives with the playground.)
+    const counts = screen.getByText(`${sections.length} sections · ${notebookTotal} notebooks`);
+    expect(counts.closest("[aria-hidden='true']")).not.toBeNull();
+    // The design kit's HUD read "QPU live" — hardware runs are not currently
+    // available, so the shipped telemetry states the in-browser simulator
+    // instead. This pin keeps the aspirational line from creeping back in.
+    expect(screen.queryByText(/qpu live/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/simulator live · in-browser/i)).toBeInTheDocument();
+    // The mono micro-badges under the CTAs.
+    for (const badge of ["Free", "In-browser", "No install"]) {
+      expect(screen.getByText(badge)).toBeInTheDocument();
+    }
     // The glossary count moved out of the hero but still appears on its
     // toolkit card, sourced from the real glossary.
     expect(screen.getByText(new RegExp(`${GLOSSARY.length} terms`))).toBeInTheDocument();
   });
 
-  it("pins all four constellation nodes to the live manifest (labels + notebook counts)", async () => {
+  it("engraves every curriculum section on the dial as a station control", async () => {
     await renderHome();
     const sections = getSections();
-    const expected: [string, string][] = [
-      ["Foundations", "01-foundations"],
-      ["Hardware", "02-hardware"],
-      ["Algorithms", "03-algorithms"],
-      ["Chemistry", "05-quantum-chemistry"],
-    ];
-    for (const [label, slug] of expected) {
-      const section = sections.find((s) => s.slug === slug);
-      // A renamed/renumbered manifest slug must fail HERE, loudly — the page
-      // silently drops non-matching nodes and would unbalance the hero.
-      expect(section).toBeDefined();
-      const labelEl = screen.getByText(label);
-      expect(labelEl).toBeInTheDocument();
-      // The node's manifest-derived count sits right beside its label (the
-      // same "N notebooks" string also appears on section cards, so scope
-      // the assertion to the node's own container).
-      expect(labelEl.parentElement!.textContent).toContain(
-        `${section!.notebookCount} notebooks`
-      );
+    // The stations are the one interactive hero layer: a labeled group of
+    // controls, one per manifest section. Selecting one opens the blurb —
+    // the blurb carries the real navigation.
+    const dial = screen.getByRole("group", { name: /curriculum sections on the dial/i });
+    const stations = within(dial).getAllByRole("button");
+    expect(stations).toHaveLength(sections.length);
+    for (const section of sections) {
+      expect(within(dial).getByRole("button", { name: section.title })).toBeInTheDocument();
     }
+    // Station 00 carries the resting gold hand's flag and its engraved short
+    // name (the full manifest title stays the accessible name).
+    expect(within(dial).getByText(/start here/i)).toBeInTheDocument();
+    expect(
+      within(dial).getByText(
+        `${String(sections[0].index).padStart(2, "0")} · ${sections[0].title.split(":")[0]}`
+      )
+    ).toBeInTheDocument();
   });
 
-  it("derives the horizons meter and scroll-cue counter from the real section count", async () => {
+  it("selecting a station opens its blurb with the summary and the section link", async () => {
     await renderHome();
     const sections = getSections();
-    // Horizons: one accent bar + (n-1) dim bars = one per section.
-    const label = screen.getByText(/quantum horizons/i);
-    // The bar row sits right after the label; one bar per section.
-    const bars = label.nextElementSibling!.querySelectorAll("span");
-    expect(bars).toHaveLength(sections.length);
-    // The decorative chrome is hidden from assistive tech.
-    expect(label.closest("[aria-hidden='true']")).not.toBeNull();
-    // Scroll cue: a truthful accessible name, with the section-indexed
-    // counter (01 / NN) demoted to aria-hidden decoration.
-    const cue = screen.getByRole("link", { name: "Scroll to the curriculum" });
-    expect(cue).toHaveAttribute("href", "#curriculum");
-    expect(cue.textContent).toContain(
-      `01 / ${String(sections.length).padStart(2, "0")}`
+    const target = sections[3];
+    const dial = screen.getByRole("group", { name: /curriculum sections on the dial/i });
+    // No blurb at rest — the needle merely rests on Start here.
+    expect(screen.queryByRole("region", { name: target.title })).not.toBeInTheDocument();
+
+    fireEvent.click(within(dial).getByRole("button", { name: target.title }));
+    const blurb = screen.getByRole("region", { name: target.title });
+    // The station reports the open blurb it controls.
+    expect(within(dial).getByRole("button", { name: target.title })).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+    // The decision lives here: the module's manifest-derived count and the
+    // one real link into the section.
+    expect(within(blurb).getByText(`${target.notebookCount} notebooks`)).toBeInTheDocument();
+    expect(within(blurb).getByRole("link")).toHaveAttribute("href", `/learn/${target.slug}`);
+
+    // Escape closes it and the station stands down.
+    fireEvent.keyDown(blurb, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: target.title })).not.toBeInTheDocument();
+    expect(within(dial).getByRole("button", { name: target.title })).toHaveAttribute(
+      "aria-expanded",
+      "false"
     );
   });
 

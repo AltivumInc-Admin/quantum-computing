@@ -6,7 +6,7 @@ export function GlossaryPageHeader() {
   const { t } = useLocale();
   return (
     <header className="mb-8">
-      <p className="text-sm font-medium tracking-widest uppercase text-accent-dark dark:text-accent-light mb-4">
+      <p className="eyebrow mb-4">
         {t("home.glossaryEyebrow")}
       </p>
       <h1 className="font-display text-display-2xl tracking-tight text-(--ink)">

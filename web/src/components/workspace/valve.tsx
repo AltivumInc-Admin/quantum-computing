@@ -25,7 +25,7 @@ export function Valve({
     <Panel title={t("workspace.valveDueNow")} id="ws-valve" className="flex flex-col">
       <dl>
         <dt className="sr-only">{dueLabel}</dt>
-        <dd className="font-display text-display-2xl leading-none tracking-tight text-gray-900 tabular-nums dark:text-white">
+        <dd className="font-mono text-display-2xl leading-none tracking-tight text-(--ink) tabular-nums">
           {due}
           <span className="sr-only"> {dueLabel}</span>
         </dd>

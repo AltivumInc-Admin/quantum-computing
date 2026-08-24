@@ -26,7 +26,7 @@ export function Instrument({
       <dl>
         <dt className="sr-only">{t("workspaceUi.skillsRetention")}</dt>
         <dd className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <span className="font-display text-display-2xl leading-none tracking-tight text-gray-900 tabular-nums dark:text-white">
+          <span className="font-mono text-display-2xl leading-none tracking-tight text-(--ink) tabular-nums">
             {mastery}
           </span>
           <span className="sr-only">{t("workspaceUi.skillsRetentionSr")}</span>
@@ -73,7 +73,7 @@ function SparseList({ sparse }: { sparse: { label: string; days: number }[] }) {
           className="flex items-center justify-between gap-3 border-t border-gray-200/60 py-2 first:border-t-0 dark:border-white/[0.06]"
         >
           <span className="min-w-0 truncate text-gray-700 dark:text-gray-200">{c.label}</span>
-          <span className="shrink-0 tabular-nums text-caption">
+          <span className="shrink-0 font-mono tabular-nums text-caption">
             {c.days} d
           </span>
         </li>

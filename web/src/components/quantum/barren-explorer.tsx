@@ -194,7 +194,7 @@ function BarrenView({ config }: { config: ParsedConfig }) {
                 strokeWidth={2}
                 strokeDasharray="6 3"
                 strokeLinecap="round"
-                className="text-amber-600 dark:text-amber-400"
+                className="text-warm-dark dark:text-warm-light"
               />
             </svg>
             local cost (dashed)
@@ -310,7 +310,7 @@ function BarrenView({ config }: { config: ParsedConfig }) {
             stroke="currentColor"
             strokeWidth={1.5}
             strokeDasharray="6 3"
-            className="text-amber-600 dark:text-amber-400"
+            className="text-warm-dark dark:text-warm-light"
           />
           {localPts.map(({ x, y }, i) => (
             <circle
@@ -318,7 +318,7 @@ function BarrenView({ config }: { config: ParsedConfig }) {
               cx={x}
               cy={y}
               r={2}
-              className="fill-amber-600 dark:fill-amber-400"
+              className="fill-warm-dark dark:fill-warm-light"
             />
           ))}
         </svg>

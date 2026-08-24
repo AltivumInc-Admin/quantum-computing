@@ -41,7 +41,7 @@ export function ReviewNavBadge({ className }: { className?: string }) {
       {count > 0 && (
         <span
           aria-hidden="true"
-          className="inline-flex min-w-5 items-center justify-center rounded-chip bg-accent/15 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-accent-dark dark:text-accent-light"
+          className="chip-selected inline-flex min-w-5 items-center justify-center rounded-chip px-1.5 py-0.5 font-mono text-xs font-medium tabular-nums"
         >
           {count}
         </span>

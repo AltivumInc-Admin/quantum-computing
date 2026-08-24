@@ -18,5 +18,5 @@ export const OG_IMAGE = {
   type: "image/jpeg",
   width: 1200,
   height: 630,
-  alt: `${SITE_NAME} — master quantum computing from first principles`,
+  alt: `${SITE_NAME} — master quantum computing from |0⟩ to production`,
 };

@@ -160,7 +160,7 @@ export function ReviewDashboard() {
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-16">
       <div className="mb-10">
-        <p className="text-sm font-mono font-medium tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light mb-3">
+        <p className="eyebrow mb-3">
           {t("review.eyebrow")}
         </p>
         <h1 className="font-display text-display-xl tracking-tight text-(--ink)">
@@ -170,8 +170,8 @@ export function ReviewDashboard() {
           {t("review.body")}
         </p>
 
-        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm tabular-nums text-caption">
-          <span className="font-semibold text-(--mut)">
+        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-sm tabular-nums text-caption">
+          <span className="font-medium text-(--mut)">
             {t("review.dueCount", { count: dueIds.length }, dueIds.length)}
           </span>
           {/* Decorative separator: tokenized (it was the tree's only
@@ -180,7 +180,7 @@ export function ReviewDashboard() {
           <span aria-hidden="true" className="text-caption opacity-50">
             /
           </span>
-          <span className="font-semibold text-(--mut)">
+          <span className="font-medium text-(--mut)">
             {t("review.trackedCount", { count: total }, total)}
           </span>
         </div>
@@ -234,7 +234,7 @@ export function ReviewDashboard() {
                 </span>
                 <div
                   aria-hidden="true"
-                  className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest"
+                  className="eyebrow eyebrow-mut mb-2 flex items-center justify-between"
                 >
                   <span className="text-caption tabular-nums">
                     {i + 1} / {items.length} · {kindName}

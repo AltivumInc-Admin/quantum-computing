@@ -27,10 +27,10 @@ function Readout({
 }) {
   return (
     <div aria-live="polite" className="mt-6 border-t border-gray-200/60 dark:border-white/[0.08] pt-5">
-      <p className="text-xs font-semibold tracking-widest uppercase text-caption">{label}</p>
-      <p className="mt-1 font-display text-display-lg text-(--ink) tabular-nums">
+      <p className="eyebrow eyebrow-mut">{label}</p>
+      <p className="mt-1 font-mono text-display-lg text-(--ink) tabular-nums">
         {formatCredits(credits)}
-        <span className="ml-2 text-base font-sans text-gray-500 dark:text-gray-400">
+        <span className="ml-2 text-base font-mono text-gray-500 dark:text-gray-400">
           {formatUsd(creditsToUsd(credits))}
           {suffix}
         </span>

@@ -36,7 +36,7 @@ export function FoundingTenLink({ locale }: { locale: Locale }) {
       // "one slash twenty" with no subject. Name the whole thing for AT.
       aria-label={translate(locale, "foundingTen.ariaLabel", { claimed, total: TOTAL })}
     >
-      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-caption transition-colors group-hover:text-accent dark:group-hover:text-accent-light">
+      <span className="eyebrow eyebrow-mut transition-colors group-hover:text-accent dark:group-hover:text-accent-light">
         {translate(locale, "foundingTen.label")}
       </span>
       <span aria-hidden="true" className="font-mono text-xs tabular-nums text-caption">

@@ -82,7 +82,7 @@ export function TableOfContents({ headings }: { headings: Heading[] }) {
 
   return (
     <nav aria-label={t("lesson.onThisPage")} className="text-sm">
-      <p className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-caption">
+      <p className="eyebrow mb-3 flex items-center gap-2">
         <span
           aria-hidden="true"
           className="h-px w-4 bg-gradient-to-r from-accent/70 to-transparent"

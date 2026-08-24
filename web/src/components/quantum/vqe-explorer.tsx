@@ -255,7 +255,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 stroke="currentColor"
                 strokeWidth={1}
                 strokeDasharray="3 3"
-                className="text-emerald-600 dark:text-emerald-400"
+                className="text-success-dark dark:text-success-light"
                 aria-hidden="true"
               />
               <text
@@ -263,7 +263,7 @@ export function VqeExplorer({ source }: { source: string }) {
                 y={floorY - 4}
                 textAnchor="end"
                 fontSize={8}
-                className="fill-emerald-700 dark:fill-emerald-300 font-mono"
+                className="fill-success-dark dark:fill-success-light font-mono"
                 aria-hidden="true"
               >
                 floor {formatHartree(floor, 3)}
