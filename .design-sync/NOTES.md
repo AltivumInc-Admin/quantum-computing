@@ -1,5 +1,14 @@
 # design-sync notes — quantum-ds
 
+> **STOP — verify the target before any driver run.** Two claude.ai projects
+> are named "Quantum Learner Design System". `config.json` targets the
+> GENERATED one (`eefe2a41-…`). The COMMISSIONED one (`ed6de090-…`) holds
+> hand-authored tokens/guidelines/ui_kits and must never receive a driver run.
+> Run `node scripts/design-sync/preflight.mjs` first; then run
+> `node scripts/design-sync/restage.mjs`, which rebuilds the gitignored
+> `.ds-sync/` state a fresh clone cannot inherit (the node_modules symlink and
+> the tsconfig path ordering — both silently broke the 2026-08-24 re-sync).
+
 This repo is a **Next.js app** (`web/`), not a packaged design system. There is
 no Storybook and no compiled component `dist/`. The sync targets a **scoped
 design-system layer** (~18 presentational primitives) via the package shape in

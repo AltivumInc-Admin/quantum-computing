@@ -262,6 +262,28 @@ runs daily at 13:00 UTC via the read-only OIDC role `quantum-ci-drift-check` (re
 tutor is **free and unmetered** (`UserPoolId`/`WalletTableName` both `""`) and the live QPU
 function has **no wallet metering**.
 
+## Design system — two projects share one name
+
+The product's design system lives in **two** claude.ai projects, both named
+"Quantum Learner Design System". They are not interchangeable:
+
+| Project | What it is | May a sync write to it? |
+|---|---|---|
+| `eefe2a41-…` | **Generated.** The flat 17-component bundle `.ds-sync/resync.mjs` produces from `web/src`. | Yes — that is its purpose. |
+| `ed6de090-…` | **Commissioned.** Hand-authored tokens, guidelines, `ui_kits/`, brand components, imagery. The system the product was themed from. | **Never.** A driver run replaces hand work with generated output and deletes what it cannot regenerate. |
+
+Because the names are identical in every listing, the id is the only thing
+telling them apart. Before any design-sync work:
+
+```sh
+node scripts/design-sync/preflight.mjs     # refuses a config that drifted
+node scripts/design-sync/restage.mjs       # rebuilds gitignored .ds-sync/ state
+```
+
+Hand-maintained assets (imagery, guideline cards) go to the commissioned
+project by targeted `finalize_plan` + `write_files` — never by the driver.
+Details and the re-sync procedure: `.design-sync/NOTES.md`.
+
 ## Development Guidelines
 
 - Always use the local simulator (`LocalSimulator()`) for development and testing
