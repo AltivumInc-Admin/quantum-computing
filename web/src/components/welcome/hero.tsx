@@ -129,20 +129,33 @@ export function WelcomeHero({
   // Announce the blurb by moving focus into it when it opens or its station
   // changes — only ever after a real interaction, never on mount.
   useEffect(() => {
-    if (blurbOpen && interacted.current) blurbRef.current?.focus();
+    // preventScroll: the readout is already in view beside the plate, and
+    // letting focus() scroll would yank the page on shorter viewports.
+    if (blurbOpen && interacted.current) blurbRef.current?.focus({ preventScroll: true });
   }, [blurbOpen, selected]);
 
-  // Machined bezel ticks every 1.5°, majors where a station sits; the crest
-  // band (|a| < 7°) stays clean so the fog reads through the rim's apex.
-  const ticks: { x1: number; y1: number; x2: number; y2: number; major: boolean; key: number }[] = [];
-  for (let a = -40; a <= 40; a += 1.5) {
-    if (Math.abs(a) < 7) continue;
-    const major = stations.some((st) => Math.abs(st.deg - a) < 0.76);
+  // Machined bezel graduations. Minor ticks run on a 1.5° grid; each station
+  // then gets a MAJOR tick at its own exact angle rather than the nearest
+  // grid line. Snapping majors to the grid is what left the needle pointing
+  // beside its graduation instead of at it — 0.67° at station 01 is 7px of
+  // arc — and it dropped station 03 entirely, since 0° sits inside the
+  // crest band the minors skip. The crest stays clear of MINOR ticks only,
+  // so the fog still reads through the rim's apex.
+  const MINOR_STEP = 1.5;
+  const ticks: { x1: number; y1: number; x2: number; y2: number; major: boolean; key: string }[] = [];
+  const push = (a: number, major: boolean, key: string) => {
     const rad = (a * Math.PI) / 180;
     const [x1, y1] = dialPt(DIAL_R, rad);
     const [x2, y2] = dialPt(DIAL_R + (major ? 18 : 8), rad);
-    ticks.push({ x1, y1, x2, y2, major, key: a });
+    ticks.push({ x1, y1, x2, y2, major, key });
+  };
+  for (let a = -40; a <= 40; a += MINOR_STEP) {
+    if (Math.abs(a) < 7) continue;
+    // Leave room around each station so its major tick reads alone.
+    if (stations.some((st) => Math.abs(st.deg - a) < MINOR_STEP)) continue;
+    push(a, false, `m${a}`);
   }
+  for (const st of stations) push(st.deg, true, `s${st.s.slug}`);
 
   const sel = sections[selected];
   const selShort = sel.title.split(":")[0];
@@ -154,7 +167,12 @@ export function WelcomeHero({
 
   return (
     <section className="dark relative px-3 pt-3 sm:px-4 sm:pt-4">
-      <div className="relative isolate overflow-hidden rounded-frame bg-abyss shadow-[0_50px_120px_-45px_rgba(0,0,0,0.9)] ring-1 ring-white/[0.06]">
+      {/* min-height, not padding: the frame's height was content-driven, so the
+          shorter English copy left the next section peeking above the fold
+          while the longer Spanish copy did not. Sizing against the viewport
+          (minus the nav, this section's inset, and the partners strip below)
+          makes the hero own the fold in both locales. */}
+      <div className="relative isolate min-h-[calc(100svh-10rem)] overflow-hidden rounded-frame bg-abyss shadow-[0_50px_120px_-45px_rgba(0,0,0,0.9)] ring-1 ring-white/[0.06]">
         {/* Volumetric fog light. srcSet restores the responsive pattern for
             the LCP-priority image: phones fetch the 960w cut, not 2688px. */}
         {/* eslint-disable-next-line @next/next/no-img-element -- static export, pre-sized WebP */}
@@ -214,23 +232,27 @@ export function WelcomeHero({
           </g>
         </svg>
 
-        {/* HUD registration corners + telemetry lines */}
+        {/* HUD registration corners stay at the FRAME — they register the
+            frame itself. Everything that is content — telemetry, the plate,
+            the readout — shares one 72rem column aligned with the site nav,
+            so on a wide display the readout sits with the composition
+            instead of being flung to the far edge. */}
         <div className={`${corner} left-[22px] top-[22px] border-l border-t`} aria-hidden="true" />
         <div className={`${corner} right-[22px] top-[22px] border-r border-t`} aria-hidden="true" />
         <div className={`${corner} bottom-[22px] left-[22px] border-b border-l`} aria-hidden="true" />
         <div className={`${corner} bottom-[22px] right-[22px] border-b border-r`} aria-hidden="true" />
-        <div className={`${hud} left-13`} aria-hidden="true">
+
+        <div className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className={`${hud} left-0`} aria-hidden="true">
           <span className="h-1.5 w-1.5 rounded-full bg-[#C2A379] animate-signal" />
           {hudLive}
+          {/* The datum hairline — drops from the telemetry dot to the plate's
+              corner, making the left datum the composition's visible spine.
+              Anchored to the dot itself so it tracks the column at any width. */}
+          <span className="absolute left-[2.5px] top-full h-10 w-px bg-[rgba(224,235,229,0.14)]" />
         </div>
-        {/* The datum hairline — drops from the telemetry dot to the plate's
-            corner, making the left datum the composition's visible spine. */}
         <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-[55px] top-[3.6rem] z-[15] hidden h-10 w-px -translate-x-1/2 bg-[rgba(224,235,229,0.14)] sm:block"
-        />
-        <div
-          className="pointer-events-none absolute right-13 top-11 z-[15] hidden items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,235,229,0.6)] [text-shadow:0_1px_8px_rgba(0,0,0,0.6)] sm:flex"
+          className="pointer-events-none absolute right-0 top-11 z-[15] hidden items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,235,229,0.6)] [text-shadow:0_1px_8px_rgba(0,0,0,0.6)] sm:flex"
           aria-hidden="true"
         >
           {hudCounts}
@@ -245,7 +267,7 @@ export function WelcomeHero({
             width-proportional), so a fixed value can't clear it on wide
             screens — 14vw tracks the crest with a constant margin, and the
             11rem floor keeps narrow layouts from collapsing onto it. */}
-        <div className="relative z-10 flex flex-col items-start px-6 pb-[max(11rem,14vw)] pt-24 text-left sm:px-13 md:pr-[23rem] lg:pt-28 lg:pr-[24rem]">
+        <div className="flex flex-col items-start pb-[max(11rem,14vw)] pt-24 text-left lg:pt-28">
           <span className="animate-fade-up relative inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#C2A379] sm:text-[11px] sm:tracking-[0.24em]">
             {/* The plate's corner registration, echoing the HUD marks. */}
             <span aria-hidden="true" className="absolute -left-6 -top-3 hidden h-5 w-5 border-l border-t border-[rgba(224,235,229,0.18)] sm:block" />
@@ -254,7 +276,7 @@ export function WelcomeHero({
           </span>
 
           <h1
-            className="animate-fade-up mt-6 max-w-[20ch] font-display text-display-2xl font-light tracking-[-0.02em] text-[#F2F3F1]"
+            className="animate-fade-up mt-6 mb-5 font-display text-display-2xl font-light tracking-[-0.02em] text-[#F2F3F1]"
             style={{ animationDelay: "90ms" }}
           >
             {headlineLead}
@@ -271,8 +293,9 @@ export function WelcomeHero({
             </span>
           </h1>
 
+          <div className="relative w-full md:pr-[21rem] lg:pr-[23rem]">
           <p
-            className="animate-fade-up mt-5 max-w-[42ch] text-[17px] leading-relaxed text-[rgba(224,235,229,0.62)]"
+            className="animate-fade-up max-w-[42ch] text-[17px] leading-relaxed text-[rgba(224,235,229,0.62)]"
             style={{ animationDelay: "180ms" }}
           >
             {subtitle}
@@ -295,74 +318,15 @@ export function WelcomeHero({
               </span>
             ))}
           </div>
-        </div>
 
-        {/* The stations — the curriculum engraved on the bezel, as controls:
-            selecting one sweeps the needle to it and opens its blurb. After
-            the content in DOM order (see the doc comment); md+ only: the
-            slice crop cuts the bezel's flanks on phones, and the curriculum
-            grid below carries the same destinations. */}
-        <svg
-          viewBox="0 0 1440 780"
-          preserveAspectRatio="xMidYMax slice"
-          role="group"
-          aria-label={dialLabel}
-          className="absolute inset-0 z-20 hidden h-full w-full md:block"
-        >
-          {stations.map(({ s, deg }, i) => {
-            const rad = (deg * Math.PI) / 180;
-            const [lx, ly] = dialPt(DIAL_R - 34, rad);
-            // The bezel engraves the short name ("Prerequisites"); the full
-            // manifest title stays the accessible name and tooltip.
-            const shortTitle = s.title.split(":")[0];
-            return (
-              <g
-                key={s.slug}
-                ref={(el) => {
-                  stationRefs.current[i] = el;
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={s.title}
-                aria-expanded={blurbOpen && selected === i}
-                aria-controls="dial-blurb"
-                onClick={() => select(i)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    select(i);
-                  }
-                }}
-                style={{ cursor: "pointer", animation: `fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) ${(0.5 + i * 0.12).toFixed(2)}s both` }}
-              >
-                <title>{s.title}</title>
-                {/* generous transparent hit target */}
-                <circle cx={lx} cy={ly - (i === 0 ? 26 : 5)} r={22} fill="transparent" />
-                {i === 0 ? (
-                  <g style={{ pointerEvents: "none" }}>
-                    <text x={lx} y={ly - 34} textAnchor="middle" fill="#C2A379" style={{ font: "500 10px var(--font-mono)", letterSpacing: ".12em", textTransform: "uppercase" }}>
-                      {startHere}
-                    </text>
-                    <text x={lx} y={ly - 16} textAnchor="middle" fill="#F2F3F1" style={{ font: "500 13px var(--font-sans)" }}>
-                      {String(s.index).padStart(2, "0")} · {shortTitle}
-                    </text>
-                  </g>
-                ) : (
-                  <text x={lx} y={ly} textAnchor="middle" fill={selected === i ? "#C2A379" : "rgb(224 235 229/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", pointerEvents: "none", transition: "fill .3s" }}>
-                    {String(s.index).padStart(2, "0")}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* The blurb — the instrument's readout, docked from the HUD counts
-            line at top-right, clear of the dial and needle. A hairline
-            connector hangs it from the telemetry tier, and a mini gauge (a
-            linear echo of the bezel) moves its gold tick in sync with the
-            needle sweep. Focus lands here when it opens; Escape returns it
-            to the station. md+ with the stations. */}
+          {/* The blurb — the instrument's readout. It docks to the TOP-RIGHT
+              OF THIS BAND rather than a fixed frame offset, so it always
+              begins on the subtitle's first line and a headline that grows
+              to three or four lines can never collide with it. Clear of the
+              dial and needle at every width; a mini gauge (a linear echo of
+              the bezel) moves its gold tick in sync with the needle sweep.
+              Focus lands here when it opens; Escape returns it to the
+              station. md+ with the stations. */}
         {blurbOpen && (
           <div
             ref={blurbRef}
@@ -373,9 +337,9 @@ export function WelcomeHero({
             onKeyDown={(e) => {
               if (e.key === "Escape") close();
             }}
-            className="animate-modal-pop absolute right-13 z-30 hidden rounded-card border border-white/10 bg-[rgb(7_23_16/0.9)] p-4 text-left shadow-(--shadow-raised) outline-none backdrop-blur-md md:top-[15rem] md:block md:w-[19rem] lg:top-[15.5rem] lg:w-[21rem]"
+            className="animate-modal-pop absolute right-0 top-0 z-30 hidden rounded-card border border-white/10 bg-[rgb(7_23_16/0.9)] p-4 text-left shadow-(--shadow-raised) outline-none backdrop-blur-md md:block md:w-[19rem] lg:w-[21rem]"
           >
-            <span aria-hidden="true" className="absolute -top-5 right-8 h-5 w-px bg-[rgba(224,235,229,0.3)]" />
+            <span aria-hidden="true" className="absolute -top-6 right-8 h-6 w-px bg-[rgba(224,235,229,0.25)]" />
             <div className="flex items-start justify-between gap-3">
               <p className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-[#C2A379]">
                 {String(sel.index).padStart(2, "0")} · {selShort}
@@ -422,6 +386,93 @@ export function WelcomeHero({
             </div>
           </div>
         )}
+          </div>
+        </div>
+
+
+        </div>
+
+        {/* The stations — the curriculum engraved on the bezel, as controls:
+            selecting one sweeps the needle to it and opens its blurb. After
+            the content in DOM order (see the doc comment); md+ only: the
+            slice crop cuts the bezel's flanks on phones, and the curriculum
+            grid below carries the same destinations. */}
+        <svg
+          viewBox="0 0 1440 780"
+          preserveAspectRatio="xMidYMax slice"
+          role="group"
+          aria-label={dialLabel}
+          className="absolute inset-0 z-20 hidden h-full w-full md:block"
+        >
+          {stations.map(({ s, deg }, i) => {
+            const rad = (deg * Math.PI) / 180;
+            const [lx, ly] = dialPt(DIAL_R - 34, rad);
+            // Station 00's flag reads OUTSIDE the bezel. Nudging it "up" in
+            // screen space used to drive it straight through the rim, which
+            // on this flank descends steeply; placing it radially outward
+            // (clear of the 18px major tick) keeps the arc unbroken.
+            const [fx, fy] = dialPt(DIAL_R + 54, rad);
+            // The bezel engraves the short name ("Prerequisites"); the full
+            // manifest title stays the accessible name and tooltip.
+            const shortTitle = s.title.split(":")[0];
+            return (
+              <g
+                key={s.slug}
+                ref={(el) => {
+                  stationRefs.current[i] = el;
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={s.title}
+                aria-expanded={blurbOpen && selected === i}
+                aria-controls="dial-blurb"
+                onClick={() => select(i)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    select(i);
+                  }
+                }}
+                style={{ cursor: "pointer", animation: `fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) ${(0.5 + i * 0.12).toFixed(2)}s both` }}
+              >
+                <title>{s.title}</title>
+                {/* generous transparent hit target */}
+                {i === 0 ? (
+                  <>
+                    <circle className="hidden lg:block" cx={fx} cy={fy - 8} r={22} fill="transparent" />
+                    <circle className="lg:hidden" cx={lx} cy={ly - 5} r={22} fill="transparent" />
+                  </>
+                ) : (
+                  <circle cx={lx} cy={ly - 5} r={22} fill="transparent" />
+                )}
+                {i === 0 ? (
+                  <g style={{ pointerEvents: "none" }}>
+                    {/* The flag sits outside the bezel, which is also the first
+                        thing the dial's `slice` crop eats: below lg it lands
+                        off-frame entirely (measured -157px at 768), so there it
+                        gives way to the plain numeral every other station uses. */}
+                    <g className="hidden lg:block">
+                      <text x={fx} y={fy - 14} textAnchor="middle" fill="#C2A379" style={{ font: "500 10px var(--font-mono)", letterSpacing: ".12em", textTransform: "uppercase" }}>
+                        {startHere}
+                      </text>
+                      <text x={fx} y={fy + 4} textAnchor="middle" fill="#F2F3F1" style={{ font: "500 13px var(--font-sans)" }}>
+                        {String(s.index).padStart(2, "0")} · {shortTitle}
+                      </text>
+                    </g>
+                    <text className="lg:hidden" x={lx} y={ly} textAnchor="middle" fill={selected === 0 ? "#C2A379" : "rgb(224 235 229/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", transition: "fill .3s" }}>
+                      {String(s.index).padStart(2, "0")}
+                    </text>
+                  </g>
+                ) : (
+                  <text x={lx} y={ly} textAnchor="middle" fill={selected === i ? "#C2A379" : "rgb(224 235 229/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", pointerEvents: "none", transition: "fill .3s" }}>
+                    {String(s.index).padStart(2, "0")}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
       </div>
     </section>
   );
