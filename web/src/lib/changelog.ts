@@ -104,7 +104,13 @@ export interface SilentChange {
  * order is: push, open the pull request, read the number off it, add the line,
  * push again. The first red check is the expected path here, not a mistake.
  */
-export const SILENT: readonly SilentChange[] = [];
+export const SILENT: readonly SilentChange[] = [
+  {
+    pr: 244,
+    reason:
+      "Alignment corrections to the welcome dial — the needle now points at its own graduation, the hero holds the fold in English as it already did in Spanish, and the readout sits with the composition. A learner CAN see these, but they land the same day as 2026-08-24-after-dark-redesign and only make that entry's description true; a second entry saying the dial was fixed hours after it was announced is noise, not news.",
+  },
+];
 
 /** Newest first. Ties keep their authored order. */
 export function sortedEntries(entries: readonly ChangeEntry[] = CHANGELOG): ChangeEntry[] {
