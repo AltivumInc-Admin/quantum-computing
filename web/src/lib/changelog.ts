@@ -106,6 +106,11 @@ export interface SilentChange {
  */
 export const SILENT: readonly SilentChange[] = [
   {
+    pr: 246,
+    reason:
+      "Repository hygiene with no learner-visible surface: the git filter that strips notebook outputs was pointing at an interpreter in a checkout that no longer existed, and nothing versioned enforced stripping at all. Adds a run-time-resolving filter wrapper, a `make git-filters` target, and the CI guard that makes it a guarantee rather than per-machine config. The curriculum notebooks a learner reads are byte-identical before and after.",
+  },
+  {
     pr: 244,
     reason:
       "Alignment corrections to the welcome dial — the needle now points at its own graduation, the hero holds the fold in English as it already did in Spanish, and the readout sits with the composition. A learner CAN see these, but they land the same day as 2026-08-24-after-dark-redesign and only make that entry's description true; a second entry saying the dial was fixed hours after it was announced is noise, not news.",
