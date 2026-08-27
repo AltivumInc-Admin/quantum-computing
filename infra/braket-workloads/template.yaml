@@ -1,15 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  quantum-braket-workloads: the dedicated QPU-execution account's entire
-  contents. A Braket-scoped role the platform's QPU Lambdas assume, the
-  amazon-braket-* results bucket (Braket writes under the caller's identity,
-  so results land HERE, never in the platform account), the monthly Braket
-  budget, and the spend SNS topic whose notifications the PLATFORM account's
-  kill-switch Lambda subscribes to cross-account. Deploy region: eu-north-1
-  (IQM Garnet's region; the bucket must be co-regional with the device).
-  NOTE: if AWS::Budgets::Budget rejects creation in eu-north-1, move ONLY the
-  BraketBudget + SpendTopic resources to a sibling stack in us-east-2 — the
-  role and bucket must stay in eu-north-1.
+  quantum-braket-workloads: the eu-north-1 half of the dedicated QPU-execution
+  account's contents — the Braket-scoped role the platform's QPU Lambdas
+  assume, and the amazon-braket-* results bucket (Braket writes under the
+  caller's identity, so results land HERE, never in the platform account).
+  Co-regional with IQM Garnet. The monthly Braket budget and spend SNS topic
+  live in the sibling stack budget.yaml, deployed to us-east-2 — see that
+  template's Description for why.
 
 Parameters:
   PlatformRoleArns:
@@ -23,17 +20,6 @@ Parameters:
     NoEcho: true
     MinLength: 24
     Description: sts:ExternalId condition value. Generated once; 1Password.
-  PlatformAccountId:
-    Type: String
-    AllowedPattern: "[0-9]{12}"
-    Description: The platform account id, for the SNS cross-account subscribe grant.
-  MonthlyBraketBudget:
-    Type: Number
-    Default: 50
-    Description: Monthly USD ceiling for Braket spend in this account.
-  AlertEmail:
-    Type: String
-    Default: hq@quantumlearner.dev
 
 Resources:
   ExecutionRole:
@@ -87,56 +73,8 @@ Resources:
             Status: Enabled
             ExpirationInDays: 90
 
-  SpendTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: quantum-braket-spend
-
-  SpendTopicPolicy:
-    Type: AWS::SNS::TopicPolicy
-    Properties:
-      Topics: [!Ref SpendTopic]
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: AWSBudgetsSNSPublishingPermissions
-            Effect: Allow
-            Principal: { Service: budgets.amazonaws.com }
-            Action: sns:Publish
-            Resource: !Ref SpendTopic
-          - Sid: PlatformKillSwitchSubscribe
-            Effect: Allow
-            Principal: { AWS: !Sub "arn:aws:iam::${PlatformAccountId}:root" }
-            Action: [sns:Subscribe, sns:Receive]
-            Resource: !Ref SpendTopic
-
-  BraketBudget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit: { Amount: !Ref MonthlyBraketBudget, Unit: USD }
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 80
-          Subscribers:
-            - { SubscriptionType: SNS, Address: !Ref SpendTopic }
-            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 100
-          Subscribers:
-            - { SubscriptionType: SNS, Address: !Ref SpendTopic }
-            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
-
 Outputs:
   ExecutionRoleArn:
     Value: !GetAtt ExecutionRole.Arn
   ResultsBucketName:
     Value: !Ref ResultsBucket
-  SpendTopicArn:
-    Value: !Ref SpendTopic

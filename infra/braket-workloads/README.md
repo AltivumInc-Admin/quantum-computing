@@ -1,12 +1,12 @@
 # Braket Workloads — the dedicated QPU-execution account
 
 Phase 1 of the Braket account split (`docs/superpowers/specs/2026-08-27-braket-account-split-design.md`
-§2, §3). Stack `quantum-braket-workloads`, deployed to the **Braket Workloads**
-account (Delta Centric org, Quantum Learner OU), region **eu-north-1** — the
-same region as the IQM Garnet device, so the results bucket is co-regional
-with it. Per the spec's account-identifier convention, this account is
-referred to by name only in this repo; resolve its id from the organization
-at run time, never write it down.
+§2, §3). Two CloudFormation stacks, both deployed to the **Braket Workloads**
+account (Delta Centric org, Quantum Learner OU), in two different regions —
+see "Two stacks, two regions" below for why. Per the spec's
+account-identifier convention, this account is referred to by name only in
+this repo; resolve its id from the organization at run time, never write it
+down.
 
 ## The cut, and the hard rule
 
@@ -17,7 +17,8 @@ boundary: the platform Lambdas assume a role here, call `CreateQuantumTask` /
 `GetQuantumTask`, and Braket writes results under the caller's (assumed-role)
 identity, so result data lands in this account and never in the platform's.
 
-**Nothing else ever lives here.** This account holds exactly four things:
+**Nothing else ever lives here.** This account holds exactly four things,
+split across the two stacks below:
 
 - `ExecutionRole` (`QuantumLearnerBraketExecution`) — trusts only the
   platform's QPU submit and reconcile function roles (`PlatformRoleArns`),
@@ -37,14 +38,40 @@ Cognito, no application Lambda, no learner data of any kind belongs here. If
 a future change would add any of that, it belongs in the platform account
 instead (spec §2's table draws the line).
 
-## eu-north-1 / Budgets fallback
+## Two stacks, two regions
 
-`AWS::Budgets::Budget` is a global-ish resource with spotty regional
-CloudFormation support. If it rejects creation in eu-north-1, move **only**
-`BraketBudget` and `SpendTopic` to a sibling stack in us-east-2 — `ExecutionRole`
-and `ResultsBucket` must stay in eu-north-1, since the bucket has to be
-co-regional with the device and Braket writes results synchronously at task
-completion.
+`AWS::Budgets::Budget` is not registered as a CloudFormation resource type in
+eu-north-1 for this account — verified 2026-08-27:
+
+```bash
+aws cloudformation list-types --region eu-north-1 --profile org-admin \
+  --type RESOURCE --visibility PUBLIC \
+  --filters Category=AWS_TYPES,TypeNamePrefix=AWS::Budgets
+# -> { "TypeSummaries": [] }
+
+aws cloudformation list-types --region us-east-1 --profile org-admin \
+  --type RESOURCE --visibility PUBLIC \
+  --filters Category=AWS_TYPES,TypeNamePrefix=AWS::Budgets
+# -> lists AWS::Budgets::Budget and AWS::Budgets::BudgetsAction
+```
+
+That isn't a contingency to route around — it's the settled design. This
+directory holds two independent stacks:
+
+- **`template.yaml`** → stack `quantum-braket-workloads`, region
+  **eu-north-1** (IQM Garnet's region). `ExecutionRole` and `ResultsBucket`
+  only. The bucket has to be co-regional with the device, and Braket writes
+  results synchronously at task completion, so this half cannot move.
+- **`budget.yaml`** → stack `quantum-braket-spend`, region **us-east-2**
+  (same region as the platform stack that subscribes to `SpendTopic`).
+  `SpendTopic`, `SpendTopicPolicy`, and `BraketBudget` only. A Budgets
+  `COST` budget is account-scoped regardless of which region its stack
+  deploys to — `budget.yaml`'s `BraketBudget` still fences **all** Braket
+  spend in this account, including `template.yaml`'s eu-north-1 execution
+  role's usage. Putting the topic in us-east-2 is a convenience for the
+  platform-side subscriber, not a requirement of the budget itself.
+
+Neither stack depends on the other's outputs; deploy them in either order.
 
 ## How the kill-switch subscription works
 
@@ -60,14 +87,14 @@ Before this split, that topic was `quantum-qpu-killswitch`, created and
 subscribed to in the same stack as the Lambda (`lambda/qpu/template.yaml`'s
 `KillSwitchTopic` / `KillSwitchFunction`, wired with a SAM `Events: SNS`
 source). After this split, the budget breach originates in a **different**
-account: this stack's `SpendTopic`, publishing from *this* account's Braket
-budget. `SpendTopicPolicy` grants the platform account's root principal
-`sns:Subscribe` and `sns:Receive` on `SpendTopic` for exactly this reason —
-so the platform's kill-switch Lambda can hold a cross-account subscription to
-it. Wiring that subscription onto the existing `KillSwitchFunction` is Task
-5's job, on the platform stack; this stack only produces the topic (output
-`SpendTopicArn`) and the grant that makes the cross-account subscribe
-possible.
+account: `budget.yaml`'s `SpendTopic`, publishing from *this* account's
+Braket budget. `SpendTopicPolicy` grants the platform account's root
+principal `sns:Subscribe` and `sns:Receive` on `SpendTopic` for exactly this
+reason — so the platform's kill-switch Lambda can hold a cross-account
+subscription to it. Wiring that subscription onto the existing
+`KillSwitchFunction` is Task 5's job, on the platform stack; this stack only
+produces the topic (output `SpendTopicArn`) and the grant that makes the
+cross-account subscribe possible.
 
 **Re-enabling after a trip is a deliberate operator action**, documented in
 `lambda/qpu/README.md`: delete (or clear) the `KILL` item in the platform
@@ -77,7 +104,7 @@ account's ledger table once the cause is resolved, e.g.
 aws dynamodb delete-item --table-name quantum-qpu-ledger --key '{"pk":{"S":"KILL"}}'
 ```
 
-Nothing in this stack re-enables itself.
+Nothing in either stack here re-enables itself.
 
 ## Deploy (Task 7 — not run by this task)
 
@@ -91,6 +118,18 @@ aws cloudformation deploy \
   --parameter-overrides PlatformRoleArns=... ExternalId=... PlatformAccountId=...
 ```
 
+```bash
+aws cloudformation deploy \
+  --profile ql-braket \
+  --region us-east-2 \
+  --stack-name quantum-braket-spend \
+  --template-file infra/braket-workloads/budget.yaml \
+  --parameter-overrides PlatformAccountId=...
+```
+
+No `--capabilities CAPABILITY_NAMED_IAM` on the second command — `budget.yaml`
+creates no IAM resources.
+
 `ql-braket` is a chained CLI profile: the `org-admin` SSO profile (Delta
 Centric management) assumes `OrganizationAccountAccessRole` in the Braket
 Workloads account — the same pattern `docs/account-migration-runbook.md`
@@ -100,19 +139,26 @@ and `PlatformAccountId` are looked up from the platform stack (Task 7).
 
 ## Outputs
 
-`ExecutionRoleArn`, `ResultsBucketName`, `SpendTopicArn` — consumed as
-parameters on the platform stack (Task 5): the QPU submit and reconcile
-Lambdas' `BraketRoleArn`, the reconciler's expected results-bucket location,
-and the kill-switch's cross-account SNS subscription target, respectively.
+- `template.yaml` → `ExecutionRoleArn`, `ResultsBucketName`
+- `budget.yaml` → `SpendTopicArn`
+
+All three are consumed as parameters on the platform stack (Task 5): the QPU
+submit and reconcile Lambdas' `BraketRoleArn`, the reconciler's expected
+results-bucket location, and the kill-switch's cross-account SNS
+subscription target, respectively.
 
 ## Rollback
 
 ```bash
 aws cloudformation delete-stack --profile ql-braket --region eu-north-1 --stack-name quantum-braket-workloads
+aws cloudformation delete-stack --profile ql-braket --region us-east-2 --stack-name quantum-braket-spend
 ```
 
 Per spec §7, every phase of this split is a parameter flip back on the
 platform side (unsetting `BraketRoleArn` reverts the platform stack to
-same-account behaviour byte-for-byte) before this stack is ever deleted.
-Deleting this stack while `BraketRoleArn` is still set on the live platform
-stack breaks QPU execution — confirm the flip first.
+same-account behaviour byte-for-byte) before either stack here is ever
+deleted. Deleting `quantum-braket-workloads` while `BraketRoleArn` is still
+set on the live platform stack breaks QPU execution; deleting
+`quantum-braket-spend` while the platform's kill-switch still holds a
+subscription on `SpendTopic` breaks the budget alert path silently — confirm
+the flip first, either way.
