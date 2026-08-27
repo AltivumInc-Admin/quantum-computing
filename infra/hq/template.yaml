@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  quantum-hq-foundations: shared services for the Quantum Learner OU, deployed
+  to the Quantum Learner - HQ account (us-east-1). Holds the quantumlearner.dev
+  hosted zone (NS delegation is NOT flipped here — that is the Phase 2 domain
+  cutover; until then this zone is dormant) and the OU-level consolidated
+  budget. ACM certificates are deliberately absent: DNS validation cannot
+  succeed until the NS flip, so they issue in Phase 2.
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: hq@quantumlearner.dev
+    Description: Budget notifications. hq@ is the business/automated address.
+  MonthlyOuBudget:
+    Type: Number
+    Default: 200
+    Description: Consolidated monthly USD ceiling across the Quantum Learner OU.
+
+Resources:
+  QuantumLearnerZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: quantumlearner.dev
+      HostedZoneConfig:
+        Comment: Dormant until the Phase 2 NS flip. Do not add records before then.
+
+  OuBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyOuBudget
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+
+Outputs:
+  HostedZoneId:
+    Value: !Ref QuantumLearnerZone
+    Export: { Name: quantum-hq-zone-id }
