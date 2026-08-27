@@ -90,3 +90,7 @@ lambda/qpu/.aws-sam/
 /.design-sync/.cache/
 /.design-sync/learnings/
 /.design-sync/node_modules
+
+# Cached CloudFront access logs pulled by scripts/analytics/backfill.mjs.
+# Raw logs carry visitor IP addresses and must never be committed.
+.analytics-cache/

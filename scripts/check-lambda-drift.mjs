@@ -49,6 +49,7 @@ const FUNCTIONS = [
   { fn: "quantum-qpu-reconcile", dir: "lambda/qpu" },
   { fn: "quantum-qpu-killswitch", dir: "lambda/qpu" },
   { fn: "quantum-workspace-sync", dir: "lambda/sync" },
+  { fn: "quantum-analytics", dir: "lambda/analytics" },
   { fn: "quantum-review-email-prefs", dir: "lambda/review-email" },
   { fn: "quantum-review-email-sender", dir: "lambda/review-email" },
   { fn: "quantum-review-email-unsubscribe", dir: "lambda/review-email" },

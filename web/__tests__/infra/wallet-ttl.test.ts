@@ -43,7 +43,7 @@ import { join } from "path";
 const REPO = join(__dirname, "..", "..", "..");
 // sync and review-email touch no wallet today (verified 2026-08-17) — included so
 // a FUTURE wallet-touching change in either lands inside the guard, not beside it.
-const LAMBDA_DIRS = ["lambda/stripe", "lambda/tutor", "lambda/qpu", "lambda/sync", "lambda/review-email"];
+const LAMBDA_DIRS = ["lambda/stripe", "lambda/tutor", "lambda/qpu", "lambda/sync", "lambda/review-email", "lambda/analytics"];
 const SKIP = /node_modules|\.aws-sam/;
 
 /**

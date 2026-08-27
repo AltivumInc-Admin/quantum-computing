@@ -159,7 +159,7 @@ jobs:
         # mirror (infra/ci-standby/template.yaml buildspec loop). The stripe
         # entry was missed for three weeks after lambda/stripe landed — the one
         # Lambda that moves real money merged ungated the whole time.
-        dir: [tutor, qpu, sync, review-email, stripe]
+        dir: [tutor, qpu, sync, review-email, stripe, analytics]
     defaults:
       run:
         working-directory: lambda/${{ matrix.dir }}
