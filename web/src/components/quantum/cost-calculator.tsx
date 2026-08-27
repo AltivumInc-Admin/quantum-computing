@@ -85,7 +85,7 @@ export function CostCalculator({ source }: { source: string }) {
           <div className="flex flex-col gap-1">
             <label
               htmlFor={deviceId}
-              className="text-[11px] font-medium uppercase tracking-wide text-caption"
+              className="eyebrow eyebrow-mut"
             >
               Device
             </label>
@@ -108,7 +108,7 @@ export function CostCalculator({ source }: { source: string }) {
           <div className="flex flex-col gap-1">
             <label
               htmlFor={tasksId}
-              className="text-[11px] font-medium uppercase tracking-wide text-caption"
+              className="eyebrow eyebrow-mut"
             >
               Tasks
             </label>
@@ -129,7 +129,7 @@ export function CostCalculator({ source }: { source: string }) {
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label
                 htmlFor={shotsId}
-                className="text-[11px] font-medium uppercase tracking-wide text-caption"
+                className="eyebrow eyebrow-mut"
               >
                 Shots per task
               </label>
@@ -149,7 +149,7 @@ export function CostCalculator({ source }: { source: string }) {
             <div className="flex flex-col gap-1 sm:col-span-2">
               <label
                 htmlFor={minutesId}
-                className="text-[11px] font-medium uppercase tracking-wide text-caption"
+                className="eyebrow eyebrow-mut"
               >
                 Minutes per task
               </label>
@@ -172,8 +172,8 @@ export function CostCalculator({ source }: { source: string }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-(--bd)">
-                <th scope="col" className="px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-caption">Item</th>
-                <th scope="col" className="px-3 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-caption">USD</th>
+                <th scope="col" className="eyebrow eyebrow-mut px-3 py-1.5 text-left">Item</th>
+                <th scope="col" className="eyebrow eyebrow-mut px-3 py-1.5 text-right">USD</th>
               </tr>
             </thead>
             <tbody>
@@ -191,13 +191,13 @@ export function CostCalculator({ source }: { source: string }) {
                 </tr>
               ))}
               <tr className="bg-gray-100/60 dark:bg-gray-700/30">
-                <td className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-caption">
+                <td className="eyebrow eyebrow-mut px-3 py-2">
                   Total
                 </td>
                 <td
                   aria-live="polite"
                   aria-atomic="true"
-                  className="px-3 py-2 text-right font-bold font-mono text-sm text-(--ink) tabular-nums"
+                  className="px-3 py-2 text-right font-medium font-mono text-sm text-(--ink) tabular-nums"
                 >
                   {totalStr}
                 </td>

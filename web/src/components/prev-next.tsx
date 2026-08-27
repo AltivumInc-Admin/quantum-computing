@@ -47,7 +47,7 @@ function PrevNextCard({
     >
       {!isNext && chevron}
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-caption font-medium">
+        <p className="eyebrow eyebrow-mut">
           {isNext ? t("common.next") : t("common.previous")}
         </p>
         <p className="text-sm font-medium text-(--mut) group-hover:text-accent dark:group-hover:text-accent-light truncate transition-colors">

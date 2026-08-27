@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { ReviewNavBadge } from "./review-nav-badge";
 import { AccountMenu } from "./auth/account-menu";
@@ -63,17 +64,10 @@ export function Nav() {
             aria-label={t("nav.brand")}
             className="group -mx-2 flex shrink-0 items-center gap-2.5 justify-self-start rounded-lg px-2 py-1.5 interactive focus-ring"
           >
-            {/* The favicon's atom mark, in the site's olive with a warm-gold electron. */}
-            <span className="flex h-7 w-7 items-center justify-center rounded-md border border-(--bd) bg-(--field) text-accent">
-              <svg className="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <g stroke="currentColor" strokeWidth="1.4">
-                  <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(45 12 12)" />
-                  <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-45 12 12)" />
-                </g>
-                <circle cx="12" cy="12" r="1.9" fill="currentColor" />
-                <circle cx="18.4" cy="5.6" r="1.5" fill="var(--color-warm)" />
-              </svg>
-            </span>
+            {/* The |Q⟩ dial-Q mark (which retired the old atom glyph): notation
+                strokes in the ink, the Q dial in the commissioned gold. Bare —
+                the mark carries its own geometry, no tile chrome. */}
+            <LogoMark size={28} className="shrink-0 text-(--ink)" />
             {/* Mark-only on phones. The wordmark is 95px of the row's budget,
                 and keeping it is what forced "Quantum Learner" to wrap onto two
                 lines at every width under 1024. */}

@@ -1,0 +1,30 @@
+{
+  "pkg": "quantum-ds",
+  "globalName": "QuantumDS",
+  "projectId": "eefe2a41-9bbd-418c-9b43-ca2f8c5297d7",
+  "shape": "package",
+  "srcDir": "../../web/src",
+  "tsconfig": "../tsconfig.json",
+  "cssEntry": "assets/chunks/ds-styles.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "buildCmd": "cd web && npm run build",
+  "componentSrcMap": {
+    "WidgetCard": "../../web/src/components/quantum/widget-ui.tsx",
+    "ErrorCard": "../../web/src/components/quantum/widget-ui.tsx",
+    "Chip": "../../web/src/components/quantum/widget-ui.tsx",
+    "GateChip": "../../web/src/components/quantum/widget-ui.tsx",
+    "GateChips": "../../web/src/components/quantum/widget-ui.tsx",
+    "EyebrowLabel": "../../web/src/components/quantum/widget-ui.tsx",
+    "LabeledSlider": "../../web/src/components/quantum/widget-ui.tsx",
+    "Bar": "../../web/src/components/quantum/widget-ui.tsx",
+    "ProbBars": "../../web/src/components/quantum/widget-ui.tsx",
+    "StateReadout": "../../web/src/components/quantum/widget-ui.tsx",
+    "CopyButton": "../../web/src/components/copy-button.tsx",
+    "CodeBlock": "../../web/src/components/code-block.tsx",
+    "SectionCard": "../../web/src/components/section-card.tsx",
+    "GlossaryCard": "../../web/src/components/glossary-card.tsx",
+    "SectionGateModal": "../../web/src/components/section-gate-modal.tsx",
+    "CategoryChip": "../../web/src/components/glossary/category-chip.tsx",
+    "ThemeToggle": "../../web/src/components/theme-toggle.tsx"
+  }
+}

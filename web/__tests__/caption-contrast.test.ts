@@ -59,7 +59,9 @@ const BASE_MUTED = /(?<![:\w-])text-gray-(400|500)\b(?!\/)/;
 // Resting dark-theme text color (dark:hover:text-* etc. deliberately excluded).
 const RESTING_DARK_TEXT = /\bdark:text-/;
 const DARK_EQUAL_OR_DARKER = /\bdark:text-gray-(400|500|600|700)\b/;
-// Unprefixed pinned-dark surface on the same element.
+// Unprefixed pinned-dark surface on the same element. (bg-abyss islands are
+// deliberately NOT exempted: gray-500 computes only 4.0:1 on #03110D, so a
+// bare muted gray on an abyss line should be flagged and re-tokenized.)
 const PINNED_DARK_BG = /(?<![:\w-])bg-gray-(800|900)\b/;
 
 function collectSourceFiles(dir: string): string[] {
@@ -74,7 +76,7 @@ function collectSourceFiles(dir: string): string[] {
 
 test("globals.css defines .text-caption with the AA-passing muted token", () => {
   // Instrument migration: the muted caption tier is now the theme-aware --mut
-  // token (6.4:1 on the dark smoke surface, 6.5:1 on the light surface —
+  // token (6.8:1 on the after-dark ground, 6.2:1 on the daylight surface —
   // computed and pinned by token-contrast.test.ts) rather than the old
   // gray-500/gray-400 pair. Still a single shared utility, still provably
   // WCAG-AA in both themes.

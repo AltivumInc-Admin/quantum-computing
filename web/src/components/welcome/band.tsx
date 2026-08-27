@@ -27,7 +27,7 @@ export function Band({ kicker, title, body, href, linkLabel, visual, flip }: Fea
     // beat later, so each band reads as a sequence instead of one slab.
     <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center">
       <div className={`reveal ${flip ? "lg:order-2" : ""}`}>
-        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-accent-dark dark:text-accent-light font-mono mb-3">
+        <p className="eyebrow mb-3">
           {kicker}
         </p>
         <h3 className="font-display text-display-lg text-(--ink) text-balance">
@@ -65,7 +65,7 @@ export function BandImage({ src, alt }: { src: string; alt: string }) {
     // (.parallax-img); pointing at it raises the frame's elevation. Where
     // scroll timelines are unsupported or motion is reduced, the image simply
     // sits still at scale(1) — the frame never exposes an edge either way.
-    <div className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-smoke shadow-(--shadow-resting) transition-shadow duration-300 can-hover:hover:shadow-(--shadow-raised) motion-reduce:transition-none">
+    <div className="rounded-card overflow-hidden border border-gray-200/60 dark:border-white/[0.08] bg-abyss shadow-(--shadow-resting) transition-shadow duration-300 can-hover:hover:shadow-(--shadow-raised) motion-reduce:transition-none">
       {/* eslint-disable-next-line @next/next/no-img-element -- static export has no image optimizer; assets are pre-sized WebP */}
       <img
         src={src}

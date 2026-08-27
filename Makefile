@@ -1,4 +1,4 @@
-.PHONY: setup lab test devices cost lint stripe-parity drift deploy-infra teardown-infra lock-container
+.PHONY: setup git-filters lab test devices cost lint stripe-parity drift deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -7,8 +7,21 @@ setup:
 	pip install -e ./qcsim
 	@echo "Validating AWS credentials..."
 	@bash infra/scripts/validate-setup.sh
-	@echo "Installing nbstripout git filter..."
-	@nbstripout --install --attributes .gitattributes
+	@$(MAKE) --no-print-directory git-filters
+
+# Point git's notebook filters at the in-repo wrapper, which resolves an
+# interpreter at run time. Deliberately NOT `nbstripout --install`: that writes
+# the absolute path of the current python into the unversioned .git/config, so
+# it goes stale whenever the repo moves, .venv is recreated, or setup is run
+# from another checkout's venv — and with required=true a dead clean filter
+# blocks notebook commits, not just diffs. Re-runnable; safe to run any time.
+git-filters:
+	@echo "Wiring nbstripout git filters (path-independent)..."
+	@git config filter.nbstripout.clean "scripts/git/nbstripout-filter.sh"
+	@git config filter.nbstripout.smudge cat
+	@git config filter.nbstripout.required true
+	@git config diff.ipynb.textconv "scripts/git/nbstripout-filter.sh -t"
+	@echo "  clean/textconv -> scripts/git/nbstripout-filter.sh"
 
 lab:
 	jupyter lab --notebook-dir=.

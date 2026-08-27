@@ -165,7 +165,7 @@ function TimelineRow({
         y2={ROW_H + 8}
         stroke="currentColor"
         strokeWidth={2}
-        className="text-rose-500 dark:text-rose-400"
+        className="text-danger dark:text-danger-light"
       />
 
     </svg>
@@ -300,26 +300,26 @@ export function CheckpointExplorer({ source }: { source: string }) {
         {/* Readout */}
         <div className="mt-5 grid grid-cols-3 gap-3 text-center">
           <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
-            <p className="font-mono text-lg font-semibold tabular-nums text-(--ink)">
+            <p className="font-mono text-lg font-medium tabular-nums text-(--ink)">
               {wastedNo.toFixed(0)}
             </p>
-            <p className="text-[10px] uppercase tracking-wide text-caption">
+            <p className="eyebrow eyebrow-mut">
               wasted, no checkpoint
             </p>
           </div>
           <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
-            <p className="font-mono text-lg font-semibold tabular-nums text-(--ink)">
+            <p className="font-mono text-lg font-medium tabular-nums text-(--ink)">
               {wastedWith.toFixed(0)}
             </p>
-            <p className="text-[10px] uppercase tracking-wide text-caption">
+            <p className="eyebrow eyebrow-mut">
               wasted, with checkpoint
             </p>
           </div>
           <div className="rounded-control border border-(--bd) bg-(--field) px-3 py-2">
-            <p className="font-mono text-lg font-semibold tabular-nums text-accent-dark dark:text-accent-light">
+            <p className="font-mono text-lg font-medium tabular-nums text-accent-dark dark:text-accent-light">
               {saving.toFixed(0)}
             </p>
-            <p className="text-[10px] uppercase tracking-wide text-caption">
+            <p className="eyebrow eyebrow-mut">
               iterations saved
             </p>
           </div>

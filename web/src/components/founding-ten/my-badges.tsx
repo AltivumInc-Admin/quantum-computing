@@ -14,7 +14,7 @@ export function MyFoundingBadges() {
 
   return (
     <section aria-label="Founding Ten" className="mb-12">
-      <h2 className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-caption">
+      <h2 className="eyebrow eyebrow-mut">
         Founding Ten
       </h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

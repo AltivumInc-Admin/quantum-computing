@@ -26,7 +26,7 @@ export function GlossaryCard({ href = "/glossary" }: { href?: string }) {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-(--surface-1)" />
       </div>
       <div className="relative p-6 -mt-6">
-        <p className="text-xs font-semibold tracking-widest uppercase hue-text mb-3">
+        <p className="eyebrow hue-text mb-3">
           {t("home.glossaryEyebrow")}
         </p>
         <h3 className="font-display text-display-md tracking-tight text-(--ink) group-hover:text-accent dark:group-hover:text-accent-light transition-colors duration-200">

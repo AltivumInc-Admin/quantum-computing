@@ -115,7 +115,7 @@ export function RunnableEditor({ source }: { source: string }) {
       {/* Live-cell accent ribbon — marks this as runnable, not a static block. */}
       <div
         aria-hidden="true"
-        className="h-0.5 bg-gradient-to-r from-accent via-accent/40 to-warm/30"
+        className="h-0.5 bg-gradient-to-r from-accent via-accent/40 to-accent/10"
       />
 
       {/* py-3 (not py-2.5) is the activity-card header recipe challenge, quiz,
@@ -168,7 +168,7 @@ export function RunnableEditor({ source }: { source: string }) {
         {showOutput && (
           <div className="flex items-center gap-2 bg-(--field) px-4 pt-3 sm:px-5">
             <StatusDot phase={phase} />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-caption">
+            <span className="eyebrow eyebrow-mut">
               Output
             </span>
           </div>

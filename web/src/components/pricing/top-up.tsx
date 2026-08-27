@@ -70,7 +70,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               key={p}
               type="button"
               onClick={() => setAmount(String(p))}
-              className={`rounded-chip px-3 py-1.5 text-sm font-medium tabular-nums interactive focus-ring ${
+              className={`rounded-chip px-3 py-1.5 font-mono text-sm font-medium tabular-nums interactive focus-ring ${
                 parsed === p
                   ? "chip-selected"
                   : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
@@ -99,7 +99,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               step={1}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-24 rounded-control border border-(--bd) bg-(--surface-2) px-3 py-1.5 text-sm text-(--ink) tabular-nums focus-ring"
+              className="w-24 rounded-control border border-(--bd) bg-(--surface-2) px-3 py-1.5 font-mono text-sm text-(--ink) tabular-nums focus-ring"
             />
           </div>
         </div>

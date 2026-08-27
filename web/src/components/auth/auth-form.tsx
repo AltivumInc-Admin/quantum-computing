@@ -22,6 +22,7 @@ import { hasUserPoolAdminScope } from "@/lib/auth-session";
 import { allCriteriaMet } from "@/lib/password-policy";
 import { PasswordField } from "./password-field";
 import { PasswordChecklist } from "./password-checklist";
+import { LogoMark } from "@/components/logo";
 import { useLocale } from "@/i18n";
 
 const primaryBtn =
@@ -218,6 +219,9 @@ export function AuthForm() {
 
   return (
     <div className="mx-auto w-full max-w-sm">
+      {/* The auth screen is the one full-page brand moment with no other
+          chrome, so the |Q⟩ mark leads it. */}
+      <LogoMark size={36} className="mb-5 text-(--ink)" />
       <h1
         ref={headingRef}
         tabIndex={-1}

@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-24-after-dark-redesign",
+    shipped: "2026-08-24",
+    kind: "improved",
+    title: "A new look, and a curriculum you can steer",
+    body: "Quantum Learner has been redrawn: a deep green-black ground, a gold accent kept for the things worth noticing, and a new |Q⟩ mark. The welcome page's curriculum is now a dial — choose any section number and the needle moves to it with a short description, so you can weigh a module before you open it. Everything reads the same way in both themes.",
+    href: "/",
+  },
+  {
     id: "2026-08-20-example-scripts-correctness",
     shipped: "2026-08-20",
     kind: "fixed",
@@ -96,7 +104,18 @@ export interface SilentChange {
  * order is: push, open the pull request, read the number off it, add the line,
  * push again. The first red check is the expected path here, not a mistake.
  */
-export const SILENT: readonly SilentChange[] = [];
+export const SILENT: readonly SilentChange[] = [
+  {
+    pr: 246,
+    reason:
+      "Repository hygiene with no learner-visible surface: the git filter that strips notebook outputs was pointing at an interpreter in a checkout that no longer existed, and nothing versioned enforced stripping at all. Adds a run-time-resolving filter wrapper, a `make git-filters` target, and the CI guard that makes it a guarantee rather than per-machine config. The curriculum notebooks a learner reads are byte-identical before and after.",
+  },
+  {
+    pr: 244,
+    reason:
+      "Alignment corrections to the welcome dial — the needle now points at its own graduation, the hero holds the fold in English as it already did in Spanish, and the readout sits with the composition. A learner CAN see these, but they land the same day as 2026-08-24-after-dark-redesign and only make that entry's description true; a second entry saying the dial was fixed hours after it was announced is noise, not news.",
+  },
+];
 
 /** Newest first. Ties keep their authored order. */
 export function sortedEntries(entries: readonly ChangeEntry[] = CHANGELOG): ChangeEntry[] {

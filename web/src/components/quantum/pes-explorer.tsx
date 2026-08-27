@@ -241,7 +241,7 @@ export function PesExplorer({ source }: { source: string }) {
               cx={sx(geom.eqR)}
               cy={sy(geom.eqFci)}
               r={3}
-              className="fill-amber-500 dark:fill-amber-400"
+              className="fill-success-dark dark:fill-success-light"
             />
 
             {/* scrubber position + FCI/HF readout dots */}
@@ -348,7 +348,7 @@ export function PesExplorer({ source }: { source: string }) {
               VQE
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-full bg-amber-500 dark:bg-amber-400" aria-hidden="true" />
+              <span className="inline-block h-2 w-2 rounded-full bg-success-dark dark:bg-success-light" aria-hidden="true" />
               equilibrium
             </span>
           </div>

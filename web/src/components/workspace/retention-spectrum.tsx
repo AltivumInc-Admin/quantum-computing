@@ -27,7 +27,7 @@ export function RetentionSpectrum({ spectrum }: { spectrum: Spectrum }) {
 
   return (
     <div className="mt-6">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-caption">
+      <p className="eyebrow eyebrow-mut">
         Retention spectrum — skills by memory stability
       </p>
 

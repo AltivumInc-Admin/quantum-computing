@@ -54,10 +54,10 @@ export function ClaimAnonProgress() {
       <div className="flex flex-wrap items-center gap-x-8 gap-y-5 px-5 py-4 sm:px-6">
         {/* The measurement, in the cockpit's own instrument voice. */}
         <div className="flex items-baseline gap-3">
-          <span className="font-display text-display-md tabular-nums leading-none text-(--ink)">
+          <span className="font-mono text-display-md tabular-nums leading-none text-(--ink)">
             {count}
           </span>
-          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-caption">
+          <span className="eyebrow eyebrow-mut">
             {count === 1 ? "item" : "items"} unclaimed
           </span>
         </div>

@@ -52,23 +52,12 @@ function resolve(value: string, vars: Vars, depth = 0): string {
 }
 
 type Oklch = [L: number, C: number, H: number];
-
-function parseOklch(raw: string, vars: Vars): Oklch {
-  const value = resolve(raw, vars);
-  const m = value.match(
-    /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)\s*\)$/
-  );
-  if (!m) {
-    // An alpha channel means the token is translucent — its rendered color
-    // depends on what is behind it, so it must never be asserted here.
-    throw new Error(`not an opaque oklch color: "${value}"`);
-  }
-  const L = parseFloat(m[1]) / (m[2] === "%" ? 100 : 1);
-  return [L, parseFloat(m[3]), parseFloat(m[4])];
-}
+// A parsed opaque color as LINEAR sRGB — the shared currency both authoring
+// syntaxes (oklch() and the after-dark system's hex anchors) convert into.
+type Rgb = [r: number, g: number, b: number];
 
 // oklch -> OKLab -> LMS -> linear sRGB (Björn Ottosson's reference matrices).
-function toLinearSrgb([L, C, Hdeg]: Oklch): [number, number, number] {
+function toLinearSrgb([L, C, Hdeg]: Oklch): Rgb {
   const h = (Hdeg * Math.PI) / 180;
   const a = C * Math.cos(h);
   const b = C * Math.sin(h);
@@ -83,28 +72,56 @@ function toLinearSrgb([L, C, Hdeg]: Oklch): [number, number, number] {
   ];
 }
 
+function parseColor(raw: string, vars: Vars): Rgb {
+  const value = resolve(raw, vars);
+  const ok = value.match(/^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)\s*\)$/);
+  if (ok) {
+    const L = parseFloat(ok[1]) / (ok[2] === "%" ? 100 : 1);
+    return toLinearSrgb([L, parseFloat(ok[3]), parseFloat(ok[4])]);
+  }
+  // The after-dark tokens are authored as the design system's exact hex
+  // anchors (#071710, #C2A379, …) rather than oklch conversions, so the
+  // brand files and globals.css can never drift by a rounding step.
+  const hex = value.match(/^#([0-9a-fA-F]{6})$/);
+  if (hex) {
+    const lin = (i: number) => {
+      const v = parseInt(hex[1].slice(i, i + 2), 16) / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    return [lin(0), lin(2), lin(4)];
+  }
+  // Anything else — notably any alpha channel — means the token is
+  // translucent: its rendered color depends on what is behind it, so it
+  // must never be asserted here.
+  throw new Error(`not an opaque oklch/hex color: "${value}"`);
+}
+
 // WCAG relative luminance takes LINEARIZED sRGB channels — which is exactly
-// what the OKLab pipeline already yields, so no gamma round-trip is needed.
-function luminance(c: Oklch): number {
-  const [r, g, b] = toLinearSrgb(c);
+// what both parse paths already yield, so no gamma round-trip is needed.
+function luminance([r, g, b]: Rgb): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-function contrast(c1: Oklch, c2: Oklch): number {
+function contrast(c1: Rgb, c2: Rgb): number {
   const [hi, lo] = [luminance(c1), luminance(c2)].sort((a, b) => b - a);
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// Tailwind v4's gray-950 (node_modules/tailwindcss/theme.css) — the pinned
-// dark ink of .chip-selected.
-const GRAY_950: Oklch = [0.13, 0.028, 261.692];
+// The .chip-selected ink, parsed out of its own rule rather than retyped —
+// the one literal ink in the system (globals.css documents the AA/AAA math),
+// pinned here so the rule and this guard can never diverge.
+const chipInkMatch = css.match(
+  /\.chip-selected\s*\{[^}]*[^-]color:\s*(#[0-9a-fA-F]{6})\s*;/
+);
+if (!chipInkMatch) throw new Error(".chip-selected ink not found");
+const CHIP_INK: Rgb = parseColor(chipInkMatch[1], {});
 
 const light = themeBlock(":root");
 const dark = themeBlock(".dark");
 const SURFACES = ["surface-base", "surface-1", "surface-2"] as const;
 
 function ratio(vars: Vars, fg: string, bg: string): number {
-  return contrast(parseOklch(vars[fg], vars), parseOklch(vars[bg], vars));
+  return contrast(parseColor(vars[fg], vars), parseColor(vars[bg], vars));
 }
 
 describe.each([
@@ -126,9 +143,9 @@ describe.each([
     expect(ratio(vars, "btn-ink", "btn-fill")).toBeGreaterThanOrEqual(7);
   });
 
-  // .chip-selected: pinned gray-950 ink on the theme's --accent fill.
-  it("gray-950 on --accent (.chip-selected) is AA (>= 4.5:1)", () => {
-    expect(contrast(GRAY_950, parseOklch(vars.accent, vars))).toBeGreaterThanOrEqual(4.5);
+  // .chip-selected: its pinned dark ink on the theme's --accent (gold) fill.
+  it("chip ink on --accent (.chip-selected) is AA (>= 4.5:1)", () => {
+    expect(contrast(CHIP_INK, parseColor(vars.accent, vars))).toBeGreaterThanOrEqual(4.5);
   });
 
   // Focus indicator (.focus-ring): solid --focus against every surface the
@@ -178,20 +195,97 @@ describe("meaningful accent GRAPHICS (WCAG 1.4.11 non-text, >= 3:1)", () => {
   });
 
   it("documents why light --accent cannot carry a meaningful graphic", () => {
-    // Tripwire, like the text-tier one: light --accent misses even the
-    // non-text floor, which is why the marker/dial/thumb route to
-    // --accent-dark / --focus instead. A retune clearing 3:1 here means the
-    // pair-down can be revisited.
-    for (const s of SURFACES) {
-      expect(ratio(light, "accent", s)).toBeLessThan(3);
-    }
+    // Tripwire, like the text-tier one: the light accent misses the non-text
+    // floor on at least one app surface, which is why the marker/dial/thumb
+    // route to --accent-dark / --focus instead — a graphic that is only
+    // legible on SOME surfaces cannot carry meaning app-wide. Asserted as the
+    // minimum across surfaces, not per-surface: the after-dark gold measures
+    // 2.84 on base and 2.92 on surface-2 but 3.14 on the near-white
+    // surface-1, and one passing surface does not make it universally safe.
+    // A retune clearing 3:1 on EVERY surface means the pair-down can be
+    // revisited.
+    const worst = Math.min(...SURFACES.map((s) => ratio(light, "accent", s)));
+    expect(worst).toBeLessThan(3);
   });
 });
 
 describe("chip AAA claim on the dark theme", () => {
-  // globals.css documents 13.0:1 (AAA) for gray-950 on the dark bright olive.
-  it("gray-950 on dark --accent is AAA (>= 7:1)", () => {
-    expect(contrast(GRAY_950, parseOklch(dark.accent, dark))).toBeGreaterThanOrEqual(7);
+  // globals.css documents 7.64:1 (AAA) for the chip ink on the dark bright
+  // gold. (The green-black --ink #10231D would measure only 6.88:1 there —
+  // which is why the chip carries its own darker literal ink.)
+  it("chip ink on dark --accent is AAA (>= 7:1)", () => {
+    expect(contrast(CHIP_INK, parseColor(dark.accent, dark))).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe("semantic tiers (oxblood caution, jade success, danger)", () => {
+  // The sanctioned resting-text idiom for all three tiers is the same
+  // pair-down the accent uses: `text-<tier>-dark dark:text-<tier>-light`.
+  // The BASE steps are fills/graphics (light --success measures 4.29 on the
+  // new base; dark --danger 4.19 — neither may carry resting text).
+  const TIERS = ["warm", "success", "danger"] as const;
+
+  it.each(TIERS.flatMap((t) => SURFACES.map((s) => [t, s] as const)))(
+    "light --%s-dark on --%s is AA (>= 4.5:1)",
+    (t, s) => {
+      expect(ratio(light, `${t}-dark`, s)).toBeGreaterThanOrEqual(4.5);
+    }
+  );
+
+  it.each(TIERS.flatMap((t) => SURFACES.map((s) => [t, s] as const)))(
+    "dark --%s-light on --%s is AA (>= 4.5:1)",
+    (t, s) => {
+      expect(ratio(dark, `${t}-light`, s)).toBeGreaterThanOrEqual(4.5);
+    }
+  );
+});
+
+describe("the abyss contract", () => {
+  // --abyss is the ONE pinned near-black green under every self-dark island
+  // (hero shell, code fences, media frames, modal backdrops). It is declared
+  // once in :root and deliberately NOT overridden in .dark — the cascade is
+  // what makes it identical in both themes — and the compile-time @theme
+  // twin (--color-abyss, the bg-abyss utility) must carry the same literal.
+  it("is declared in :root and not re-declared in .dark", () => {
+    expect(light.abyss).toBeDefined();
+    expect(dark.abyss).toBeUndefined();
+  });
+
+  it("matches the @theme --color-abyss literal", () => {
+    const themeTwin = css.match(/--color-abyss:\s*([^;]+);/);
+    expect(themeTwin).not.toBeNull();
+    expect(themeTwin![1].trim().toLowerCase()).toBe(light.abyss.toLowerCase());
+  });
+
+  it("keeps AAA ink on the abyss (self-dark islands set silver text)", () => {
+    expect(contrast(parseColor(dark.ink, dark), parseColor(light.abyss, light))).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe("the hue-free phase scale", () => {
+  // Relative phase is silver lightness steps with gold marking zero phase
+  // ONLY; the symmetry (θ and 2π−θ share a value) is carried in the token
+  // VALUES so consumer index math stays trivial. Both themes must define all
+  // eight, and the mirror pairs must be byte-identical.
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s theme defines --phase-0..7 symmetrically", (_name, vars) => {
+    for (let k = 0; k <= 7; k++) expect(vars[`phase-${k}`]).toBeDefined();
+    for (let k = 1; k <= 3; k++) {
+      expect(vars[`phase-${k}`]).toBe(vars[`phase-${8 - k}`]);
+    }
+  });
+
+  it("marks zero phase in gold and keeps every other step hue-free", () => {
+    for (const vars of [light, dark]) {
+      // --phase-0 carries chroma (the gold tick)…
+      expect(vars["phase-0"]).toMatch(/oklch\([\d.]+ 0\.0[1-9]/);
+      // …and --phase-1..7 are achromatic silver steps.
+      for (let k = 1; k <= 7; k++) {
+        expect(vars[`phase-${k}`]).toMatch(/oklch\([\d.]+ 0 0\)/);
+      }
+    }
   });
 });
 
@@ -245,12 +339,11 @@ describe("inline-code chip across every section hue (WCAG 1.4.3, >= 4.5:1)", () 
   darkChip.bg = lightChip.bg;
   darkChip.alpha = lightChip.alpha;
 
-  function composite(fg: Oklch, bgAlpha: number, tint: Oklch, base: Oklch): number {
+  function composite(fg: Oklch, bgAlpha: number, tint: Oklch, base: Rgb): number {
     const t = toLinearSrgb(tint);
-    const b = toLinearSrgb(base);
-    const mixed = t.map((v, i) => v * bgAlpha + b[i] * (1 - bgAlpha));
+    const mixed = t.map((v, i) => v * bgAlpha + base[i] * (1 - bgAlpha));
     const bgLum = 0.2126 * mixed[0] + 0.7152 * mixed[1] + 0.0722 * mixed[2];
-    const fgLum = luminance(fg);
+    const fgLum = luminance(toLinearSrgb(fg));
     const [hi, lo] = [fgLum, bgLum].sort((a, b) => b - a);
     return (hi + 0.05) / (lo + 0.05);
   }
@@ -269,7 +362,7 @@ describe("inline-code chip across every section hue (WCAG 1.4.3, >= 4.5:1)", () 
   )("%s theme, hue %s is AA (>= 4.5:1)", (theme, hue) => {
     const chip = theme === "light" ? lightChip : darkChip;
     const vars = theme === "light" ? light : dark;
-    const base = parseOklch(vars["surface-base"], vars);
+    const base = parseColor(vars["surface-base"], vars);
     const ratio = composite(
       [chip.color[0], chip.color[1], hue],
       chip.alpha,
@@ -298,6 +391,15 @@ describe("parser sanity", () => {
         "accent-light",
         "accent-dark",
         "focus",
+        "warm",
+        "warm-light",
+        "warm-dark",
+        "success",
+        "success-light",
+        "success-dark",
+        "danger",
+        "danger-light",
+        "danger-dark",
       ]) {
         expect(vars[t]).toBeDefined();
       }

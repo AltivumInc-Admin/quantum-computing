@@ -5,31 +5,18 @@ import { GLOSSARY } from "@/lib/glossary";
 import { isAuthConfigured } from "@/lib/auth-config";
 import { pitchFor } from "@/lib/section-pitch";
 import { CurriculumGrid } from "@/components/curriculum-grid";
-import { WelcomeHero, type NodeGlyphName } from "@/components/welcome/hero";
+import { WelcomeHero } from "@/components/welcome/hero";
 import { Band, BandImage, type FeatureBandProps } from "@/components/welcome/band";
 import { TutorMock } from "@/components/welcome/tutor-mock";
 import { PlaygroundMock } from "@/components/welcome/playground-mock";
 import { useLocale } from "@/i18n";
 import type { Section } from "@/lib/sections";
 
-const HERO_NODES: {
-  slug: string;
-  labelKey: string;
-  glyph: NodeGlyphName;
-  pos: "tl" | "tr" | "bl" | "br";
-}[] = [
-  { slug: "01-foundations", labelKey: "home.nodeFoundations", glyph: "atom", pos: "tl" },
-  { slug: "02-hardware", labelKey: "home.nodeHardware", glyph: "wave", pos: "tr" },
-  { slug: "03-algorithms", labelKey: "home.nodeAlgorithms", glyph: "branch", pos: "bl" },
-  { slug: "05-quantum-chemistry", labelKey: "home.nodeChemistry", glyph: "target", pos: "br" },
-];
-
 const PARTNERS = ["Amazon Braket", "PennyLane", "IonQ", "IQM", "QuEra", "Rigetti"];
 
 export interface HomePageContentProps {
   sections: Section[];
   summaries: string[];
-  playgroundGates: number;
   notebookTotal: number;
 }
 
@@ -92,30 +79,9 @@ function AuthCtas({
 export function HomePageContent({
   sections,
   summaries,
-  playgroundGates,
   notebookTotal,
 }: HomePageContentProps) {
   const { t } = useLocale();
-
-  const stats = [
-    { value: sections.length, label: t("home.statSections") },
-    { value: notebookTotal, label: t("home.statNotebooks") },
-    { value: playgroundGates, label: t("home.statGates") },
-  ];
-
-  const heroNodes = HERO_NODES.flatMap((node) => {
-    const section = sections.find((s) => s.slug === node.slug);
-    return section
-      ? [
-          {
-            label: t(node.labelKey),
-            glyph: node.glyph,
-            pos: node.pos,
-            value: t("home.notebooksCount", { count: section.notebookCount }, section.notebookCount),
-          },
-        ]
-      : [];
-  });
 
   const bands: FeatureBandProps[] = [
     {
@@ -137,7 +103,7 @@ export function HomePageContent({
       visual: (
         <BandImage
           src="/welcome/hardware.webp"
-          alt="Gold-plated dilution refrigerator of a superconducting quantum computer, rim-lit in teal against darkness"
+          alt="Gold-plated dilution refrigerator of a superconducting quantum computer, rim-lit in jade green against darkness"
         />
       ),
       flip: true,
@@ -154,7 +120,7 @@ export function HomePageContent({
       visual: (
         <BandImage
           src="/welcome/bloch.webp"
-          alt="Wireframe Bloch sphere of fine teal lines with a gold state-vector arrow, above faint interference ripples"
+          alt="Wireframe Bloch sphere of fine jade-green lines with a gold state-vector arrow, above faint interference ripples"
         />
       ),
     },
@@ -192,21 +158,30 @@ export function HomePageContent({
       <WelcomeHero
         eyebrow={t("home.eyebrow")}
         headlineLead={t("home.headlineLead")}
-        headlineDim={t("home.headlineDim")}
+        headlineDimPre={t("home.headlineDimPre")}
+        headlineDimPost={t("home.headlineDimPost")}
         subtitle={t("home.subtitle")}
-        ctas={<AuthCtas align="center" t={t} />}
-        stats={stats}
-        nodes={heroNodes}
-        sectionCount={sections.length}
-        scrollLabel={t("home.scrollToCurriculum")}
-        scrollCueText={`${String(1).padStart(2, "0")} / ${String(sections.length).padStart(2, "0")} · ${t("home.scrollDown")}`}
-        horizonsLabel={t("home.quantumHorizons")}
+        ctas={<AuthCtas align="start" t={t} />}
+        sections={sections.map((s, i) => ({
+          slug: s.slug,
+          index: s.index,
+          title: s.title,
+          summary: summaries[i] ?? "",
+          countLabel: t("home.notebooksCount", { count: s.notebookCount }, s.notebookCount),
+        }))}
+        startHere={t("home.startHere")}
+        dialLabel={t("home.dialLabel")}
+        hudLive={t("home.hudLive")}
+        hudCounts={t("home.hudCounts", { sections: sections.length, notebooks: notebookTotal })}
+        microBadges={[t("home.badgeFree"), t("home.badgeInBrowser"), t("home.badgeNoInstall")]}
+        blurbCta={t("home.dialOpenSection")}
+        blurbClose={t("home.dialClose")}
       />
 
-      <div className="dark bg-smoke px-3 sm:px-4">
+      <div className="dark bg-abyss px-3 sm:px-4">
         <div className="mx-auto max-w-6xl border-t border-white/[0.06] px-4 py-7">
           <div className="flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
-            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/55">
+            <span className="eyebrow">
               {t("home.poweredBy")}
             </span>
             {PARTNERS.map((p) => (
@@ -270,14 +245,14 @@ export function HomePageContent({
 
       <section
         aria-labelledby="account-heading"
-        className="dark relative overflow-hidden bg-smoke border-y border-white/[0.06]"
+        className="dark relative overflow-hidden bg-abyss border-y border-white/[0.06]"
       >
         <div className="absolute inset-0 bg-atmosphere" />
         <div className="absolute inset-0 bg-grid-dots [mask-image:radial-gradient(ellipse_60%_70%_at_50%_50%,black,transparent)]" />
-        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[820px] h-[420px] bg-[radial-gradient(ellipse_at_center,rgb(230,228,214,0.10),transparent_65%)] rounded-full blur-[90px] pointer-events-none" />
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[820px] h-[420px] bg-[radial-gradient(ellipse_at_center,rgb(194,163,121,0.10),transparent_65%)] rounded-full blur-[90px] pointer-events-none" />
 
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center reveal">
-          <p className="text-xs font-semibold tracking-widest uppercase text-accent-light mb-4">
+          <p className="eyebrow mb-4">
             {t("home.accountEyebrow")}
           </p>
           <h2

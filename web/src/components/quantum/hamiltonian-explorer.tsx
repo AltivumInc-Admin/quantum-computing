@@ -92,9 +92,13 @@ function signed(x: number, digits: number): string {
   return s.startsWith("-") ? s : `+${s}`;
 }
 
-// A negative coefficient reads as a lighter wash of the same accent, so sign is
-// legible without introducing a second hue into the bar list.
-const NEGATIVE_FILL = "bg-[color-mix(in_oklab,var(--accent)_45%,transparent)]";
+// A negative coefficient stays hue-free — muted silver, clearly off the
+// bronze→gold magnitude ramp without borrowing the phase scale (whose tokens
+// are "phase only, never magnitude", and whose mid step recedes below the
+// 3:1 graphics floor against the rail). The printed signed coefficient
+// beside each bar carries the sign; the silver fill keeps an equal-magnitude
+// negative bar at comparable salience (5.6:1 light / 4.9:1 dark vs track).
+const NEGATIVE_FILL = "bg-(--mut)";
 
 // ---------------------------------------------------------------------------
 // Magnitude-bar term list (one shared renderer for tapered + untapered)

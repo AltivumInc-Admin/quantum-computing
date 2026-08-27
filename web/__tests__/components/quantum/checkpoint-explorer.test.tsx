@@ -45,14 +45,18 @@ describe("CheckpointExplorer", () => {
     expect(screen.getByText(/qcheckpoint error:/)).toBeInTheDocument();
   });
 
-  it("renders stat labels with the shared .text-caption utility", () => {
+  it("renders stat labels with the shared muted micro-label recipe", () => {
     render(
       <CheckpointExplorer
         source={JSON.stringify({ iterations: 40, failAt: 27, every: 10 })}
       />
     );
     const label = screen.getByText("iterations saved");
-    expect(label).toHaveClass("text-caption");
+    // The muted micro-label is the base .eyebrow recipe (all the geometry)
+    // plus the .eyebrow-mut color modifier riding --mut (the AA-guarded
+    // muted token) — never a raw Tailwind gray. Both classes are required:
+    // the modifier alone carries no typography.
+    expect(label).toHaveClass("eyebrow", "eyebrow-mut");
     expect(label).not.toHaveClass("text-gray-400");
   });
 

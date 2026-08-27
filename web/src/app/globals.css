@@ -14,11 +14,12 @@
 @custom-variant can-hover (@media (hover: hover));
 
 @theme inline {
-  /* Signature = a single muted OLIVE signal on smoke-and-glass. Resolved from a
+  /* Signature = a single GOLD signal on green smoke-and-glass ("The Instrument,
+     after dark": racing green, gold, oxblood, abyss, silver). Resolved from a
      runtime var so `text-accent`/`ring-accent` are theme-aware (the @theme value
-     is inlined as `var(--accent)`, exactly like --font-* below): olive on the
-     dark primary theme, olive-dim on the light daylight theme (set in @layer
-     base). Olive is reserved for MICRO-labels — eyebrows, status dots, active
+     is inlined as `var(--accent)`, exactly like --font-* below): bright gold on
+     the dark primary theme, dial gold on the light daylight theme (set in @layer
+     base). Gold is reserved for MICRO-labels — eyebrows, status dots, active
      nav/dot-nav, ket/state labels, focus accents — and small active fills; it is
      never a large filled surface (primary CTAs use the neutral high-contrast
      .surface-accent instead). */
@@ -26,22 +27,44 @@
   --color-accent-light: var(--accent-light);
   --color-accent-dark: var(--accent-dark);
 
-  /* The Instrument ground: the ONE pinned near-black under every self-dark
-     band (hero shell, powered-by strip, account band, media frames, modal
+  /* The abyss: the ONE pinned near-black green under every self-dark band
+     (hero shell, powered-by strip, account band, media frames, modal
      backdrop). Deliberately identical in both app themes — these surfaces are
      literal imagery islands, not theme-responsive chrome — so a compile-time
      @theme token is exactly right (see CLAUDE.md's @theme guidance). */
-  --color-smoke: #0b0b0c;
+  --color-abyss: #03110d;
 
-  --color-warm: oklch(0.78 0.12 75);
-  --color-warm-light: oklch(0.88 0.08 75);
-  --color-warm-dark: oklch(0.52 0.12 75);
-  --color-success: oklch(0.72 0.15 150);
-  --color-success-light: oklch(0.82 0.13 150);
-  --color-success-dark: oklch(0.52 0.13 150);
-  --color-danger: oklch(0.62 0.2 25);
-  --color-danger-light: oklch(0.72 0.17 25);
-  --color-danger-dark: oklch(0.5 0.18 25);
+  /* The caution/stakes tier is OXBLOOD (wrong verdicts, caveats, failure
+     states, real-hardware cost callouts); success is jade, danger red-oxblood.
+     All three resolve per theme via runtime vars (set in @layer base), same
+     indirection as --color-accent: the dark theme lifts each step lighter so
+     resting text keeps AA on the dark ground. */
+  --color-warm: var(--warm);
+  --color-warm-light: var(--warm-light);
+  --color-warm-dark: var(--warm-dark);
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-success-dark: var(--success-dark);
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-light);
+  --color-danger-dark: var(--danger-dark);
+
+  /* The neutral family is instrument SILVER — Tailwind's stock gray ladder
+     rotated from its blue tint (hue ~247–264) to the racing-green axis (168)
+     at softened chroma. Same lightness per step, so every existing gray-*
+     contrast relationship is preserved while the temperature matches the
+     green ground (Tailwind's cool gray visibly clashes on it). */
+  --color-gray-50: oklch(98.5% 0.002 168);
+  --color-gray-100: oklch(96.7% 0.003 168);
+  --color-gray-200: oklch(92.8% 0.005 168);
+  --color-gray-300: oklch(87.2% 0.007 168);
+  --color-gray-400: oklch(70.7% 0.013 168);
+  --color-gray-500: oklch(55.1% 0.016 168);
+  --color-gray-600: oklch(44.6% 0.018 168);
+  --color-gray-700: oklch(37.3% 0.02 168);
+  --color-gray-800: oklch(27.8% 0.02 168);
+  --color-gray-900: oklch(21% 0.02 168);
+  --color-gray-950: oklch(13% 0.017 168);
 
   --font-sans: var(--font-geist), system-ui, sans-serif;
   --font-display: var(--font-sora), var(--font-geist), system-ui, sans-serif;
@@ -114,7 +137,7 @@
   }
 }
 
-/* A slow "connected/live" pulse for status dots (the olive signal). */
+/* A slow "connected/live" pulse for status dots (the gold signal). */
 @keyframes signal-pulse {
   50% { opacity: 0.4; }
 }
@@ -179,107 +202,171 @@
 
 @layer base {
   :root {
-    /* ── Light "daylight" theme ─────────────────────────────────────────── */
-    /* olive-dim — dots, fills, icons, chip fills. 2.79:1 on --surface-base,
+    /* ── Light "daylight" theme — warm silver, green-black ink ──────────── */
+    /* Brand anchors (theme-invariant): the five colors everything else is
+       mixed from. --abyss is the runtime twin of the @theme --color-abyss. */
+    --oxblood-950: #390517;
+    --gold-500: #a38560;
+    --green-800: #16302b;
+    --green-950: #03110d;
+    --silver-200: #e0e0e0;
+    --abyss: #03110d;
+
+    /* dial gold — dots, fills, icons, chip fills. 2.84:1 on --surface-base,
        so resting TEXT never uses it here: light-theme accent text pairs down
-       to --accent-dark (4.93:1). Enforced by token-contrast.test.ts. */
-    --accent: oklch(0.66 0.1 118);
-    --accent-light: oklch(0.72 0.09 118);
-    --accent-dark: oklch(0.52 0.1 118);   /* resting accent TEXT on light */
+       to --accent-dark (5.64:1). Enforced by token-contrast.test.ts. */
+    --accent: #a38560;
+    --accent-light: #b99a72;
+    --accent-dark: #6f5636;   /* resting accent TEXT on light */
 
-    --surface-base: oklch(0.97 0.004 88);
-    --surface-base-2: oklch(0.93 0.006 88);
-    --surface-1: oklch(0.99 0.003 88);
-    --surface-2: oklch(0.95 0.005 88);
+    /* Oxblood caution tier (wrong verdicts, caveats, failure states, cost
+       callouts). Resting text pairs down to --warm-dark (9.51:1). */
+    --warm: #8e4e63;
+    --warm-light: #b37387;
+    --warm-dark: #652038;
 
-    /* Glass + hairline + track tokens for the smoke-and-glass surfaces. */
-    --glass: oklch(1 0 0 / 0.6);
-    --glass-2: oklch(1 0 0 / 0.8);
-    --bd: oklch(0.28 0.01 88 / 0.13);
-    --bd-2: oklch(0.28 0.02 88 / 0.22);
-    --track: oklch(0.28 0.01 88 / 0.1);
-    --field: oklch(1 0 0 / 0.45);
-    --ink: oklch(0.23 0.008 82);
-    --mut: oklch(0.46 0.008 82);
+    --success: #2c7a57;
+    --success-light: #4fa37e;
+    --success-dark: #1e5a3f;
+    --danger: #a93a48;
+    --danger-light: #c25562;
+    --danger-dark: #832834;
 
-    /* Focus indicator — solid, per-theme. accent-dark reads 4.93:1 on
+    --surface-base: #e9e9e7;
+    --surface-base-2: #dededc;
+    --surface-1: #f4f4f2;
+    --surface-2: #ececea;
+
+    /* Glass + hairline + track tokens for the smoke-and-glass surfaces —
+       hairlines carry the green-black ink, not a neutral gray. */
+    --glass: rgb(255 255 255 / 0.6);
+    --glass-2: rgb(255 255 255 / 0.8);
+    --bd: rgb(16 35 29 / 0.13);
+    --bd-2: rgb(16 35 29 / 0.24);
+    --track: rgb(16 35 29 / 0.1);
+    --field: rgb(255 255 255 / 0.5);
+    --ink: #10231d;
+    --mut: #48584f;
+
+    /* Focus indicator — solid, per-theme. accent-dark reads 5.64:1 on
        --surface-base (WCAG 1.4.11 needs 3:1); the raw light accent only
-       manages 2.79:1 even unblended, so the ring pins to the dark step. */
+       manages 2.84:1 even unblended, so the ring pins to the dark step. */
     --focus: var(--accent-dark);
 
-    /* Text-selection highlight — the light olive at an alpha strong enough
-       to read as a visible band on the white surfaces. */
-    --selection: oklch(0.66 0.1 118 / 0.35);
+    /* Text-selection highlight — gold at an alpha strong enough to read as
+       a visible band on the silver surfaces. */
+    --selection: rgb(163 133 96 / 0.35);
 
     /* Atmosphere + dot-grid backdrops, theme-resolved like every other
-       surface token (consumed by .bg-atmosphere / .bg-grid-dots). */
+       surface token (consumed by .bg-atmosphere / .bg-grid-dots). A faint
+       oxblood corner warms the lower right; gold washes the top. */
     --atmosphere:
-      radial-gradient(ellipse 75% 90% at 74% -12%, oklch(0.9 0.03 108 / 0.5), transparent 55%),
-      radial-gradient(ellipse 60% 70% at 100% 20%, oklch(1 0 0 / 0.7), transparent 55%),
-      radial-gradient(ellipse 55% 60% at 0% 100%, oklch(0.86 0.01 90 / 0.5), transparent 60%);
-    --grid-dot: oklch(0.3 0.01 90 / 0.1);
+      radial-gradient(ellipse 75% 90% at 74% -12%, rgb(163 133 96 / 0.14), transparent 55%),
+      radial-gradient(ellipse 60% 70% at 100% 20%, rgb(255 255 255 / 0.7), transparent 55%),
+      radial-gradient(ellipse 55% 60% at 0% 100%, rgb(22 48 43 / 0.12), transparent 60%),
+      radial-gradient(ellipse 50% 55% at 100% 100%, rgb(57 5 23 / 0.07), transparent 60%);
+    --grid-dot: rgb(16 35 29 / 0.12);
 
-    /* Neutral high-contrast primary button (dark fill on the light theme). */
-    --btn-fill: oklch(0.2 0.006 82);
-    --btn-ink: oklch(0.96 0.004 90);
-    --btn-fill-hover: oklch(0.14 0.006 82);
+    /* Neutral high-contrast primary button (green-black fill on daylight). */
+    --btn-fill: #10231d;
+    --btn-ink: #f2f1ee;
+    --btn-fill-hover: #0a1812;
 
     /* Glass elevation: a 1px inset top highlight + a soft, far outer shadow —
-       depth from light and blur, not a heavy drop. */
-    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.5),
-      0 1px 2px oklch(0 0 0 / 0.04), 0 18px 36px -28px oklch(0 0 0 / 0.35);
-    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.6),
-      0 2px 4px oklch(0 0 0 / 0.05), 0 28px 56px -30px oklch(0 0 0 / 0.4);
+       depth from light and blur, not a heavy drop. Shadows cast in abyss. */
+    --shadow-resting: inset 0 1px 0 0 rgb(255 255 255 / 0.5),
+      0 1px 2px rgb(3 17 13 / 0.05), 0 18px 36px -28px rgb(3 17 13 / 0.4);
+    --shadow-raised: inset 0 1px 0 0 rgb(255 255 255 / 0.6),
+      0 2px 4px rgb(3 17 13 / 0.06), 0 28px 56px -30px rgb(3 17 13 / 0.45);
 
-    /* Data-viz: a single warm tan→olive gradient for probability/magnitude bars
-       (NOT the phase spectrum — magnitude is one hue, phase is chromatic). */
-    --bar-fill: linear-gradient(90deg, oklch(0.6 0.06 68), oklch(0.72 0.09 108));
-    --bar-glow: oklch(0.7 0.08 100 / 0.4);
+    /* Data-viz: magnitude is ONE bronze→gold ramp (NOT the phase scale —
+       magnitude is one hue; phase is the hue-free scale below). */
+    --bar-fill-a: #77603f;
+    --bar-fill-b: #a38560;
+    --bar-fill: linear-gradient(90deg, var(--bar-fill-a), var(--bar-fill-b));
+    --bar-glow: rgb(163 133 96 / 0.4);
+
+    /* Relative-phase scale — hue-free: silver lightness steps; gold marks
+       zero phase ONLY. Symmetric (θ and 2π−θ share a value) by design.
+       Phase only, never magnitude. */
+    --phase-0: oklch(0.55 0.08 78);
+    --phase-1: oklch(0.5 0 0);
+    --phase-2: oklch(0.58 0 0);
+    --phase-3: oklch(0.66 0 0);
+    --phase-4: oklch(0.74 0 0);
+    --phase-5: oklch(0.66 0 0);
+    --phase-6: oklch(0.58 0 0);
+    --phase-7: oklch(0.5 0 0);
   }
 
   .dark {
-    /* ── Dark "primary" theme — near-black smoke ─────────────────────────── */
-    --accent: oklch(0.85 0.11 118);        /* olive */
-    --accent-light: oklch(0.9 0.09 118);
-    --accent-dark: oklch(0.66 0.1 118);
+    /* ── Dark "after-dark" PRIMARY theme — abyss ground, racing-green lift ── */
+    --accent: #c2a379;             /* gold, lifted for the dark ground (7.73:1) */
+    --accent-light: #d8c29e;
+    --accent-dark: #a38560;
 
-    --surface-base: oklch(0.145 0.004 80);
-    --surface-base-2: oklch(0.11 0.004 80);
-    --surface-1: oklch(0.185 0.004 80);
-    --surface-2: oklch(0.16 0.004 80);
+    --warm: #b37387;
+    --warm-light: #cda0ae;
+    --warm-dark: #8e4e63;
 
-    --glass: oklch(1 0 0 / 0.045);
-    --glass-2: oklch(1 0 0 / 0.075);
-    --bd: oklch(1 0 0 / 0.08);
-    --bd-2: oklch(1 0 0 / 0.15);
-    --track: oklch(1 0 0 / 0.06);
-    --field: oklch(1 0 0 / 0.03);
-    --ink: oklch(0.96 0.004 88);
-    --mut: oklch(0.66 0.006 88);
+    --success: #4fa37e;
+    --success-light: #74bd9c;
+    --success-dark: #2c7a57;
+    --danger: #c25562;
+    --danger-light: #d57f89;
+    --danger-dark: #a93a48;
 
-    /* Focus indicator — the bright olive reads 12.8:1 on the dark smoke. */
+    --surface-base: #071710;
+    --surface-base-2: #03110d;
+    --surface-1: #12261f;
+    --surface-2: #0c1d17;
+
+    /* Glass + hairlines carry a green-tinted silver, not pure white. */
+    --glass: rgb(224 235 229 / 0.05);
+    --glass-2: rgb(224 235 229 / 0.08);
+    --bd: rgb(224 235 229 / 0.09);
+    --bd-2: rgb(224 235 229 / 0.17);
+    --track: rgb(224 235 229 / 0.07);
+    --field: rgb(224 235 229 / 0.04);
+    --ink: #e0e0e0;
+    --mut: #93a198;
+
+    /* Focus indicator — the bright gold reads 7.73:1 on the abyss ground. */
     --focus: var(--accent);
 
-    --selection: oklch(0.85 0.11 118 / 0.25);
+    --selection: rgb(194 163 121 / 0.28);
 
     --atmosphere:
-      radial-gradient(ellipse 75% 90% at 72% -12%, oklch(0.95 0.02 105 / 0.12), transparent 52%),
-      radial-gradient(ellipse 60% 70% at 100% 30%, oklch(1 0 0 / 0.06), transparent 55%),
-      radial-gradient(ellipse 55% 60% at 2% 100%, oklch(1 0 0 / 0.05), transparent 58%);
-    --grid-dot: oklch(0.7 0.01 90 / 0.1);
+      radial-gradient(ellipse 75% 90% at 72% -12%, rgb(194 163 121 / 0.1), transparent 52%),
+      radial-gradient(ellipse 60% 70% at 100% 30%, rgb(224 235 229 / 0.05), transparent 55%),
+      radial-gradient(ellipse 55% 60% at 2% 100%, rgb(57 5 23 / 0.35), transparent 58%);
+    --grid-dot: rgb(224 235 229 / 0.1);
 
-    /* Neutral high-contrast primary button (near-white fill on the dark theme). */
-    --btn-fill: oklch(0.95 0.004 92);
-    --btn-ink: oklch(0.16 0.004 82);
-    --btn-fill-hover: oklch(0.98 0.004 92);
+    /* Neutral high-contrast primary button (silver fill on the dark theme). */
+    --btn-fill: #e8e6e0;
+    --btn-ink: #0a1812;
+    --btn-fill-hover: #f5f3ee;
 
-    --shadow-resting: inset 0 1px 0 0 oklch(1 0 0 / 0.06),
-      0 20px 40px -30px oklch(0 0 0 / 0.7);
-    --shadow-raised: inset 0 1px 0 0 oklch(1 0 0 / 0.08),
-      0 30px 60px -30px oklch(0 0 0 / 0.8);
+    --shadow-resting: inset 0 1px 0 0 rgb(224 235 229 / 0.07),
+      0 20px 40px -30px rgb(0 0 0 / 0.7);
+    --shadow-raised: inset 0 1px 0 0 rgb(224 235 229 / 0.09),
+      0 30px 60px -30px rgb(0 0 0 / 0.8);
 
-    --bar-fill: linear-gradient(90deg, oklch(0.64 0.06 68), oklch(0.88 0.09 108));
-    --bar-glow: oklch(0.82 0.08 100 / 0.6);
+    --bar-fill-a: #8a6d48;
+    --bar-fill-b: #d0b285;
+    --bar-fill: linear-gradient(90deg, var(--bar-fill-a), var(--bar-fill-b));
+    --bar-glow: rgb(194 163 121 / 0.55);
+
+    /* Phase scale, dark: same hue-free encoding, lightness anchors flipped
+       so mid-phase recedes into the ground and 0/2π stays the brightest. */
+    --phase-0: oklch(0.74 0.09 78);
+    --phase-1: oklch(0.78 0 0);
+    --phase-2: oklch(0.66 0 0);
+    --phase-3: oklch(0.54 0 0);
+    --phase-4: oklch(0.42 0 0);
+    --phase-5: oklch(0.54 0 0);
+    --phase-6: oklch(0.66 0 0);
+    --phase-7: oklch(0.78 0 0);
   }
 
   body {
@@ -309,10 +396,52 @@
 }
 
 @layer components {
+  /* The micro-label tier — ONE recipe for every eyebrow in the product:
+     Geist Mono, 10px, tracked caps, gold. Before this class existed the
+     pattern was re-typed inline in ~30 places across five drifting dialects
+     (sans 14px/0.1em, mono 14px, 10px with faux-bold weights, 0.68rem/0.13em
+     panel headers…); the recipe replaces all of them. Weight is 500 — the
+     heaviest weight Geist Mono actually loads, so nothing here can render
+     synthetic bold. Color: the gold signal, paired down per theme like all
+     resting accent text. Section-identity eyebrows keep their hue by adding
+     .hue-text (defined later in this layer, so it wins the color). */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--accent-dark);
+  }
+
+  .dark .eyebrow {
+    color: var(--accent);
+  }
+
+  /* Caution-tier eyebrow (oxblood), e.g. a failure card's label. */
+  .eyebrow-warm {
+    color: var(--warm-dark);
+  }
+
+  .dark .eyebrow-warm {
+    color: var(--warm-light);
+  }
+
+  /* Muted micro-label — same geometry, --mut ink. For labels that caption a
+     number or a control rather than head a section: stat labels, table
+     headers, field labels. Not gold: a label is not a signal. */
+  .eyebrow-mut {
+    color: var(--mut);
+  }
+
+  .dark .eyebrow-mut {
+    color: var(--mut);
+  }
+
   /* Section accents driven by a single --hue token set on the card. One hue
      feeds the gradient bleed, the number badge, and the hover glow, so they
      can never drift out of agreement (oklch keeps lightness perceptually
-     matched across hues). Orthogonal to the olive signal — these are the six
+     matched across hues). Orthogonal to the gold signal — these are the six
      per-section identity hues. */
   .section-bleed {
     background: linear-gradient(
@@ -388,7 +517,7 @@
   }
 
   /* The primary CTA is a NEUTRAL high-contrast button — near-white on the dark
-     theme, near-black on light — NEVER a filled olive surface (olive is signal,
+     theme, near-black on light — NEVER a filled gold surface (gold is signal,
      not a button colour). White/dark text clears WCAG AAA on its own fill in
      both themes; the inset rim + soft shadow give it lift. The lift on hover is
      scoped to :not(:disabled): several consumers are disabled mid-action
@@ -407,13 +536,13 @@
 
   /* The single source for a SELECTED/active chip fill (gate pills, shot presets,
      spin-orbital + creation/annihilation toggles, Pauli factor cells). A small
-     ACTIVE fill is the one place olive fills a surface — kept legible with dark
-     text: gray-950 computes 13.0:1 (AAA) on the dark theme's bright olive and
-     6.6:1 (AA) on the light theme's dimmer olive (token-contrast.test.ts).
+     ACTIVE fill is the one place gold fills a surface — kept legible with dark
+     green-black ink: #0a1812 computes 7.64:1 (AAA) on the dark theme's bright
+     gold and 5.28:1 (AA) on the light theme's dial gold (token-contrast.test.ts).
      Mirrors how .surface-accent single-sources the primary CTA fill. */
   .chip-selected {
     background-color: var(--color-accent);
-    color: var(--color-gray-950);
+    color: #0a1812;
   }
 
   /* NOTE: there is deliberately no `.prose pre` recipe here. CodeBlock owns the
@@ -529,7 +658,7 @@
     animation: caret-blink 1.1s step-end infinite;
   }
 
-  /* Slow "live/connected" pulse for the olive status dot. */
+  /* Slow "live/connected" pulse for the gold status dot. */
   .animate-signal {
     animation: signal-pulse 2.4s ease-in-out infinite;
   }
@@ -565,7 +694,7 @@
     @apply transition-[transform,background-color,box-shadow,border-color,opacity] duration-200 ease-out active:scale-[0.97];
   }
 
-  /* Olive range thumb on a hairline track — the phase/scrub sliders.
+  /* Gold range thumb on a hairline track — the phase/scrub sliders.
 
      TARGET SIZE (WCAG 2.2 SC 2.5.8, 24px minimum): the input's own border box
      is the grabbable target, so it is 24px tall — NOT the 4px of the visible
@@ -581,8 +710,8 @@
      affordance of every theta/phi/scrub slider, so it is an information-bearing
      graphic. It fills with var(--focus) rather than the raw var(--color-accent):
      --focus is already the per-theme "solid enough to see" step (accent-dark at
-     4.93:1 on light, the bright accent at 12.8:1 on dark), whereas the raw light
-     accent is 2.79:1 and its 0.22-alpha --bd-2 halo composites to ~1.6:1. */
+     5.64:1 on light, the bright accent at 7.73:1 on dark), whereas the raw light
+     accent is 2.84:1 and its 0.24-alpha --bd-2 halo composites to ~1.6:1. */
   .slider {
     @apply h-6 rounded-full;
     background: linear-gradient(var(--track), var(--track)) center / 100% 4px
@@ -611,13 +740,13 @@
   }
 
   /* De-emphasized footnote/caption text. Single source for the muted tier,
-     mapped to the AA-safe --mut token (6.4:1 on the dark smoke, 6.5:1 on the
+     mapped to the AA-safe --mut token (6.8:1 on the dark ground, 6.2:1 on the
      light surface — verified by token-contrast.test.ts). */
   .text-caption {
     color: var(--mut);
   }
 
-  /* The warm tan→olive magnitude fill for probability/amplitude bars. */
+  /* The bronze→gold magnitude fill for probability/amplitude bars. */
   .bar-fill {
     background: var(--bar-fill);
     box-shadow: 0 0 12px -2px var(--bar-glow);
@@ -724,7 +853,7 @@
 
 /* Brighter selection on the dark github-dark code blocks for legible manual copy. */
 .prose pre ::selection {
-  background: oklch(0.9 0.09 118 / 0.35);
+  background: rgb(216 194 158 / 0.35);
 }
 
 /* Page-turn navigation between lessons (View Transitions API, driven by
@@ -805,16 +934,20 @@
    code is 14px/600, i.e. normal-size text). Because both halves of the pair are
    generated from a hue ANGLE rather than a named token, the ratio varies per
    section and the three class-string contrast guards cannot see it at all. At
-   the old 0.5 lightness hue 192 landed at 4.35:1 — a FAIL — and hue 192 is
+   0.5 lightness hue 192 landed at 4.35:1 — a FAIL — and hue 192 is
    sectionHue[0], which index 6 wraps back to, so it hit /learn/00-prereqs AND
-   /learn/06-hybrid-jobs. 0.47 clears the floor at every hue (worst case 192 at
-   4.92:1). token-contrast.test.ts now computes this pair over every entry in
-   sectionHue in both themes, so a new hue or a retune fails loudly. */
+   /learn/06-hybrid-jobs. The after-dark re-theme darkened the light ground to
+   #E9E9E7, which dragged 0.47's worst case down to 4.44:1 (hue 192 again);
+   0.45 clears the floor at every hue on the new surfaces (worst case 192 at
+   4.82:1). The hue fallback is 75 — a hue already in sectionHue, so the
+   guard's per-hue loop covers the fallback too (118 was the retired olive).
+   token-contrast.test.ts computes this pair over every entry in sectionHue in
+   both themes, so a new hue or a retune fails loudly. */
 .prose :not(pre) > code {
-  color: oklch(0.47 0.16 var(--hue, 118));
-  background-color: oklch(0.72 0.15 var(--hue, 118) / 0.1);
+  color: oklch(0.45 0.16 var(--hue, 75));
+  background-color: oklch(0.72 0.15 var(--hue, 75) / 0.1);
 }
 
 .dark .prose :not(pre) > code {
-  color: oklch(0.82 0.13 var(--hue, 118));
+  color: oklch(0.82 0.13 var(--hue, 75));
 }

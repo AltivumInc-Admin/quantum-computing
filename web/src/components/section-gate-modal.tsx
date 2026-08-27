@@ -88,7 +88,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
       role="presentation"
     >
       <div
-        className="animate-backdrop-fade absolute inset-0 bg-smoke/70 backdrop-blur-sm"
+        className="animate-backdrop-fade absolute inset-0 bg-abyss/70 backdrop-blur-sm"
         aria-hidden="true"
         onMouseDown={onClose}
       />
@@ -131,7 +131,7 @@ export function SectionGateModal({ section, authenticated, onClose }: SectionGat
             >
               {String(section.index).padStart(2, "0")}
             </span>
-            <span className="text-xs font-semibold uppercase tracking-widest hue-text">
+            <span className="eyebrow hue-text">
               {t("gate.sectionPreview")}
             </span>
           </div>

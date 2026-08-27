@@ -18,9 +18,12 @@ import "./globals.css";
 // no third-party font host (the licensed Config Mono VF the reference used
 // would require an Adobe Typekit runtime embed, incompatible with the static
 // export; Geist Mono is the sanctioned fallback).
+// Display weights are 300/400 ONLY (the type system's rule: display is light,
+// never bold) — loading a heavier Sora slice would be a standing invitation to
+// violate it, and no font-display element uses one.
 const sora = Sora({
   subsets: ["latin"],
-  weight: ["300", "400", "500"],
+  weight: ["300", "400"],
   variable: "--font-sora",
 });
 
@@ -55,14 +58,13 @@ export const metadata: Metadata = {
 };
 
 // Browser-chrome color (mobile toolbar/status bar) tracks --surface-base per
-// theme: hex renderings of oklch(0.97 0.004 88) light / oklch(0.145 0.004 80)
-// dark. Statically emitted, so it follows the OS scheme (the enableSystem
-// default) rather than a manual in-app override — an acceptable edge for a
-// static export.
+// theme: warm silver light / abyss-adjacent racing green dark. Statically
+// emitted, so it follows the OS scheme (the enableSystem default) rather than
+// a manual in-app override — an acceptable edge for a static export.
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f5f2" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b0a08" },
+    { media: "(prefers-color-scheme: light)", color: "#e9e9e7" },
+    { media: "(prefers-color-scheme: dark)", color: "#071710" },
   ],
 };
 

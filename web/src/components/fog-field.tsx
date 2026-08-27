@@ -3,14 +3,15 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Ambient "smoke field" — the signature atmosphere of the Instrument design.
- * A full-viewport canvas of slow-drifting soft glows plus faint twinkling
- * specks, painted BEHIND all content (negative z-index over the body's smoke
- * gradient). Purely decorative: `aria-hidden`, `pointer-events:none`.
+ * Ambient fog field — the signature atmosphere of "The Instrument, after
+ * dark". A full-viewport canvas of slow-drifting soft glows plus faint
+ * twinkling specks, painted BEHIND all content (negative z-index over the
+ * body's abyss gradient). Purely decorative: `aria-hidden`,
+ * `pointer-events:none`.
  *
- * Theme-aware: on the dark primary theme the glows are warm/cool white + a
- * faint olive, composited additively ("lighter") over near-black. On the light
- * theme they collapse to a whisper of cool haze so the field never muddies a
+ * Theme-aware: on the dark primary theme the glows are silver + a faint gold,
+ * composited additively ("lighter") over near-black. On the light theme they
+ * collapse to a whisper of green-tinted haze so the field never muddies a
  * bright surface.
  *
  * Performance: each blob's radial gradient is rasterized ONCE into an
@@ -40,13 +41,13 @@ export function FogField() {
 
     // Palettes are [r,g,b] for additive "lighter" compositing (dark theme).
     const DARK = [
-      [236, 235, 228], // warm white
+      [224, 224, 224], // silver #E0E0E0
       [224, 227, 231], // cool white
-      [206, 210, 176], // faint olive
+      [208, 178, 133], // faint gold (#D0B285 family)
     ];
     const LIGHT = [
-      [190, 200, 214], // cool haze
-      [206, 210, 190], // pale olive
+      [184, 198, 190], // green-tinted haze
+      [211, 196, 174], // pale gold
     ];
 
     let isDark = document.documentElement.classList.contains("dark");
