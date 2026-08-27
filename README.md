@@ -4,7 +4,7 @@
 
 ### A zero-to-production learning path for quantum computing on Amazon Braket — with a math-native web portal and notebooks that run in your browser.
 
-**The Braket-native learning platform where the code you write runs _unmodified_ — free in your browser, or on a real 20-qubit QPU — sponsored, so a learner never pays.**
+**The Braket-native learning platform where the code you write runs _unmodified_ — free in your browser, or on real Braket hardware from your own AWS account.**
 
 [![CI](https://github.com/AltivumInc-Admin/quantum-computing/actions/workflows/ci.yml/badge.svg)](https://github.com/AltivumInc-Admin/quantum-computing/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
@@ -31,7 +31,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 - **Four serverless backends** (`lambda/`) — the streaming lesson tutor (Bedrock), per-user progress sync, the hard-capped real-QPU submission path, and an opt-in review-email sender — each an independently tested Node.js Lambda with its own SAM template.
 - **A CI gate and an auto-deploy pipeline** so `main` is always green and the live site is always built from a passing commit.
 
-> **Philosophy:** prototype on the **free local simulator** first, validate, then spend. Real QPU/managed-simulator runs are always opt-in and cost-estimated before execution. (On quantum.altivum.ai the platform pays for QPU runs; in this repo, running against your own AWS account bills you.)
+> **Philosophy:** prototype on the **free local simulator** first, validate, then spend. Real QPU/managed-simulator runs are always opt-in and cost-estimated before execution. (Hardware runs are not currently available on quantum.altivum.ai; in this repo, running against your own AWS account bills you.)
 
 ---
 
@@ -370,7 +370,7 @@ quantum-computing/
 | `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results. **Fails fast** on an unknown device, an analog-only device, out-of-range `shots`, or a missing `s3_location` (so CI needs no credentials). On a billable device it **blocks** until the task leaves the queue (the SDK's 5-day `poll_timeout_seconds` default) and raises `RuntimeError` if the task produced no result — use `get_device(name).run(...)` for the un-awaited `AwsQuantumTask` |
 | `shot_bounds(device_name)` | `(min, max)` shots per task Braket accepts for that device (e.g. Garnet `(1, 20000)`, IonQ `(100, 100000)`) |
 | `list_available_devices()` | The **full** device fleet with each row's `ONLINE`/`OFFLINE`/`RETIRED` status — no status filter is applied, so check it before dispatching (needs AWS) |
-| `allowlisted_gate_devices()` · `cheapest_allowlisted_device(shots)` | The gate QPUs approved for the sponsored QPU-submit path, and the cheapest of them (derived from `PRICING`) |
+| `allowlisted_gate_devices()` · `cheapest_allowlisted_device(shots)` | The gate QPUs approved for the hard-capped QPU-submit path, and the cheapest of them (derived from `PRICING`) |
 | `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_forte, iqm_garnet, quera_aquila` |
 </details>
 

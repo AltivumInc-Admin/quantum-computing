@@ -219,3 +219,55 @@ def test_every_prose_dollar_figure_matches_live_pricing():
         "(repriced without updating the prose, or an unregistered example?):\n  "
         + "\n  ".join(stale)
     )
+
+
+# --- Claim-honesty guard over the same prose corpus -------------------------
+#
+# The dollar-figure guard above scans amounts against PRICING. It is structurally
+# blind to a claim that quotes no number at all — which is how "sponsored, so a
+# learner never pays" survived the 2026-07-28 withdrawal in README.md:7 and
+# 02-hardware/GUIDE.md, in both locales, while every numeric lock stayed green.
+#
+# The web side already bans this family twice (web/__tests__/app/pricing-page.test.tsx
+# and web/__tests__/_support/changelog-ban-list.ts), but neither reads Markdown, so
+# the loudest copy in the repo was the only copy nobody guarded.
+#
+# Scope is deliberately narrower than the dollar corpus: CLAUDE.md and lambda/qpu/
+# README.md *document* the withdrawal and must keep saying the word. Only
+# learner-facing promise surfaces are scanned.
+CLAIM_SURFACES = [REPO_ROOT / "README.md", *sorted(REPO_ROOT.glob("0*-*/GUIDE*.md"))]
+
+WITHDRAWN_CLAIMS = [
+    (re.compile(r"sponsor\w*", re.I), "the sponsored-QPU allowance was withdrawn 2026-07-28"),
+    (re.compile(r"patrocin\w*", re.I), "the sponsored-QPU allowance was withdrawn (Spanish)"),
+    (re.compile(r"never pays?\b", re.I), "LIFETIME_CAP_MICROS = 0 — the platform funds no run"),
+    (re.compile(r"\bno pagas nada\b", re.I), "LIFETIME_CAP_MICROS = 0 (Spanish)"),
+    (re.compile(r"platform pays\b", re.I), "the platform pays for nothing"),
+    (re.compile(r"la plataforma (?:le )?paga\b", re.I), "the platform pays for nothing (Spanish)"),
+]
+
+
+def test_no_withdrawn_hardware_promise_in_learner_facing_prose():
+    """No learner-facing Markdown may promise sponsored or free QPU hardware.
+
+    Guards the claim, not the number. `lambda/qpu/qpu-core.mjs` sets
+    LIFETIME_CAP_MICROS = 0, so no new learner holds an allowance and every submit a
+    wallet cannot fund returns 402; the storefront is closed, so no wallet can be
+    funded. Any prose saying otherwise advertises what the deployed system cannot do.
+
+    If hardware is ever funded again, delete the offending pattern here in the SAME
+    commit that ships the funding path — never to make this test pass on its own.
+    """
+    hits: list[str] = []
+    for path in CLAIM_SURFACES:
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for pattern, why in WITHDRAWN_CLAIMS:
+                if pattern.search(line):
+                    rel = path.relative_to(REPO_ROOT)
+                    hits.append(f"{rel}:{lineno}: {why}\n      {line.strip()[:120]}")
+    assert not hits, (
+        "Learner-facing prose promises hardware the deployed system does not provide "
+        "(CLAUDE.md rule 13):\n  " + "\n  ".join(hits)
+    )

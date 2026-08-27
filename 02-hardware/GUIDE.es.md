@@ -15,9 +15,11 @@ calculan de forma local. Nada envía una tarea ni gasta un centavo.
 > `01-foundations` (circuitos, compuertas, medición). Para ejecutar los notebooks en hardware real
 > también necesitarás credenciales de AWS (`make setup`) — pero esta página no las requiere.
 
-No necesitas una cuenta de AWS para tocar un QPU real: una cuenta gratuita de Workspace incluye un
-presupuesto patrocinado en IQM Garnet, un dispositivo superconductor de 20 cúbits — la plataforma le
-paga a Amazon Braket, tú no pagas nada.
+Por ahora la plataforma no ofrece ejecuciones en hardware. Todo lo de esta página — el
+descubrimiento de dispositivos, el modelo de ruido, la escalera de costos, el estimador — se
+ejecuta gratis en tu navegador contra el simulador. Para ejecutar hoy en un QPU real necesitas tu
+propia cuenta de AWS, y Braket le cobra directamente a esa cuenta: calcula el costo primero y
+luego decide.
 
 ---
 
