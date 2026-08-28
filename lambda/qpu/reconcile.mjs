@@ -12,6 +12,7 @@
 import { DynamoDBClient, ScanCommand, TransactWriteItemsCommand } from "@aws-sdk/client-dynamodb";
 import { BraketClient, GetQuantumTaskCommand } from "@aws-sdk/client-braket";
 import { utcDay, DEVICE_REGION } from "./qpu-core.mjs";
+import { braketCredentials } from "./braket-credentials.mjs";
 
 // A RESERVED row older than this is stuck: the submit Lambda (20s timeout) either
 // died between committing the reservation and writing the task ARN (a real,
@@ -236,7 +237,7 @@ export function createReconcileCore({
 
 export const handler = createReconcileCore({
   ddb: new DynamoDBClient({}),
-  braket: new BraketClient({ region: DEVICE_REGION }),
+  braket: new BraketClient({ region: DEVICE_REGION, credentials: braketCredentials(process.env) }),
   ledgerTable: process.env.LEDGER_TABLE,
   tasksTable: process.env.TASKS_TABLE,
   walletTable: process.env.WALLET_TABLE || undefined,

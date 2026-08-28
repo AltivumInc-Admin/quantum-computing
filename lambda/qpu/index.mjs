@@ -4,10 +4,11 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { BraketClient } from "@aws-sdk/client-braket";
 import { createHandlerCore, DEVICE_REGION } from "./qpu-core.mjs";
+import { braketCredentials } from "./braket-credentials.mjs";
 
 const core = createHandlerCore({
   ddb: new DynamoDBClient({}),
-  braket: new BraketClient({ region: DEVICE_REGION }),
+  braket: new BraketClient({ region: DEVICE_REGION, credentials: braketCredentials(process.env) }),
   ledgerTable: process.env.LEDGER_TABLE,
   tasksTable: process.env.TASKS_TABLE,
   // Unset = credit metering disabled (over-allowance runs 402 as before).
