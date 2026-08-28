@@ -2,10 +2,11 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   quantum-hq-foundations: shared services for the Quantum Learner OU, deployed
   to the Quantum Learner - HQ account (us-east-1). Holds the quantumlearner.dev
-  hosted zone (NS delegation is NOT flipped here — that is the Phase 2 domain
-  cutover; until then this zone is dormant) and the OU-level consolidated
-  budget. ACM certificates are deliberately absent: DNS validation cannot
-  succeed until the NS flip, so they issue in Phase 2.
+  hosted zone — AUTHORITATIVE since 2026-08-28, when the domain's registration
+  and NS delegation moved here — and the OU-level consolidated budget.
+  The zone's records are managed operationally, NOT declared here: a template
+  that owns the MX record owns the mail path for four AWS accounts' root
+  addresses, and a stack rollback would take it down with it.
 
 Parameters:
   AlertEmail:
@@ -23,7 +24,7 @@ Resources:
     Properties:
       Name: quantumlearner.dev
       HostedZoneConfig:
-        Comment: Dormant until the Phase 2 NS flip. Do not add records before then.
+        Comment: Authoritative for quantumlearner.dev since 2026-08-28. Live infrastructure.
 
   OuBudget:
     Type: AWS::Budgets::Budget

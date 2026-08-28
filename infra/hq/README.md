@@ -1,4 +1,4 @@
-# HQ foundations — dormant `quantumlearner.dev` zone + OU budget
+# HQ foundations — the `quantumlearner.dev` zone + OU budget
 
 Phase 0 of the Braket account split (`docs/superpowers/specs/2026-08-27-braket-account-split-design.md`
 §6). Stack `quantum-hq-foundations`, deployed to the **Quantum Learner - HQ**
@@ -9,9 +9,11 @@ run time, never write it down.
 
 ## What it holds
 
-- **`QuantumLearnerZone`** — the `quantumlearner.dev` public hosted zone.
-  Created here but **dormant**: nothing points its NS records at this zone
-  yet, so it answers no queries in production. Exported as `HostedZoneId`
+- **`QuantumLearnerZone`** — the `quantumlearner.dev` public hosted zone, and
+  since 2026-08-28 the **authoritative** one: the domain's registration and its
+  NS delegation both moved here from the personal account that had held them.
+  Its records were replicated and verified answering identically BEFORE the
+  delegation moved, so the cutover had no gap. Exported as `HostedZoneId`
   (`quantum-hq-zone-id`) for later stacks to consume.
 - **`OuBudget`** — a consolidated `COST` budget across the OU (`MonthlyOuBudget`,
   default $200/mo), with EMAIL notifications at 80% and 100% of `ACTUAL` spend
@@ -19,14 +21,16 @@ run time, never write it down.
 
 ## What it deliberately omits
 
-- **The NS delegation flip.** Making `QuantumLearnerZone` authoritative means
-  updating the registrar's NS records to point at it — that is the Phase 2
-  domain cutover (spec §6), not this stack. Until then the zone exists but is
-  dark; do not add records to it before the flip.
-- **ACM certificates.** Certificate issuance in this zone needs DNS
-  validation, which cannot succeed while the zone is dormant (its NS records
-  aren't the ones resolvers follow). Certificates issue in Phase 2, after the
-  flip, not here.
+- **The zone's records.** The nine live records (apex + www to CloudFront, the
+  Google Workspace MX and verification pair, two ACM validation CNAMEs) were
+  copied in operationally on 2026-08-28, not declared in this template. They are
+  deliberately NOT managed as CloudFormation resources: a template that owns the
+  MX record owns the mail path for four AWS accounts' root addresses, and a
+  stack rollback would take it with it. Manage records directly, or in a
+  separate stack that cannot take the zone down with it.
+- **ACM certificates.** Now unblocked (DNS validation resolves through this zone
+  since the flip), but still not issued here — they land with the workload that
+  needs them.
 - **The CI/OIDC deploy role.** HQ is where it will live (spec §5: "not
   duplicated per account"), but it lands with the Phase 2 drift-tooling work,
   mirroring `infra/github-oidc-drift-role.yaml` (same OIDC-provider-exists,
@@ -34,9 +38,9 @@ run time, never write it down.
 
 ## Deploy
 
-Deployed 2026-08-28: the stack is live in us-east-1 — the zone is dormant by
-design (see above) and the OU budget's alert email is confirmed, from
-`hq@quantumlearner.dev`. The command that deployed it:
+Deployed 2026-08-28: the stack is live in us-east-1 — the zone is authoritative
+for `quantumlearner.dev` (see above) and the OU budget's alert email is
+confirmed, from `hq@quantumlearner.dev`. The command that deployed it:
 
 ```bash
 aws cloudformation deploy \
@@ -79,7 +83,9 @@ SNS → Subscriptions, filter `budget`.)
 aws cloudformation delete-stack --profile ql-hq --region us-east-1 --stack-name quantum-hq-foundations
 ```
 
-Safe pre-flip: the zone is dormant and unreferenced, so deleting it breaks
-nothing live. Once Phase 2 flips the NS delegation, deleting this stack
-would take `quantumlearner.dev` offline — treat it as live infrastructure
-from that point on.
+**No longer safe.** Deleting this stack now deletes the authoritative
+`quantumlearner.dev` zone — taking the live site down and, worse, the MX that
+carries four AWS accounts' root email (`hq@`, `braket@`, `aws-prod@`,
+`aws-dev@`), which is also how those accounts recover. Treat this as live
+infrastructure. To retire it, move the delegation somewhere else first and
+verify that before deleting anything here.

@@ -1,6 +1,6 @@
 # Braket account split — dedicated QPU execution under Delta Centric
 
-**Date:** 2026-08-27 · **Status:** Phases 0-1 EXECUTED 2026-08-28 (OIDC role + ACM + NS flip deferred to Phase 2) ·
+**Date:** 2026-08-27 · **Status:** Phases 0-1 EXECUTED 2026-08-28; the domain moved to HQ the same day, ahead of Phase 2 (OIDC role + ACM still deferred) ·
 **Decision owner:** founder · **Supersedes:** the *destination* named in
 `docs/account-migration-runbook.md` (its mechanics stand; see Phase 0)
 
@@ -35,9 +35,10 @@ Delta Centric Org (management)
 - **Braket Workloads** — `CreateQuantumTask`/`GetQuantumTask` execution, the
   results bucket, a Braket-scoped IAM role, its own Budgets fence and spend
   alarms. Nothing else, ever: the account boundary is the blast-radius boundary.
-- **HQ** — the `quantumlearner.dev` Route 53 zone, ACM certificates, shared
-  artifact/log buckets, the CI/OIDC deploy role, consolidated Budgets. Prod, Dev
-  and Braket consume from it.
+- **HQ** — the `quantumlearner.dev` Route 53 zone (authoritative since
+  2026-08-28: registration and NS delegation both moved here, ahead of the
+  Phase 2 schedule below), ACM certificates, shared artifact/log buckets, the
+  CI/OIDC deploy role, consolidated Budgets. Prod, Dev and Braket consume from it.
 - **Deployed reality today:** the Braket half executed 2026-08-28 — QPU
   execution, results, and the spend fence are live in Braket Workloads. The
   platform half (Amplify, Cognito, the Lambdas, the wallet, the ledger) is
@@ -135,7 +136,10 @@ Three files; the money logic is not one of them.
   cross-account trust, bucket ACLs, or eu-north-1. Deliverable: QPU execution and
   spend isolated while the platform is still in Altivum. Independent of Phase 2.
 - **Phase 2 — Platform migration, Altivum → QL-Prod.** The re-pointed blue-green
-  runbook: Cognito, DynamoDB, Lambdas, Amplify, Stripe webhooks, domain flip.
+  runbook: Cognito, DynamoDB, Lambdas, Amplify, Stripe webhooks. **The domain
+  flip this phase listed is already done** (2026-08-28, to HQ) — what remains is
+  repointing the apex/www records at the migrated Amplify app once it exists in
+  QL-Prod, which is a record edit in a zone HQ already controls, not a domain move.
   Add the QL-Prod principal to the Braket trust; drop the Altivum principal after
   verification. Drift tooling gains its account dimension here.
 - **Phase 3 — Funding path** (rule 14 order; separate spec): storefront opens and

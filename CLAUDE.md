@@ -71,6 +71,12 @@ Delta Centric Org (management)
   `quantumlearner.dev` Route 53 zone, ACM certificates, shared artifact and log
   buckets, CI/OIDC deploy roles, and consolidated Budgets. Prod, Dev and Braket
   consume from it; it runs no application workload of its own.
+  **The domain lives here as of 2026-08-28** — both the Route 53 registration and
+  the NS delegation moved from the personal account. Its zone is live
+  infrastructure: the MX carries the root email of four AWS accounts (`hq@`,
+  `braket@`, `aws-prod@`, `aws-dev@`), which is also how those accounts recover.
+  Before touching any domain, check what its MX serves — replicate records into
+  the destination and verify with `dig @<dest-ns>` BEFORE moving delegation.
 
 Name the account, never "Quantum Learner" — four accounts in this OU answer to that.
 
@@ -85,7 +91,8 @@ Name the account, never "Quantum Learner" — four accounts in this OU answer to
   runs in Altivum. Three stacks are live: `quantum-braket-workloads` (eu-north-1 —
   execution role + results bucket), `quantum-braket-spend` (us-east-2 — budget +
   spend topic), and `quantum-hq-foundations` (us-east-1, in **Quantum Learner -
-  HQ** — dormant zone + OU budget). Reach either account with a chained CLI
+  HQ** — the quantumlearner.dev zone, authoritative since 2026-08-28, plus the
+  OU budget). Reach either account with a chained CLI
   profile — `ql-braket` or `ql-hq` — each assuming `OrganizationAccountAccessRole`
   from `org-admin`, the same pattern `ql-prod` will use once the platform
   migration happens. Do not assume any other resource is in Delta Centric because
