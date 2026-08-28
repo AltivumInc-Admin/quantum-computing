@@ -15,9 +15,10 @@ simulated or computed locally. Nothing submits a task or spends a cent.
 > (circuits, gates, measurement). To run the notebooks on real hardware you'll also need AWS
 > credentials (`make setup`) — but none of this page requires them.
 
-You don't need an AWS account to touch a real QPU at all: a free Workspace account comes with
-a sponsored budget on IQM Garnet, a 20-qubit superconducting device — the platform pays Amazon
-Braket, you pay nothing.
+Hardware runs are not currently available on the platform. Everything on this page — device
+discovery, the noise model, the cost ladder, the estimator — runs free in your browser against
+the simulator. To execute on a real QPU today you need your own AWS account, and Braket bills
+that account directly: price the run first, then decide.
 
 ---
 

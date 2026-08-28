@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-braket": "^3.699.0",
-    "@aws-sdk/client-dynamodb": "^3.699.0"
+    "@aws-sdk/client-dynamodb": "^3.699.0",
+    "@aws-sdk/credential-providers": "^3.1120.0"
   }
 }

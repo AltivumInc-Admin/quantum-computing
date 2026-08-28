@@ -3,8 +3,8 @@
 > **Status: DRAFT FOR APPROVAL — nothing has been executed.** Built 2026-07-18 from a live inventory of account `$SRC_ACCOUNT` + the repo IaC, then audited by three adversarial reviewers (completeness / ordering / data-safety). **Section 11** holds their 16 corrections; the HIGH/MEDIUM items there OVERRIDE the inline steps where they conflict. The source account stays fully live and writable until an explicit, approved cutover.
 
 **Source:** `$SRC_ACCOUNT` (Altivum Inc - Original Account, shared) — primary `us-east-2`, edge `us-east-1`, Braket devices `eu-north-1`
-**Destination:** `$DST_ACCOUNT` (Quantum Learner, `quantumlearner@altivum.ai`) — greenfield, created 2026-07-18
-**Access into destination:** SSO profile `altivum-mgmt` (Org mgmt `$ORG_MGMT_ACCOUNT`) → assumes `arn:aws:iam::$DST_ACCOUNT:role/OrganizationAccountAccessRole` → chained CLI profile **`quantum-learner`**
+**Destination:** `$DST_ACCOUNT` (**QL-Prod**, `aws-prod@quantumlearner.dev`, Delta Centric org / Quantum Learner OU) — greenfield, created 2026-08-27. The 2026-07-18 destination (an *Altivum-org* account also named "Quantum Learner") is RETIRED as a destination; see `CLAUDE.md` § AWS.
+**Access into destination:** SSO profile `org-admin` (Delta Centric management) → assumes `arn:aws:iam::$DST_ACCOUNT:role/OrganizationAccountAccessRole` → chained CLI profile **`ql-prod`**
 **Canonical domain flips:** `quantum.altivum.ai` → **`quantumlearner.dev`** (today the relationship is the reverse).
 
 ### Identifiers — export these before running anything below
@@ -15,12 +15,12 @@ these are exported. Resolve them from the org itself, not from memory:
 
 ```sh
 # Names are the source of truth; ids are looked up. Run with management-account creds.
-export ORG_MGMT_ACCOUNT=$(aws organizations describe-organization \
+export ORG_MGMT_ACCOUNT=$(aws organizations describe-organization --profile org-admin \
   --query 'Organization.MasterAccountId' --output text)
 export SRC_ACCOUNT=$(aws organizations list-accounts \
-  --query "Accounts[?Name=='Altivum Inc - Original Account'].Id" --output text)
-export DST_ACCOUNT=$(aws organizations list-accounts \
-  --query "Accounts[?Name=='Quantum Learner'].Id" --output text)
+  --query "Accounts[?Name=='Altivum Inc - Original Account'].Id" --output text)  # Resolves from the Altivum org (default profile)
+export DST_ACCOUNT=$(aws organizations list-accounts --profile org-admin \
+  --query "Accounts[?Name=='QL-Prod'].Id" --output text)
 
 # The source Bedrock application-inference-profile the tutor runs on today.
 export SRC_PROFILE_ID=$(aws bedrock list-inference-profiles --region us-east-2 \
@@ -170,7 +170,7 @@ This runbook moves the entire Quantum Learner platform — 10 CloudFormation/SAM
 ### 2.7 Repo prep (one branch)
 
 21. `git checkout -b migrate/crosscut-$DST_ACCOUNT`. Land the account-specific repo edits here (details in §3 per-stack and consolidated below), but **sequence the `SITE_URL` flip to coincide with cutover** — `main` is shared with the still-live source Amplify app, so any push to `main` rebuilds *both* apps.
-22. Edits: `lambda/tutor/policy.json` line 9 → `$NEW_MODEL_ID`; `lambda/tutor/README.md` + `docs/eval-implementation-plans.md` ARN references; origin-param **defaults** (`quantum.altivum.ai` → `quantumlearner.dev`) in the 6 templates; `infra/workspace/cognito.yaml` `DomainPrefix` default `quantum-altivum` → `quantumlearner`; `web/src/lib/site.ts` `SITE_URL` + `web/src/lib/auth-config.ts` line 36 fallback origin. **Do NOT touch** Braket device ARNs (`web/public/lab/**` are build artifacts), ECR account `292282985366`, or the GitHub repo string `AltivumInc-Admin/quantum-computing`.
+22. Edits: `lambda/tutor/policy.json` line 9 → `$NEW_MODEL_ID`; `lambda/tutor/README.md` + `docs/eval-implementation-plans.md` ARN references; origin-param **defaults** (`quantum.altivum.ai` → `quantumlearner.dev`) in the 6 templates; `infra/workspace/cognito.yaml` `DomainPrefix` default `quantum-altivum` → `quantumlearner`; `web/src/lib/site.ts` `SITE_URL` + `web/src/lib/auth-config.ts` line 36 fallback origin. **Do NOT touch** Braket device ARNs (`web/public/lab/**` are build artifacts), ECR account (CI/CD registry, hosted externally), or the GitHub repo string `AltivumInc-Admin/quantum-computing`.
 
 ---
 
@@ -635,6 +635,8 @@ Run these on temp hostnames pre-flip, then re-run on the production domain post-
 ---
 
 ## 11. Adversarial Review — Corrections to Apply Before Execution
+
+**Destination Re-point Notice:** All corrections in this section remain in effect and their context (`$DST_ACCOUNT` references, etc.) now resolves to **QL-Prod** in the Delta Centric org, not the 2026-07-18 Altivum-org destination. QPU execution is not migrated by this runbook — Braket workloads are split separately per the account-split spec (see `docs/superpowers/specs/2026-08-27-braket-account-split-design.md`).
 
 Three independent reviewers (completeness, ordering, data-safety) audited the runbook above: **16 findings (2 HIGH, 6 MEDIUM, 8 LOW).** The HIGH and MEDIUM items **override the inline steps where they conflict** — apply them before executing the affected phase.
 

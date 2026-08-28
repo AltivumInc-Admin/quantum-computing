@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  quantum-braket-spend: the us-east-2 half of the dedicated QPU-execution
+  account's contents — the monthly Braket budget and the spend SNS topic
+  whose notifications the PLATFORM account's kill-switch Lambda subscribes to
+  cross-account. AWS::Budgets::Budget is not registered as a CloudFormation
+  resource type in eu-north-1's registry for this account (verified
+  2026-08-27 via `aws cloudformation list-types --region eu-north-1
+  --type RESOURCE --visibility PUBLIC --filters
+  Category=AWS_TYPES,TypeNamePrefix=AWS::Budgets`, which returns empty; the
+  same call against us-east-1 lists it). A Budgets COST budget is
+  account-scoped regardless of which region its stack deploys to, so this
+  budget still fences ALL Braket spend in this account, including the
+  eu-north-1 execution role's usage in template.yaml. The topic deliberately
+  lands in us-east-2, the same region as the platform stack that subscribes
+  to it.
+
+Parameters:
+  PlatformAccountId:
+    Type: String
+    AllowedPattern: "[0-9]{12}"
+    Description: The platform account id, for the SNS cross-account subscribe grant.
+  MonthlyBraketBudget:
+    Type: Number
+    Default: 50
+    Description: Monthly USD ceiling for Braket spend in this account.
+  AlertEmail:
+    Type: String
+    Default: hq@quantumlearner.dev
+
+Resources:
+  SpendTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: quantum-braket-spend
+
+  SpendTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref SpendTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSBudgetsSNSPublishingPermissions
+            Effect: Allow
+            Principal: { Service: budgets.amazonaws.com }
+            Action: sns:Publish
+            Resource: !Ref SpendTopic
+          - Sid: PlatformKillSwitchSubscribe
+            Effect: Allow
+            Principal: { AWS: !Sub "arn:aws:iam::${PlatformAccountId}:root" }
+            Action: [sns:Subscribe, sns:Receive]
+            Resource: !Ref SpendTopic
+
+  BraketBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref MonthlyBraketBudget, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+          Subscribers:
+            - { SubscriptionType: SNS, Address: !Ref SpendTopic }
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+          Subscribers:
+            - { SubscriptionType: SNS, Address: !Ref SpendTopic }
+            - { SubscriptionType: EMAIL, Address: !Ref AlertEmail }
+
+Outputs:
+  SpendTopicArn:
+    Value: !Ref SpendTopic

@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-08-28-hardware-lesson-copy": {
+    title: "La lección de hardware ahora dice claramente qué está disponible hoy",
+    body: "La guía de 02-hardware y el README del proyecto aún describían un beneficio de hardware gratuito que ya había sido retirado. Ambos ahora lo dicen claro: todo lo de la lección funciona gratis en tu navegador con el simulador, y usar un QPU real hoy requiere una cuenta de AWS propia, facturada directamente por AWS.",
+  },
   "2026-08-24-after-dark-redesign": {
     title: "Una nueva imagen, y un currículo que puedes pilotar",
     body: "Quantum Learner se ha redibujado: un fondo verde-negro profundo, un acento dorado reservado para lo que vale la pena notar, y una nueva marca |Q⟩. El currículo de la página de inicio es ahora un dial: elige el número de cualquier sección y la aguja se mueve hasta ella con una breve descripción, para que puedas sopesar un módulo antes de abrirlo. Todo se lee igual en ambos temas.",

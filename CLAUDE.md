@@ -39,6 +39,87 @@ interchangeable. Neither is the founder's Altivum address.
   renders one), so naming them here discloses nothing new — but do not add a
   personal address that is not already public.
 
+## AWS — this project runs under Delta Centric, not Altivum
+
+**Changed 2026-08-27.** Quantum Learner belongs to the **Delta Centric** AWS
+organization. Anything describing this project as an Altivum workload is history.
+
+**Account numbers never appear in this repo** — it is public, and
+`docs/account-migration-runbook.md` already sets the convention: resolve ids from the
+org by account *name* at run time, and reference them as shell variables. Keep the
+numbers in deployed configuration and the founder's private notes. Structure by name:
+
+```
+Delta Centric Org (management)
+└── Ventures
+    └── Quantum Learner OU
+        ├── QL-Prod               aws-prod@quantumlearner.dev   (created 2026-08-27)
+        ├── QL-Dev                aws-dev@quantumlearner.dev    (created 2026-08-27)
+        ├── Braket Workloads      braket@quantumlearner.dev     (created 2026-08-27)
+        └── Quantum Learner - HQ  hq@quantumlearner.dev         (created 2026-08-25)
+```
+
+**The intended split** (founder, 2026-08-27):
+
+- **`QL-Prod` runs all production EXCEPT Braket jobs** — Amplify, Cognito, the six
+  Lambdas, the credit wallet. This is the platform migration's destination.
+- **`Braket Workloads` runs the QPU jobs and nothing else.** Isolating hardware
+  execution puts real-money spend and its blast radius in one account with its own
+  Budgets fence, separate from auth, billing and the web app.
+- **`QL-Dev`** is the non-production twin.
+- **`Quantum Learner - HQ`** is the **shared-services / org-level home**: the
+  `quantumlearner.dev` Route 53 zone, ACM certificates, shared artifact and log
+  buckets, CI/OIDC deploy roles, and consolidated Budgets. Prod, Dev and Braket
+  consume from it; it runs no application workload of its own.
+
+Name the account, never "Quantum Learner" — four accounts in this OU answer to that.
+
+- **Deployed reality now agrees for Braket, still disagrees for everything else.**
+  The platform half is unchanged: all six Lambdas, Cognito, Amplify and the credit
+  wallet are still live in the **Altivum** account (`Altivum Inc - Original
+  Account`), verified 2026-08-27 — the `QL-Prod` migration has not happened. The
+  Braket half executed 2026-08-28: `quantum-qpu-submit`'s two Braket API calls
+  (`CreateQuantumTask` in submit, `GetQuantumTask` in the reconciler) now run
+  cross-account under an assumed role in **Braket Workloads**, everything else the
+  same two Lambdas do (the ledger, the wallet debit, the entitlement gate) still
+  runs in Altivum. Three stacks are live: `quantum-braket-workloads` (eu-north-1 —
+  execution role + results bucket), `quantum-braket-spend` (us-east-2 — budget +
+  spend topic), and `quantum-hq-foundations` (us-east-1, in **Quantum Learner -
+  HQ** — dormant zone + OU budget). Reach either account with a chained CLI
+  profile — `ql-braket` or `ql-hq` — each assuming `OrganizationAccountAccessRole`
+  from `org-admin`, the same pattern `ql-prod` will use once the platform
+  migration happens. Do not assume any other resource is in Delta Centric because
+  this section exists.
+
+**Use the `org-admin` profile for any Delta Centric work — never `personal-dev`.**
+
+| Profile | Account | Reaches other Delta Centric accounts |
+|---|---|---|
+| `org-admin` | Delta Centric Org (management) | **Yes**, via `OrganizationAccountAccessRole` |
+| `personal-dev` | Christian Perez - Personal | **No** — AccessDenied |
+| *(default, no `--profile`)* | **Altivum** production | Different org entirely |
+
+`personal-dev` is a **delegated administrator for the Organizations service**, so it can
+`ListAccounts` and `DescribeOrganization` and therefore *looks* org-wide. It is not:
+service delegation grants org reads, not `sts:AssumeRole` into sibling accounts. Prove
+access with an actual `assume-role`, never from a successful `ListAccounts` — the same
+"a profile name is not evidence" rule the Stripe section states below.
+
+**The default profile is Altivum.** Any AWS command intended for Delta Centric that
+omits `--profile` runs against Altivum production instead, silently.
+
+**`docs/account-migration-runbook.md`'s destination was re-pointed to QL-Prod
+(2026-08-27).** It was written 2026-07-18 to blue-green from the Altivum original
+account into an *Altivum* account also named "Quantum Learner" — a different
+account from Quantum Learner - HQ, in a different org. What remains stale is the
+runbook's **body**: roughly 54 references still name the retired
+altivum-mgmt/quantum-learner profile chain. That is deferred to Phase 2 planning,
+and it fails closed today — altivum-mgmt cannot assume into a Delta Centric
+account, so an unedited step simply cannot execute rather than executing against
+the wrong org. Two orgs each containing a "Quantum Learner" account is exactly the
+name-collision trap the design-system and Stripe sections warn about elsewhere in
+this file.
+
 ## Monetization — the settled model
 
 Founder decisions, settled 2026-08-03 against a verified cost basis. `PRODUCT.md` carries

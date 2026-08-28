@@ -52,6 +52,15 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-28-hardware-lesson-copy",
+    shipped: "2026-08-28",
+    kind: "fixed",
+    title: "The hardware lesson now says plainly what is available today",
+    body: "The 02-hardware guide and the project README still described a free hardware perk that had been withdrawn. Both now say it straight: everything in the lesson works free in your browser against the simulator, and using a real QPU today takes an AWS account of your own, billed directly by AWS.",
+    href: "/learn/02-hardware",
+    section: "02-hardware",
+  },
+  {
     id: "2026-08-24-after-dark-redesign",
     shipped: "2026-08-24",
     kind: "improved",

@@ -44,12 +44,49 @@ Budgets-driven auto-kill land in PR-2, the frontend in PR-3, badge capture in PR
 All logic is in `qpu-core.mjs`, dependency-injected so it unit-tests offline with zero
 AWS: `cd lambda/qpu && npm ci && npm test` (`node --test`).
 
+## Execution model — Braket account split (2026-08-28)
+
+Everything above still runs in the platform account (Altivum today, `QL-Prod`
+after the still-pending platform migration): the ledger, the wallet debit, the
+entitlement gate, every DynamoDB write. Only the two Braket API calls
+themselves — `CreateQuantumTask` in the submit path, `GetQuantumTask` in
+`reconcile.mjs` — cross an account boundary, executing under an assumed role
+(`braket-credentials.mjs`) in the dedicated **Braket Workloads** account
+(`infra/braket-workloads/`). Live today: `BraketRoleArn`, `BraketExternalId`
+and `BraketSpendTopicArn` are all set on both the submit and reconcile
+functions — this is a cross-account deployment, not the same-account default
+described below.
+
+- **Results land in the Braket-account bucket, not the platform one.** When
+  `BraketRoleArn` is set, `ResultsBucket` MUST name the Braket-account bucket
+  (`amazon-braket-ql-results-<braket-acct>`) — Braket writes results under the
+  *assumed-role* identity, and that identity can only reach a bucket in its own
+  account. Passing the old platform bucket fails loudly: Braket returns
+  `ValidationException` ("caller can't access bucket") on `CreateQuantumTask`.
+  This happened during the live cutover and was fixed by redeploying with the
+  corrected `ResultsBucket` value — not a hypothetical failure mode.
+- **The foreign budget feeds the same kill-switch.** `quantum-braket-spend`
+  (the Braket account's own Budgets fence) publishes threshold breaches to a
+  topic that this stack's `killswitch.mjs` holds a cross-account subscription
+  on, wired via `BraketSpendTopicArn`. A breach there flips the same ledger
+  `KILL` row as an in-account trip — there is no separate, weaker stop for
+  cross-account spend. Verified live by drill: a manual cross-account publish
+  flipped `KILL`, and it was cleared afterward.
+- **Rollback is a parameter flip, not code.** Redeploy with `BraketRoleArn`,
+  `BraketExternalId` and `BraketSpendTopicArn` all empty AND `ResultsBucket`
+  set back to the platform bucket — all four together, in the same deploy.
+  Clearing only the three Braket params while leaving `ResultsBucket` pointed
+  at the Braket-account bucket reproduces the same `ValidationException`
+  above, from the other direction (same-account role, foreign bucket).
+
 ## Deploy (operator-run — prod AWS; not runnable by the assistant)
 
 **Prerequisites** (all already present on the Altivum prod account):
 
 1. **Braket results bucket** in **eu-north-1**, named `amazon-braket-eu-north-1-<account>`, so
-   the Braket service-linked role can write results.
+   the Braket service-linked role can write results. This is the SAME-ACCOUNT
+   value only — see "Execution model" above for the bucket the live stack
+   actually uses today.
 2. The existing Cognito pool `us-east-2_aRydPmAjj` / client `2sg8nejrf2j8p28j6khjil99ir`.
 
 **0. The edge secret (Secrets Manager, multi-region).** The `x-qpu-edge` shared secret is
@@ -71,6 +108,11 @@ sam deploy --stack-name quantum-qpu-submit --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides ResultsBucket=amazon-braket-eu-north-1-<account>
 ```
+
+The command above shows the same-account form only. The live stack's actual
+`--parameter-overrides` also sets `BraketRoleArn`, `BraketExternalId` and
+`BraketSpendTopicArn`, and points `ResultsBucket` at the Braket-account bucket
+instead — see "Execution model" above.
 
 Creates the HTTP API (Cognito JWT authorizer), the submit/budget + reconcile + kill-switch
 Lambdas (least-privilege), the ledger/tasks tables (Retain + PITR), the SNS/Budget, and

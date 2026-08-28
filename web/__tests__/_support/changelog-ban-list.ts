@@ -51,7 +51,7 @@ export const BANNED_CLAIMS: readonly BannedClaim[] = [
     pattern: /\bejecutar? .{0,20}en hardware\b/i,
     why: "no learner can run a QPU task (Spanish)",
   },
-  { pattern: /sponsor\w*/i, why: "the sponsored-QPU promise was withdrawn 2026-08-17" },
+  { pattern: /sponsor\w*/i, why: "the sponsored-QPU promise was withdrawn 2026-07-28" },
   { pattern: /patrocin\w*/i, why: "the sponsored-QPU promise was withdrawn (Spanish)" },
 ];
 

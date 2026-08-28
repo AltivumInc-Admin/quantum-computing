@@ -230,3 +230,47 @@ test("a failed wallet refund is alarmable on both QPU log groups", () => {
   assert.ok(rec.includes(phrase), "reconcile.mjs lost the missing-row refund log");
   assert.match(body("ReconcileRefundFailureAlarm") ?? "", /AlarmActions: \[!Ref AlertsTopic\]/);
 });
+
+test("braket split: both functions carry the env pair and the conditional assume-role", () => {
+  const res = section(template, "Resources").join("\n");
+  // Env wiring on both functions (two occurrences each).
+  assert.equal(res.match(/BRAKET_ROLE_ARN: !Ref BraketRoleArn/g)?.length, 2,
+    "BRAKET_ROLE_ARN must be wired on SubmitFunction AND ReconcileFunction");
+  assert.equal(res.match(/BRAKET_EXTERNAL_ID: !Ref BraketExternalId/g)?.length, 2);
+  // The cross-account branch grants exactly sts:AssumeRole on the parameter.
+  assert.equal(res.match(/Action: sts:AssumeRole/g)?.length, 2);
+  assert.equal(res.match(/Resource: !Ref BraketRoleArn/g)?.length, 2);
+});
+
+test("braket split: direct grants survive ONLY behind the same-account branch", () => {
+  const res = section(template, "Resources").join("\n");
+  // Exact-count pinning, not a floor: braket:CreateQuantumTask must appear
+  // EXACTLY once (submit's same-account action list) and braket:GetQuantumTask
+  // EXACTLY twice (once beside it in submit's list, once as reconcile's sole
+  // same-account action). Any new unconditional braket grant added ANYWHERE
+  // in Resources — the realistic regression — changes one of these counts and
+  // reddens this test. The wrapper count is a separate floor check: it catches
+  // a HasBraketRole conditional being REMOVED (which would leave the action
+  // counts unchanged, just unconditional); it does not catch a grant ADDED
+  // outside any wrapper, which is what the exact counts are for.
+  const createCount = res.match(/braket:CreateQuantumTask/g)?.length ?? 0;
+  const getCount = res.match(/braket:GetQuantumTask/g)?.length ?? 0;
+  const condWrappers = res.match(/- !If\n\s+- HasBraketRole/g)?.length ?? 0;
+  assert.equal(createCount, 1,
+    "braket:CreateQuantumTask must appear exactly once (submit's same-account branch)");
+  assert.equal(getCount, 2,
+    "braket:GetQuantumTask must appear exactly twice (submit's list + reconcile's sole action)");
+  assert.ok(condWrappers >= 3,
+    "expected >=3 HasBraketRole conditionals (submit braket, submit s3, reconcile braket)");
+});
+
+test("braket split: the kill-switch subscribes to the foreign spend topic, conditionally", () => {
+  const res = blocks(section(template, "Resources"));
+  const sub = res.BraketSpendSubscription?.join("\n") ?? "";
+  assert.match(sub, /Condition: HasBraketSpendTopic/);
+  assert.match(sub, /Protocol: lambda/);
+  assert.match(sub, /Region: us-east-2/);
+  const perm = res.BraketSpendInvokePermission?.join("\n") ?? "";
+  assert.match(perm, /Principal: sns\.amazonaws\.com/);
+  assert.match(perm, /SourceArn: !Ref BraketSpendTopicArn/);
+});
