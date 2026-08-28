@@ -26,6 +26,12 @@ dev = [
     # by JupyterLite in the browser, so the local/CI test env needs it too.
     "nbclient>=0.10",
     "ipykernel>=6.29",
+    # Pin below 9.17: IPython 9.17.0 makes get_ipython a lazy module attribute,
+    # so amazon-braket-sdk's ipython_utils.running_in_jupyter() KeyErrors on
+    # sys.modules["IPython"].__dict__["get_ipython"] and every AWS-touching
+    # notebook fails in CI (which pip-installs latest; local venvs were older).
+    # Same class of pin as ruff above. Lift when braket-sdk handles the lazy attr.
+    "ipython<9.17",
     "ipywidgets>=8.1",
 ]
 full = [
