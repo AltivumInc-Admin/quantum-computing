@@ -192,11 +192,14 @@ of the account-split plan
   topic notifies the platform account's `quantum-qpu-killswitch` Lambda
   cross-account, proven by drill: a manual publish flipped the ledger's
   `KILL` row, and it was cleared afterward.
-- **A real hardware run completed end to end.** A 1-shot task on IQM Garnet
-  reached `COMPLETED`; `results.json` landed in the Braket-account bucket
-  only. The reconciler settled the ledger at `spentMicros=301450`, matching
-  the reservation exactly, and the compensating-release path was proven on
-  two separate failed submit attempts. `AlertEmail` on the live stack is now
+- **A real hardware run completed end to end.** The returned task ARN itself
+  carried the Braket Workloads account (`<braket-acct>`), proving
+  `CreateQuantumTask` executed in this account rather than the platform's. A
+  1-shot task on IQM Garnet reached `COMPLETED`; `results.json` landed in the
+  Braket-account bucket only. The reconciler settled the ledger at
+  `spentMicros=301450`, matching the reservation exactly, and the
+  compensating-release path was proven on two separate failed submit
+  attempts. `AlertEmail` on the live stack is now
   `hq@quantumlearner.dev`, and both of its SNS email subscriptions are
   confirmed.
 
