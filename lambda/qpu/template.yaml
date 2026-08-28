@@ -86,10 +86,29 @@ Parameters:
       The reconciler deliberately does NOT read it — refunds return the
       creditsCharged recorded on the task row, so a repricing between debit
       and refund can never diverge them.
+  BraketRoleArn:
+    Type: String
+    Default: ""
+    Description: >
+      ARN of QuantumLearnerBraketExecution in the Braket Workloads account.
+      Empty = same-account execution (today's behaviour, and the rollback).
+  BraketExternalId:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: sts:ExternalId for the role above. Required iff BraketRoleArn is set.
+  BraketSpendTopicArn:
+    Type: String
+    Default: ""
+    Description: >
+      The quantum-braket-spend topic ARN in the Braket Workloads account
+      (us-east-2). Empty = kill-switch listens only to the in-account budget.
 
 Conditions:
   HasWalletTable: !Not [!Equals [!Ref WalletTableName, ""]]
   HasRateCard: !Not [!Equals [!Ref RateCardSecret, ""]]
+  HasBraketRole: !Not [!Equals [!Ref BraketRoleArn, ""]]
+  HasBraketSpendTopic: !Not [!Equals [!Ref BraketSpendTopicArn, ""]]
 
 Resources:
   # Spend ledger: USER#<sub> rows (cap/spent), DAY#<date> rows (global daily
@@ -194,6 +213,10 @@ Resources:
           # clean with the variable simply absent. Submit function ONLY — the
           # reconciler refunds recorded figures and never prices.
           RATE_CARD: !If [HasRateCard, !Sub "{{resolve:secretsmanager:${RateCardSecret}:SecretString:factor}}", !Ref AWS::NoValue]
+          # Empty = same-account (today's behaviour); set = assume this role
+          # for every Braket call instead of calling Braket directly.
+          BRAKET_ROLE_ARN: !Ref BraketRoleArn
+          BRAKET_EXTERNAL_ID: !Ref BraketExternalId
       Policies:
         # The spend ledger (USER#/DAY#/KILL/CRED# rows) + tasks table.
         # TransactWriteItems is authorized via its constituent item actions
@@ -224,29 +247,43 @@ Resources:
                 - HasWalletTable
                 - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${WalletTableName}
                 - !GetAtt LedgerTable.Arn
-        # Submit ONLY to IQM Garnet, and read back the resulting tasks.
-        - Statement:
-            - Effect: Allow
-              Action:
-                - braket:CreateQuantumTask
-                - braket:GetQuantumTask
-              Resource:
-                # Both device ARN forms. Braket documents devices account-less
-                # (devices are AWS-owned), but IAM evaluates CreateQuantumTask
-                # against the ACCOUNT-QUALIFIED device ARN. The live denial named
-                # arn:aws:braket:eu-north-1:<acct>:device/qpu/iqm/Garnet, so a
-                # policy granting only the account-less form never matches and
-                # every real submit was rejected. Still Garnet-only either way.
-                - arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet
-                - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:device/qpu/iqm/Garnet
-                - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
-        # Braket writes results here under the caller's identity.
-        - Statement:
-            - Effect: Allow
-              Action: [s3:PutObject, s3:GetBucketLocation, s3:ListBucket]
-              Resource:
-                - !Sub arn:aws:s3:::${ResultsBucket}
-                - !Sub arn:aws:s3:::${ResultsBucket}/*
+        # Submit ONLY to IQM Garnet, and read back the resulting tasks — same
+        # account (the rollback) — OR assume the one role that can, in the
+        # dedicated Braket Workloads account. Never both: BraketRoleArn set
+        # means the device grant below moved out of this account entirely.
+        - !If
+          - HasBraketRole
+          - Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref BraketRoleArn
+          - Statement:
+              - Effect: Allow
+                Action:
+                  - braket:CreateQuantumTask
+                  - braket:GetQuantumTask
+                Resource:
+                  # Both device ARN forms. Braket documents devices account-less
+                  # (devices are AWS-owned), but IAM evaluates CreateQuantumTask
+                  # against the ACCOUNT-QUALIFIED device ARN. The live denial named
+                  # arn:aws:braket:eu-north-1:<acct>:device/qpu/iqm/Garnet, so a
+                  # policy granting only the account-less form never matches and
+                  # every real submit was rejected. Still Garnet-only either way.
+                  - arn:aws:braket:eu-north-1::device/qpu/iqm/Garnet
+                  - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:device/qpu/iqm/Garnet
+                  - !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
+        # Braket writes results here under the caller's identity — only when
+        # results land in THIS account's bucket. Cross-account, the assumed
+        # role's own policy in the Braket Workloads account covers the write.
+        - !If
+          - HasBraketRole
+          - !Ref AWS::NoValue
+          - Statement:
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetBucketLocation, s3:ListBucket]
+                Resource:
+                  - !Sub arn:aws:s3:::${ResultsBucket}
+                  - !Sub arn:aws:s3:::${ResultsBucket}/*
       Events:
         Submit:
           Type: HttpApi
@@ -304,6 +341,9 @@ Resources:
           LEDGER_TABLE: !Ref LedgerTable
           TASKS_TABLE: !Ref TasksTable
           WALLET_TABLE: !If [HasWalletTable, !Ref WalletTableName, !Ref AWS::NoValue]
+          # Same split as QpuFunction — see its comment.
+          BRAKET_ROLE_ARN: !Ref BraketRoleArn
+          BRAKET_EXTERNAL_ID: !Ref BraketExternalId
       Policies:
         # Scan the tasks table; the refund/mark updates (incl. the TransactWriteItems,
         # which authorizes per-item as UpdateItem) touch both tables.
@@ -325,10 +365,18 @@ Resources:
                 - HasWalletTable
                 - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${WalletTableName}
                 - !GetAtt LedgerTable.Arn
-        - Statement:
-            - Effect: Allow
-              Action: braket:GetQuantumTask
-              Resource: !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
+        # Same same-account-or-assume-role split as QpuFunction, narrower:
+        # this function only ever reads a task back, never creates one.
+        - !If
+          - HasBraketRole
+          - Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref BraketRoleArn
+          - Statement:
+              - Effect: Allow
+                Action: braket:GetQuantumTask
+                Resource: !Sub arn:aws:braket:eu-north-1:${AWS::AccountId}:quantum-task/*
       Events:
         Poll:
           Type: Schedule
@@ -414,6 +462,30 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${KillSwitchFunction}
       RetentionInDays: !Ref LogRetentionInDays
+
+  # The Braket budget now lives in the Braket Workloads account (the platform
+  # budget cannot see spend that accrues there). Its topic notifies THIS
+  # account's kill-switch: same Lambda, second subscription. The topic is in
+  # us-east-2 — same region as this platform stack, but a different account,
+  # so the explicit Region property and the topic-policy Subscribe grant are
+  # both still required.
+  BraketSpendSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasBraketSpendTopic
+    Properties:
+      TopicArn: !Ref BraketSpendTopicArn
+      Protocol: lambda
+      Endpoint: !GetAtt KillSwitchFunction.Arn
+      Region: us-east-2
+
+  BraketSpendInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: HasBraketSpendTopic
+    Properties:
+      FunctionName: !Ref KillSwitchFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref BraketSpendTopicArn
 
   # Monthly Braket budget whose 80%/100% ACTUAL-spend notifications publish to the
   # kill-switch topic. This is the backstop for the in-app $15/day global cap.

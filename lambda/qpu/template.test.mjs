@@ -230,3 +230,39 @@ test("a failed wallet refund is alarmable on both QPU log groups", () => {
   assert.ok(rec.includes(phrase), "reconcile.mjs lost the missing-row refund log");
   assert.match(body("ReconcileRefundFailureAlarm") ?? "", /AlarmActions: \[!Ref AlertsTopic\]/);
 });
+
+test("braket split: both functions carry the env pair and the conditional assume-role", () => {
+  const res = section(template, "Resources").join("\n");
+  // Env wiring on both functions (two occurrences each).
+  assert.equal(res.match(/BRAKET_ROLE_ARN: !Ref BraketRoleArn/g)?.length, 2,
+    "BRAKET_ROLE_ARN must be wired on SubmitFunction AND ReconcileFunction");
+  assert.equal(res.match(/BRAKET_EXTERNAL_ID: !Ref BraketExternalId/g)?.length, 2);
+  // The cross-account branch grants exactly sts:AssumeRole on the parameter.
+  assert.equal(res.match(/Action: sts:AssumeRole/g)?.length, 2);
+  assert.equal(res.match(/Resource: !Ref BraketRoleArn/g)?.length, 2);
+});
+
+test("braket split: direct grants survive ONLY behind the same-account branch", () => {
+  const res = section(template, "Resources").join("\n");
+  // Every braket:CreateQuantumTask grant must sit inside a HasBraketRole !If —
+  // structurally: no such action line may appear before the first HasBraketRole
+  // conditional in its function's Policies list. Cheap proxy that catches the
+  // realistic regression (someone re-adding an unconditional grant): the counts
+  // of conditional wrappers must cover every braket action line.
+  const braketLines = res.match(/braket:CreateQuantumTask/g)?.length ?? 0;
+  const condWrappers = res.match(/- !If\n\s+- HasBraketRole/g)?.length ?? 0;
+  assert.ok(braketLines >= 1, "same-account branch must still exist (it is the rollback)");
+  assert.ok(condWrappers >= 3,
+    "expected >=3 HasBraketRole conditionals (submit braket, submit s3, reconcile braket)");
+});
+
+test("braket split: the kill-switch subscribes to the foreign spend topic, conditionally", () => {
+  const res = blocks(section(template, "Resources"));
+  const sub = res.BraketSpendSubscription?.join("\n") ?? "";
+  assert.match(sub, /Condition: HasBraketSpendTopic/);
+  assert.match(sub, /Protocol: lambda/);
+  assert.match(sub, /Region: us-east-2/);
+  const perm = res.BraketSpendInvokePermission?.join("\n") ?? "";
+  assert.match(perm, /Principal: sns\.amazonaws\.com/);
+  assert.match(perm, /SourceArn: !Ref BraketSpendTopicArn/);
+});
