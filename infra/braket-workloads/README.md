@@ -162,3 +162,49 @@ set on the live platform stack breaks QPU execution; deleting
 `quantum-braket-spend` while the platform's kill-switch still holds a
 subscription on `SpendTopic` breaks the budget alert path silently — confirm
 the flip first, either way.
+
+## Verified (2026-08-28)
+
+Phase 1 executed and confirmed live against real Braket hardware, per Task 9
+of the account-split plan
+(`.superpowers/sdd/2026-08-27-braket-account-split/progress.md`):
+
+- **Cross-account execution is live.** `quantum-qpu-submit` and its
+  reconciler both execute `CreateQuantumTask`/`GetQuantumTask` under the
+  assumed role, with
+  `BRAKET_ROLE_ARN=arn:aws:iam::<braket-acct>:role/QuantumLearnerBraketExecution`
+  and the external id read from 1Password (`Quantum Learner / Braket
+  ExternalId`). The wiring is env-gated: unset reproduces same-account
+  execution byte-for-byte — that is the rollback.
+- **`ResultsBucket` now must be the Braket-account bucket**
+  (`amazon-braket-ql-results-<braket-acct>`). Passing the old platform bucket
+  makes Braket return `ValidationException` ("caller can't access bucket") —
+  this happened during the live cutover and was fixed by redeploying with the
+  corrected value; it is not a hypothetical failure mode.
+- **All three stacks are deployed:** `quantum-braket-workloads` (eu-north-1 —
+  execution role + results bucket), `quantum-braket-spend` (us-east-2 —
+  budget + spend topic; `AWS::Budgets::Budget` is not in eu-north-1's CFN
+  registry for this account, which is why the budget lives in its own
+  stack/region), and `quantum-hq-foundations` (us-east-1 — dormant
+  `quantumlearner.dev` zone + OU budget). The NS delegation flip, ACM
+  issuance, and the CI/OIDC deploy role all remain deferred to Phase 2.
+- **The kill-switch spans the account boundary.** The Braket account's budget
+  topic notifies the platform account's `quantum-qpu-killswitch` Lambda
+  cross-account, proven by drill: a manual publish flipped the ledger's
+  `KILL` row, and it was cleared afterward.
+- **A real hardware run completed end to end.** A 1-shot task on IQM Garnet
+  reached `COMPLETED`; `results.json` landed in the Braket-account bucket
+  only. The reconciler settled the ledger at `spentMicros=301450`, matching
+  the reservation exactly, and the compensating-release path was proven on
+  two separate failed submit attempts. `AlertEmail` on the live stack is now
+  `hq@quantumlearner.dev`, and both of its SNS email subscriptions are
+  confirmed.
+
+**Operational notes — one-time account enablements this cutover needed**
+(neither is code; both are already done):
+
+- The Braket third-party-device user agreement had to be accepted in the
+  Braket Workloads account (console-only, no CLI/API path).
+- Payer-level linked-account Cost Explorer/Budgets access had to be enabled in
+  the Delta Centric management account before `AWS::Budgets::Budget` could be
+  created in any linked account, including this one.

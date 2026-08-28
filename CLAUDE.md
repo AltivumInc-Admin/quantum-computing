@@ -74,10 +74,22 @@ Delta Centric Org (management)
 
 Name the account, never "Quantum Learner" — four accounts in this OU answer to that.
 
-- **Deployed reality still disagrees with all of this.** Every stack — all six Lambdas,
-  Cognito, Amplify, the wallet, and `quantum-qpu-submit` — is still live in the
-  **Altivum** account (`Altivum Inc - Original Account`), verified 2026-08-27. Do not
-  assume a resource is in Delta Centric because this section exists.
+- **Deployed reality now agrees for Braket, still disagrees for everything else.**
+  The platform half is unchanged: all six Lambdas, Cognito, Amplify and the credit
+  wallet are still live in the **Altivum** account (`Altivum Inc - Original
+  Account`), verified 2026-08-27 — the `QL-Prod` migration has not happened. The
+  Braket half executed 2026-08-28: `quantum-qpu-submit`'s two Braket API calls
+  (`CreateQuantumTask` in submit, `GetQuantumTask` in the reconciler) now run
+  cross-account under an assumed role in **Braket Workloads**, everything else the
+  same two Lambdas do (the ledger, the wallet debit, the entitlement gate) still
+  runs in Altivum. Three stacks are live: `quantum-braket-workloads` (eu-north-1 —
+  execution role + results bucket), `quantum-braket-spend` (us-east-2 — budget +
+  spend topic), and `quantum-hq-foundations` (us-east-1, in **Quantum Learner -
+  HQ** — dormant zone + OU budget). Reach either account with a chained CLI
+  profile — `ql-braket` or `ql-hq` — each assuming `OrganizationAccountAccessRole`
+  from `org-admin`, the same pattern `ql-prod` will use once the platform
+  migration happens. Do not assume any other resource is in Delta Centric because
+  this section exists.
 
 **Use the `org-admin` profile for any Delta Centric work — never `personal-dev`.**
 

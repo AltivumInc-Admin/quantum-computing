@@ -1,6 +1,6 @@
 # Braket account split — dedicated QPU execution under Delta Centric
 
-**Date:** 2026-08-27 · **Status:** APPROVED IN CHAT, awaiting spec review ·
+**Date:** 2026-08-27 · **Status:** Phases 0-1 EXECUTED 2026-08-28 (OIDC role + ACM + NS flip deferred to Phase 2) ·
 **Decision owner:** founder · **Supersedes:** the *destination* named in
 `docs/account-migration-runbook.md` (its mechanics stand; see Phase 0)
 
