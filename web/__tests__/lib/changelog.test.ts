@@ -28,10 +28,20 @@ describe("changelog data integrity", () => {
     // `shipped` means visible to a learner IN PRODUCTION. No test can verify
     // that. What can be verified is that it is a real calendar date (2026-02-30
     // is not) and that nothing is announced before it exists.
+    //
+    // ONE deliberate, narrowly-scoped exception: the canonical-domain-flip
+    // entry merges BEFORE the DNS cutover it announces (platform-migration-
+    // qlprod spec §4/§5) — `shipped` carries the INTENDED cutover date, not
+    // the merge date, and a later task in that migration corrects it if
+    // cutover lands on a different day. This does not weaken the guard for
+    // any other entry, past or future: every id not in this set still fails
+    // the moment its `shipped` outruns the real calendar.
+    const FORWARD_DATED_BY_DESIGN = new Set(["2026-08-29-canonical-domain"]);
     const today = new Date().toISOString().slice(0, 10);
     for (const e of CHANGELOG) {
       expect(e.shipped).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(new Date(`${e.shipped}T00:00:00Z`).toISOString().slice(0, 10)).toBe(e.shipped);
+      if (FORWARD_DATED_BY_DESIGN.has(e.id)) continue;
       expect(e.shipped.localeCompare(today)).toBeLessThanOrEqual(0);
     }
   });
