@@ -108,12 +108,17 @@ access with an actual `assume-role`, never from a successful `ListAccounts` — 
 **The default profile is Altivum.** Any AWS command intended for Delta Centric that
 omits `--profile` runs against Altivum production instead, silently.
 
-**`docs/account-migration-runbook.md` is now stale.** It was written 2026-07-18 to
-blue-green from the Altivum original account into an *Altivum* account also named
-"Quantum Learner" — a different account from Quantum Learner - HQ, in a different org.
-Re-point its destination before executing any of it. Two orgs each containing a
-"Quantum Learner" account is exactly the name-collision trap the design-system and
-Stripe sections warn about elsewhere in this file.
+**`docs/account-migration-runbook.md`'s destination was re-pointed to QL-Prod
+(2026-08-27).** It was written 2026-07-18 to blue-green from the Altivum original
+account into an *Altivum* account also named "Quantum Learner" — a different
+account from Quantum Learner - HQ, in a different org. What remains stale is the
+runbook's **body**: roughly 54 references still name the retired
+altivum-mgmt/quantum-learner profile chain. That is deferred to Phase 2 planning,
+and it fails closed today — altivum-mgmt cannot assume into a Delta Centric
+account, so an unedited step simply cannot execute rather than executing against
+the wrong org. Two orgs each containing a "Quantum Learner" account is exactly the
+name-collision trap the design-system and Stripe sections warn about elsewhere in
+this file.
 
 ## Monetization — the settled model
 

@@ -106,7 +106,7 @@ aws dynamodb delete-item --table-name quantum-qpu-ledger --key '{"pk":{"S":"KILL
 
 Nothing in either stack here re-enables itself.
 
-## Deploy (Task 7 — not run by this task)
+## Deploy
 
 ```bash
 aws cloudformation deploy \

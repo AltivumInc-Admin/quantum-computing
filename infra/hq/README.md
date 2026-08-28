@@ -34,8 +34,9 @@ run time, never write it down.
 
 ## Deploy
 
-Deployment is **Task 7**, not this task — nothing above has been applied yet.
-For reference, the command that task will run:
+Deployed 2026-08-28: the stack is live in us-east-1 — the zone is dormant by
+design (see above) and the OU budget's alert email is confirmed, from
+`hq@quantumlearner.dev`. The command that deployed it:
 
 ```bash
 aws cloudformation deploy \
@@ -48,7 +49,7 @@ aws cloudformation deploy \
 `ql-hq` is a chained CLI profile: the `org-admin` SSO profile (Delta Centric
 management) assumes `OrganizationAccountAccessRole` in the HQ account, the
 same pattern `docs/account-migration-runbook.md` uses for `ql-prod`. It is
-not yet configured in `~/.aws/config` — Task 7 adds it.
+configured in `~/.aws/config`.
 
 ## After deploying: confirm the budget alerts
 

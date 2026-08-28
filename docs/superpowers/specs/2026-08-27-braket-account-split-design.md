@@ -38,8 +38,11 @@ Delta Centric Org (management)
 - **HQ** — the `quantumlearner.dev` Route 53 zone, ACM certificates, shared
   artifact/log buckets, the CI/OIDC deploy role, consolidated Budgets. Prod, Dev
   and Braket consume from it.
-- **Deployed reality today:** everything still runs in the Altivum original
-  account. Nothing in this spec is live until its phase executes.
+- **Deployed reality today:** the Braket half executed 2026-08-28 — QPU
+  execution, results, and the spend fence are live in Braket Workloads. The
+  platform half (Amplify, Cognito, the Lambdas, the wallet, the ledger) is
+  still in the Altivum original account; the QL-Prod migration has not
+  happened.
 
 Name the account in every plan and command — four accounts in this OU answer to
 "Quantum Learner".

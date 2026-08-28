@@ -27,7 +27,14 @@ Parameters:
     Description: >
       S3 bucket for Braket results — MUST exist in eu-north-1 (IQM Garnet's
       region) and be named amazon-braket-* so the Braket service can write to it.
-      Pre-provisioned by the operator (see README).
+      Pre-provisioned by the operator (see README). When BraketRoleArn is set,
+      this MUST name the bucket in the Braket account instead
+      (amazon-braket-ql-results-<account>) — Braket writes results under the
+      calling identity, and naming the platform-account bucket here makes task
+      submission fail with a ValidationException reporting that the caller
+      can't access the bucket (observed live 2026-08-28). The four
+      cross-account parameters — BraketRoleArn, BraketExternalId,
+      BraketSpendTopicArn, and this one — move together on every deploy.
   MaxConcurrency:
     Type: Number
     Default: 5
@@ -490,8 +497,13 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref BraketSpendTopicArn
 
-  # Monthly Braket budget whose 80%/100% ACTUAL-spend notifications publish to the
-  # kill-switch topic. This is the backstop for the in-app $15/day global cap.
+  # Monthly Braket budget in THIS (platform) account, whose 80%/100% ACTUAL-spend
+  # notifications publish to the kill-switch topic. With Braket spend now accruing
+  # in the Braket Workloads account (see BraketSpendSubscription above), this
+  # budget tracks close to zero and cannot trip while the account split is active.
+  # It becomes the fence again only if the platform stack rolls back to
+  # same-account Braket execution; the live fence today is quantum-braket-spend
+  # in the Braket Workloads account.
   QpuBudget:
     Type: AWS::Budgets::Budget
     Properties:
