@@ -244,14 +244,22 @@ test("braket split: both functions carry the env pair and the conditional assume
 
 test("braket split: direct grants survive ONLY behind the same-account branch", () => {
   const res = section(template, "Resources").join("\n");
-  // Every braket:CreateQuantumTask grant must sit inside a HasBraketRole !If —
-  // structurally: no such action line may appear before the first HasBraketRole
-  // conditional in its function's Policies list. Cheap proxy that catches the
-  // realistic regression (someone re-adding an unconditional grant): the counts
-  // of conditional wrappers must cover every braket action line.
-  const braketLines = res.match(/braket:CreateQuantumTask/g)?.length ?? 0;
+  // Exact-count pinning, not a floor: braket:CreateQuantumTask must appear
+  // EXACTLY once (submit's same-account action list) and braket:GetQuantumTask
+  // EXACTLY twice (once beside it in submit's list, once as reconcile's sole
+  // same-account action). Any new unconditional braket grant added ANYWHERE
+  // in Resources — the realistic regression — changes one of these counts and
+  // reddens this test. The wrapper count is a separate floor check: it catches
+  // a HasBraketRole conditional being REMOVED (which would leave the action
+  // counts unchanged, just unconditional); it does not catch a grant ADDED
+  // outside any wrapper, which is what the exact counts are for.
+  const createCount = res.match(/braket:CreateQuantumTask/g)?.length ?? 0;
+  const getCount = res.match(/braket:GetQuantumTask/g)?.length ?? 0;
   const condWrappers = res.match(/- !If\n\s+- HasBraketRole/g)?.length ?? 0;
-  assert.ok(braketLines >= 1, "same-account branch must still exist (it is the rollback)");
+  assert.equal(createCount, 1,
+    "braket:CreateQuantumTask must appear exactly once (submit's same-account branch)");
+  assert.equal(getCount, 2,
+    "braket:GetQuantumTask must appear exactly twice (submit's list + reconcile's sole action)");
   assert.ok(condWrappers >= 3,
     "expected >=3 HasBraketRole conditionals (submit braket, submit s3, reconcile braket)");
 });

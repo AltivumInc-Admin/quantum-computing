@@ -465,10 +465,13 @@ Resources:
 
   # The Braket budget now lives in the Braket Workloads account (the platform
   # budget cannot see spend that accrues there). Its topic notifies THIS
-  # account's kill-switch: same Lambda, second subscription. The topic is in
-  # us-east-2 — same region as this platform stack, but a different account,
-  # so the explicit Region property and the topic-policy Subscribe grant are
-  # both still required.
+  # account's kill-switch: same Lambda, second subscription. The explicit
+  # Region property pins the TOPIC's region (us-east-2 — same as this stack's
+  # own today, but that could change independently), which is what keeps a
+  # cross-region subscription correct; it says nothing about account. The
+  # cross-ACCOUNT half is authorized separately: the topic's own policy grants
+  # Subscribe, and BraketSpendInvokePermission below lets that topic invoke
+  # this Lambda.
   BraketSpendSubscription:
     Type: AWS::SNS::Subscription
     Condition: HasBraketSpendTopic
