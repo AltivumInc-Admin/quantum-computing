@@ -188,3 +188,29 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   ExternalId unchanged. Verified: org-admin `sts assume-role` still DENIED;
   the Braket spend topic now carries BOTH accounts' `quantum-qpu-killswitch`
   Lambda subscriptions.
+
+## Task 8 (live half) — 2026-08-28
+
+- 9 native users created in the QL-Prod pool (`admin-create-user
+  --message-action SUPPRESS`, email_verified=true, no password) — status
+  FORCE_CHANGE_PASSWORD; first sign-in goes through the reset flow. subMap
+  (9 old->new pairs) and emailBySub (5 federated) built by email join; both
+  live OUTSIDE the repo (scratchpad) — never committed.
+- Remap executed by the founder (classifier-gated): wrote 12 rows, staged 1
+  federated progress row as PENDING#<hash>, left 5 rows behind DELIBERATELY.
+- Ruling: the 5 unmapped rows all belong to one sub with no pool user — the
+  deleted Gate-D verification identity from the Braket split (idempotency keys
+  `gate-d-verify-2026-08-2*`, capMicros 0, one ~$0.30 verification run). Test
+  debris, not learner data; not migrated. The teardown plan may clean the
+  source copies.
+- Step 5 verification (`--verify` + get-item): the grandfathered ledger row
+  arrived intact under its NEW pk — capMicros source=2500000 dest=2500000,
+  spentMicros 1335000=1335000, completedRuns 3, completedShots 300. The two
+  verify MISMATCH lines are the left-behind debris sub (no dest row), expected
+  under the ruling above.
+- `quantum-stripe-wallet`: emptiness imported (scan Count 0 at both ends).
+- `quantum-analytics-daily`: NOT copied yet — the analytics stack (and its
+  dest table) deploys at cutover with the new Amplify app id; the verbatim
+  copy rides Task 12's re-run.
+- Cutover reminder (standing): re-run remap FIRST with a fresh subMap, fold
+  PENDING after, never interleaved.
