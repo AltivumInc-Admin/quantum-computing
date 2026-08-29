@@ -1,8 +1,7 @@
 {
   "sourceAccountResolution": {
     "method": "sts-get-caller-identity",
-    "profile": "altivum-mgmt",
-    "note": "Altivum (migration SOURCE) is NOT a member of the QL Organization — verified 2026-08-28 via `aws organizations list-accounts --profile org-admin` (members: Delta Centric Org, Christian Perez - Personal, QL-Dev, Quantum Learner - HQ, Braket Workloads, QL-Prod; no Altivum). Its account id therefore cannot be resolved by org name lookup and is instead read from a profile independently known to BE Altivum (docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md: 'altivum-mgmt stays — it is the legitimate Altivum-org profile')."
+    "note": "No profile key here on purpose: this resolves via the AMBIENT DEFAULT AWS CLI profile (no --profile flag), matching the plan's own Global Constraints ('The DEFAULT profile is the Altivum SOURCE', docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md) and the already-established `SRC=$(aws sts get-caller-identity --query Account --output text)  # Altivum` idiom from this same migration's task-3-brief.md. The Altivum ORG-MASTER credential (profile altivum-mgmt) is a DIFFERENT account that manages Altivum's own organization but does not itself hold the source tables ('Altivum Inc - Original Account', docs/account-migration-runbook.md) — resolving through it would check the wrong account and make this guard refuse a legitimate run. Altivum is also NOT a member of the QL Organization (verified 2026-08-28 via `aws organizations list-accounts --profile org-admin`: Delta Centric Org, Christian Perez - Personal, QL-Dev, Quantum Learner - HQ, Braket Workloads, QL-Prod; no Altivum), so an org-name lookup like the dest side's isn't an option here regardless."
   },
   "destAccountResolution": {
     "method": "organizations-list-accounts",

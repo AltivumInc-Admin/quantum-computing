@@ -863,7 +863,11 @@ test("parseArgs refuses an unrecognized flag", () => {
 
 const FILE_CONFIG = {
   tableMap: [{ source: "quantum-stripe-wallet", dest: "quantum-stripe-wallet" }],
-  sourceAccountResolution: { method: "sts-get-caller-identity", profile: "altivum-mgmt" },
+  // No `profile` key: this resolves via the ambient DEFAULT AWS CLI profile
+  // (no --profile flag) — the plan's Global Constraints establish "The
+  // DEFAULT profile is the Altivum SOURCE". A named profile here (e.g. the
+  // altivum-mgmt org-master credential) would resolve a DIFFERENT account.
+  sourceAccountResolution: { method: "sts-get-caller-identity" },
   destAccountResolution: { method: "organizations-list-accounts", orgProfile: "org-admin", accountName: "QL-Prod" },
 };
 

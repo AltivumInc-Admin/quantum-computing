@@ -88,9 +88,17 @@
  * organization — it is a separate, unrelated AWS account — so its id cannot
  * be resolved by org name lookup the way QL-Prod's can. The two sides
  * therefore resolve differently:
- *   - source: `aws sts get-caller-identity` against a profile independently
- *     known to BE Altivum (`altivum-mgmt` — see
- *     docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md).
+ *   - source: `aws sts get-caller-identity` with NO --profile — the plan's
+ *     Global Constraints state "The DEFAULT profile is the Altivum SOURCE"
+ *     (docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md), and
+ *     the runbook's own `SRC_ACCOUNT` / task-3-brief.md's `SRC=$(aws sts
+ *     get-caller-identity --query Account --output text)  # Altivum` already
+ *     establish this exact idiom for this same migration. The Altivum
+ *     ORG-MASTER credential (`altivum-mgmt`) is a DIFFERENT account — it
+ *     manages Altivum's own organization but does not itself hold the source
+ *     tables — so resolving through it here would check the wrong account
+ *     and make this guard refuse a legitimate run. Do not name a profile for
+ *     this side; let the operator's own ambient default/AWS_PROFILE resolve.
  *   - dest: `aws organizations list-accounts --profile org-admin` filtered to
  *     the account named "QL-Prod".
  * `--expect-source-account` / `--expect-dest-account` on the CLI override the
@@ -918,12 +926,21 @@ function makeAwsClient(profile, region) {
 
 function resolveAccountId(resolution) {
   if (resolution.method === "sts-get-caller-identity") {
-    const out = execFileSync(
-      "aws",
-      ["sts", "get-caller-identity", "--profile", resolution.profile, "--query", "Account", "--output", "text"],
-      { encoding: "utf8" },
-    ).trim();
-    if (!out) throw new Error(`REFUSING: could not resolve account via profile "${resolution.profile}"`);
+    // No --profile at all when resolution.profile is unset: that IS the
+    // point (see the header note above and migration.json) — the ambient
+    // default profile's own identity is the Altivum source account by the
+    // plan's own Global Constraints, matching the established
+    // `SRC=$(aws sts get-caller-identity --query Account --output text)`
+    // idiom already used for this same migration (task-3-brief.md). Passing
+    // any --profile here (e.g. the altivum-mgmt org-master credential) would
+    // resolve a DIFFERENT account and make this guard refuse a legitimate run.
+    const cliArgs = ["sts", "get-caller-identity", "--query", "Account", "--output", "text"];
+    if (resolution.profile) cliArgs.splice(2, 0, "--profile", resolution.profile);
+    const out = execFileSync("aws", cliArgs, { encoding: "utf8" }).trim();
+    if (!out) {
+      const via = resolution.profile ? `profile "${resolution.profile}"` : "the ambient default profile";
+      throw new Error(`REFUSING: could not resolve account via ${via}`);
+    }
     return out;
   }
   if (resolution.method === "organizations-list-accounts") {
