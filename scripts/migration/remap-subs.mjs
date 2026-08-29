@@ -11,16 +11,33 @@
  * CLI live in one file (unlike founding-credit's issue.mjs/run.mjs split) —
  * this script has no separate roster file to keep pure logic apart from.
  *
+ * ============================ CUTOVER ORDER ================================
+ * At cutover, `--execute` (remap) ALWAYS runs before `--fold-pending`, never
+ * interleaved. Folding first, then re-running remap with a subMap that hasn't
+ * caught up yet, would RESURRECT a PENDING row fold just resolved: remap has
+ * no memory of what fold already did, so a sub still absent from the (stale)
+ * subMap it was given gets staged again, sitting alongside the row fold
+ * already wrote under its final key. Running remap first with the freshest
+ * subMap available, then folding last, means nothing downstream of a fold can
+ * ever re-stage what it just resolved.
+ *
  * ============================ TABLE SHAPES (verified live) ================
- * Confirmed against the deployed CloudFormation (each lambda's template.yaml) and
- * the handlers that write these rows — not guessed from the brief alone:
+ * Confirmed against the deployed CloudFormation (each lambda's template.yaml)
+ * and the handlers that write these rows — not guessed from the brief alone:
  *
  *  - quantum-stripe-wallet / quantum-qpu-ledger: single attribute `pk` (S) is
  *    the whole key. Sub-owned prefixes: WALLET#<sub>, USER#<sub>, CRED#<sub>.
  *    Passthrough (not sub-derived, copy unchanged): DAY#<date>, KILL,
- *    EVENT#<stripeEventId>, RECEIPT#<paymentIntentId> — the last one is not
- *    named in the migration brief but IS a live prefix (lambda/stripe/index.mjs
- *    receiptKey); refusing to guess it would otherwise abort a real migration.
+ *    EVENT#<stripeEventId>.
+ *
+ *  - RECEIPT#<paymentIntentId> (quantum-stripe-wallet, lambda/stripe/index.mjs
+ *    receiptRowLeg) is NOT sub-free — it carries an embedded `sub` (S)
+ *    attribute that reclaim() reads on a refund/dispute to know whose wallet
+ *    to debit. Its `pk` is keyed by PaymentIntent id and must never move, but
+ *    the embedded `sub` attribute IS sub-owned and is rewritten (or staged)
+ *    exactly like any other sub-owned value — an earlier draft of this file
+ *    passed RECEIPT# through verbatim, which would have silently orphaned
+ *    every clawback's target sub.
  *
  *  - quantum-qpu-tasks: the REAL primary key is a bare `idempotencyKey` (S) —
  *    a client-supplied opaque token, never sub-derived, and NEVER rewritten.
@@ -41,7 +58,7 @@
  * re-created in the new pool) stages under a PENDING#<sha256(email)> key
  * instead of being dropped, using scripts/lib/email-hash.mjs — the SAME
  * identity hash the founding-credit issuer uses, so one human's federated AND
- * native rows collide the same way there. Two things make plain
+ * native rows collide the same way there. Three things make plain
  * `PENDING#<hash>` alone unsafe as a whole pk:
  *
  *  1. quantum-qpu-ledger can carry BOTH a USER# and a CRED# row for one sub.
@@ -54,14 +71,37 @@
  *     idempotencyKey, so staging there is just an attribute update
  *     (userId -> PENDING#<hash>), not a rekey — no collision risk, no delete
  *     needed when folding.
+ *  3. RECEIPT# rows are likewise already uniquely keyed by PaymentIntent id;
+ *     staging is an attribute update (sub -> PENDING#<hash>) on an unmoved pk.
  *
  * `--fold-pending` (foldPending / runFold below) resolves staged rows once
  * Step 3 creates the native user and its new sub is known, consuming
  * emailHash -> newSub pairs.
+ *
+ * ============================ migration.json ================================
+ * `scripts/migration/migration.json` is committed and carries the table map
+ * plus HOW to resolve each side's expected account id — never a literal id
+ * (this repo is public). Verified live (2026-08-28, `aws organizations
+ * list-accounts --profile org-admin`): the org contains Delta Centric Org,
+ * Christian Perez - Personal, QL-Dev, Quantum Learner - HQ, Braket Workloads,
+ * and QL-Prod. Altivum (the migration SOURCE) is NOT a member of this
+ * organization — it is a separate, unrelated AWS account — so its id cannot
+ * be resolved by org name lookup the way QL-Prod's can. The two sides
+ * therefore resolve differently:
+ *   - source: `aws sts get-caller-identity` against a profile independently
+ *     known to BE Altivum (`altivum-mgmt` — see
+ *     docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md).
+ *   - dest: `aws organizations list-accounts --profile org-admin` filtered to
+ *     the account named "QL-Prod".
+ * `--expect-source-account` / `--expect-dest-account` on the CLI override the
+ * file's resolution entirely (a literal id passed by hand).
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { emailHash } from "../lib/email-hash.mjs";
 
 // ---------------------------------------------------------------------------
@@ -72,9 +112,18 @@ import { emailHash } from "../lib/email-hash.mjs";
 const SUB_PK_PREFIXES = ["WALLET#", "USER#", "CRED#"];
 // Non-sub pk values/prefixes on the same two tables — copied unchanged.
 const PASSTHROUGH_PK_EXACT = new Set(["KILL"]);
-const PASSTHROUGH_PK_PREFIXES = ["DAY#", "EVENT#", "RECEIPT#"];
+const PASSTHROUGH_PK_PREFIXES = ["DAY#", "EVENT#"];
+const RECEIPT_PREFIX = "RECEIPT#";
 
 const PENDING = "PENDING#";
+
+/** A short, non-PII descriptor of an item's own key, for logs and errors. */
+function describeItemKey(item) {
+  if (item?.idempotencyKey?.S !== undefined) return `idempotencyKey=${item.idempotencyKey.S}`;
+  if (item?.pk?.S !== undefined) return `pk=${item.pk.S}`;
+  if (item?.userId?.S !== undefined) return `userId=${item.userId.S}`;
+  return "key=unknown";
+}
 
 /**
  * Classify one raw DynamoDB item (AttributeValue-map JSON, exactly what
@@ -87,7 +136,7 @@ const PENDING = "PENDING#";
  */
 function classifyItem(item) {
   if (item === null || typeof item !== "object") {
-    throw new Error("remap-subs: item is not an object — refusing to guess its shape");
+    throw new Error("item is not an object — refusing to guess its shape");
   }
 
   // --- quantum-qpu-tasks: real key is idempotencyKey; never touched. -------
@@ -95,7 +144,7 @@ function classifyItem(item) {
     const sub = item.userId?.S;
     if (typeof sub !== "string" || sub === "") {
       throw new Error(
-        "remap-subs: unrecognized quantum-qpu-tasks row — has idempotencyKey but no userId",
+        `unrecognized quantum-qpu-tasks row (idempotencyKey=${item.idempotencyKey.S}) — has idempotencyKey but no userId`,
       );
     }
     return {
@@ -109,16 +158,32 @@ function classifyItem(item) {
   // --- quantum-stripe-wallet / quantum-qpu-ledger: pk-prefixed rows. -------
   if (item.pk?.S !== undefined) {
     const pk = item.pk.S;
+
+    // RECEIPT#: pk is keyed by PaymentIntent id and never moves. The embedded
+    // `sub` attribute is what's sub-owned (see the header note above).
+    if (pk.startsWith(RECEIPT_PREFIX)) {
+      const sub = item.sub?.S;
+      if (typeof sub !== "string" || sub === "") {
+        throw new Error(`unrecognized RECEIPT row (pk=${pk}) — no embedded sub attribute`);
+      }
+      return {
+        type: "sub",
+        sub,
+        rewrite: (newSub) => ({ ...item, sub: { S: newSub } }),
+        stage: (hash) => ({ ...item, sub: { S: `${PENDING}${hash}` } }),
+      };
+    }
+
     if (PASSTHROUGH_PK_EXACT.has(pk) || PASSTHROUGH_PK_PREFIXES.some((p) => pk.startsWith(p))) {
       return { type: "passthrough" };
     }
     const prefix = SUB_PK_PREFIXES.find((p) => pk.startsWith(p));
     if (!prefix) {
-      throw new Error(`remap-subs: unrecognized pk prefix "${pk}" — refusing to guess its shape`);
+      throw new Error(`unrecognized pk prefix "${pk}" — refusing to guess its shape`);
     }
     const sub = pk.slice(prefix.length);
     if (sub === "") {
-      throw new Error(`remap-subs: pk "${pk}" has no sub after its prefix`);
+      throw new Error(`pk "${pk}" has no sub after its prefix`);
     }
     const prefixName = prefix.slice(0, -1); // "WALLET#" -> "WALLET"
     return {
@@ -133,7 +198,7 @@ function classifyItem(item) {
   if (item.userId?.S !== undefined) {
     const sub = item.userId.S;
     if (sub === "") {
-      throw new Error("remap-subs: workspace row has an empty userId");
+      throw new Error("workspace row has an empty userId");
     }
     return {
       type: "sub",
@@ -143,9 +208,7 @@ function classifyItem(item) {
     };
   }
 
-  throw new Error(
-    "remap-subs: item has none of pk/userId/idempotencyKey — unrecognized table shape",
-  );
+  throw new Error("item has none of pk/userId/idempotencyKey — unrecognized table shape");
 }
 
 function resolveSub(sub, subMap, emailBySub) {
@@ -161,7 +224,7 @@ function resolveSub(sub, subMap, emailBySub) {
 
 /**
  * The pure core. Given raw scanned items, a map of OLD sub -> NEW sub, and a
- * map of OLD sub -> email (for the pending fallback), returns three buckets:
+ * map of OLD sub -> email (for the pending fallback), returns:
  *
  *  - writes: rows ready to PutItem into the dest table as-is (remapped or
  *    passthrough)
@@ -170,33 +233,66 @@ function resolveSub(sub, subMap, emailBySub) {
  *    reported separately because they need a later fold
  *  - unmapped: rows that could not be resolved at all ({ item, sub, reason })
  *    — never written; they need manual investigation
+ *  - rows: one { before, after, bucket } descriptor per input item, in scan
+ *    order, for operator-log / dry-run printing (bucket is one of
+ *    "write" | "pending" | "unmapped" | "passthrough"; after is null for
+ *    unmapped)
+ *
+ * A row whose shape this script does not recognize is COLLECTED, not thrown
+ * on the spot — every unrecognized row in the batch is reported together in
+ * one refusal, so an operator sees the whole picture instead of playing
+ * whack-a-mole with one throw per `--dry-run`.
  */
 export function remapItems(items, subMap, emailBySub) {
   const writes = [];
   const pending = [];
   const unmapped = [];
+  const rows = [];
+  const unrecognized = [];
 
   for (const item of items) {
-    const classified = classifyItem(item);
-    if (classified.type === "passthrough") {
-      writes.push(item);
+    let classified;
+    try {
+      classified = classifyItem(item);
+    } catch (err) {
+      unrecognized.push(err.message);
       continue;
     }
+
+    if (classified.type === "passthrough") {
+      writes.push(item);
+      const key = describeItemKey(item);
+      rows.push({ before: key, after: key, bucket: "passthrough" });
+      continue;
+    }
+
+    const before = describeItemKey(item);
     const resolved = resolveSub(classified.sub, subMap, emailBySub);
     if (resolved.status === "mapped") {
-      writes.push(classified.rewrite(resolved.newSub));
+      const written = classified.rewrite(resolved.newSub);
+      writes.push(written);
+      rows.push({ before, after: describeItemKey(written), bucket: "write" });
     } else if (resolved.status === "pending") {
-      pending.push(classified.stage(resolved.hash));
+      const staged = classified.stage(resolved.hash);
+      pending.push(staged);
+      rows.push({ before, after: describeItemKey(staged), bucket: "pending" });
     } else {
       unmapped.push({
         item,
         sub: classified.sub,
         reason: "sub not in subMap and no known email — cannot map or stage",
       });
+      rows.push({ before, after: null, bucket: "unmapped" });
     }
   }
 
-  return { writes, pending, unmapped };
+  if (unrecognized.length) {
+    throw new Error(
+      `remap-subs: refusing — ${unrecognized.length} row(s) with unrecognized shape: ${unrecognized.join("; ")}`,
+    );
+  }
+
+  return { writes, pending, unmapped, rows };
 }
 
 // ---------------------------------------------------------------------------
@@ -205,51 +301,72 @@ export function remapItems(items, subMap, emailBySub) {
 
 const PENDING_PK_RE = /^PENDING#([0-9a-f]{64})(?:#([A-Z]+))?$/;
 
+function looksPending(value) {
+  return typeof value === "string" && value.startsWith(PENDING);
+}
+
 function foldOne(item, emailHashToSub) {
   // tasks-shape: pending marker lives in the userId ATTRIBUTE only; the row's
   // real key (idempotencyKey) never changes, so folding is an update, not a
   // rekey — no delete.
   if (item.idempotencyKey?.S !== undefined) {
-    const m = PENDING_PK_RE.exec(item.userId?.S ?? "");
-    if (!m) return { kind: "keep" };
+    const value = item.userId?.S ?? "";
+    if (!looksPending(value)) return { kind: "skip" };
+    const m = PENDING_PK_RE.exec(value);
+    if (!m) throw new Error(`malformed pending userId "${value}" on idempotencyKey=${item.idempotencyKey.S}`);
     const newSub = emailHashToSub[m[1]];
-    if (!newSub) return { kind: "keep" };
+    if (!newSub) return { kind: "still-pending" };
     return { kind: "write-only", write: { ...item, userId: { S: newSub } } };
   }
 
-  // pk-prefixed shape (wallet/ledger): PENDING#<hash>#<PREFIX>.
   if (item.pk?.S !== undefined) {
-    const m = PENDING_PK_RE.exec(item.pk.S);
-    if (!m) return { kind: "keep" };
-    const [, hash, prefixName] = m;
-    const newSub = emailHashToSub[hash];
-    if (!newSub) return { kind: "keep" };
-    if (!prefixName) {
-      throw new Error(`remap-subs: pending pk "${item.pk.S}" is missing its original prefix`);
+    const pk = item.pk.S;
+
+    // RECEIPT#: pk never moves; the pending marker (if any) lives in `sub`.
+    if (pk.startsWith(RECEIPT_PREFIX)) {
+      const value = item.sub?.S ?? "";
+      if (!looksPending(value)) return { kind: "skip" };
+      const m = PENDING_PK_RE.exec(value);
+      if (!m) throw new Error(`malformed pending sub "${value}" on RECEIPT row pk=${pk}`);
+      const newSub = emailHashToSub[m[1]];
+      if (!newSub) return { kind: "still-pending" };
+      return { kind: "write-only", write: { ...item, sub: { S: newSub } } };
     }
-    const newPk = `${prefixName}#${newSub}`;
+
+    // pk-prefixed shape (wallet/ledger): PENDING#<hash>#<PREFIX>.
+    if (!looksPending(pk)) return { kind: "skip" };
+    const m = PENDING_PK_RE.exec(pk);
+    if (!m) throw new Error(`malformed pending pk "${pk}"`);
+    const [, hash, prefixName] = m;
+    if (!prefixName) {
+      throw new Error(`pending pk "${pk}" is missing its original prefix`);
+    }
+    const newSub = emailHashToSub[hash];
+    if (!newSub) return { kind: "still-pending" };
     return {
       kind: "rekey",
-      write: { ...item, pk: { S: newPk } },
-      deleteKey: { pk: { S: item.pk.S } },
+      write: { ...item, pk: { S: `${prefixName}#${newSub}` } },
+      deleteKey: { pk: { S: pk } },
     };
   }
 
   // bare-userId shape (workspace-progress): PENDING#<hash> IS the whole key.
   if (item.userId?.S !== undefined) {
-    const m = PENDING_PK_RE.exec(item.userId.S);
-    if (!m) return { kind: "keep" };
+    const value = item.userId.S;
+    if (!looksPending(value)) return { kind: "skip" };
+    const m = PENDING_PK_RE.exec(value);
+    if (!m) throw new Error(`malformed pending userId "${value}"`);
     const [, hash] = m;
     const newSub = emailHashToSub[hash];
-    if (!newSub) return { kind: "keep" };
+    if (!newSub) return { kind: "still-pending" };
     return {
       kind: "rekey",
       write: { ...item, userId: { S: newSub } },
-      deleteKey: { userId: { S: item.userId.S } },
+      deleteKey: { userId: { S: value } },
     };
   }
 
-  return { kind: "keep" };
+  return { kind: "skip" };
 }
 
 /**
@@ -257,19 +374,29 @@ function foldOne(item, emailHashToSub) {
  * PENDING#<emailHash>[...] staged rows) and a map of emailHash -> newSub,
  * resolves whichever staged rows now have a known sub.
  *
- * Returns { writes, deletes, stillPending }. `writes` carries the row under
- * its final key; `deletes` carries the OLD staged key to remove (empty for
- * the tasks shape, whose real key never moved). Rows not shaped as pending,
- * or pending but not yet resolvable, land in `stillPending` untouched.
+ * Returns { writes, deletes, stillPending, skipped }.
+ *  - writes: the row under its final key/attribute
+ *  - deletes: the OLD staged key to remove (empty for the tasks/RECEIPT
+ *    shapes, whose real key never moved — folding those is an attribute
+ *    update, not a rekey)
+ *  - stillPending: rows that ARE staged (PENDING#<hash>[...]) but whose hash
+ *    has no resolution yet
+ *  - skipped: rows that were never staged at all — an already-final row is
+ *    "skipped", never "stillPending"; conflating the two would make the
+ *    operator summary report N-many rows as "waiting on a fold" when most of
+ *    them need no action
  */
 export function foldPending(items, emailHashToSub) {
   const writes = [];
   const deletes = [];
   const stillPending = [];
+  const skipped = [];
 
   for (const item of items) {
     const outcome = foldOne(item, emailHashToSub);
-    if (outcome.kind === "keep") {
+    if (outcome.kind === "skip") {
+      skipped.push(item);
+    } else if (outcome.kind === "still-pending") {
       stillPending.push(item);
     } else if (outcome.kind === "write-only") {
       writes.push(outcome.write);
@@ -279,7 +406,55 @@ export function foldPending(items, emailHashToSub) {
     }
   }
 
-  return { writes, deletes, stillPending };
+  return { writes, deletes, stillPending, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Input validation — CRITICAL: a malformed map must never reach a write.
+// ---------------------------------------------------------------------------
+
+function validateStringMap(map, { label, checkDuplicateValues = false }) {
+  const problems = [];
+  if (map === null || typeof map !== "object" || Array.isArray(map)) {
+    return [`${label} must be an object`];
+  }
+  const targets = new Map(); // value -> [keys that claim it]
+  for (const [key, value] of Object.entries(map)) {
+    if (typeof value !== "string" || value === "") {
+      problems.push(`${label}["${key}"] must be a non-empty string, got ${JSON.stringify(value)}`);
+      continue;
+    }
+    if (checkDuplicateValues) {
+      const claimants = targets.get(value) ?? [];
+      claimants.push(key);
+      targets.set(value, claimants);
+    }
+  }
+  if (checkDuplicateValues) {
+    for (const [value, keys] of targets) {
+      if (keys.length > 1) {
+        problems.push(`duplicate target "${value}" claimed by: ${keys.join(", ")}`);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * A null, object, or empty-string value writes a pk like "WALLET#null" or
+ * silently overwrites another row that also resolved to "" — this is the
+ * exact failure this validator exists to catch before a single write.
+ */
+export function validateSubMap(subMap) {
+  return validateStringMap(subMap, { label: "subMap", checkDuplicateValues: true });
+}
+
+export function validateEmailBySub(emailBySub) {
+  return validateStringMap(emailBySub, { label: "emailBySub", checkDuplicateValues: false });
+}
+
+export function validateEmailHashToSub(emailHashToSub) {
+  return validateStringMap(emailHashToSub, { label: "emailHashToSub", checkDuplicateValues: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +468,11 @@ export function foldPending(items, emailHashToSub) {
  * source and dest are different AWS accounts reached through different
  * profiles — trusting one identity for both would let a misconfigured
  * profile read or write the wrong account silently.
+ *
+ * Also refuses if the two RESOLVED accounts are identical: this migration is
+ * cross-account by construction (Altivum -> QL-Prod), so source and dest
+ * resolving to the same account can only mean the wrong profile was used —
+ * most dangerously, silently reading from and writing to the same table.
  */
 export async function assertAccounts({ sourceClient, destClient, expectSourceAccount, expectDestAccount }) {
   const [sourceAccount, destAccount] = await Promise.all([
@@ -306,10 +486,43 @@ export async function assertAccounts({ sourceClient, destClient, expectSourceAcc
   if (destAccount !== expectDestAccount) {
     problems.push(`dest account is ${destAccount}, expected ${expectDestAccount}`);
   }
+  if (sourceAccount === destAccount) {
+    problems.push(`source and dest resolved to the SAME account (${sourceAccount}) — this migration is cross-account`);
+  }
   if (problems.length) {
     throw new Error(`REFUSING: ${problems.join("; ")}`);
   }
   return { sourceAccount, destAccount };
+}
+
+// ---------------------------------------------------------------------------
+// Sequential writer — reports exactly how far a partial failure got.
+// ---------------------------------------------------------------------------
+
+/**
+ * Writes items one at a time (DynamoDB has no cross-item transaction that
+ * would help here, and single-item put/delete is what lets each write be
+ * addressed by a temp-file `--item`/`--key` payload — see makeAwsClient). A
+ * mid-run failure throws with exactly how many succeeded and which item it
+ * was on, phrased as ABORTED MID-RUN (never REFUSING — that word is reserved
+ * for a guard that stopped BEFORE any write). Every write here is a
+ * PutItem/DeleteItem keyed by the row's own key, so re-running from scratch
+ * after a partial failure is always safe (upsert by key).
+ */
+async function writeSequential({ table, items, action, verb }) {
+  let done = 0;
+  for (const item of items) {
+    try {
+      await action(table, item);
+      done += 1;
+    } catch (err) {
+      throw new Error(
+        `ABORTED MID-RUN — ${verb} ${done} of ${items.length} items to ${table}; re-run is safe ` +
+          `(upsert by key). Failed at ${describeItemKey(item)}: ${err.message}`,
+      );
+    }
+  }
+  return done;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +531,17 @@ export async function assertAccounts({ sourceClient, destClient, expectSourceAcc
 
 /**
  * Scans each source table, remaps through subMap/emailBySub, and (only under
- * execute: true) writes the result into the matching dest table. The account
- * guard runs BEFORE the first scan — a mismatch means zero reads and zero
- * writes happen anywhere.
+ * execute: true) writes the result into the matching dest table.
+ *
+ * Order of guards, all BEFORE any read or write:
+ *  1. subMap/emailBySub shape validation (CRITICAL 1)
+ *  2. the account guard (assertAccounts)
+ * Then Phase 1 scans + classifies EVERY table before Phase 2 writes anything,
+ * so an unmapped row on table 3 still blocks table 1's writes — and under
+ * `--execute`, ANY unmapped row refuses the whole run unless allowUnmapped is
+ * true (CRITICAL 2): a clean exit that silently drops a row (e.g. the
+ * founder's grandfathered capMicros row) is exactly the failure this script
+ * exists to prevent.
  */
 export async function runMigration({
   sourceClient,
@@ -331,45 +552,160 @@ export async function runMigration({
   subMap,
   emailBySub,
   execute = false,
+  allowUnmapped = false,
 }) {
+  const subMapProblems = validateSubMap(subMap);
+  if (subMapProblems.length) {
+    throw new Error(`REFUSING: invalid subMap: ${subMapProblems.join("; ")}`);
+  }
+  const emailProblems = validateEmailBySub(emailBySub);
+  if (emailProblems.length) {
+    throw new Error(`REFUSING: invalid emailBySub: ${emailProblems.join("; ")}`);
+  }
+
   await assertAccounts({ sourceClient, destClient, expectSourceAccount, expectDestAccount });
 
-  const results = [];
+  // Phase 1: read-only. Scan + classify every table before writing anything.
+  const perTable = [];
   for (const { source, dest } of tables) {
     const items = await sourceClient.scan(source);
-    const { writes, pending, unmapped } = remapItems(items, subMap, emailBySub);
-    const toWrite = [...writes, ...pending];
+    const remapped = remapItems(items, subMap, emailBySub);
+    perTable.push({ source, dest, ...remapped });
+  }
+
+  const allUnmapped = perTable.flatMap((t) => t.unmapped.map((u) => ({ ...u, table: t.source })));
+  if (execute && allUnmapped.length > 0 && !allowUnmapped) {
+    const list = allUnmapped.map((u) => `${u.table} ${describeItemKey(u.item)}`).join(", ");
+    throw new Error(
+      `REFUSING: ${allUnmapped.length} unmapped row(s) and --execute was given without --allow-unmapped: ${list}`,
+    );
+  }
+
+  // Phase 2: write, only under execute.
+  const results = [];
+  for (const t of perTable) {
+    const toWrite = [...t.writes, ...t.pending];
     if (execute && toWrite.length) {
-      await destClient.putItems(dest, toWrite);
+      await writeSequential({
+        table: t.dest,
+        items: toWrite,
+        action: (table, item) => destClient.putItem(table, item),
+        verb: "wrote",
+      });
     }
-    results.push({ table: source, destTable: dest, writes: writes.length, pending: pending.length, unmapped });
+    results.push({
+      table: t.source,
+      destTable: t.dest,
+      writes: t.writes.length,
+      pending: t.pending.length,
+      unmapped: t.unmapped,
+      toWrite: toWrite.length,
+      rows: t.rows,
+    });
   }
   return results;
 }
 
 /**
  * Fold-pending mode: scans each dest table for PENDING#<emailHash>[...] rows
- * and resolves whichever now have a known sub. Only the dest account is
- * meaningful here (fold never touches the source), but the guard still runs
- * before the first scan for the same "refuse before any read or write" reason.
+ * (or embedded-`sub` PENDING markers, for RECEIPT#/tasks rows) and resolves
+ * whichever now have a known sub. Reuses assertAccounts (not an inline copy)
+ * — fold never reads the source table, but the same cross-account identity
+ * guard still runs before the first scan, for the same "refuse before any
+ * read or write" reason, and to catch the same misconfigured-profile risk.
  */
-export async function runFold({ destClient, expectDestAccount, tables, emailHashToSub, execute = false }) {
-  const destAccount = await destClient.getCallerIdentity();
-  if (destAccount !== expectDestAccount) {
-    throw new Error(`REFUSING: dest account is ${destAccount}, expected ${expectDestAccount}`);
+export async function runFold({
+  sourceClient,
+  destClient,
+  expectSourceAccount,
+  expectDestAccount,
+  tables,
+  emailHashToSub,
+  execute = false,
+}) {
+  const problems = validateEmailHashToSub(emailHashToSub);
+  if (problems.length) {
+    throw new Error(`REFUSING: invalid emailHashToSub: ${problems.join("; ")}`);
   }
+
+  await assertAccounts({ sourceClient, destClient, expectSourceAccount, expectDestAccount });
 
   const results = [];
   for (const table of tables) {
     const items = await destClient.scan(table);
-    const { writes, deletes, stillPending } = foldPending(items, emailHashToSub);
+    const { writes, deletes, stillPending, skipped } = foldPending(items, emailHashToSub);
     if (execute) {
-      if (writes.length) await destClient.putItems(table, writes);
-      if (deletes.length) await destClient.deleteItems(table, deletes);
+      if (writes.length) {
+        await writeSequential({
+          table,
+          items: writes,
+          action: (t, i) => destClient.putItem(t, i),
+          verb: "wrote",
+        });
+      }
+      if (deletes.length) {
+        await writeSequential({
+          table,
+          items: deletes,
+          action: (t, k) => destClient.deleteItem(t, k),
+          verb: "deleted",
+        });
+      }
     }
-    results.push({ table, folded: writes.length, stillPending: stillPending.length });
+    results.push({ table, folded: writes.length, stillPending: stillPending.length, skipped: skipped.length });
   }
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// --verify — side-by-side comparison for Step 5's verification
+// ---------------------------------------------------------------------------
+
+const VERIFY_ATTRS = ["capMicros", "spentMicros", "balance", "credits"];
+
+/**
+ * For each sub-owned source row that maps to a known new sub, compares the
+ * named balance-ish attributes against the matching dest row (found by the
+ * mapped pk on pk-prefixed shapes; other shapes are skipped — this is a
+ * pk-keyed comparison by design, matching how quantum-stripe-wallet and
+ * quantum-qpu-ledger carry every number this script exists to protect,
+ * including the grandfathered capMicros row). Subs are always redacted to an
+ * 8-char prefix — this is a printed report, never a write path.
+ */
+export function buildVerifyRows(sourceItems, destItems, subMap, attrs = VERIFY_ATTRS) {
+  const destByPk = new Map();
+  for (const d of destItems) {
+    if (d.pk?.S !== undefined) destByPk.set(d.pk.S, d);
+  }
+
+  const rows = [];
+  for (const item of sourceItems) {
+    let classified;
+    try {
+      classified = classifyItem(item);
+    } catch {
+      continue; // not a sub-owned row this comparison applies to
+    }
+    if (classified.type !== "sub") continue;
+    const newSub = subMap[classified.sub];
+    const destItem = newSub ? destByPk.get(classified.rewrite(newSub).pk?.S) : undefined;
+    const redactedSub = `${classified.sub.slice(0, 8)}…`;
+
+    for (const attr of attrs) {
+      const sourceAV = item[attr];
+      const destAV = destItem?.[attr];
+      if (sourceAV === undefined && destAV === undefined) continue;
+      const value = (av) => (av === undefined ? undefined : av.N ?? av.S ?? av.BOOL ?? null);
+      rows.push({
+        sub: redactedSub,
+        attribute: attr,
+        sourceValue: value(sourceAV) ?? null,
+        destValue: destItem ? value(destAV) ?? null : undefined,
+        match: destItem ? JSON.stringify(sourceAV) === JSON.stringify(destAV) : false,
+      });
+    }
+  }
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,20 +726,26 @@ const FLAGS_WITH_VALUE = new Set([
   "--source-profile",
   "--dest-profile",
   "--region",
+  "--org-profile",
   "--expect-source-account",
   "--expect-dest-account",
   "--table-map",
   "--sub-map",
   "--email-by-sub",
   "--fold-map",
+  "--pk",
 ]);
 
 export function parseArgs(argv) {
   const args = {
     region: "us-east-2",
+    orgProfile: "org-admin",
     tableMapRaw: [],
+    pks: [],
     execute: false,
     foldPending: false,
+    allowUnmapped: false,
+    verify: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
@@ -419,6 +761,14 @@ export function parseArgs(argv) {
       args.foldPending = true;
       continue;
     }
+    if (flag === "--allow-unmapped") {
+      args.allowUnmapped = true;
+      continue;
+    }
+    if (flag === "--verify") {
+      args.verify = true;
+      continue;
+    }
     if (!FLAGS_WITH_VALUE.has(flag)) {
       throw new Error(`unrecognized argument: ${flag}`);
     }
@@ -432,6 +782,9 @@ export function parseArgs(argv) {
         break;
       case "--region":
         args.region = value;
+        break;
+      case "--org-profile":
+        args.orgProfile = value;
         break;
       case "--expect-source-account":
         args.expectSourceAccount = value;
@@ -451,6 +804,9 @@ export function parseArgs(argv) {
       case "--fold-map":
         args.foldMapPath = value;
         break;
+      case "--pk":
+        args.pks.push(value);
+        break;
     }
   }
   args.tableMap = parseTableMap(args.tableMapRaw);
@@ -458,9 +814,56 @@ export function parseArgs(argv) {
 }
 
 // ---------------------------------------------------------------------------
+// migration.json — committed defaults, flags override
+// ---------------------------------------------------------------------------
+
+/**
+ * Decides the effective table map and account-resolution instructions from
+ * CLI flags layered over the committed migration.json. A flag always wins
+ * over the file for the piece of config it supplies; every other piece falls
+ * back to the file. Pure — takes the already-parsed args and file config, so
+ * it tests offline with no real migration.json or AWS calls.
+ */
+export function resolveEffectiveConfig(args, fileConfig) {
+  const tableMap = args.tableMap?.length
+    ? args.tableMap
+    : (fileConfig?.tableMap ?? []).map((t) => ({ source: t.source, dest: t.dest }));
+  if (!tableMap.length) {
+    throw new Error("REFUSING: no --table-map given and migration.json has no tableMap");
+  }
+
+  const sourceAccountResolution = args.expectSourceAccount ? null : fileConfig?.sourceAccountResolution ?? null;
+  if (!args.expectSourceAccount && !sourceAccountResolution) {
+    throw new Error("REFUSING: no --expect-source-account and no sourceAccountResolution in migration.json");
+  }
+  const destAccountResolution = args.expectDestAccount ? null : fileConfig?.destAccountResolution ?? null;
+  if (!args.expectDestAccount && !destAccountResolution) {
+    throw new Error("REFUSING: no --expect-dest-account and no destAccountResolution in migration.json");
+  }
+
+  return { tableMap, sourceAccountResolution, destAccountResolution };
+}
+
+// ---------------------------------------------------------------------------
 // Real clients — shell out to the `aws` CLI, one client per profile.
 // Only exercised when this file is run directly; never touched by the tests.
 // ---------------------------------------------------------------------------
+
+function tempJsonFile(obj) {
+  const dir = mkdtempSync(join(tmpdir(), "remap-subs-"));
+  const file = join(dir, "item.json");
+  writeFileSync(file, JSON.stringify(obj));
+  return { file, dir };
+}
+
+function withTempJsonFile(obj, use) {
+  const { file, dir } = tempJsonFile(obj);
+  try {
+    return use(file);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 function makeAwsClient(profile, region) {
   const aws = (cliArgs) =>
@@ -477,7 +880,12 @@ function makeAwsClient(profile, region) {
       const items = [];
       let ExclusiveStartKey;
       do {
-        const cliArgs = ["dynamodb", "scan", "--table-name", table, "--output", "json"];
+        const cliArgs = [
+          "dynamodb", "scan",
+          "--table-name", table,
+          "--consistent-read",
+          "--output", "json",
+        ];
         if (ExclusiveStartKey) {
           cliArgs.push("--exclusive-start-key", JSON.stringify(ExclusiveStartKey));
         }
@@ -487,54 +895,136 @@ function makeAwsClient(profile, region) {
       } while (ExclusiveStartKey);
       return items;
     },
-    async putItems(table, items) {
-      for (const item of items) {
-        aws(["dynamodb", "put-item", "--table-name", table, "--item", JSON.stringify(item)]);
-      }
+    // A quantum-workspace-progress row can carry up to 256KB of learner
+    // progress — well past the shell's per-argument limits — so the item is
+    // written to a temp file and passed as `--item file://...`, never inline.
+    async putItem(table, item) {
+      return withTempJsonFile(item, (file) =>
+        aws(["dynamodb", "put-item", "--table-name", table, "--item", `file://${file}`]),
+      );
     },
-    async deleteItems(table, keys) {
-      for (const key of keys) {
-        aws(["dynamodb", "delete-item", "--table-name", table, "--key", JSON.stringify(key)]);
-      }
+    async deleteItem(table, key) {
+      return withTempJsonFile(key, (file) =>
+        aws(["dynamodb", "delete-item", "--table-name", table, "--key", `file://${file}`]),
+      );
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// migration.json account resolution — shells to `aws`, not unit-tested
+// (mirrors founding-credit's run.mjs: only the pure decision above is).
+// ---------------------------------------------------------------------------
+
+function resolveAccountId(resolution) {
+  if (resolution.method === "sts-get-caller-identity") {
+    const out = execFileSync(
+      "aws",
+      ["sts", "get-caller-identity", "--profile", resolution.profile, "--query", "Account", "--output", "text"],
+      { encoding: "utf8" },
+    ).trim();
+    if (!out) throw new Error(`REFUSING: could not resolve account via profile "${resolution.profile}"`);
+    return out;
+  }
+  if (resolution.method === "organizations-list-accounts") {
+    const out = execFileSync(
+      "aws",
+      [
+        "organizations", "list-accounts",
+        "--profile", resolution.orgProfile,
+        "--query", `Accounts[?Name=='${resolution.accountName}'].Id`,
+        "--output", "text",
+      ],
+      { encoding: "utf8" },
+    ).trim();
+    if (!out) {
+      throw new Error(
+        `REFUSING: no organizations account named "${resolution.accountName}" (profile ${resolution.orgProfile})`,
+      );
+    }
+    return out;
+  }
+  throw new Error(`REFUSING: unsupported account resolution method "${resolution.method}"`);
 }
 
 // ---------------------------------------------------------------------------
 // CLI entry point
 // ---------------------------------------------------------------------------
 
+function loadJson(path, label) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    throw new Error(`REFUSING: could not read/parse ${label} at "${path}": ${err.message}`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  for (const required of ["sourceProfile", "destProfile", "expectSourceAccount", "expectDestAccount"]) {
+  for (const required of ["sourceProfile", "destProfile"]) {
     if (!args[required]) {
-      console.error(`REFUSING: missing required --${required.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`);
+      const flag = required === "sourceProfile" ? "--source-profile" : "--dest-profile";
+      console.error(`REFUSING: missing required ${flag}`);
       process.exit(1);
     }
   }
 
+  const migrationJsonPath = fileURLToPath(new URL("./migration.json", import.meta.url));
+  const fileConfig = loadJson(migrationJsonPath, "migration.json");
+  const effective = resolveEffectiveConfig(args, fileConfig);
+
   const sourceClient = makeAwsClient(args.sourceProfile, args.region);
   const destClient = makeAwsClient(args.destProfile, args.region);
+
+  const expectSourceAccount = args.expectSourceAccount ?? resolveAccountId(effective.sourceAccountResolution);
+  const expectDestAccount = args.expectDestAccount ?? resolveAccountId(effective.destAccountResolution);
+  const tableMap = effective.tableMap;
 
   console.log(
     `\n${args.execute ? "*** EXECUTING — this writes to the dest account ***" : "DRY RUN — nothing will be written"}\n`,
   );
+
+  if (args.verify) {
+    if (!args.subMapPath) {
+      console.error("REFUSING: --verify requires --sub-map <file of oldSub -> newSub>");
+      process.exit(1);
+    }
+    await assertAccounts({ sourceClient, destClient, expectSourceAccount, expectDestAccount });
+    const subMap = loadJson(args.subMapPath, "sub-map");
+    for (const { source, dest } of tableMap) {
+      const sourceItems = await sourceClient.scan(source);
+      const destItems = await destClient.scan(dest);
+      const filtered = args.pks.length
+        ? sourceItems.filter((i) => args.pks.includes(describeItemKey(i)))
+        : sourceItems;
+      const rows = buildVerifyRows(filtered, destItems, subMap);
+      for (const r of rows) {
+        console.log(
+          `${source} sub=${r.sub} ${r.attribute}: source=${r.sourceValue} dest=${r.destValue ?? "(no dest row)"} ` +
+            `${r.match ? "OK" : "MISMATCH"}`,
+        );
+      }
+    }
+    return;
+  }
 
   if (args.foldPending) {
     if (!args.foldMapPath) {
       console.error("REFUSING: --fold-pending requires --fold-map <file of emailHash -> newSub>");
       process.exit(1);
     }
-    const emailHashToSub = JSON.parse(readFileSync(args.foldMapPath, "utf8"));
+    const emailHashToSub = loadJson(args.foldMapPath, "fold-map");
     const results = await runFold({
+      sourceClient,
       destClient,
-      expectDestAccount: args.expectDestAccount,
-      tables: args.tableMap.map((t) => t.dest),
+      expectSourceAccount,
+      expectDestAccount,
+      tables: tableMap.map((t) => t.dest),
       emailHashToSub,
       execute: args.execute,
     });
     for (const r of results) {
-      console.log(`${r.table}: folded ${r.folded} · still pending ${r.stillPending}`);
+      console.log(`${r.table}: folded ${r.folded} · still pending ${r.stillPending} · skipped (already final) ${r.skipped}`);
     }
     return;
   }
@@ -543,36 +1033,44 @@ async function main() {
     console.error("REFUSING: remap mode requires --sub-map <file of oldSub -> newSub>");
     process.exit(1);
   }
-  const subMap = JSON.parse(readFileSync(args.subMapPath, "utf8"));
-  const emailBySub = args.emailBySubPath ? JSON.parse(readFileSync(args.emailBySubPath, "utf8")) : {};
+  const subMap = loadJson(args.subMapPath, "sub-map");
+  const emailBySub = args.emailBySubPath ? loadJson(args.emailBySubPath, "email-by-sub") : {};
 
   const results = await runMigration({
     sourceClient,
     destClient,
-    expectSourceAccount: args.expectSourceAccount,
-    expectDestAccount: args.expectDestAccount,
-    tables: args.tableMap,
+    expectSourceAccount,
+    expectDestAccount,
+    tables: tableMap,
     subMap,
     emailBySub,
     execute: args.execute,
+    allowUnmapped: args.allowUnmapped,
   });
 
   for (const r of results) {
     console.log(
-      `${r.table} -> ${r.destTable}: ${args.execute ? "wrote" : "would write"} ${r.writes} · ` +
+      `${r.table} -> ${r.destTable}: ${args.execute ? "wrote" : "would write"} ${r.toWrite} · ` +
         `pending ${r.pending} · unmapped ${r.unmapped.length}`,
     );
+    if (!args.execute) {
+      for (const row of r.rows) {
+        console.log(`    [${row.bucket}] ${row.before} -> ${row.after ?? "(unmapped — not written)"}`);
+      }
+    }
     for (const u of r.unmapped) {
-      // Redact: report which sub was unresolved, never the row's other
-      // learner-identifying content.
-      console.log(`    UNMAPPED sub=${u.sub.slice(0, 8)}… — ${u.reason}`);
+      console.log(`    UNMAPPED sub=${u.sub.slice(0, 8)}… ${describeItemKey(u.item)} — ${u.reason}`);
     }
   }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((err) => {
-    console.error(`\nREFUSING: ${err.message}\n`);
+    // Guard refusals already say "REFUSING:"; a mid-run write failure already
+    // says "ABORTED MID-RUN". Print the message as-is rather than
+    // re-prefixing it — a second "REFUSING:" on an ABORTED message would
+    // misreport a partial write as a clean pre-write refusal.
+    console.error(`\n${err.message}\n`);
     process.exit(1);
   });
 }

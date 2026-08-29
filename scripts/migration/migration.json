@@ -1,0 +1,19 @@
+{
+  "sourceAccountResolution": {
+    "method": "sts-get-caller-identity",
+    "profile": "altivum-mgmt",
+    "note": "Altivum (migration SOURCE) is NOT a member of the QL Organization — verified 2026-08-28 via `aws organizations list-accounts --profile org-admin` (members: Delta Centric Org, Christian Perez - Personal, QL-Dev, Quantum Learner - HQ, Braket Workloads, QL-Prod; no Altivum). Its account id therefore cannot be resolved by org name lookup and is instead read from a profile independently known to BE Altivum (docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md: 'altivum-mgmt stays — it is the legitimate Altivum-org profile')."
+  },
+  "destAccountResolution": {
+    "method": "organizations-list-accounts",
+    "orgProfile": "org-admin",
+    "accountName": "QL-Prod",
+    "note": "Resolved at run time via `aws organizations list-accounts --profile org-admin --query \"Accounts[?Name=='QL-Prod'].Id\" --output text` (scripts/migration/README.md). No literal id is committed — this repo is public."
+  },
+  "tableMap": [
+    { "source": "quantum-stripe-wallet", "dest": "quantum-stripe-wallet" },
+    { "source": "quantum-qpu-ledger", "dest": "quantum-qpu-ledger" },
+    { "source": "quantum-qpu-tasks", "dest": "quantum-qpu-tasks" },
+    { "source": "quantum-workspace-progress", "dest": "quantum-workspace-progress" }
+  ]
+}
