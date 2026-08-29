@@ -258,3 +258,15 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   refund, dispute withdraw/win, proration, replay-idempotency) — real webhook
   deliveries to the QL-Prod endpoint, rows asserted in
   quantum-stripe-sandbox-wallet, sandbox objects cleaned up.
+
+## Task 9 — 2026-08-28 (founder-approved)
+
+- LIVE webhook endpoint created on the QL-Prod stack URL via
+  `rotate-webhook-endpoint.mjs --confirm-live`: 9/9 events, api_version pinned
+  2026-06-24.dahlia, signing secret stored into QL-Prod `quantum-stripe`
+  (replacing PENDING-TASK-9, never printed), function recycled, signed probe
+  HTTP 200 against the deployed handler.
+- The OLD live endpoint (Altivum-stack URL) is UNTOUCHED and enabled, per plan
+  — retire at Task 12 Step 5.
+- Parity gate PASS: both enabled live endpoints 9/9 + pinned; catalog matches
+  CATALOG and pricing.ts.
