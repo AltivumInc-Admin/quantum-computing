@@ -225,3 +225,32 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   not drift.
 - `quantum-ci-standby` NOT migrated (audit's fork-PR webhook risk); deferred to
   the teardown pass for keep/fix/kill.
+
+## Task 11 (in progress) — 2026-08-28
+
+- Step 1 SITE: PASS. `main.d2o7mzaq4cktxf.amplifyapp.com` 200; the foundations
+  lesson page is BYTE-IDENTICAL to live production (91,165 bytes both). CI's
+  katex greps are artifact-level (web/out) and do not reproduce over HTTP
+  against EITHER deployment — control-checked against quantum.altivum.ai.
+- Step 4 TUTOR: PASS. One real question through the new edge
+  (`ddbde0ibe8yux.cloudfront.net`) streamed a correct Hadamard answer.
+  FOUND+FIXED: the tutor function's CloudFront-OAC resource policy
+  (AllowCloudFrontOACInvokeUrl/Invoke, pinned to the distribution ARN) is
+  added OUT-OF-BAND in the source account — no template carries it. Replicated
+  onto the new function via `lambda add-permission`; until then the edge
+  returned the Function URL's Forbidden.
+- Step 5 (probe half): PASS. `GET /qpu/budget` via the new edge answers 401
+  Unauthorized (the authorizer, not a 5xx/edge error) — wiring proven; the
+  authenticated 1-shot run remains founder-gated.
+- Step 7 ANALYTICS: PASS. `quantum-analytics` deployed (AmplifyAppId=new app,
+  AmplifyDomain=quantumlearner.dev), invoked once: clean run, wrote the
+  2026-08-28 row (zero counts — access-log delivery lag, mechanism proven).
+  Drift is now 11/11.
+- Step 6 prep: SANDBOX webhook rotated onto the QL-Prod endpoint with
+  `rotate-webhook-endpoint.mjs` (9 events, pinned 2026-06-24.dahlia, signing
+  secret stored, function recycled, signed probe HTTP 200). Parity: 9/9 on
+  every enabled endpoint + catalog matches. NOTE: the OLD sandbox endpoint
+  (Altivum-stack URL) remains enabled — retire at cutover with its live twin.
+  `op` gotcha: two 1Password accounts on this machine now — every `op read`
+  needs OP_ACCOUNT or --account, and an account-less `op read` can exit 0 with
+  EMPTY stdout inside command substitution.
