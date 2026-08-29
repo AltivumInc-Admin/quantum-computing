@@ -128,3 +128,35 @@ SYNC_URL, REVIEW_PREFS_URL, TUTOR_URL, QPU_URL} — values in the Amplify consol
 Table row counts at snapshot: wallet 0 · qpu-ledger 5 · qpu-tasks 8 ·
 progress 4 · review-prefs 2 · analytics-daily 9. Pool: 14 users (9 native
 CONFIRMED, 5 Google-federated).
+
+## Task 5 — 2026-08-28 (wave 1 deployed)
+
+Blocked ~3h on the QL-Prod Lambda concurrency quota (new-account limit 10 forbids
+any reserved concurrency). Increase to 1000 requested 19:24, went to a support
+case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared.
+
+- Secrets created in QL-Prod us-east-2: `quantum-stripe` (live key, webhookSecret
+  `PENDING-TASK-9`), `quantum-stripe-sandbox` (sandbox key, same placeholder).
+- The first (quota-blocked) create left Retain-protected tables behind; recreates
+  collided on names. Resolved WITHOUT deleting: `create-change-set
+  --import-existing-resources` adopts the orphan into the new stack. Both
+  `quantum-workspace-progress` and `quantum-review-email-prefs` were adopted
+  (verified empty first).
+- SAM CLI gotcha: a spaced value inside `--parameter-overrides` (the cron
+  ScheduleExpression) gets split even when shell-quoted; the review-email stack
+  rolled back once on "Parameter ScheduleExpression is not valid". Deploy via
+  `create-change-set --parameters` for spaced values.
+- New endpoints (QL-Prod):
+  - Sync: `https://heve7895r3.execute-api.us-east-2.amazonaws.com` (NEXT_PUBLIC_SYNC_URL)
+  - Prefs: `https://50meh0zjb4.execute-api.us-east-2.amazonaws.com` (NEXT_PUBLIC_REVIEW_PREFS_URL)
+  - Unsubscribe: `https://3g6ldtexdxc4djj45cq7kkwzam0thyat.lambda-url.us-east-2.on.aws/`
+  - Billing (live): `https://00tlxl2jte.execute-api.us-east-2.amazonaws.com` (webhook `/webhook`)
+  - Billing (sandbox): `https://axikm3lao9.execute-api.us-east-2.amazonaws.com` (webhook `/webhook`)
+- Verified: all four APIs return 401 (not 5xx) unauthenticated on their real
+  routes (`/progress`, `/prefs`, `/checkout` x2).
+- PENDING founder action: 4 SNS email confirmations at hq@ (sync-alerts,
+  review-email-alerts, stripe-alerts, stripe-sandbox-alerts) — alarms are silent
+  until clicked.
+- Ruling: the sandbox stack takes the NEW pool/site overrides too (a sandbox
+  verifying JWTs against the Altivum pool would be dead in QL-Prod); only
+  NamePrefix/MetricNamespace/StripeSecretName stay sandbox-specific.
