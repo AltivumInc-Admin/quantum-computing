@@ -214,3 +214,14 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   copy rides Task 12's re-run.
 - Cutover reminder (standing): re-run remap FIRST with a fresh subMap, fold
   PENDING after, never interleaved.
+
+## Task 10 — 2026-08-28
+
+- OIDC drift role deployed to QL-Prod: `quantum-ci-drift-role` (params verbatim
+  from source). Repo variable `AWS_DRIFT_ROLE_ARN` now points at the QL-Prod
+  role — nightly drift watches the NEW account from tonight.
+- Local drift vs git: 10/11 MATCH. The one `??` is `quantum-analytics`,
+  which deploys at Task 11 Step 7 (needs the new Amplify app id) — expected,
+  not drift.
+- `quantum-ci-standby` NOT migrated (audit's fork-PR webhook risk); deferred to
+  the teardown pass for keep/fix/kill.
