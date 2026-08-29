@@ -160,3 +160,31 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
 - Ruling: the sandbox stack takes the NEW pool/site overrides too (a sandbox
   verifying JWTs against the Altivum pool would be dead in QL-Prod); only
   NamePrefix/MetricNamespace/StripeSecretName stay sandbox-specific.
+
+## Task 6 — 2026-08-28 (wave 2 deployed; Braket trust widened)
+
+- `quantum-tutor` secret replicated Altivum -> QL-Prod via asm-exec dynamic
+  references (value never entered the session); apiKey hash parity verified
+  value-blind. Source-of-truth note: no Anthropic item exists in the 1Password
+  vault — the deployed source secret IS the source of truth.
+- `quantum-qpu-edge-secret` replicated the same way — into BOTH us-east-2 and
+  us-east-1 (CFN `{{resolve}}` is region-local; the edge stack rolled back once
+  on ResourceNotFound before the us-east-1 copy existed).
+- zsh gotcha: `$VAR:q...` inside a double-quoted parameter eats `:q` as a
+  history modifier (produced `<acct>uantum-braket-spend`). Brace every
+  expansion followed by a colon: `${VAR}:...`.
+- Tutor: stack `quantum-tutor` (free unmetered posture verbatim — pool params
+  empty, `SecretId=quantum-tutor`), function URL behind edge
+  `quantum-tutor-edge` -> `https://ddbde0ibe8yux.cloudfront.net`
+  (NEXT_PUBLIC_TUTOR_URL). Unlike the source account, the tutor secret EXISTS
+  here from day one.
+- QPU: stack `quantum-qpu-submit` with the four cross-account Braket values
+  (role/topic/bucket by resolved account id, ExternalId from op), API
+  `https://woeuhycu01.execute-api.us-east-2.amazonaws.com`, edge
+  `quantum-qpu-edge` -> `https://d143hepl8nha1e.cloudfront.net`
+  (NEXT_PUBLIC_QPU_URL).
+- Deploy-then-trust: `quantum-braket-workloads` redeployed with
+  `PlatformRoleArns` = all FOUR platform roles (two Altivum + two QL-Prod),
+  ExternalId unchanged. Verified: org-admin `sts assume-role` still DENIED;
+  the Braket spend topic now carries BOTH accounts' `quantum-qpu-killswitch`
+  Lambda subscriptions.
