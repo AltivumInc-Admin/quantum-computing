@@ -254,3 +254,7 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   `op` gotcha: two 1Password accounts on this machine now — every `op read`
   needs OP_ACCOUNT or --account, and an account-less `op read` can exit 0 with
   EMPTY stdout inside command substitution.
+- Step 6 STRIPE SANDBOX: PASS 6/6 (grant, renewal+garnish, absolute-target
+  refund, dispute withdraw/win, proration, replay-idempotency) — real webhook
+  deliveries to the QL-Prod endpoint, rows asserted in
+  quantum-stripe-sandbox-wallet, sandbox objects cleaned up.
