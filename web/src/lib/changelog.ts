@@ -131,6 +131,11 @@ export interface SilentChange {
  */
 export const SILENT: readonly SilentChange[] = [
   {
+    pr: 253,
+    reason:
+      "One class on the account menu's wrapper div (min-w-0) so the signed-in email chip can compress instead of pushing the nav's action rail across the centered pill. A learner CAN see the un-breaking, but it lands the night 2026-08-30-black-and-gold was announced and only makes that entry's description true — the same-day-polish precedent PR 244 set.",
+  },
+  {
     pr: 246,
     reason:
       "Repository hygiene with no learner-visible surface: the git filter that strips notebook outputs was pointing at an interpreter in a checkout that no longer existed, and nothing versioned enforced stripping at all. Adds a run-time-resolving filter wrapper, a `make git-filters` target, and the CI guard that makes it a guarantee rather than per-machine config. The curriculum notebooks a learner reads are byte-identical before and after.",
