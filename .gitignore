@@ -94,3 +94,21 @@ lambda/qpu/.aws-sam/
 # Cached CloudFront access logs pulled by scripts/analytics/backfill.mjs.
 # Raw logs carry visitor IP addresses and must never be committed.
 .analytics-cache/
+
+# Per-developer AI-assistant state. These directories are populated by whichever
+# assistant the developer happens to run (skills, local settings, lockfiles);
+# nothing in the project reads them, and .claude/ carries settings.local.json.
+/.agents/
+/.claude/
+/.continue/
+/.factory/
+/.kiro/
+/skills-lock.json
+
+# Braket job output artifacts, written next to whatever invoked them.
+/results.json
+
+# Design-system handoff archives. The design system is the claude.ai project
+# and .design-sync/; a zip in the repo root is a stale copy of a moving target
+# (this one was the July "Instrument" era, superseded twice by 2026-08-31).
+/*.zip
