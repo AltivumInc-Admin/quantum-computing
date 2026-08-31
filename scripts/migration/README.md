@@ -409,3 +409,33 @@ green-lit the spike, then the full sequence, in this session.
 - Outstanding from this wave: founder console work — GSC/Bing property for
   the new domain; analytics host filtering may undercount the new hostname
   (accuracy, not breakage); reconcile the hardcoded-CORS template drift.
+
+## The vanity domains are permanent — 2026-08-31
+
+Decided jointly across the three product sessions and recorded in each. Two
+INDEPENDENT reasons, either sufficient on its own:
+
+- **Email/MX.** The `quantumlearner.dev` zone carries the root address of four
+  AWS accounts (`hq@`, `braket@`, `aws-prod@`, `aws-dev@`), which is also how
+  those accounts recover. Losing the zone loses account recovery.
+- **The redirect is load-bearing forever.** Every link, bookmark, citation and
+  shared URL minted before the flip points at `quantumlearner.dev`. The sibling
+  Shop product makes the same case more starkly — it burns its origin into the
+  card IMAGE of physical collectibles customers have paid for, so a lapsed
+  domain turns every card ever sold into a dead link on an object someone owns.
+
+So: **retiring the domain or its 301 is not a cleanup task at any future date.**
+Anything in this log describing a "teardown candidate" refers to the orphaned
+`quantumlearner-dev-redirect` CloudFront STACK — a different thing, safe to
+remove, and easy to confuse with the domain by name alone.
+
+Verified the same day, in response to the sibling sessions' prompt: Learner has
+NO scheduled monitor left watching the vanity host. No CloudWatch Synthetics
+canaries and no Route 53 health checks exist; the only scheduled workflow
+(`drift.yml`, 13:00 UTC) compares deployed Lambda code to git through AWS APIs
+and never traverses a URL, so it is origin-independent by construction; and the
+one scheduled Lambda that emits URLs (the 15:00 UTC review-email sender) already
+carries `SITE_URL=https://learner.quantumenv.dev`. The hazard the Shop session
+found in its own repo — a weekly DAST scan pinned to the old host, which after a
+flip would scan the 301, find nothing, and pass forever unattended — has no
+counterpart here.
