@@ -33,7 +33,7 @@ export function amplifyAuthConfig(): Record<string, unknown> | null {
   // Absolute redirect URIs must match the Cognito app client's allowed callback /
   // logout URLs. Deriving from the live origin covers prod and localhost:3000.
   const origin =
-    typeof window !== "undefined" ? window.location.origin : "https://quantumlearner.dev";
+    typeof window !== "undefined" ? window.location.origin : "https://learner.quantumenv.dev";
   return {
     Auth: {
       Cognito: {

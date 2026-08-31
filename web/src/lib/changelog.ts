@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-31-learner-quantumenv-dev",
+    shipped: "2026-08-31",
+    kind: "improved",
+    title: "Quantum Learner joins the Quantum Env platform",
+    body: "The site's home address is now learner.quantumenv.dev, alongside the other Quantum Env apps. The previous address, quantumlearner.dev, forwards here automatically, and every bookmark and shared link keeps working. Sign-in is unchanged, including Google.",
+    href: "/",
+  },
+  {
     id: "2026-08-30-black-and-gold",
     shipped: "2026-08-30",
     kind: "improved",

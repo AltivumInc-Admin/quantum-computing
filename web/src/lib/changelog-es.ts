@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-08-31-learner-quantumenv-dev": {
+    title: "Quantum Learner se une a la plataforma Quantum Env",
+    body: "La dirección del sitio ahora es learner.quantumenv.dev, junto a las demás aplicaciones de Quantum Env. La dirección anterior, quantumlearner.dev, redirige aquí automáticamente, y todos los marcadores y enlaces compartidos siguen funcionando. El inicio de sesión no cambia, incluido Google.",
+  },
   "2026-08-30-black-and-gold": {
     title: "Negro y dorado",
     body: "El verde desapareció: Quantum Learner ahora descansa sobre un fondo negro verdadero, con el acento dorado haciendo el mismo trabajo discreto de siempre. El tema claro se aclaró a un blanco cálido con tinta casi negra. Nada se movió y nada cambió de significado — cada página, gráfico e icono simplemente estrena el nuevo traje, en ambos temas.",

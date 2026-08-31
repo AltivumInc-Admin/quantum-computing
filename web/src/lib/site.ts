@@ -1,6 +1,9 @@
 // Single source for the deployed site origin. Imported by the root layout
 // (metadataBase), the sitemap, and robots so the base URL is defined once.
-export const SITE_URL = "https://quantumlearner.dev";
+// learner.quantumenv.dev is the canonical home as of the platform-subdomain
+// migration; quantumlearner.dev remains associated with the app as a vanity
+// redirect (302 soak, then 301) and quantum.altivum.ai still 301s onward.
+export const SITE_URL = "https://learner.quantumenv.dev";
 
 // The one brand name (PR #170's rebrand, matching the nav). Consumed by the
 // layout metadata (title, og:site_name, OG alt), the home route's titles, the
