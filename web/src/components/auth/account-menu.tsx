@@ -109,7 +109,13 @@ export function AccountMenu() {
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    // min-w-0 on the wrapper, not just the trigger: this div is the ACTUAL
+    // flex item inside the nav's action rail, and its `min-width: auto`
+    // resolves to the trigger's full intrinsic width — so the chip stayed
+    // rigid at its max-w cap and the rail overflowed left across the pill
+    // even after the trigger itself got min-w-0. Every level between the
+    // flex container and the truncating span must be allowed to shrink.
+    <div ref={containerRef} className="relative min-w-0">
       <button
         ref={triggerRef}
         type="button"
