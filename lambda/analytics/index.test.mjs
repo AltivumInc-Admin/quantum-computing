@@ -23,9 +23,9 @@ const HEADER =
 /** A log with one reader (page + asset) and one declared crawler. */
 const LOG = [
   HEADER,
-  "2026-08-19,10:00:00,198.51.100.4,/,200,-,Mozilla/5.0,quantum.altivum.ai,text/html",
-  "2026-08-19,10:00:01,198.51.100.4,/_next/static/x.js,200,-,Mozilla/5.0,quantum.altivum.ai,text/javascript",
-  "2026-08-19,10:05:00,10.0.0.9,/,200,-,Googlebot/2.1,quantum.altivum.ai,text/html",
+  "2026-08-19,10:00:00,198.51.100.4,/,200,-,Mozilla/5.0,learner.quantumenv.dev,text/html",
+  "2026-08-19,10:00:01,198.51.100.4,/_next/static/x.js,200,-,Mozilla/5.0,learner.quantumenv.dev,text/javascript",
+  "2026-08-19,10:05:00,10.0.0.9,/,200,-,Googlebot/2.1,learner.quantumenv.dev,text/html",
 ].join("\n");
 
 function makeCore({ logText = LOG, rangesOk = true, amplifyResponse } = {}) {

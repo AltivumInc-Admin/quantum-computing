@@ -47,7 +47,7 @@ function row({
   status = "200",
   referer = "-",
   ua = CHROME_MAC,
-  host = "quantum.altivum.ai",
+  host = "learner.quantumenv.dev",
   contentType = "text/html",
 } = {}) {
   const f = new Array(33).fill("-");
@@ -75,7 +75,7 @@ test("parses the real CloudFront header, escaped parentheses and all", () => {
     "2026-08-16,16:25:50,BNA50-P1,6110,203.0.113.40,GET,d47zhgcam9txj.cloudfront.net," +
     "/auth/callback,200,https://accounts.google.com/," +
     CHROME_MAC +
-    ",code\\=REDACTED&state\\=REDACTED,-,Miss,x_XaI0l,quantum.altivum.ai,https,827,0.093,-," +
+    ",code\\=REDACTED&state\\=REDACTED,-,Miss,x_XaI0l,learner.quantumenv.dev,https,827,0.093,-," +
     "TLSv1.3,TLS_AES_128_GCM_SHA256,Miss,HTTP/3.0,-,-,60221,0.093,Miss,text/html,-,-,-";
   const { rows, malformed } = parseLog(logOf(real));
 
@@ -85,7 +85,7 @@ test("parses the real CloudFront header, escaped parentheses and all", () => {
   assert.equal(rows[0].path, "/auth/callback");
   assert.equal(rows[0].status, "200");
   assert.equal(rows[0].referer, "https://accounts.google.com/");
-  assert.equal(rows[0].host, "quantum.altivum.ai");
+  assert.equal(rows[0].host, "learner.quantumenv.dev");
   assert.equal(rows[0].contentType, "text/html");
   assert.match(rows[0].ua, /^Mozilla\/5\.0 \(Macintosh/, "percent-escapes must be decoded");
 });
@@ -318,7 +318,7 @@ test("finds the Google sign-in that really happened on 2026-08-16", () => {
 test("does not count a callback that did not come from Google", () => {
   const rows = parse(
     // Same route, reached by in-app navigation — seen in the real 2026-07-28 log.
-    row({ path: CALLBACK_PATH, status: "200", referer: "https://quantum.altivum.ai/" }),
+    row({ path: CALLBACK_PATH, status: "200", referer: "https://learner.quantumenv.dev/" }),
     // A referer that merely mentions Google must not match.
     row({ path: CALLBACK_PATH, status: "200", referer: "https://evil.test/?x=accounts.google.com/" }),
     // The route, but not a completed load.

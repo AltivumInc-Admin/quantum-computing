@@ -132,8 +132,21 @@ test("the alerts topic reaches a human by email, and every alarm notifies it", (
 });
 
 test("the Amplify domain parameter is the apex, which is the one that works", () => {
-  // Passing quantum.altivum.ai to GenerateAccessLogs returns NotFoundException;
-  // the association is on the apex with a "quantum" subdomain.
+  // Passing a subdomain (learner.quantumenv.dev) to GenerateAccessLogs returns
+  // NotFoundException; the association is the apex, and the subdomain is
+  // selected inside the handler by x-host-header.
   const params = blocks(section(template, "Parameters"));
-  assert.match(params.AmplifyDomain.join("\n"), /Default: altivum\.ai\s*$/m);
+  assert.match(params.AmplifyDomain.join("\n"), /Default: quantumenv\.dev\s*$/m);
+});
+
+test("the host filter is a parameter, and it names the canonical site host", () => {
+  // A stale host filter does not skew this report, it ZEROES it — every row is
+  // dropped, `humans` records 0, the job still succeeds and no alarm fires.
+  // That silently held from the QL-Prod cutover until 2026-08-31, so the value
+  // is a parameter wired to an env var (never a source constant) and it must
+  // name the same host the site actually serves.
+  const params = blocks(section(template, "Parameters"));
+  assert.ok(params.SiteHost, "SiteHost must be a template parameter");
+  assert.match(params.SiteHost.join("\n"), /Default: learner\.quantumenv\.dev\s*$/m);
+  assert.match(template, /SITE_HOST: !Ref SiteHost/, "SiteHost must reach the function as SITE_HOST");
 });

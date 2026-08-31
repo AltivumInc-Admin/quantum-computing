@@ -12,15 +12,25 @@ Description: >
 Parameters:
   AmplifyAppId:
     Type: String
-    Default: d1ao02to23x85y
-    Description: The Amplify app serving quantum.altivum.ai.
+    Default: d2o7mzaq4cktxf
+    Description: The QL-Prod Amplify app serving learner.quantumenv.dev.
   AmplifyDomain:
     Type: String
-    Default: altivum.ai
+    Default: quantumenv.dev
     Description: >
-      The DOMAIN ASSOCIATION, which is the apex — passing quantum.altivum.ai
-      returns NotFoundException. The subdomain is filtered inside the handler
-      by x-host-header.
+      The DOMAIN ASSOCIATION, which is the apex — passing a subdomain such as
+      learner.quantumenv.dev returns NotFoundException. The subdomain is
+      filtered inside the handler by x-host-header, via SiteHost below. Both
+      move together on a domain migration: the association selects whose logs
+      are fetched, SiteHost selects which rows in them are ours.
+  SiteHost:
+    Type: String
+    Default: learner.quantumenv.dev
+    Description: >
+      The x-host-header value that counts as our traffic. A stale value does
+      not skew the report, it ZEROES it (the filter drops every row) while the
+      job still succeeds and no alarm fires — which is exactly what happened
+      from the QL-Prod cutover until 2026-08-31.
   ScheduleExpression:
     Type: String
     Default: cron(30 13 * * ? *)
@@ -87,6 +97,7 @@ Resources:
           TABLE_NAME: !Ref AnalyticsTable
           AMPLIFY_APP_ID: !Ref AmplifyAppId
           AMPLIFY_DOMAIN: !Ref AmplifyDomain
+          SITE_HOST: !Ref SiteHost
       Policies:
         - Statement:
             - Effect: Allow

@@ -36,7 +36,7 @@ Parameters:
       edge-secret mismatch.
   SiteOrigin:
     Type: String
-    Default: https://quantum.altivum.ai
+    Default: https://learner.quantumenv.dev
     Description: >
       The browser origin allowed to READ the 429 this WAF returns. Must stay equal
       to the same-named parameter in template.yaml (same default on purpose): the

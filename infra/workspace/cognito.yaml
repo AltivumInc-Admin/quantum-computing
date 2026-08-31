@@ -21,8 +21,12 @@ Parameters:
       for the Google OAuth hop. Must be globally unique within the region.
   SiteUrl:
     Type: String
-    Default: https://quantum.altivum.ai
-    Description: Production site origin (for callback/logout URLs).
+    Default: https://learner.quantumenv.dev
+    Description: >
+      Production site origin (for callback/logout URLs). Must name the LIVE
+      canonical origin: a deploy that takes the default writes it straight into
+      the app client's callback/logout allowlist, so a stale value here breaks
+      sign-in rather than failing loudly.
   AlertEmail:
     Type: String
     Default: christian.perez@altivum.io

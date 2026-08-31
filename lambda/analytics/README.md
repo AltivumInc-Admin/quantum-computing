@@ -100,8 +100,17 @@ Raw cached logs contain visitor addresses and are gitignored; do not commit them
 cd lambda/analytics && npm ci && sam build
 sam deploy --stack-name quantum-analytics --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
-  --parameter-overrides AlertEmail=<operator email>
+  --parameter-overrides AlertEmail=<operator email> \
+    AmplifyAppId=d2o7mzaq4cktxf AmplifyDomain=quantumenv.dev \
+    SiteHost=learner.quantumenv.dev
 ```
+
+> **`SiteHost` and `AmplifyDomain` move together with the site's domain.**
+> `AmplifyDomain` is the ASSOCIATION (the apex) whose logs are fetched;
+> `SiteHost` is the x-host-header that counts as ours. A stale `SiteHost` does
+> not skew the report — it drops every row, records `humans: 0`, and still
+> succeeds, so no alarm fires. That held silently from the QL-Prod cutover
+> until 2026-08-31.
 
 Confirm the SNS email subscription from the inbox once, or no alarm will ever
 reach a human.

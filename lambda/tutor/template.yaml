@@ -33,7 +33,7 @@ Parameters:
       AUTHORIZED), so every tier above free was unreachable there.
   AllowedOrigin:
     Type: String
-    Default: https://quantum.altivum.ai
+    Default: https://learner.quantumenv.dev
     Description: Origin allowed to call the Function URL (your site).
   MaxConcurrency:
     Type: Number

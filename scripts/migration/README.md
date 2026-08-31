@@ -338,3 +338,74 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   analytics-daily verbatim copy), Step 5 (confirm a live delivery on the new
   Stripe endpoint, then DISABLE the old one), Step 6 (drop the amplifyapp
   callback/logout URLs from the new pool client). Task 13 not started.
+
+## Platform-subdomain migration: learner.quantumenv.dev — 2026-08-31 (founder-ordered)
+
+Executed jointly with the quantum-env session (runbook:
+`docs/platform-subdomain-migration.md` in the quantum-env repo). Founder
+green-lit the spike, then the full sequence, in this session.
+
+- **Spike proved the cross-account association pattern**: a throwaway
+  `test.quantumenv.dev` association on the QL-Prod Amplify app, ACM validation
+  + CNAME written into the quantumenv.dev zone (ql-hq account) by the env
+  session, AVAILABLE with valid TLS in ~11 min, torn down after joint verify.
+- **The flip**: `learner.quantumenv.dev` associated and verified; Cognito app
+  client gained the new callback/logout URLs BEFORE the content flip
+  (allowlists-first); PR #255 moved SITE_URL/auth fallback/og card/changelog;
+  `quantumlearner.dev` + www now 301 (302 during a >1h soak, then hardened,
+  RELEASE jobs 8/9 flushing the edge pin each time). Full legacy chain
+  `quantum.altivum.ai` → `quantumlearner.dev` → `learner.quantumenv.dev`
+  terminates 200 in 2 hops. The quantumlearner.dev ZONE keeps its email/MX
+  role untouched (four AWS account root addresses ride on it).
+- **Google sign-in was found broken and fixed — a LATENT pool-cutover gap,
+  not a subdomain issue**: the Google OAuth client had never been given the
+  NEW pool's hosted domain (`quantumlearner` vs legacy `quantum-altivum`), so
+  every federated sign-in on QL-Prod failed with redirect_uri_mismatch since
+  the 2026-08-30 cutover — first exercised today (Task 11 Step 3, now DONE:
+  real founder sign-in succeeded). Fix also completed a divestment: a NEW
+  OAuth client under a Delta Centric-owned Google project (secret in the
+  Delta Centric 1Password vault, item "Google OAuth") replaced the
+  Altivum-project client; the Cognito IdP flip preserves all links (Google's
+  sub is account-scoped, not client-scoped). The Altivum "Logic" project is
+  out of the auth path.
+- **Backend CORS was a missed origin-flip surface**: SIX deployed stacks
+  allowlisted the old origin — sync, qpu, review-email, both stripe (checkout
+  return URLs ride the same parameter), tutor (still on quantum.altivum.ai —
+  two domains behind, tutor browser path dead since the FIRST cutover).
+  **CORRECTED 2026-08-31 (an earlier revision of this entry blamed
+  source drift; that was wrong):** the repo templates are correct and always
+  were — all three say `AllowOrigins: [!Ref SiteOrigin, http://localhost:3000]`.
+  The real mechanism is that **SAM resolves that `Ref` into the generated
+  OpenAPI `x-amazon-apigateway-cors` body at BUILD time**, so the literal is
+  baked into the template CloudFormation stores. `SiteOrigin` is therefore a
+  BUILD-time input, not a live stack parameter: an `update-stack` that changes
+  only the parameter reports "No updates are to be performed" and changes
+  nothing. There is no repo-vs-source drift and nothing to reconcile.
+  - The correct fix is `sam deploy --parameter-overrides SiteOrigin=<origin>`
+    from source. What was actually done in the moment — swapping the literal
+    in the stored template body and re-deploying it (qpu via S3, >51KB) — is
+    equivalent in effect but is NOT the recommended procedure.
+  - The durable landmine this exposed, now fixed: the deploy READMEs for
+    sync/qpu **omitted `SiteOrigin` entirely**, and every template's default
+    was still `https://quantum.altivum.ai`. A by-the-book `sam deploy` would
+    have silently restored a two-domains-dead origin and re-broken the site.
+    All six templates' defaults now name the canonical origin and each deploy
+    doc states the build-time caveat.
+  - All endpoints verified answering
+    `access-control-allow-origin: https://learner.quantumenv.dev`.
+- **Analytics was reporting a flat zero, and had been since the QL-Prod
+  cutover** (found 2026-08-31 while checking the hostname-move impact; the
+  table shows `humans: 0` for every day). Cause: `SITE_HOST` was a hardcoded
+  source constant reading `quantum.altivum.ai` — a hostname the QL-Prod app
+  has never served — and the row filter drops every non-matching host, so the
+  run recorded 0 and SUCCEEDED. The stack's alarms only fire on errors, so
+  nothing ever flagged it. Now a `SiteHost` parameter wired to a `SITE_HOST`
+  env var (defaulted to the canonical host, asserted by template.test.mjs),
+  `AmplifyDomain` moved to the `quantumenv.dev` association and `AmplifyAppId`
+  off the legacy app id. Deployed and invoked: the association resolves (no
+  NotFoundException). Historical zeros stay zero — those days' traffic lived
+  on associations this job no longer reads; real counts resume with the
+  2026-08-31 run.
+- Outstanding from this wave: founder console work — GSC/Bing property for
+  the new domain; analytics host filtering may undercount the new hostname
+  (accuracy, not breakage); reconcile the hardcoded-CORS template drift.

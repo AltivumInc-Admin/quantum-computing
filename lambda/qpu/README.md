@@ -102,11 +102,18 @@ V=$(openssl rand -hex 32); aws secretsmanager create-secret \
 
 **1. Main stack** (us-east-2):
 
+> **`SiteOrigin` must name the live canonical origin.** SAM resolves it into the
+> generated OpenAPI CORS block at BUILD time, so it behaves as a build-time input:
+> a `update-stack` that only changes the parameter no-ops, and a `sam deploy` that
+> omits it silently bakes in the template default. Omitting it here is what broke
+> CORS on 2026-08-31.
+
 ```
 cd lambda/qpu && npm ci && sam build
 sam deploy --stack-name quantum-qpu-submit --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
-  --parameter-overrides ResultsBucket=amazon-braket-eu-north-1-<account>
+  --parameter-overrides ResultsBucket=amazon-braket-eu-north-1-<account> \
+    SiteOrigin=https://learner.quantumenv.dev
 ```
 
 The command above shows the same-account form only. The live stack's actual
