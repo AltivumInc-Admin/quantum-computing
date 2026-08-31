@@ -109,13 +109,18 @@ export function AccountMenu() {
   };
 
   return (
-    // min-w-0 on the wrapper, not just the trigger: this div is the ACTUAL
-    // flex item inside the nav's action rail, and its `min-width: auto`
+    // min-w-0 AND flex on the wrapper, not just the trigger: this div is the
+    // ACTUAL flex item inside the nav's action rail, and its `min-width: auto`
     // resolves to the trigger's full intrinsic width — so the chip stayed
     // rigid at its max-w cap and the rail overflowed left across the pill
-    // even after the trigger itself got min-w-0. Every level between the
-    // flex container and the truncating span must be allowed to shrink.
-    <div ref={containerRef} className="relative min-w-0">
+    // even after the trigger itself got min-w-0. And min-w-0 alone is not
+    // enough: as a plain block the wrapper shrinks but nothing forces the
+    // inline-flex button inside to follow, so the button spilled out the
+    // wrapper's right edge and parked the chevron under the language globe.
+    // flex makes the button a flex item of the wrapper, completing the
+    // container -> wrapper -> button -> span shrink chain down to truncate.
+    // The absolute dropdown anchors to the wrapper as before.
+    <div ref={containerRef} className="relative flex min-w-0">
       <button
         ref={triggerRef}
         type="button"
