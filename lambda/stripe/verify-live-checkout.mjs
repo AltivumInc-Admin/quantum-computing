@@ -50,7 +50,12 @@ const core = createHandlerCore({
   ddb,
   tableName: "verify-harness",
   webhookSecret: "whsec_unused",
-  siteOrigin: "https://quantum.altivum.ai",
+  // The origin the deployed handler would use, NOT a literal: this harness
+  // stamps success_url/cancel_url on a REAL live Checkout Session, so a stale
+  // value here verifies a return path no learner can reach while still
+  // printing PASS. It read quantum.altivum.ai — two domains dead — which is
+  // exactly the failure this harness exists to catch.
+  siteOrigin: process.env.SITE_ORIGIN || "https://learner.quantumenv.dev",
 });
 
 let failures = 0;
