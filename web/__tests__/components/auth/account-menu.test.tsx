@@ -75,6 +75,11 @@ describe("AccountMenu", () => {
     expect(trigger.className).toContain("min-w-0");
     expect(trigger.className).toMatch(/max-w-\[/);
     expect(trigger.querySelector("span")!.className).toContain("truncate");
+    // The wrapper div is the ACTUAL flex item in the rail — its min-width:auto
+    // resolved to the trigger's full intrinsic width, keeping the chip rigid
+    // at its cap even after the trigger got min-w-0 (verified live: the rail
+    // overflowed the pill by 36px signed-in until the wrapper shrank too).
+    expect(trigger.parentElement!.className).toContain("min-w-0");
   });
 
   it("renders a role=menu with Workspace + Sign out menuitems when open", () => {
