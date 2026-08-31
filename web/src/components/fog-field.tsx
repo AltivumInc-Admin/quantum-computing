@@ -11,7 +11,7 @@ import { useEffect, useRef } from "react";
  *
  * Theme-aware: on the dark primary theme the glows are silver + a faint gold,
  * composited additively ("lighter") over near-black. On the light theme they
- * collapse to a whisper of green-tinted haze so the field never muddies a
+ * collapse to a whisper of neutral haze so the field never muddies a
  * bright surface.
  *
  * Performance: each blob's radial gradient is rasterized ONCE into an
@@ -42,11 +42,11 @@ export function FogField() {
     // Palettes are [r,g,b] for additive "lighter" compositing (dark theme).
     const DARK = [
       [224, 224, 224], // silver #E0E0E0
-      [224, 227, 231], // cool white
+      [236, 236, 236], // bright white
       [208, 178, 133], // faint gold (#D0B285 family)
     ];
     const LIGHT = [
-      [184, 198, 190], // green-tinted haze
+      [192, 192, 190], // neutral haze
       [211, 196, 174], // pale gold
     ];
 

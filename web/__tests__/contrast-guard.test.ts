@@ -7,7 +7,7 @@ import { join } from "path";
  * #C2A379, 3.45:1 on the light gold #A38560). The sanctioned primary CTA is
  * `.surface-accent`, which since the Instrument rebuild (#169) is a NEUTRAL
  * high-contrast button — background var(--btn-fill) with color var(--btn-ink),
- * a silver fill with green-black text on the dark theme and the inverse on
+ * a silver fill with near-black text on the dark theme and the inverse on
  * light, clearing AAA on its own fill in both themes. This mechanically
  * enforces the design system's signature rule: gold is a signal — eyebrows,
  * status dots, active chips, focus — never a fill under text. The deepened

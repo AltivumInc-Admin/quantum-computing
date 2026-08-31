@@ -82,7 +82,7 @@ describe("CodeBlock", () => {
       </CodeBlock>
     );
     const copy = screen.getByRole("button", { name: /copy/i });
-    expect(copy.className).toContain("text-[#B9C4BD]");
+    expect(copy.className).toContain("text-[#BDBDBD]");
     expect(copy.className).not.toContain("text-caption");
   });
 

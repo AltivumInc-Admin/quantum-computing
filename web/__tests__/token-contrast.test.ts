@@ -18,7 +18,7 @@ import { join } from "node:path";
  * comment claims it), 3:1 (non-text / focus indicators). Never assert below
  * the WCAG floor to make a bad value pass: if a retune fails here, fix the
  * token or re-route the usage (e.g. resting accent TEXT on the light theme
- * uses --accent-dark, never the 2.79:1 --accent).
+ * uses --accent-dark, never the 3.11:1 --accent).
  */
 
 const cssRaw = readFileSync(join(__dirname, "../src/app/globals.css"), "utf8");
@@ -80,7 +80,7 @@ function parseColor(raw: string, vars: Vars): Rgb {
     return toLinearSrgb([L, parseFloat(ok[3]), parseFloat(ok[4])]);
   }
   // The after-dark tokens are authored as the design system's exact hex
-  // anchors (#071710, #C2A379, …) rather than oklch conversions, so the
+  // anchors (#0B0B0B, #C2A379, …) rather than oklch conversions, so the
   // brand files and globals.css can never drift by a rounding step.
   const hex = value.match(/^#([0-9a-fA-F]{6})$/);
   if (hex) {
@@ -159,7 +159,7 @@ describe("resting accent TEXT", () => {
   // The sanctioned resting accent-text idiom is `text-accent-dark
   // dark:text-accent` / `dark:text-accent-light` (eyebrows, micro-labels,
   // A-Z glossary headings). Light-theme resting text must NEVER be the raw
-  // --accent: it computes 2.79:1 on --surface-base.
+  // --accent: it computes 3.11:1 on --surface-base — under the 4.5:1 floor.
   it.each(SURFACES)("light --accent-dark on --%s is AA (>= 4.5:1)", (s) => {
     expect(ratio(light, "accent-dark", s)).toBeGreaterThanOrEqual(4.5);
   });
@@ -194,25 +194,24 @@ describe("meaningful accent GRAPHICS (WCAG 1.4.11 non-text, >= 3:1)", () => {
     expect(ratio(dark, "accent-light", s)).toBeGreaterThanOrEqual(3);
   });
 
-  it("documents why light --accent cannot carry a meaningful graphic", () => {
-    // Tripwire, like the text-tier one: the light accent misses the non-text
-    // floor on at least one app surface, which is why the marker/dial/thumb
-    // route to --accent-dark / --focus instead — a graphic that is only
-    // legible on SOME surfaces cannot carry meaning app-wide. Asserted as the
-    // minimum across surfaces, not per-surface: the after-dark gold measures
-    // 2.84 on base and 2.92 on surface-2 but 3.14 on the near-white
-    // surface-1, and one passing surface does not make it universally safe.
-    // A retune clearing 3:1 on EVERY surface means the pair-down can be
-    // revisited.
+  it("documents that light --accent now clears the non-text floor everywhere", () => {
+    // Historical tripwire, flipped by the black-and-gold retheme: on the old
+    // after-dark daylight surfaces the raw gold missed 3:1 on base/surface-2
+    // (2.84/2.92), which is why the marker/dial/thumb route to --accent-dark /
+    // --focus. The lighter black-and-gold surfaces lift the worst case to
+    // 3.11:1 (base), so the raw accent is no longer *unsafe* for non-text
+    // graphics — the pair-down is kept for margin and for one consistent
+    // idiom, not out of necessity. If a retune drops any surface back under
+    // 3:1, this assertion fails and the pair-down becomes load-bearing again.
     const worst = Math.min(...SURFACES.map((s) => ratio(light, "accent", s)));
-    expect(worst).toBeLessThan(3);
+    expect(worst).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe("chip AAA claim on the dark theme", () => {
-  // globals.css documents 7.64:1 (AAA) for the chip ink on the dark bright
-  // gold. (The green-black --ink #10231D would measure only 6.88:1 there —
-  // which is why the chip carries its own darker literal ink.)
+  // globals.css documents 8.30:1 (AAA) for the chip ink on the dark bright
+  // gold. (The chip keeps its own pinned literal ink so both themes share
+  // one ink and the ratio can never drift with a theme's --ink retune.)
   it("chip ink on dark --accent is AAA (>= 7:1)", () => {
     expect(contrast(CHIP_INK, parseColor(dark.accent, dark))).toBeGreaterThanOrEqual(7);
   });
@@ -221,8 +220,9 @@ describe("chip AAA claim on the dark theme", () => {
 describe("semantic tiers (oxblood caution, jade success, danger)", () => {
   // The sanctioned resting-text idiom for all three tiers is the same
   // pair-down the accent uses: `text-<tier>-dark dark:text-<tier>-light`.
-  // The BASE steps are fills/graphics (light --success measures 4.29 on the
-  // new base; dark --danger 4.19 — neither may carry resting text).
+  // The BASE steps are fills/graphics (dark --danger measures 4.47 on the
+  // black-and-gold base — under the 4.5 text floor, so base steps still
+  // may not carry resting text).
   const TIERS = ["warm", "success", "danger"] as const;
 
   it.each(TIERS.flatMap((t) => SURFACES.map((s) => [t, s] as const)))(
@@ -241,7 +241,7 @@ describe("semantic tiers (oxblood caution, jade success, danger)", () => {
 });
 
 describe("the abyss contract", () => {
-  // --abyss is the ONE pinned near-black green under every self-dark island
+  // --abyss is the ONE pinned near-black under every self-dark island
   // (hero shell, code fences, media frames, modal backdrops). It is declared
   // once in :root and deliberately NOT overridden in .dark — the cascade is
   // what makes it identical in both themes — and the compile-time @theme

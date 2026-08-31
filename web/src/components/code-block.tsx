@@ -57,7 +57,7 @@ export function CodeBlock({
     // tail of the first code lines scrolls under ~120px of opaque chip/buttons
     // on a phone. rounded-xl matches the wrapper so the pre clips its own
     // scrolled content (and its scrollbar) to the same corner radius.
-    className: `rounded-xl px-4 pb-3.5 pt-12 can-hover:pt-3.5 text-sm leading-relaxed text-[#DDE3DF] ${
+    className: `rounded-xl px-4 pb-3.5 pt-12 can-hover:pt-3.5 text-sm leading-relaxed text-[#E0E0E0] ${
       wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
     }`,
   });
@@ -70,14 +70,14 @@ export function CodeBlock({
     // outline-none had already removed the UA fallback — a keyboard user tabbing
     // into a wide fence got no visual indication at all. Nothing needs the clip:
     // the pre is transparent and rounds its own content.
-    // The design system's commissioned fence: a racing-green→abyss gradient
-    // pinned in both themes, a green-silver hairline, and an inset top
+    // The design system's commissioned fence: a carbon→abyss gradient
+    // pinned in both themes, a silver hairline, and an inset top
     // highlight — the code island reads as machined glass, not a flat slab.
-    <div className="not-prose group relative my-5 rounded-xl border border-[rgb(224_235_229/0.12)] bg-[linear-gradient(180deg,rgb(10_26_20/0.92),rgb(3_17_13/0.96))] shadow-[inset_0_1px_0_rgb(224_235_229/0.05)]">
+    <div className="not-prose group relative my-5 rounded-xl border border-[rgb(224_224_224/0.12)] bg-[linear-gradient(180deg,rgb(16_16_16/0.92),rgb(5_5_5/0.96))] shadow-[inset_0_1px_0_rgb(224_224_224/0.05)]">
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
         {showLang && (
           <span
-            className={`rounded-chip border border-[rgb(224_235_229/0.14)] bg-[rgb(10_22_17/0.8)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[#C2A379] ${CHROME_REVEAL}`}
+            className={`rounded-chip border border-[rgb(224_224_224/0.14)] bg-[rgb(10_10_10/0.8)] px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[#C2A379] ${CHROME_REVEAL}`}
           >
             {language!.toUpperCase()}
           </span>
@@ -88,8 +88,8 @@ export function CodeBlock({
             onClick={() => setWrap((w) => !w)}
             aria-label="Toggle word wrap"
             aria-pressed={wrap}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-control bg-[rgb(10_22_17/0.8)] interactive focus-ring ${
-              wrap ? "text-[#C2A379]" : "text-[#B9C4BD] hover:text-gray-100"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-control bg-[rgb(10_10_10/0.8)] interactive focus-ring ${
+              wrap ? "text-[#C2A379]" : "text-[#BDBDBD] hover:text-gray-100"
             }`}
           >
             <WrapIcon />
