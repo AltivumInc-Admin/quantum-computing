@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-30-black-and-gold",
+    shipped: "2026-08-30",
+    kind: "improved",
+    title: "Black and gold",
+    body: "The green is gone: Quantum Learner now sits on a true black ground, with the gold accent doing the same quiet work as before. The daylight theme brightened to a warm white with near-black ink. Nothing moved and nothing changed meaning — every page, chart, and icon simply wears the new coat, in both themes.",
+    href: "/",
+  },
+  {
     id: "2026-08-29-canonical-domain",
     shipped: "2026-08-29",
     kind: "improved",
