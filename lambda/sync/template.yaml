@@ -20,7 +20,7 @@ Parameters:
     Description: The quantum-workspace-web app client (JWT audience).
   SiteOrigin:
     Type: String
-    Default: https://quantum.altivum.ai
+    Default: https://learner.quantumenv.dev
     Description: Production origin allowed by CORS.
   MaxConcurrency:
     Type: Number

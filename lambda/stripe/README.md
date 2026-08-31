@@ -58,6 +58,12 @@ Purchased balances are money the learner paid for, so the table is
 
 ## Test
 
+> **`SiteOrigin` must name the live canonical origin.** SAM resolves it into the
+> generated OpenAPI CORS block at BUILD time, so it behaves as a build-time input:
+> a `update-stack` that only changes the parameter no-ops, and a `sam deploy` that
+> omits it silently bakes in the template default. Omitting it here is what broke
+> CORS on 2026-08-31.
+
 ```bash
 cd lambda/stripe && npm ci && npm test   # node --test: index.test.mjs + template.test.mjs
 ```
@@ -99,7 +105,7 @@ sam deploy --stack-name quantum-stripe --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides \
     StripeSecretName=quantum-stripe \
-    SiteOrigin=https://quantum.altivum.ai \
+    SiteOrigin=https://learner.quantumenv.dev \
     AlertEmail=<operator email>
 ```
 

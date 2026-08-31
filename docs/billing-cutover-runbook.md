@@ -114,7 +114,7 @@ sam deploy --stack-name quantum-stripe --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides \
     StripeSecretName=quantum-stripe \
-    SiteOrigin=https://quantum.altivum.ai \
+    SiteOrigin=https://learner.quantumenv.dev \
     AlertEmail=christian.perez@altivum.io
 ```
 

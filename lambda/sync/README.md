@@ -53,6 +53,12 @@ default 10) is a hard ceiling on simultaneous invocations.
 
 Offline handler + template tests (no AWS creds; DynamoDB is stubbed):
 
+> **`SiteOrigin` must name the live canonical origin.** SAM resolves it into the
+> generated OpenAPI CORS block at BUILD time, so it behaves as a build-time input:
+> a `update-stack` that only changes the parameter no-ops, and a `sam deploy` that
+> omits it silently bakes in the template default. Omitting it here is what broke
+> CORS on 2026-08-31.
+
 ```bash
 cd lambda/sync && npm ci && npm test
 # node --test discovers all *.test.mjs:
@@ -71,7 +77,8 @@ christian.perez@altivum.io — override it to point the alarm emails elsewhere:
 cd lambda/sync && npm ci && sam build
 sam deploy --stack-name quantum-workspace-sync --region us-east-2 \
   --capabilities CAPABILITY_IAM --resolve-s3 \
-  --parameter-overrides AlertEmail=<operator email>
+  --parameter-overrides AlertEmail=<operator email> \
+    SiteOrigin=https://learner.quantumenv.dev
 ```
 
 Then set the `SyncUrl` stack output as **`NEXT_PUBLIC_SYNC_URL`** in the

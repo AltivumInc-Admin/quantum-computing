@@ -270,8 +270,21 @@ export const MIN_PAGES_FOR_RATE = 5;
 /** Above this many pages in a day from one address, it is a crawl. */
 export const MAX_PAGES_PER_DAY = 100;
 
-/** The site's own origin. Traffic to any other host header is not ours. */
-export const SITE_HOST = "quantum.altivum.ai";
+/**
+ * The site's own origin. Traffic to any other host header is not ours.
+ *
+ * CONFIGURED, not hardcoded, and that is load-bearing: as a constant this
+ * silently zeroed the entire report. The host filter below drops every row
+ * whose x-host-header is not this value, so a stale value does not skew the
+ * count — it makes `humans` exactly 0, on a stack whose alarms only fire on
+ * ERRORS, so the job stayed green while reporting nothing. That is what
+ * happened between the QL-Prod cutover and 2026-08-31: this read
+ * quantum.altivum.ai, a hostname the QL-Prod app has never served, and every
+ * row was recorded as 0 humans. A domain move must therefore change this
+ * WITH the domain — hence SITE_HOST env var, defaulted here to the canonical
+ * host and asserted against web/src/lib/site.ts by the parity test.
+ */
+export const SITE_HOST = process.env.SITE_HOST || "learner.quantumenv.dev";
 
 export const isHostilePath = (path) => HOSTILE_PATH.test(path ?? "");
 export const isDeclaredBot = (ua) => DECLARED_BOT.test(ua ?? "");

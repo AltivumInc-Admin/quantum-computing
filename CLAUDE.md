@@ -80,9 +80,14 @@ Delta Centric Org (management)
 
 Name the account, never "Quantum Learner" — four accounts in this OU answer to that.
 
-- **Deployed reality (updated 2026-08-30): the platform now RUNS on QL-Prod.**
-  `quantumlearner.dev` serves the QL-Prod Amplify app, `quantum.altivum.ai` 301s
-  to it, and signups land in the QL-Prod pool. The Altivum copies (six Lambdas,
+- **Deployed reality (updated 2026-08-31): the platform RUNS on QL-Prod and its
+  canonical domain is `learner.quantumenv.dev`** (the Quantum Env platform
+  subdomain — see the quantum-env repo's `docs/platform-subdomain-migration.md`).
+  `quantumlearner.dev` + www 301 to it (the zone keeps its email/MX role — do
+  not decommission), `quantum.altivum.ai` still 301s onward, and signups land
+  in the QL-Prod pool. Google federated sign-in runs on a Delta Centric-owned
+  OAuth client (secret in the Delta Centric 1Password vault) — the Altivum
+  "Logic" Google project is out of the auth path. The Altivum copies (six Lambdas,
   the old pool, the old Amplify app, both old Stripe endpoints) are still
   DEPLOYED but no longer resolvable by learners — teardown is a separate plan.
   Outstanding: Task 12 Steps 1/5/6 and Task 13; see `scripts/migration/README.md`

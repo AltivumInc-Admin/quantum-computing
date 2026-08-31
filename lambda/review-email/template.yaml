@@ -19,7 +19,7 @@ Parameters:
     Description: Verified SES sender, e.g. reviews@altivum.ai (domain must be SES-verified + out of the sandbox).
   SiteUrl:
     Type: String
-    Default: https://quantum.altivum.ai
+    Default: https://learner.quantumenv.dev
   UnsubSecret:
     Type: String
     NoEcho: true
@@ -42,7 +42,7 @@ Parameters:
     Description: The quantum-workspace-web app client (JWT audience for the prefs API).
   SiteOrigin:
     Type: String
-    Default: https://quantum.altivum.ai
+    Default: https://learner.quantumenv.dev
     Description: Production origin allowed by the prefs API CORS.
   AlertEmail:
     Type: String
