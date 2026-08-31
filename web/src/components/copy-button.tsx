@@ -65,9 +65,9 @@ const TONE = {
     text: "text-caption hover:bg-accent/10 hover:text-accent dark:hover:text-accent-light",
   },
   // On a pinned-dark chip (the code-fence chrome strip, identical in both
-  // themes): the fence's green-black chip ground with green-silver ink
-  // (#B9C4BD measures ~11:1 on rgb(10 22 17)).
-  "on-dark": { surface: "bg-[rgb(10_22_17/0.8)]", text: "text-[#B9C4BD] hover:text-white" },
+  // themes): the fence's near-black chip ground with silver ink
+  // (#BDBDBD measures ~10.5:1 on rgb(10 10 10)).
+  "on-dark": { surface: "bg-[rgb(10_10_10/0.8)]", text: "text-[#BDBDBD] hover:text-white" },
 } as const;
 
 const FAILED_TEXT = "text-warm-dark dark:text-warm-light";

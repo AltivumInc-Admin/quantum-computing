@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-08-29-canonical-domain",
+    shipped: "2026-08-29",
+    kind: "improved",
+    title: "Quantum Learner lives at quantumlearner.dev now",
+    body: "The site's home address is now quantumlearner.dev. The old address, quantum.altivum.ai, forwards here automatically, and every bookmark and shared link keeps working. If you signed in with an email and password you will be asked to reset your password once; Google sign-in is unchanged.",
+    href: "/",
+  },
+  {
     id: "2026-08-28-hardware-lesson-copy",
     shipped: "2026-08-28",
     kind: "fixed",

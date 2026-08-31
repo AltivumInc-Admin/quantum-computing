@@ -161,9 +161,9 @@ export function WelcomeHero({
   const selShort = sel.title.split(":")[0];
 
   const hud =
-    "pointer-events-none absolute top-11 z-[15] hidden items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,235,229,0.45)] sm:flex";
+    "pointer-events-none absolute top-11 z-[15] hidden items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,224,224,0.45)] sm:flex";
   const corner =
-    "pointer-events-none absolute z-[15] hidden h-[18px] w-[18px] border-[rgba(224,235,229,0.18)] sm:block";
+    "pointer-events-none absolute z-[15] hidden h-[18px] w-[18px] border-[rgba(224,224,224,0.18)] sm:block";
 
   return (
     <section className="dark relative px-3 pt-3 sm:px-4 sm:pt-4">
@@ -189,7 +189,7 @@ export function WelcomeHero({
             dark while the bloom breathes on the right; the radial keeps the
             frame's depth. Mobile runs text full-width, so the base variant
             spreads the scrim before sm: swaps in the two-layer desktop wash. */}
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,17,13,0.78)_0%,rgba(3,17,13,0.5)_55%,rgba(3,17,13,0.22)_100%)] sm:bg-[linear-gradient(90deg,rgba(3,17,13,0.82)_0%,rgba(3,17,13,0.55)_34%,transparent_62%),radial-gradient(120%_120%_at_78%_-10%,transparent_12%,rgba(3,17,13,0.5)_58%,rgba(3,17,13,0.9)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(5,5,5,0.78)_0%,rgba(5,5,5,0.5)_55%,rgba(5,5,5,0.22)_100%)] sm:bg-[linear-gradient(90deg,rgba(5,5,5,0.82)_0%,rgba(5,5,5,0.55)_34%,transparent_62%),radial-gradient(120%_120%_at_78%_-10%,transparent_12%,rgba(5,5,5,0.5)_58%,rgba(5,5,5,0.9)_100%)]" />
 
         {/* The dial: rim circles, machined ticks, and the gold needle, which
             sweeps to the selected station (transform-box makes the CSS
@@ -201,9 +201,9 @@ export function WelcomeHero({
           preserveAspectRatio="xMidYMax slice"
           className="pointer-events-none absolute inset-0 h-full w-full"
         >
-          <circle cx={DIAL_CX} cy={DIAL_CY} r={DIAL_R} fill="none" stroke="rgb(224 235 229/.14)" strokeWidth="1.25" pathLength={1} className="animate-path-draw" />
-          <circle cx={DIAL_CX} cy={DIAL_CY} r={560} fill="none" stroke="rgb(224 235 229/.07)" strokeWidth="1.25" />
-          <circle cx={DIAL_CX} cy={DIAL_CY} r={478} fill="none" stroke="rgb(224 235 229/.045)" strokeWidth="1.25" />
+          <circle cx={DIAL_CX} cy={DIAL_CY} r={DIAL_R} fill="none" stroke="rgb(224 224 224/.14)" strokeWidth="1.25" pathLength={1} className="animate-path-draw" />
+          <circle cx={DIAL_CX} cy={DIAL_CY} r={560} fill="none" stroke="rgb(224 224 224/.07)" strokeWidth="1.25" />
+          <circle cx={DIAL_CX} cy={DIAL_CY} r={478} fill="none" stroke="rgb(224 224 224/.045)" strokeWidth="1.25" />
           <g>
             {ticks.map((t) => (
               <line
@@ -212,7 +212,7 @@ export function WelcomeHero({
                 y1={t.y1}
                 x2={t.x2}
                 y2={t.y2}
-                stroke={t.major ? "rgb(224 235 229/.45)" : "rgb(224 235 229/.28)"}
+                stroke={t.major ? "rgb(224 224 224/.45)" : "rgb(224 224 224/.28)"}
                 strokeWidth={t.major ? 1.5 : 1.25}
               />
             ))}
@@ -249,10 +249,10 @@ export function WelcomeHero({
           {/* The datum hairline — drops from the telemetry dot to the plate's
               corner, making the left datum the composition's visible spine.
               Anchored to the dot itself so it tracks the column at any width. */}
-          <span className="absolute left-[2.5px] top-full h-10 w-px bg-[rgba(224,235,229,0.14)]" />
+          <span className="absolute left-[2.5px] top-full h-10 w-px bg-[rgba(224,224,224,0.14)]" />
         </div>
         <div
-          className="pointer-events-none absolute right-0 top-11 z-[15] hidden items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,235,229,0.6)] [text-shadow:0_1px_8px_rgba(0,0,0,0.6)] sm:flex"
+          className="pointer-events-none absolute right-0 top-11 z-[15] hidden items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,224,224,0.6)] [text-shadow:0_1px_8px_rgba(0,0,0,0.6)] sm:flex"
           aria-hidden="true"
         >
           {hudCounts}
@@ -270,13 +270,13 @@ export function WelcomeHero({
         <div className="flex flex-col items-start pb-[max(11rem,14vw)] pt-24 text-left lg:pt-28">
           <span className="animate-fade-up relative inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[#C2A379] sm:text-[11px] sm:tracking-[0.24em]">
             {/* The plate's corner registration, echoing the HUD marks. */}
-            <span aria-hidden="true" className="absolute -left-6 -top-3 hidden h-5 w-5 border-l border-t border-[rgba(224,235,229,0.18)] sm:block" />
+            <span aria-hidden="true" className="absolute -left-6 -top-3 hidden h-5 w-5 border-l border-t border-[rgba(224,224,224,0.18)] sm:block" />
             {eyebrow}
             <span className="animate-caret inline-block h-3.5 w-[7px] bg-[#C2A379]" aria-hidden="true" />
           </span>
 
           <h1
-            className="animate-fade-up mt-6 mb-5 font-display text-display-2xl font-light tracking-[-0.02em] text-[#F2F3F1]"
+            className="animate-fade-up mt-6 mb-5 font-display text-display-2xl font-light tracking-[-0.02em] text-[#F2F2F2]"
             style={{ animationDelay: "90ms" }}
           >
             {headlineLead}
@@ -284,7 +284,7 @@ export function WelcomeHero({
                 the break is locale-safe with no authored hyphenation. It
                 clears the 3:1 large-text floor over the spine scrim; the ket
                 is notation, so it sets in gold MONO, not Sora. */}
-            <span className="mt-1 block text-[rgba(242,243,241,0.45)]">
+            <span className="mt-1 block text-[rgba(242,242,242,0.45)]">
               {headlineDimPre}{" "}
               <code className="font-mono font-light text-[0.92em] tracking-[-0.04em] text-[#C2A379]">
                 |0⟩
@@ -295,7 +295,7 @@ export function WelcomeHero({
 
           <div className="relative w-full md:pr-[21rem] lg:pr-[23rem]">
           <p
-            className="animate-fade-up max-w-[42ch] text-[17px] leading-relaxed text-[rgba(224,235,229,0.62)]"
+            className="animate-fade-up max-w-[42ch] text-[17px] leading-relaxed text-[rgba(224,224,224,0.62)]"
             style={{ animationDelay: "180ms" }}
           >
             {subtitle}
@@ -306,14 +306,14 @@ export function WelcomeHero({
           </div>
 
           <div
-            className="animate-fade-up relative mt-7 flex w-full max-w-[42ch] flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/10 pt-4 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,235,229,0.4)]"
+            className="animate-fade-up relative mt-7 flex w-full max-w-[42ch] flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/10 pt-4 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-[rgba(224,224,224,0.4)]"
             style={{ animationDelay: "360ms" }}
           >
             {/* Gold calibration tick where the spec line meets the datum. */}
             <span aria-hidden="true" className="absolute -top-px left-0 h-[2px] w-2 bg-[#C2A379]" />
             {microBadges.map((badge) => (
               <span key={badge} className="flex items-center gap-2.5">
-                <span aria-hidden="true" className="h-[3px] w-[3px] bg-[rgba(224,235,229,0.5)]" />
+                <span aria-hidden="true" className="h-[3px] w-[3px] bg-[rgba(224,224,224,0.5)]" />
                 {badge}
               </span>
             ))}
@@ -337,9 +337,9 @@ export function WelcomeHero({
             onKeyDown={(e) => {
               if (e.key === "Escape") close();
             }}
-            className="animate-modal-pop absolute right-0 top-0 z-30 hidden rounded-card border border-white/10 bg-[rgb(7_23_16/0.9)] p-4 text-left shadow-(--shadow-raised) outline-none backdrop-blur-md md:block md:w-[19rem] lg:w-[21rem]"
+            className="animate-modal-pop absolute right-0 top-0 z-30 hidden rounded-card border border-white/10 bg-[rgb(11_11_11/0.9)] p-4 text-left shadow-(--shadow-raised) outline-none backdrop-blur-md md:block md:w-[19rem] lg:w-[21rem]"
           >
-            <span aria-hidden="true" className="absolute -top-6 right-8 h-6 w-px bg-[rgba(224,235,229,0.25)]" />
+            <span aria-hidden="true" className="absolute -top-6 right-8 h-6 w-px bg-[rgba(224,224,224,0.25)]" />
             <div className="flex items-start justify-between gap-3">
               <p className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-[#C2A379]">
                 {String(sel.index).padStart(2, "0")} · {selShort}
@@ -362,7 +362,7 @@ export function WelcomeHero({
                 <span key={i} className="relative flex h-3 w-px items-end">
                   <span
                     className={`h-2 w-full transition-colors duration-700 ${
-                      i === selected ? "bg-[#C2A379]" : "bg-[rgba(224,235,229,0.35)]"
+                      i === selected ? "bg-[#C2A379]" : "bg-[rgba(224,224,224,0.35)]"
                     }`}
                   />
                   {i === selected && (
@@ -455,16 +455,16 @@ export function WelcomeHero({
                       <text x={fx} y={fy - 14} textAnchor="middle" fill="#C2A379" style={{ font: "500 10px var(--font-mono)", letterSpacing: ".12em", textTransform: "uppercase" }}>
                         {startHere}
                       </text>
-                      <text x={fx} y={fy + 4} textAnchor="middle" fill="#F2F3F1" style={{ font: "500 13px var(--font-sans)" }}>
+                      <text x={fx} y={fy + 4} textAnchor="middle" fill="#F2F2F2" style={{ font: "500 13px var(--font-sans)" }}>
                         {String(s.index).padStart(2, "0")} · {shortTitle}
                       </text>
                     </g>
-                    <text className="lg:hidden" x={lx} y={ly} textAnchor="middle" fill={selected === 0 ? "#C2A379" : "rgb(224 235 229/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", transition: "fill .3s" }}>
+                    <text className="lg:hidden" x={lx} y={ly} textAnchor="middle" fill={selected === 0 ? "#C2A379" : "rgb(224 224 224/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", transition: "fill .3s" }}>
                       {String(s.index).padStart(2, "0")}
                     </text>
                   </g>
                 ) : (
-                  <text x={lx} y={ly} textAnchor="middle" fill={selected === i ? "#C2A379" : "rgb(224 235 229/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", pointerEvents: "none", transition: "fill .3s" }}>
+                  <text x={lx} y={ly} textAnchor="middle" fill={selected === i ? "#C2A379" : "rgb(224 224 224/.55)"} style={{ font: "500 12px var(--font-mono)", letterSpacing: ".08em", pointerEvents: "none", transition: "fill .3s" }}>
                     {String(s.index).padStart(2, "0")}
                   </text>
                 )}

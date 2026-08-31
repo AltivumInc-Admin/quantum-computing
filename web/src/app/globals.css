@@ -14,25 +14,25 @@
 @custom-variant can-hover (@media (hover: hover));
 
 @theme inline {
-  /* Signature = a single GOLD signal on green smoke-and-glass ("The Instrument,
-     after dark": racing green, gold, oxblood, abyss, silver). Resolved from a
-     runtime var so `text-accent`/`ring-accent` are theme-aware (the @theme value
-     is inlined as `var(--accent)`, exactly like --font-* below): bright gold on
-     the dark primary theme, dial gold on the light daylight theme (set in @layer
-     base). Gold is reserved for MICRO-labels — eyebrows, status dots, active
-     nav/dot-nav, ket/state labels, focus accents — and small active fills; it is
-     never a large filled surface (primary CTAs use the neutral high-contrast
-     .surface-accent instead). */
+  /* Signature = a single GOLD signal on black smoke-and-glass ("black and
+     gold": onyx, carbon, gold, oxblood, silver). Resolved from a runtime var
+     so `text-accent`/`ring-accent` are theme-aware (the @theme value is
+     inlined as `var(--accent)`, exactly like --font-* below): bright gold on
+     the dark primary theme, dial gold on the light daylight theme (set in
+     @layer base). Gold is reserved for MICRO-labels — eyebrows, status dots,
+     active nav/dot-nav, ket/state labels, focus accents — and small active
+     fills; it is never a large filled surface (primary CTAs use the neutral
+     high-contrast .surface-accent instead). */
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
   --color-accent-dark: var(--accent-dark);
 
-  /* The abyss: the ONE pinned near-black green under every self-dark band
+  /* The abyss: the ONE pinned near-black under every self-dark band
      (hero shell, powered-by strip, account band, media frames, modal
      backdrop). Deliberately identical in both app themes — these surfaces are
      literal imagery islands, not theme-responsive chrome — so a compile-time
      @theme token is exactly right (see CLAUDE.md's @theme guidance). */
-  --color-abyss: #03110d;
+  --color-abyss: #050505;
 
   /* The caution/stakes tier is OXBLOOD (wrong verdicts, caveats, failure
      states, real-hardware cost callouts); success is jade, danger red-oxblood.
@@ -50,21 +50,21 @@
   --color-danger-dark: var(--danger-dark);
 
   /* The neutral family is instrument SILVER — Tailwind's stock gray ladder
-     rotated from its blue tint (hue ~247–264) to the racing-green axis (168)
-     at softened chroma. Same lightness per step, so every existing gray-*
-     contrast relationship is preserved while the temperature matches the
-     green ground (Tailwind's cool gray visibly clashes on it). */
-  --color-gray-50: oklch(98.5% 0.002 168);
-  --color-gray-100: oklch(96.7% 0.003 168);
-  --color-gray-200: oklch(92.8% 0.005 168);
-  --color-gray-300: oklch(87.2% 0.007 168);
-  --color-gray-400: oklch(70.7% 0.013 168);
-  --color-gray-500: oklch(55.1% 0.016 168);
-  --color-gray-600: oklch(44.6% 0.018 168);
-  --color-gray-700: oklch(37.3% 0.02 168);
-  --color-gray-800: oklch(27.8% 0.02 168);
-  --color-gray-900: oklch(21% 0.02 168);
-  --color-gray-950: oklch(13% 0.017 168);
+     with the blue tint (hue ~247–264) removed entirely: chroma 0, hue-free,
+     matching the onyx/carbon/silver anchors. Same lightness per step, so
+     every existing gray-* contrast relationship is preserved while nothing
+     ever tints the black ground (Tailwind's cool gray visibly clashes on it). */
+  --color-gray-50: oklch(98.5% 0 0);
+  --color-gray-100: oklch(96.7% 0 0);
+  --color-gray-200: oklch(92.8% 0 0);
+  --color-gray-300: oklch(87.2% 0 0);
+  --color-gray-400: oklch(70.7% 0 0);
+  --color-gray-500: oklch(55.1% 0 0);
+  --color-gray-600: oklch(44.6% 0 0);
+  --color-gray-700: oklch(37.3% 0 0);
+  --color-gray-800: oklch(27.8% 0 0);
+  --color-gray-900: oklch(21% 0 0);
+  --color-gray-950: oklch(13% 0 0);
 
   --font-sans: var(--font-geist), system-ui, sans-serif;
   --font-display: var(--font-sora), var(--font-geist), system-ui, sans-serif;
@@ -202,25 +202,26 @@
 
 @layer base {
   :root {
-    /* ── Light "daylight" theme — warm silver, green-black ink ──────────── */
+    /* ── Light "daylight" theme — warm white, carbon ink ────────────────── */
     /* Brand anchors (theme-invariant): the five colors everything else is
        mixed from. --abyss is the runtime twin of the @theme --color-abyss. */
     --oxblood-950: #390517;
     --gold-500: #a38560;
-    --green-800: #16302b;
-    --green-950: #03110d;
+    --black-900: #161616;
+    --black-950: #050505;
     --silver-200: #e0e0e0;
-    --abyss: #03110d;
+    --abyss: #050505;
 
-    /* dial gold — dots, fills, icons, chip fills. 2.84:1 on --surface-base,
-       so resting TEXT never uses it here: light-theme accent text pairs down
-       to --accent-dark (5.64:1). Enforced by token-contrast.test.ts. */
+    /* dial gold — dots, fills, icons, chip fills. 3.11:1 on --surface-base —
+       clears the 3:1 non-text floor but not 4.5:1, so resting TEXT never uses
+       it here: light-theme accent text pairs down to --accent-dark (6.18:1).
+       Enforced by token-contrast.test.ts. */
     --accent: #a38560;
     --accent-light: #b99a72;
     --accent-dark: #6f5636;   /* resting accent TEXT on light */
 
     /* Oxblood caution tier (wrong verdicts, caveats, failure states, cost
-       callouts). Resting text pairs down to --warm-dark (9.51:1). */
+       callouts). Resting text pairs down to --warm-dark (10.42:1). */
     --warm: #8e4e63;
     --warm-light: #b37387;
     --warm-dark: #652038;
@@ -232,29 +233,29 @@
     --danger-light: #c25562;
     --danger-dark: #832834;
 
-    --surface-base: #e9e9e7;
-    --surface-base-2: #dededc;
-    --surface-1: #f4f4f2;
-    --surface-2: #ececea;
+    --surface-base: #f4f3f0;
+    --surface-base-2: #ebe9e4;
+    --surface-1: #ffffff;
+    --surface-2: #faf9f6;
 
     /* Glass + hairline + track tokens for the smoke-and-glass surfaces —
-       hairlines carry the green-black ink, not a neutral gray. */
+       hairlines carry the carbon ink, not a tinted gray. */
     --glass: rgb(255 255 255 / 0.6);
     --glass-2: rgb(255 255 255 / 0.8);
-    --bd: rgb(16 35 29 / 0.13);
-    --bd-2: rgb(16 35 29 / 0.24);
-    --track: rgb(16 35 29 / 0.1);
-    --field: rgb(255 255 255 / 0.5);
-    --ink: #10231d;
-    --mut: #48584f;
+    --bd: rgb(17 17 17 / 0.13);
+    --bd-2: rgb(17 17 17 / 0.24);
+    --track: rgb(17 17 17 / 0.1);
+    --field: rgb(255 255 255 / 0.55);
+    --ink: #141414;
+    --mut: #56534c;
 
-    /* Focus indicator — solid, per-theme. accent-dark reads 5.64:1 on
-       --surface-base (WCAG 1.4.11 needs 3:1); the raw light accent only
-       manages 2.84:1 even unblended, so the ring pins to the dark step. */
+    /* Focus indicator — solid, per-theme. accent-dark reads 6.18:1 on
+       --surface-base (WCAG 1.4.11 needs 3:1); the raw light accent sits at
+       3.11:1 — visible but thin for a ring — so it pins to the dark step. */
     --focus: var(--accent-dark);
 
     /* Text-selection highlight — gold at an alpha strong enough to read as
-       a visible band on the silver surfaces. */
+       a visible band on the warm white surfaces. */
     --selection: rgb(163 133 96 / 0.35);
 
     /* Atmosphere + dot-grid backdrops, theme-resolved like every other
@@ -263,21 +264,21 @@
     --atmosphere:
       radial-gradient(ellipse 75% 90% at 74% -12%, rgb(163 133 96 / 0.14), transparent 55%),
       radial-gradient(ellipse 60% 70% at 100% 20%, rgb(255 255 255 / 0.7), transparent 55%),
-      radial-gradient(ellipse 55% 60% at 0% 100%, rgb(22 48 43 / 0.12), transparent 60%),
+      radial-gradient(ellipse 55% 60% at 0% 100%, rgb(17 17 17 / 0.07), transparent 60%),
       radial-gradient(ellipse 50% 55% at 100% 100%, rgb(57 5 23 / 0.07), transparent 60%);
-    --grid-dot: rgb(16 35 29 / 0.12);
+    --grid-dot: rgb(17 17 17 / 0.12);
 
-    /* Neutral high-contrast primary button (green-black fill on daylight). */
-    --btn-fill: #10231d;
-    --btn-ink: #f2f1ee;
-    --btn-fill-hover: #0a1812;
+    /* Neutral high-contrast primary button (near-black fill on daylight). */
+    --btn-fill: #141414;
+    --btn-ink: #f5f3ee;
+    --btn-fill-hover: #000000;
 
     /* Glass elevation: a 1px inset top highlight + a soft, far outer shadow —
-       depth from light and blur, not a heavy drop. Shadows cast in abyss. */
+       depth from light and blur, not a heavy drop. Shadows cast in black. */
     --shadow-resting: inset 0 1px 0 0 rgb(255 255 255 / 0.5),
-      0 1px 2px rgb(3 17 13 / 0.05), 0 18px 36px -28px rgb(3 17 13 / 0.4);
+      0 1px 2px rgb(0 0 0 / 0.05), 0 18px 36px -28px rgb(0 0 0 / 0.35);
     --shadow-raised: inset 0 1px 0 0 rgb(255 255 255 / 0.6),
-      0 2px 4px rgb(3 17 13 / 0.06), 0 28px 56px -30px rgb(3 17 13 / 0.45);
+      0 2px 4px rgb(0 0 0 / 0.06), 0 28px 56px -30px rgb(0 0 0 / 0.4);
 
     /* Data-viz: magnitude is ONE bronze→gold ramp (NOT the phase scale —
        magnitude is one hue; phase is the hue-free scale below). */
@@ -300,8 +301,8 @@
   }
 
   .dark {
-    /* ── Dark "after-dark" PRIMARY theme — abyss ground, racing-green lift ── */
-    --accent: #c2a379;             /* gold, lifted for the dark ground (7.73:1) */
+    /* ── Dark "after-dark" PRIMARY theme — onyx ground, carbon lift ──────── */
+    --accent: #c2a379;             /* gold, lifted for the dark ground (8.26:1) */
     --accent-light: #d8c29e;
     --accent-dark: #a38560;
 
@@ -316,40 +317,40 @@
     --danger-light: #d57f89;
     --danger-dark: #a93a48;
 
-    --surface-base: #071710;
-    --surface-base-2: #03110d;
-    --surface-1: #12261f;
-    --surface-2: #0c1d17;
+    --surface-base: #0b0b0b;
+    --surface-base-2: #050505;
+    --surface-1: #161616;
+    --surface-2: #101010;
 
-    /* Glass + hairlines carry a green-tinted silver, not pure white. */
-    --glass: rgb(224 235 229 / 0.05);
-    --glass-2: rgb(224 235 229 / 0.08);
-    --bd: rgb(224 235 229 / 0.09);
-    --bd-2: rgb(224 235 229 / 0.17);
-    --track: rgb(224 235 229 / 0.07);
-    --field: rgb(224 235 229 / 0.04);
+    /* Glass + hairlines carry pure instrument silver. */
+    --glass: rgb(224 224 224 / 0.05);
+    --glass-2: rgb(224 224 224 / 0.08);
+    --bd: rgb(224 224 224 / 0.09);
+    --bd-2: rgb(224 224 224 / 0.17);
+    --track: rgb(224 224 224 / 0.07);
+    --field: rgb(224 224 224 / 0.04);
     --ink: #e0e0e0;
-    --mut: #93a198;
+    --mut: #9c9c9c;
 
-    /* Focus indicator — the bright gold reads 7.73:1 on the abyss ground. */
+    /* Focus indicator — the bright gold reads 8.26:1 on the onyx ground. */
     --focus: var(--accent);
 
     --selection: rgb(194 163 121 / 0.28);
 
     --atmosphere:
-      radial-gradient(ellipse 75% 90% at 72% -12%, rgb(194 163 121 / 0.1), transparent 52%),
-      radial-gradient(ellipse 60% 70% at 100% 30%, rgb(224 235 229 / 0.05), transparent 55%),
+      radial-gradient(ellipse 75% 90% at 72% -12%, rgb(194 163 121 / 0.12), transparent 52%),
+      radial-gradient(ellipse 60% 70% at 100% 30%, rgb(224 224 224 / 0.05), transparent 55%),
       radial-gradient(ellipse 55% 60% at 2% 100%, rgb(57 5 23 / 0.35), transparent 58%);
-    --grid-dot: rgb(224 235 229 / 0.1);
+    --grid-dot: rgb(224 224 224 / 0.1);
 
     /* Neutral high-contrast primary button (silver fill on the dark theme). */
     --btn-fill: #e8e6e0;
-    --btn-ink: #0a1812;
+    --btn-ink: #0a0a0a;
     --btn-fill-hover: #f5f3ee;
 
-    --shadow-resting: inset 0 1px 0 0 rgb(224 235 229 / 0.07),
+    --shadow-resting: inset 0 1px 0 0 rgb(224 224 224 / 0.07),
       0 20px 40px -30px rgb(0 0 0 / 0.7);
-    --shadow-raised: inset 0 1px 0 0 rgb(224 235 229 / 0.09),
+    --shadow-raised: inset 0 1px 0 0 rgb(224 224 224 / 0.09),
       0 30px 60px -30px rgb(0 0 0 / 0.8);
 
     --bar-fill-a: #8a6d48;
@@ -536,13 +537,13 @@
 
   /* The single source for a SELECTED/active chip fill (gate pills, shot presets,
      spin-orbital + creation/annihilation toggles, Pauli factor cells). A small
-     ACTIVE fill is the one place gold fills a surface — kept legible with dark
-     green-black ink: #0a1812 computes 7.64:1 (AAA) on the dark theme's bright
-     gold and 5.28:1 (AA) on the light theme's dial gold (token-contrast.test.ts).
+     ACTIVE fill is the one place gold fills a surface — kept legible with
+     near-black ink: #0a0a0a computes 8.30:1 (AAA) on the dark theme's bright
+     gold and 5.73:1 (AA) on the light theme's dial gold (token-contrast.test.ts).
      Mirrors how .surface-accent single-sources the primary CTA fill. */
   .chip-selected {
     background-color: var(--color-accent);
-    color: #0a1812;
+    color: #0a0a0a;
   }
 
   /* NOTE: there is deliberately no `.prose pre` recipe here. CodeBlock owns the
@@ -936,10 +937,10 @@
    section and the three class-string contrast guards cannot see it at all. At
    0.5 lightness hue 192 landed at 4.35:1 — a FAIL — and hue 192 is
    sectionHue[0], which index 6 wraps back to, so it hit /learn/00-prereqs AND
-   /learn/06-hybrid-jobs. The after-dark re-theme darkened the light ground to
-   #E9E9E7, which dragged 0.47's worst case down to 4.44:1 (hue 192 again);
-   0.45 clears the floor at every hue on the new surfaces (worst case 192 at
-   4.82:1). The hue fallback is 75 — a hue already in sectionHue, so the
+   /learn/06-hybrid-jobs. 0.45 clears the floor at every hue on the current
+   surfaces (the black-and-gold daylight ground #F4F3F0 is lighter than the
+   after-dark-era #E9E9E7, so the margin only widened; token-contrast.test.ts
+   recomputes the worst case). The hue fallback is 75 — a hue already in sectionHue, so the
    guard's per-hue loop covers the fallback too (118 was the retired olive).
    token-contrast.test.ts computes this pair over every entry in sectionHue in
    both themes, so a new hue or a retune fails loudly. */

@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-08-29-canonical-domain": {
+    title: "Quantum Learner ahora vive en quantumlearner.dev",
+    body: "La dirección del sitio ahora es quantumlearner.dev. La dirección anterior, quantum.altivum.ai, redirige aquí automáticamente, y todos los marcadores y enlaces compartidos siguen funcionando. Si iniciabas sesión con correo y contraseña, se te pedirá restablecer la contraseña una vez; el inicio de sesión con Google no cambia.",
+  },
   "2026-08-28-hardware-lesson-copy": {
     title: "La lección de hardware ahora dice claramente qué está disponible hoy",
     body: "La guía de 02-hardware y el README del proyecto aún describían un beneficio de hardware gratuito que ya había sido retirado. Ambos ahora lo dicen claro: todo lo de la lección funciona gratis en tu navegador con el simulador, y usar un QPU real hoy requiere una cuenta de AWS propia, facturada directamente por AWS.",

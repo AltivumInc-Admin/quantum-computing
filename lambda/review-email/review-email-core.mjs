@@ -126,13 +126,13 @@ export function renderEmail({ due, siteUrl, unsubUrl }) {
     `You turned on review reminders. Manage reminder emails in your workspace: ${manageUrl}\n` +
     `Unsubscribe: ${unsubUrl}\n`;
   const html =
-    `<!doctype html><html><body style="margin:0;background:#f8fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#141413">` +
+    `<!doctype html><html><body style="margin:0;background:#f4f3f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#141414">` +
     `<div style="max-width:520px;margin:0 auto;padding:32px 24px">` +
-    `<p style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#0e9d94;margin:0 0 8px">Quantum Workspace</p>` +
-    `<h1 style="font-size:22px;line-height:1.25;margin:0 0 12px;color:#0d1320">${escapeHtml(cards)} due for review</h1>` +
-    `<p style="font-size:15px;line-height:1.6;color:#3f4657;margin:0 0 24px">Cards you have studied are ready to resurface — right when you are about to forget them. A few minutes keeps the whole curriculum fresh.</p>` +
-    `<a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#0e9d94;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:11px 20px;border-radius:10px">Review now</a>` +
-    `<p style="font-size:12px;color:#8b93a5;margin:32px 0 0">You are receiving this because you turned on review reminders. <a href="${escapeHtml(manageUrl)}" style="color:#8b93a5">Manage reminder emails in your workspace</a> or <a href="${escapeHtml(unsubUrl)}" style="color:#8b93a5">unsubscribe</a>.</p>` +
+    `<p style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#6f5636;margin:0 0 8px">Quantum Workspace</p>` +
+    `<h1 style="font-size:22px;line-height:1.25;margin:0 0 12px;color:#141414">${escapeHtml(cards)} due for review</h1>` +
+    `<p style="font-size:15px;line-height:1.6;color:#56534c;margin:0 0 24px">Cards you have studied are ready to resurface — right when you are about to forget them. A few minutes keeps the whole curriculum fresh.</p>` +
+    `<a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#141414;color:#f5f3ee;text-decoration:none;font-size:15px;font-weight:600;padding:11px 20px;border-radius:10px">Review now</a>` +
+    `<p style="font-size:12px;color:#56534c;margin:32px 0 0">You are receiving this because you turned on review reminders. <a href="${escapeHtml(manageUrl)}" style="color:#56534c">Manage reminder emails in your workspace</a> or <a href="${escapeHtml(unsubUrl)}" style="color:#56534c">unsubscribe</a>.</p>` +
     `</div></body></html>`;
   return { subject, html, text };
 }
@@ -427,7 +427,7 @@ function htmlResponse(statusCode, message) {
     statusCode,
     headers: { "content-type": "text/html; charset=utf-8" },
     body:
-      `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:520px;margin:64px auto;padding:0 24px;color:#141413">` +
-      `<h1 style="font-size:20px">Quantum Workspace</h1><p style="font-size:15px;line-height:1.6;color:#3f4657">${message}</p></body></html>`,
+      `<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:520px;margin:64px auto;padding:0 24px;color:#141414">` +
+      `<h1 style="font-size:20px">Quantum Workspace</h1><p style="font-size:15px;line-height:1.6;color:#56534c">${message}</p></body></html>`,
   };
 }

@@ -24,7 +24,7 @@ import { SPHERE_BOX } from "./bloch-sphere-3d-lazy";
  * three.js stays out of the main bundle and never runs on the server.
  */
 
-const RING = "#93A198"; // green-tinted silver: legible on both themes at low opacity
+const RING = "#9C9C9C"; // neutral silver: legible on both themes at low opacity
 
 /** State-vector chase time constant, in seconds. See the useFrame note below. */
 const TAU = 0.084;

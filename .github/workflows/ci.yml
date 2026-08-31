@@ -116,6 +116,14 @@ jobs:
         working-directory: .
         run: node --test scripts/founding-credit/*.test.mjs
 
+      # Another money-adjacent operator script: rewrites learner rows onto new
+      # Cognito subs during the QL-Prod migration. Same rationale as the step
+      # above — zero dependencies, DynamoDB clients taken by injection — so
+      # `node --test` needs no node_modules here either.
+      - name: Sub-remap migration tests
+        working-directory: .
+        run: node --test scripts/migration/*.test.mjs
+
       # Unit tests for the guard's own matching rules. Zero dependencies — pure
       # functions over path strings, so `node --test` needs no node_modules.
       # Its own glob: the founding-credit line above matches only that directory.

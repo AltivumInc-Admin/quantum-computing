@@ -1,6 +1,6 @@
 // Single source for the deployed site origin. Imported by the root layout
 // (metadataBase), the sitemap, and robots so the base URL is defined once.
-export const SITE_URL = "https://quantum.altivum.ai";
+export const SITE_URL = "https://quantumlearner.dev";
 
 // The one brand name (PR #170's rebrand, matching the nav). Consumed by the
 // layout metadata (title, og:site_name, OG alt), the home route's titles, the
@@ -9,7 +9,7 @@ export const SITE_URL = "https://quantum.altivum.ai";
 export const SITE_NAME = "Quantum Learner";
 
 // Branded social-share card, resolved to an absolute URL via metadataBase so
-// it works when quantumlearner.dev 301-redirects here. Default for every
+// it works when quantum.altivum.ai 301-redirects here. Default for every
 // route; pages that override openGraph must spread this back in (Next.js
 // REPLACES a page-level openGraph object, it never deep-merges) so no route
 // silently drops og:image's width/height/alt structure.

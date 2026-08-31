@@ -124,7 +124,7 @@ aws cloudformation deploy \
   --region us-east-2 \
   --stack-name quantum-braket-spend \
   --template-file infra/braket-workloads/budget.yaml \
-  --parameter-overrides PlatformAccountId=...
+  --parameter-overrides PlatformPrincipalArns=arn:aws:iam::<altivum-acct>:root,arn:aws:iam::<qlprod-acct>:root
 ```
 
 No `--capabilities CAPABILITY_NAMED_IAM` on the second command — `budget.yaml`
@@ -135,7 +135,21 @@ Centric management) assumes `OrganizationAccountAccessRole` in the Braket
 Workloads account — the same pattern `docs/account-migration-runbook.md`
 uses for `ql-prod` and `infra/hq/README.md` uses for `ql-hq`. `ExternalId` is
 generated once and kept in 1Password, never committed. `PlatformRoleArns`
-and `PlatformAccountId` are looked up from the platform stack (Task 7).
+is looked up from the platform stack (Task 7).
+
+`PlatformPrincipalArns` (formerly the single-account `PlatformAccountId`) is
+a `CommaDelimitedList` of **full IAM root-principal ARNs**, not bare account
+ids — `arn:aws:iam::<id>:root` per account, comma-joined, e.g.
+`arn:aws:iam::<altivum-acct>:root,arn:aws:iam::<qlprod-acct>:root`. The
+brief for this rename considered mapping a `CommaDelimitedList` of bare
+account ids into root ARNs inline via `!Join`/`!Split`, but CloudFormation's
+string functions can't safely map an N-element list through a per-element
+transform (the delimiter trick corrupts every ARN it produces once there's
+more than one id — confirmed by hand-tracing the join/split against two
+account ids). Passing full ARNs directly and doing `Principal: { AWS: !Ref
+PlatformPrincipalArns }` sidesteps the mapping problem entirely: during the
+blue-green migration this takes two ARNs (Altivum source + QL-Prod); after
+teardown, back to one.
 
 ## Outputs
 

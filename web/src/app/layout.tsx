@@ -58,13 +58,13 @@ export const metadata: Metadata = {
 };
 
 // Browser-chrome color (mobile toolbar/status bar) tracks --surface-base per
-// theme: warm silver light / abyss-adjacent racing green dark. Statically
+// theme: warm white light / onyx dark. Statically
 // emitted, so it follows the OS scheme (the enableSystem default) rather than
 // a manual in-app override — an acceptable edge for a static export.
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#e9e9e7" },
-    { media: "(prefers-color-scheme: dark)", color: "#071710" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f3f0" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0b0b" },
   ],
 };
 

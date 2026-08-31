@@ -16,10 +16,13 @@ Description: >
   to it.
 
 Parameters:
-  PlatformAccountId:
-    Type: String
-    AllowedPattern: "[0-9]{12}"
-    Description: The platform account id, for the SNS cross-account subscribe grant.
+  PlatformPrincipalArns:
+    Type: CommaDelimitedList
+    Description: >
+      Full IAM root-principal ARNs (arn:aws:iam::<id>:root) whose kill-switch
+      Lambdas may subscribe to the spend topic. Two during the blue-green
+      platform migration (Altivum source + QL-Prod); back to one after
+      teardown. Passed at deploy; never committed.
   MonthlyBraketBudget:
     Type: Number
     Default: 50
@@ -48,7 +51,7 @@ Resources:
             Resource: !Ref SpendTopic
           - Sid: PlatformKillSwitchSubscribe
             Effect: Allow
-            Principal: { AWS: !Sub "arn:aws:iam::${PlatformAccountId}:root" }
+            Principal: { AWS: !Ref PlatformPrincipalArns }
             Action: [sns:Subscribe, sns:Receive]
             Resource: !Ref SpendTopic
 
