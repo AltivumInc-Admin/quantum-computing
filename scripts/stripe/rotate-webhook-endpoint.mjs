@@ -1,0 +1,190 @@
+#!/usr/bin/env node
+/**
+ * Recreate a Stripe webhook endpoint with the full required event set and a
+ * pinned API version, rotate its signing secret into Secrets Manager, recycle
+ * the function, and PROVE the new secret is live before retiring the old
+ * endpoint.
+ *
+ * `api_version` is creation-only, so repinning is always delete-and-recreate,
+ * and a recreate always mints a new signing secret. That makes this a rotation
+ * whether you wanted one or not.
+ *
+ * THE STEP EVERYONE MISSES, and the reason this is a script and not a runbook
+ * paragraph: a warm Lambda caches the signing secret at cold start. Rotating the
+ * secret in Secrets Manager does nothing to a running container — it keeps
+ * verifying against the OLD secret and rejecting every delivery with a 400.
+ * Verified in the sandbox on 2026-08-17: 24 invocations, 2-38ms each, wallet
+ * untouched, and (before SIGNATURE_REJECTED existed) not one log line. So this
+ * script forces an `update-function-configuration` and then sends a genuinely
+ * signed probe, refusing to retire the old endpoint until that probe returns 2xx.
+ *
+ * The probe is a synthetic event of an unhandled type. It reaches the handler's
+ * `default` branch, which matches only /^(charge|refund|payout|radar)\./ and so
+ * returns 200 silently. Nothing is written, no money moves — it tests exactly one
+ * thing: does the deployed function verify a signature made with the new secret.
+ *
+ * The signing secret is never printed, never in argv, never on disk. It exists
+ * only inside this process and inside the `aws` child it is piped to.
+ *
+ *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
+ *     node scripts/stripe/rotate-webhook-endpoint.mjs \
+ *       --expect-account acct_1TuFow07hJdXv6GV \
+ *       --url https://bfiloz43aa.execute-api.us-east-2.amazonaws.com/webhook \
+ *       --secret-id quantum-stripe \
+ *       --function quantum-stripe \
+ *       --confirm-live
+ *
+ * --confirm-live is mandatory for any sk_live_ key. Sandbox needs no such flag.
+ */
+import { createHmac } from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
+import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+
+const args = process.argv.slice(2);
+const flag = (n) => {
+  const i = args.indexOf(n);
+  return i === -1 ? undefined : args[i + 1];
+};
+const key = process.env.STRIPE_API_KEY;
+const expectAccount = flag("--expect-account");
+const url = flag("--url");
+const secretId = flag("--secret-id");
+const fnName = flag("--function");
+const region = flag("--region") ?? "us-east-2";
+const secretKeyRef = flag("--secret-key-ref") ?? "op://Quantum Learner/Stripe/add more/Secret Key";
+const confirmLive = args.includes("--confirm-live");
+
+const die = (c, m) => {
+  console.error(m);
+  process.exit(c);
+};
+if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
+for (const [v, n] of [[expectAccount, "--expect-account"], [url, "--url"], [secretId, "--secret-id"], [fnName, "--function"]]) {
+  if (!v) die(2, `${n} is required.`);
+}
+const isLive = /^(sk|rk)_live_/.test(key);
+if (isLive && !confirmLive) die(2, "That is a LIVE key. Re-run with --confirm-live if you mean it.");
+
+const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
+async function api(method, path, form) {
+  const init = { method, headers: { Authorization: auth } };
+  if (form) {
+    init.headers["Content-Type"] = "application/x-www-form-urlencoded";
+    init.body = form.toString();
+  }
+  const res = await fetch(`https://api.stripe.com/v1/${path}`, init);
+  const body = await res.json();
+  if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
+  return body;
+}
+
+const say = (verb, what) => console.log(`  ${verb.padEnd(9)} ${what}`);
+
+// ---- identity, before anything ---------------------------------------------------
+const account = await api("GET", "account");
+if (account.id !== expectAccount) {
+  die(1, `WRONG ACCOUNT: key is ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), expected ${expectAccount}.`);
+}
+console.log(
+  `\n  Rotating ${account.id} (${account.settings?.dashboard?.display_name ?? "?"})  ${isLive ? "*** LIVE ***" : "[sandbox]"}\n`
+);
+
+// The SDK's own pin governs outbound calls; the endpoint pin governs the inbound
+// payload shape. They must agree or you debug a difference that does not exist.
+const { readFileSync } = await import("node:fs");
+const apiVersion = readFileSync(new URL("../../lambda/stripe/index.mjs", import.meta.url), "utf8").match(
+  /apiVersion:\s*"([^"]+)"/
+)?.[1];
+if (!apiVersion) die(2, "could not read the SDK apiVersion pin from index.mjs");
+
+const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
+const { data: endpoints = [] } = await api("GET", "webhook_endpoints?limit=100");
+const old = endpoints.find((e) => e.url === url && e.status === "enabled");
+say("found", old ? `${old.id} (${old.enabled_events.length} events, api_version ${old.api_version ?? "NULL"})` : "no existing endpoint at that url");
+
+// ---- create the replacement (both coexist; nothing is lost yet) --------------------
+const form = new URLSearchParams({ url, api_version: apiVersion, description: "quantum-stripe (rotate-webhook-endpoint.mjs)" });
+for (const e of required) form.append("enabled_events[]", e);
+const created = await api("POST", "webhook_endpoints", form);
+if (!created.secret) die(1, "Stripe returned no signing secret on create; aborting before anything is retired.");
+say("created", `${created.id} (${required.length} events, pinned ${created.api_version})`);
+
+// ---- store the secret, reconstructing the API key from 1Password -------------------
+// Deliberately NOT `get-secret-value`: the existing secret is never read. The API
+// key half comes from 1Password, the webhook half from the create response above.
+const opRead = spawnSync("op", ["read", secretKeyRef], { encoding: "utf8" });
+if (opRead.status !== 0 || !opRead.stdout.trim()) die(1, `could not read ${secretKeyRef} from 1Password`);
+const payload = JSON.stringify({ secretKey: opRead.stdout.trim(), webhookSecret: created.secret });
+await new Promise((resolve, reject) => {
+  const p = spawn(
+    "aws",
+    ["secretsmanager", "put-secret-value", "--secret-id", secretId, "--region", region, "--secret-string", "file:///dev/stdin"],
+    { stdio: ["pipe", "ignore", "inherit"] }
+  );
+  p.on("error", reject);
+  p.on("close", (c) => (c === 0 ? resolve() : reject(new Error(`aws exited ${c}`))));
+  p.stdin.end(payload);
+});
+say("stored", `signing secret -> secretsmanager:${secretId} (never printed)`);
+
+// ---- recycle warm containers -------------------------------------------------------
+const upd = spawnSync(
+  "aws",
+  ["lambda", "update-function-configuration", "--region", region, "--function-name", fnName,
+   "--description", `webhook secret rotated ${new Date().toISOString()}`, "--output", "text", "--query", "LastModified"],
+  { encoding: "utf8" }
+);
+if (upd.status !== 0) die(1, `could not recycle ${fnName}: ${upd.stderr}`);
+spawnSync("aws", ["lambda", "wait", "function-updated", "--region", region, "--function-name", fnName]);
+say("recycled", `${fnName} — warm containers hold the OLD secret until this happens`);
+
+// ---- prove the new secret is actually in force -------------------------------------
+// A real Stripe signature over a synthetic, unhandled event. 200 means the
+// deployed function verified against the secret we just stored.
+async function probe() {
+  const body = JSON.stringify({
+    id: `evt_rotation_probe_${Date.now()}`,
+    object: "event",
+    type: "rotation.probe",
+    api_version: apiVersion,
+    data: { object: {} },
+  });
+  const t = Math.floor(Date.now() / 1000);
+  const sig = createHmac("sha256", created.secret).update(`${t}.${body}`).digest("hex");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Stripe-Signature": `t=${t},v1=${sig}` },
+    body,
+  });
+  return { status: res.status, text: (await res.text()).slice(0, 120) };
+}
+
+let ok = null;
+for (let attempt = 1; attempt <= 6; attempt++) {
+  const r = await probe();
+  if (r.status >= 200 && r.status < 300) {
+    ok = r;
+    break;
+  }
+  say("probe", `attempt ${attempt}: HTTP ${r.status} ${r.text}`);
+  await new Promise((r2) => setTimeout(r2, 5000));
+}
+if (!ok) {
+  console.error(
+    `\n  PROBE FAILED. The function is NOT verifying against the new secret.\n` +
+      `  The OLD endpoint (${old?.id ?? "n/a"}) has deliberately been left ENABLED, so nothing is lost.\n` +
+      `  Investigate, then re-run. Do not disable the old endpoint by hand.\n`
+  );
+  process.exit(1);
+}
+say("probe", `HTTP ${ok.status} — the deployed function verifies the new secret`);
+
+// ---- only now retire the old one ---------------------------------------------------
+if (old) {
+  // Disabled, not deleted: rollback is a single toggle in the Dashboard.
+  await api("POST", `webhook_endpoints/${old.id}`, new URLSearchParams({ disabled: "true" }));
+  say("disabled", `${old.id} (kept, not deleted — rollback is one toggle)`);
+}
+
+console.log(`\n  Rotation complete. Verify with:`);
+console.log(`    make stripe-parity ACCOUNT=${account.id}\n`);
