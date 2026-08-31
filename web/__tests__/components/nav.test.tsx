@@ -110,6 +110,19 @@ describe("Nav", () => {
     expect(row!.className).not.toMatch(/grid-cols-\[1fr_/);
   });
 
+  it("keeps the action rail inside its grid track (signed-in overlap guard)", () => {
+    render(<Nav />);
+    // The signed-in cluster (Review + email + language + theme) can outgrow
+    // its 1fr track. `justify-self-end` sizes the rail to fit-content, and an
+    // end-justified fit-content box overflows LEFT over the centered pill
+    // ("PricingReview"). The rail must stretch to the track (grid default)
+    // and justify its flex line instead, so the email chip absorbs the squeeze.
+    const rail = document.querySelector("nav > div > div:last-child")!;
+    expect(rail.className).not.toContain("justify-self-end");
+    expect(rail.className).toContain("justify-end");
+    expect(rail.className).toContain("min-w-0");
+  });
+
   it("should render the ThemeToggle component", () => {
     render(<Nav />);
     expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
