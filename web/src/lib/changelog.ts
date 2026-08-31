@@ -131,6 +131,11 @@ export interface SilentChange {
  */
 export const SILENT: readonly SilentChange[] = [
   {
+    pr: 254,
+    reason:
+      "The last link of the same shrink chain PR 253 fixed: flex on the account menu's wrapper so the button inside follows the wrapper's compression instead of parking its chevron under the language globe. Same-night polish of 2026-08-30-black-and-gold, same PR 244 precedent.",
+  },
+  {
     pr: 253,
     reason:
       "One class on the account menu's wrapper div (min-w-0) so the signed-in email chip can compress instead of pushing the nav's action rail across the centered pill. A learner CAN see the un-breaking, but it lands the night 2026-08-30-black-and-gold was announced and only makes that entry's description true — the same-day-polish precedent PR 244 set.",
