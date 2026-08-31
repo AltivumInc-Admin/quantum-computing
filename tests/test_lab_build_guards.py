@@ -34,8 +34,10 @@ sys.path.insert(0, str(REPO_ROOT / "web" / "jupyterlite-build"))
 
 import check_notebook_coverage as cov  # noqa: E402
 import prune_lock  # noqa: E402
+import pyodide_verify  # noqa: E402
 
 BUILD_SH = REPO_ROOT / "web" / "jupyterlite-build" / "build.sh"
+TARBALL_PINS = REPO_ROOT / "web" / "jupyterlite-build" / "pyodide-tarball.sha256"
 
 
 # --------------------------------------------------------------- fixture builders
@@ -341,3 +343,91 @@ def test_build_sh_still_invokes_both_guards():
     assert "python prune_lock.py" in build_sh
     # The closure roots the coverage guard's error message tells you to extend.
     assert "LAB_CLOSURE_ROOTS=" in build_sh
+
+
+# ------------------------------------------------------- supply chain verification
+
+
+def staged_wheel(tmp_path, name: str, body: bytes):
+    """Write a wheel into a staging dir and return (dir, its true sha256)."""
+    import hashlib
+
+    (tmp_path / name).write_bytes(body)
+    return tmp_path, hashlib.sha256(body).hexdigest()
+
+
+def lock_with_digest(tmp_path, file_name: str, sha256: str):
+    """A minimal pyodide-lock.json attesting one wheel."""
+    lock = {
+        "packages": {"micropip": {"name": "micropip", "file_name": file_name, "sha256": sha256}}
+    }
+    path = tmp_path / "pyodide-lock.json"
+    path.write_text(json.dumps(lock), encoding="utf-8")
+    return path
+
+
+def test_a_wheel_matching_the_lock_verifies(tmp_path):
+    name = "micropip-1.0-py3-none-any.whl"
+    dest, digest = staged_wheel(tmp_path, name, b"honest bytes")
+    lock = lock_with_digest(tmp_path, name, digest)
+    assert pyodide_verify.verify(lock, dest, [name]) == []
+
+
+def test_a_tampered_wheel_is_rejected(tmp_path):
+    """The whole point: bytes from the CDN that the GitHub lock does not attest."""
+    name = "micropip-1.0-py3-none-any.whl"
+    dest, digest = staged_wheel(tmp_path, name, b"honest bytes")
+    lock = lock_with_digest(tmp_path, name, digest)
+    (dest / name).write_bytes(b"honest bytes plus a payload")
+    problems = pyodide_verify.verify(lock, dest, [name])
+    assert len(problems) == 1
+    assert "sha256 mismatch" in problems[0]
+
+
+def test_a_wheel_absent_from_the_lock_is_not_waved_through(tmp_path):
+    """The closure is computed FROM the lock, so absence means they diverged."""
+    name = "ghost-1.0-py3-none-any.whl"
+    dest, _ = staged_wheel(tmp_path, name, b"whatever")
+    lock = lock_with_digest(tmp_path, "micropip-1.0-py3-none-any.whl", "0" * 64)
+    problems = pyodide_verify.verify(lock, dest, [name])
+    assert len(problems) == 1
+    assert "no sha256 in the lock" in problems[0]
+
+
+def test_a_missing_wheel_is_reported_not_skipped(tmp_path):
+    name = "micropip-1.0-py3-none-any.whl"
+    lock = lock_with_digest(tmp_path, name, "0" * 64)
+    problems = pyodide_verify.verify(lock, tmp_path, [name])
+    assert len(problems) == 1
+    assert "missing from" in problems[0]
+
+
+def test_every_pyodide_version_build_sh_can_fetch_is_pinned():
+    """An unpinned version must FAIL the build, so the pin file must stay populated.
+
+    The lock ships inside the tarball and cannot attest to its own container, so
+    this file is the only thing standing between a poisoned .cache (restored by
+    both CI and Amplify) and a shipped runtime.
+    """
+    pins = TARBALL_PINS.read_text(encoding="utf-8")
+    entries = [
+        line.split()
+        for line in pins.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert entries, "no pinned tarball digests — every Pyodide fetch would refuse"
+    for digest, name in entries:
+        assert len(digest) == 64 and all(c in "0123456789abcdef" for c in digest), name
+        assert name.startswith("pyodide-core-") and name.endswith(".tar.bz2")
+
+
+def test_build_sh_verifies_both_halves_of_the_supply_chain():
+    """Both checks must be WIRED IN; an uncalled verifier protects nothing."""
+    build_sh = BUILD_SH.read_text(encoding="utf-8")
+    # Wheels: checked against the lock from the other origin.
+    assert "python pyodide_verify.py" in build_sh
+    # Tarball: pinned, and re-checked on the cache-hit path too, which is the
+    # path by which a bad tarball would outlive the fetch that produced it.
+    assert "pinned_tarball_sha256" in build_sh
+    assert "sha256_of" in build_sh
+    assert 'test -s "$dest/$whl"' in build_sh  # the old non-empty gate stays as a cheap first cut
