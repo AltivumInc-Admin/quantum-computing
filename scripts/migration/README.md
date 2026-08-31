@@ -270,3 +270,71 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   — retire at Task 12 Step 5.
 - Parity gate PASS: both enabled live endpoints 9/9 + pinned; catalog matches
   CATALOG and pricing.ts.
+
+## Pool hygiene — 2026-08-30 (founder-directed)
+
+- The three internal `@altivum.ai` accounts DELETED from BOTH pools
+  (`admin-delete-user` x6, verified by re-listing). None had wallet rows.
+- Ruling (founder, "delete anyway", offered explicitly): the grandfathered QPU
+  allowance ledger rows — capMicros 2500000, spentMicros 1335000, 3 runs /
+  300 shots, plus the CRED# row — are now ORPHANED in both accounts; their
+  owning sub no longer exists in either pool. Remap to a new sub if that
+  allowance is ever wanted again. Two of the three accounts' progress rows are
+  likewise orphaned. Pools after: QL-Prod 7 users; source 11 identities.
+
+## Cutover (Task 12 Steps 2–4) — 2026-08-30 (founder-ordered)
+
+- Trigger: a NEW Google-federated signup landed in the SOURCE pool at
+  2026-08-30 17:27 CDT — the site still resolved to the old host, and every
+  uncut hour widened the Task 8 delta. Founder ordered the flip ahead of
+  Task 11 completion (Steps 2, 3, and the Step 5 paid run remain outstanding
+  as post-flip verification on the real domain).
+- Root cause of Task 7's FAILED domain association, finally identified: the
+  `quantumlearner-dev-redirect` CloudFront distribution (Altivum, us-east-1,
+  `E365VD5CYQX9FM`) still HELD the `quantumlearner.dev` + `www` aliases.
+  CloudFront aliases are globally exclusive across ALL accounts, so Amplify's
+  distribution could never claim them — and the HQ-zone apex/www ALIASes still
+  pointed at that redirect distribution. Amplify's own statusReason only ever
+  says "couldn't find the correct CNAME records," which is why this hid.
+- Alias release (founder-run, classifier-gated): the redirect distribution
+  updated to zero aliases + default viewer cert. It remains deployed and
+  alias-free, still 301ing its bare cloudfront.net name to quantum.altivum.ai
+  (harmless chain) — teardown candidate, stack `quantumlearner-dev-redirect`.
+- Step 2 executed: FAILED association deleted, recreated (apex + www → main) —
+  new target `d1knpu13p4obxn.cloudfront.net`; the ACM validation CNAME already
+  in the HQ zone matched verbatim and re-verified. Apex + www A/AAAA ALIASes
+  UPSERTed in the HQ zone (CloudFront hosted-zone id `Z2FDTNDATAQYW2`).
+  Association AVAILABLE ~10 min later. MX/TXT/DKIM untouched.
+- Step 3 verified: apex and www answer 200 over HTTPS with the new build
+  (title check); Cognito client callbacks (`https://quantumlearner.dev/auth/callback`)
+  and the Google IdP were already in place from Task 4 — confirmed, not added.
+- Step 4 executed by a SIMPLER mechanism than planned: instead of deploying
+  `infra/redirect/quantum-altivum-ai.yaml`, the OLD Amplify app's custom rules
+  were REPLACED with the single rule `/<*> → https://quantumlearner.dev/<*>`
+  301 (path-preserving; the app's only custom domain is `quantum.altivum.ai` —
+  the `altivum.ai` apex is a different property and untouched). Ruling: the
+  planned redirect stack is unnecessary; its template ships dark. Gotcha:
+  Amplify's edge caches pin `index.html` via long s-maxage, so the rule alone
+  left `/` serving 200 while deep paths 301'd — a RELEASE job (226, founder-run)
+  was required to invalidate. After it: root, deep paths, and the amplifyapp
+  default domain all 301. Rollback record — the rules this replaced (they lived
+  only in Amplify): six `/learn/0N-*` → `/learn/0(N+1)-*` 301s (foundations,
+  hardware, algorithms, quantum-ml, quantum-chemistry, hybrid-jobs) plus the
+  SPA rewrite `/<*> → /index.html` 404-200.
+- New-signup migration (runbook finding M5's pre-provision path, first use):
+  the 2026-08-30 signup was created in the QL-Prod pool (`admin-create-user
+  --message-action SUPPRESS`, email_verified=true) and the Google identity
+  linked via `admin-link-provider-for-user` (Cognito_Subject from the source
+  identities blob) BEFORE any first sign-in against the new pool; their single
+  progress row (a locale pref — no wallet/ledger/task rows) copied under the
+  new sub and verified by get-item. The remaining 4 federated users stay JIT +
+  PENDING-fold per Task 8. As with Task 8, no emails or subs in this log.
+- Sequencing deviation, on the record: the flip PRECEDED Task 12 Step 1's
+  fresh-delta remap re-run. Acceptable because the source site is now
+  unreachable so the tables can no longer accrue learner writes — modulo an
+  already-open legacy tab with an unexpired session token, which the Step 1
+  re-run (still owed, BEFORE any PENDING fold) will sweep.
+- Still OUTSTANDING from Task 12: Step 1 (fresh remap re-run + the
+  analytics-daily verbatim copy), Step 5 (confirm a live delivery on the new
+  Stripe endpoint, then DISABLE the old one), Step 6 (drop the amplifyapp
+  callback/logout URLs from the new pool client). Task 13 not started.

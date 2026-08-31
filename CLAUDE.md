@@ -80,10 +80,13 @@ Delta Centric Org (management)
 
 Name the account, never "Quantum Learner" — four accounts in this OU answer to that.
 
-- **Deployed reality now agrees for Braket, still disagrees for everything else.**
-  The platform half is unchanged: all six Lambdas, Cognito, Amplify and the credit
-  wallet are still live in the **Altivum** account (`Altivum Inc - Original
-  Account`), verified 2026-08-27 — the `QL-Prod` migration has not happened. The
+- **Deployed reality (updated 2026-08-30): the platform now RUNS on QL-Prod.**
+  `quantumlearner.dev` serves the QL-Prod Amplify app, `quantum.altivum.ai` 301s
+  to it, and signups land in the QL-Prod pool. The Altivum copies (six Lambdas,
+  the old pool, the old Amplify app, both old Stripe endpoints) are still
+  DEPLOYED but no longer resolvable by learners — teardown is a separate plan.
+  Outstanding: Task 12 Steps 1/5/6 and Task 13; see `scripts/migration/README.md`
+  (the operator log) for exactly what happened and what is owed. The
   Braket half executed 2026-08-28: `quantum-qpu-submit`'s two Braket API calls
   (`CreateQuantumTask` in submit, `GetQuantumTask` in the reconciler) now run
   cross-account under an assumed role in **Braket Workloads**, everything else the
@@ -93,10 +96,9 @@ Name the account, never "Quantum Learner" — four accounts in this OU answer to
   spend topic), and `quantum-hq-foundations` (us-east-1, in **Quantum Learner -
   HQ** — the quantumlearner.dev zone, authoritative since 2026-08-28, plus the
   OU budget). Reach either account with a chained CLI
-  profile — `ql-braket` or `ql-hq` — each assuming `OrganizationAccountAccessRole`
-  from `org-admin`, the same pattern `ql-prod` will use once the platform
-  migration happens. Do not assume any other resource is in Delta Centric because
-  this section exists.
+  profile — `ql-braket`, `ql-hq`, or `ql-prod` — each assuming
+  `OrganizationAccountAccessRole` from `org-admin`. Do not assume any other
+  resource is in Delta Centric because this section exists.
 
 **Use the `org-admin` profile for any Delta Centric work — never `personal-dev`.**
 
