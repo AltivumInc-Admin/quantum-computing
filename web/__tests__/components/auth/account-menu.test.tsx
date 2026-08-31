@@ -80,6 +80,12 @@ describe("AccountMenu", () => {
     // at its cap even after the trigger got min-w-0 (verified live: the rail
     // overflowed the pill by 36px signed-in until the wrapper shrank too).
     expect(trigger.parentElement!.className).toContain("min-w-0");
+    // And the wrapper must be a flex CONTAINER: as a plain block it shrinks
+    // but nothing makes the inline-flex button inside follow, so the button
+    // spilled out the wrapper's right edge and parked the chevron under the
+    // language globe (verified live). flex completes the shrink chain
+    // rail -> wrapper -> button -> truncating span.
+    expect(trigger.parentElement!.className.split(" ")).toContain("flex");
   });
 
   it("renders a role=menu with Workspace + Sign out menuitems when open", () => {
