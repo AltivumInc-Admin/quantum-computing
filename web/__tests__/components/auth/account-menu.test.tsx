@@ -63,6 +63,20 @@ describe("AccountMenu", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("keeps the trigger shrinkable so the email yields width, never the nav", () => {
+    authed();
+    render(<AccountMenu />);
+    const trigger = screen.getByRole("button", { name: /a@b\.com/i });
+    // Nested truncation needs min-w-0 at every flex level: without it the
+    // button's automatic minimum is the full email's min-content, it refuses
+    // to shrink inside the nav's action rail, and the rail overflows left
+    // across the centered pill ("PricingReview"). The caps alone don't help —
+    // a capped chip that can't shrink BELOW the cap still overflows.
+    expect(trigger.className).toContain("min-w-0");
+    expect(trigger.className).toMatch(/max-w-\[/);
+    expect(trigger.querySelector("span")!.className).toContain("truncate");
+  });
+
   it("renders a role=menu with Workspace + Sign out menuitems when open", () => {
     authed();
     render(<AccountMenu />);

@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-08-30-black-and-gold": {
+    title: "Negro y dorado",
+    body: "El verde desapareció: Quantum Learner ahora descansa sobre un fondo negro verdadero, con el acento dorado haciendo el mismo trabajo discreto de siempre. El tema claro se aclaró a un blanco cálido con tinta casi negra. Nada se movió y nada cambió de significado — cada página, gráfico e icono simplemente estrena el nuevo traje, en ambos temas.",
+  },
   "2026-08-29-canonical-domain": {
     title: "Quantum Learner ahora vive en quantumlearner.dev",
     body: "La dirección del sitio ahora es quantumlearner.dev. La dirección anterior, quantum.altivum.ai, redirige aquí automáticamente, y todos los marcadores y enlaces compartidos siguen funcionando. Si iniciabas sesión con correo y contraseña, se te pedirá restablecer la contraseña una vez; el inicio de sesión con Google no cambia.",

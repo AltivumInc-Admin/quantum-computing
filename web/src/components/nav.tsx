@@ -82,11 +82,20 @@ export function Nav() {
           </div>
 
           {/* min-w-0 lets this column actually compress inside the lg grid
-              (the account email truncates rather than pushing the page wide). */}
-          <div className="flex min-w-0 items-center gap-1.5 justify-self-end">
+              (the account email truncates rather than pushing the page wide).
+              Deliberately NOT justify-self-end: that sizes the item to
+              fit-content, and when the signed-in cluster (Review + email +
+              language + theme) outgrows its 1fr track, an end-justified
+              fit-content box overflows LEFT over the centered pill —
+              "PricingReview". Stretching to the track (the grid default) and
+              justifying the flex line instead keeps the row inside the track,
+              so the email chip gives up width before anything can collide. */}
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
             {/* Below lg, Review rides in the pill row with the other
-                destinations — it is a nav destination, not an account control. */}
-            <ReviewNavBadge className="hidden lg:inline-flex" />
+                destinations — it is a nav destination, not an account control.
+                shrink-0: the account email is the one flexible member of this
+                rail; the Review label must never compress into wrap/clip. */}
+            <ReviewNavBadge className="hidden shrink-0 lg:inline-flex" />
             <AccountMenu />
             <LanguageSelector />
             <ThemeToggle />
