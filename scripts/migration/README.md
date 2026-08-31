@@ -300,6 +300,11 @@ case (CASE_OPENED), applied by ~21:00. All four stacks deployed after it cleared
   updated to zero aliases + default viewer cert. It remains deployed and
   alias-free, still 301ing its bare cloudfront.net name to quantum.altivum.ai
   (harmless chain) — teardown candidate, stack `quantumlearner-dev-redirect`.
+  **Read that carefully: the removable thing is the STACK, not the domain.**
+  `quantumlearner.dev` the domain and its 301 are permanent (see "The vanity
+  domains are permanent" below); `quantumlearner-dev-redirect` the CloudFront
+  stack is an orphan and may go. They are one word apart in a cleanup list,
+  which is exactly how someone tidying up does the wrong one.
 - Step 2 executed: FAILED association deleted, recreated (apex + www → main) —
   new target `d1knpu13p4obxn.cloudfront.net`; the ACM validation CNAME already
   in the HQ zone matched verbatim and re-verified. Apex + www A/AAAA ALIASes

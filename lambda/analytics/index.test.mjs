@@ -79,11 +79,62 @@ test("STORES NO IDENTIFIERS — the written item is counts only", async () => {
   assert.equal(written.includes("_next"), false, "no request path");
 
   const allowed = new Set([
-    "day", "requests", "uniqueIps", "humans", "humanPageViews", "googleSignIns",
-    "malformed", "buckets", "botFilterComplete", "computedAt",
+    // offSiteRequests is a COUNT of rows whose host header was not ours
+    // (rows.length - mine.length) — no address, agent or path, so it keeps the
+    // promise. It is stored because `requests: 0` alone cannot distinguish a
+    // quiet day from a host filter matching nothing, which is how this stack
+    // recorded weeks of zeroes while every alarm stayed green.
+    "day", "requests", "offSiteRequests", "uniqueIps", "humans", "humanPageViews",
+    "googleSignIns", "malformed", "buckets", "botFilterComplete", "computedAt",
   ]);
   for (const key of Object.keys(ddb.calls[0].input.Item)) {
     assert.ok(allowed.has(key), `unexpected attribute written: ${key}`);
+  }
+});
+
+test("a log whose rows ALL miss the host filter is flagged, not recorded as a quiet day", async () => {
+  // The exact shape that hid for weeks: the collector runs, succeeds, and
+  // matches nothing because SITE_HOST names a host the app no longer serves.
+  // `requests: 0` alone cannot tell that from a day with no visitors, so the
+  // run must SAY so — a metric filter alarms on this line
+  // (quantum-analytics-matched-nothing), and offSiteRequests lands on the row.
+  const foreign = LOG.replaceAll("learner.quantumenv.dev", "some-other-host.example");
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const { core, ddb } = makeCore({ logText: foreign });
+    const out = await core({ today: "2026-08-20" });
+    assert.equal(out.requests, 0, "none of the rows are ours");
+    assert.equal(out.offSiteRequests, 3, "but the log was not empty");
+    assert.ok(
+      warnings.some((w) => w.includes("analytics-matched-nothing")),
+      "must emit the line the metric filter alarms on",
+    );
+    assert.equal(ddb.calls[0].input.Item.offSiteRequests.N, "3", "diagnostic persisted on the row");
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test("a genuinely empty log stays silent — zero is a measurement, not a breakage", async () => {
+  // The other half, and what keeps the alarm from crying wolf: no rows at all
+  // is a quiet day, not a broken filter, and must NOT trigger it.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const { core } = makeCore({ logText: HEADER });
+    const out = await core({ today: "2026-08-20" });
+    assert.equal(out.requests, 0);
+    assert.equal(out.offSiteRequests, 0);
+    assert.equal(
+      warnings.some((w) => w.includes("analytics-matched-nothing")),
+      false,
+      "an empty log must not alarm",
+    );
+  } finally {
+    console.warn = realWarn;
   }
 });
 

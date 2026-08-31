@@ -174,6 +174,47 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # The gap the "did-not-run" alarm below does NOT cover: a run that DID
+  # happen, DID succeed, and matched nothing. Error-rate alarms cannot see it —
+  # there is no error — and `requests: 0` on its own is indistinguishable from
+  # a quiet day, which is exactly how a stale SITE_HOST recorded zeroes here
+  # for weeks with every alarm green. The handler emits this line only when the
+  # log HAD rows and none matched, so a genuinely quiet day (no rows at all)
+  # stays silent and this cannot cry wolf.
+  AnalyticsMatchedNothingMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref AnalyticsLogGroup
+      FilterPattern: '"analytics-matched-nothing"'
+      MetricTransformations:
+        - MetricNamespace: QuantumAnalytics
+          MetricName: MatchedNothing
+          MetricValue: "1"
+          Unit: Count
+
+  AnalyticsMatchedNothingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-matched-nothing
+      AlarmDescription: >-
+        The collector ran, succeeded, and matched ZERO of the rows it fetched:
+        traffic exists and none of it looks like ours. Almost always a SiteHost
+        that no longer names the host the site serves (check the SiteHost
+        parameter against web/src/lib/site.ts), or an AmplifyDomain pointing at
+        the wrong association. Reported counts are meaningless until it is
+        fixed, and NOTHING else will say so — this is the one alarm standing
+        between a wrong identifier and weeks of plausible-looking zeroes.
+      Namespace: QuantumAnalytics
+      MetricName: MatchedNothing
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      # Quiet is healthy here: the metric only exists on a bad day.
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   AnalyticsSilentAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

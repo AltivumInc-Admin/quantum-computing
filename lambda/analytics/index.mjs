@@ -22,7 +22,7 @@
 import { AmplifyClient, GenerateAccessLogsCommand } from "@aws-sdk/client-amplify";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 
-import { buildRangeIndex, parseLog, summarizeDay } from "./classify.mjs";
+import { SITE_HOST, buildRangeIndex, parseLog, summarizeDay } from "./classify.mjs";
 
 export const AWS_RANGES_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
 
@@ -76,9 +76,23 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     const { index, complete, why } = await ranges();
     const summary = summarizeDay(rows, index, { day });
 
+    // A run that fetched rows but matched NONE of them is a broken host filter,
+    // not a quiet day — and the two are indistinguishable from `requests: 0`
+    // alone, which is why this stack recorded zeroes for weeks while every
+    // alarm stayed green. Emitted as a distinctive line so a metric filter can
+    // alarm on it (quantum-analytics-matched-nothing), and persisted on the row
+    // so a later reader can tell measurement from breakage without guessing.
+    if (summary.requests === 0 && summary.offSiteRequests > 0) {
+      console.warn(
+        `analytics-matched-nothing day=${day} offSiteRequests=${summary.offSiteRequests} ` +
+          `siteHost=${SITE_HOST} — the log had rows and none matched the host filter`
+      );
+    }
+
     const item = {
       day: { S: day },
       requests: { N: String(summary.requests) },
+      offSiteRequests: { N: String(summary.offSiteRequests) },
       uniqueIps: { N: String(summary.uniqueIps) },
       humans: { N: String(summary.humans) },
       humanPageViews: { N: String(summary.humanPageViews) },
