@@ -70,10 +70,37 @@ assert_wasm_under_ceiling() {
 # when their pins coincide — which they do today: the LESSON runtime is pinned
 # to the same Pyodide build the LAB kernel uses (0.29.0), whose pyodide.asm.wasm
 # stays under CloudFront's compression ceiling (see the wasm assertion below).
+# sha256 of a file, on both macOS (shasum) and CI Linux (sha256sum).
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+# The pinned digest for one tarball, or empty if this version was never pinned.
+pinned_tarball_sha256() {
+  local name="pyodide-core-${1}.tar.bz2"
+  awk -v want="$name" '$1 !~ /^#/ && $2 == want { print $1 }' pyodide-tarball.sha256
+}
+
 fetch_pyodide_core() {
   local version="$1" dest="$2"
   local tarball=".cache/pyodide-core-${version}.tar.bz2"
+  local want got
   mkdir -p .cache
+
+  # A version with no pinned digest FAILS rather than downloading unverified:
+  # recording the hash is how a Pyodide bump gets looked at. See the header of
+  # pyodide-tarball.sha256 for the one-line command that produces it.
+  want=$(pinned_tarball_sha256 "$version")
+  if [[ -z "$want" ]]; then
+    echo "    ERROR: no pinned sha256 for pyodide-core-${version}.tar.bz2" >&2
+    echo "           Add it to web/jupyterlite-build/pyodide-tarball.sha256 (that file says how)." >&2
+    exit 1
+  fi
+
   if [[ -s "$tarball" ]]; then
     echo "    using cached ${tarball}"
   else
@@ -82,6 +109,21 @@ fetch_pyodide_core() {
       -o "${tarball}.part"
     mv "${tarball}.part" "$tarball"
   fi
+
+  # Verified on EVERY build, not just on download: the cache is restored by
+  # CI's actions/cache and by Amplify, which is precisely the path by which a
+  # bad tarball would outlive the fetch that produced it.
+  got=$(sha256_of "$tarball")
+  if [[ "$got" != "$want" ]]; then
+    rm -f "$tarball"
+    echo "    ERROR: ${tarball} failed sha256 verification (removed)." >&2
+    echo "           pinned:   $want" >&2
+    echo "           received: $got" >&2
+    echo "           Re-run the build. If it fails again with the same digest, upstream" >&2
+    echo "           changed the asset — investigate before updating the pin." >&2
+    exit 1
+  fi
+  echo "    verified sha256 of ${tarball}"
   local tmp
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/pyodide-core-XXXXXX")
   # A corrupt cached tarball must not wedge every future build: drop it on failure.
@@ -102,6 +144,11 @@ fetch_closure_wheels() {
     curl -fsSL --retry 3 "${cdn}/${whl}" -o "$dest/$whl"
     test -s "$dest/$whl" || { echo "${label}closure wheel $whl missing/empty after fetch"; exit 1; }
   done
+  # These wheels came from jsdelivr; the lock that attests them came from the
+  # GitHub tarball. Checking one against the other is genuine cross-origin
+  # verification — a mis-serving CDN cannot forge a digest GitHub published.
+  # Non-empty (`test -s` above) was the ONLY gate before this.
+  python pyodide_verify.py "$dest/pyodide-lock.json" "$dest" $wheels
 }
 
 # 1b) Self-host the pinned Pyodide LESSON runtime under ../public/pyodide so

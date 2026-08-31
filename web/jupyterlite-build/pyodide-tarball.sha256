@@ -1,0 +1,26 @@
+# Pinned sha256 for each pyodide-core release tarball build.sh downloads.
+#
+# WHY THIS FILE EXISTS: pyodide-lock.json — which attests every wheel — ships
+# INSIDE the tarball, so it cannot attest to its own container. Without a pin
+# the only gate was `[[ -s "$tarball" ]]` (non-empty) against a .cache/ that
+# both CI's actions/cache and Amplify restore, so a single bad fetch could
+# persist across builds.
+#
+# WHAT A PIN HERE DOES AND DOES NOT PROVE: upstream publishes no checksum for
+# these assets, so a value here is trust-on-first-observation, not an upstream
+# attestation. What it does buy is immutability — once recorded, a poisoned
+# cache, a mutated release asset, or a truncated download fails the build
+# loudly instead of shipping. Each entry below was recorded from two
+# independent fetches (a local .cache copy from 2026-07-20 and a fresh GitHub
+# download on 2026-08-31) that agreed byte for byte.
+#
+# ON A PYODIDE BUMP the build fails with "no pinned sha256" until you add the
+# line. That refusal is deliberate: recording the digest is how the new version
+# gets looked at. To add one:
+#
+#   curl -fsSL https://github.com/pyodide/pyodide/releases/download/<v>/pyodide-core-<v>.tar.bz2 \
+#     | shasum -a 256
+#
+# Format: <sha256>  pyodide-core-<version>.tar.bz2   (two spaces — `shasum -c` format)
+
+fe85edd0d5c9828598da14c98d2f79cea45aac5a9e6448ca65dcc2d58d4ed033  pyodide-core-0.29.0.tar.bz2
