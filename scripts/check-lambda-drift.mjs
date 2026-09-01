@@ -36,6 +36,34 @@ const JSON_OUT = process.argv.includes("--json");
  * Deployed function -> the source directory it is built from. One entry per function,
  * because several stacks ship more than one function from a single directory.
  */
+/**
+ * Functions whose drift is DELIBERATE, with the reason and who to ask.
+ *
+ * Without this, a hold has nowhere to live except someone's head: the check
+ * goes red, stays red, and by day three nobody reads it — the "cry wolf until
+ * someone turns it off" failure this script's own header warns about. It had
+ * already happened once (four consecutive red daily runs, 2026-08-29..09-01)
+ * before this existed.
+ *
+ * Rules that keep this from becoming the rot it prevents:
+ *  - A hold needs a REASON and a CLEARS-WHEN, both in plain language.
+ *  - A held function still prints, as HELD, so it is never invisible.
+ *  - If a held function STOPS drifting, this file is stale and the run says so
+ *    — an allowlist nobody prunes eventually hides a real gap.
+ *  - Drift in anything NOT listed here still fails the run, exactly as before.
+ */
+const HELD = [
+  {
+    fn: /^quantum-review-email-/,
+    reason:
+      "Cosmetic email recolor (black-and-gold retheme) is merged but deliberately NOT deployed: the three product sessions agreed to run no unrelated production deploys during the Shop product's domain cutover, so a Shop incident is never debugged alongside a Learner deploy.",
+    clearsWhen:
+      "Shop's cutover completes — the platform session coordinates it (runbook: docs/platform-subdomain-migration.md in the quantum-env repo). Then deploy lambda/review-email and DELETE this entry.",
+  },
+];
+
+const heldFor = (fn) => HELD.find((h) => h.fn.test(fn));
+
 const FUNCTIONS = [
   { fn: "quantum-stripe", dir: "lambda/stripe" },
   // The sandbox stack runs the SAME source and is where payment changes are
@@ -97,7 +125,9 @@ for (const { fn, dir } of FUNCTIONS) {
     // (deploy-check.mjs, cfn-slice.mjs, backfill-*.mjs), and failing on those would make
     // this cry wolf until someone disabled it — which is how guards die.
     const ok = drifted.length === 0;
-    if (!ok) exitCode = 1;
+    // A DECLARED hold does not fail the run — it prints as HELD with its reason.
+    // Undeclared drift still fails, which is the whole point of the check.
+    if (!ok && !heldFor(fn)) exitCode = 1;
     results.push({ fn, dir, ok, drifted, missing, lastModified });
   } catch (err) {
     exitCode = Math.max(exitCode, 2);
@@ -113,17 +143,34 @@ if (JSON_OUT) {
   console.log(`\n  Deployed-vs-git drift  (region ${REGION})\n`);
   for (const r of results) {
     if (r.error) { console.log(`  ??  ${r.fn.padEnd(34)} could not check — ${r.error}`); continue; }
-    const mark = r.ok ? "OK " : "DRIFT";
+    const held = !r.ok && heldFor(r.fn);
+    const mark = r.ok ? "OK " : held ? "HELD" : "DRIFT";
     console.log(`  ${mark.padEnd(6)} ${r.fn.padEnd(34)} ${r.lastModified}`);
     for (const f of r.drifted) console.log(`         DIFFERS from git: ${join(r.dir, f)}`);
     if (r.missing.length) console.log(`         (not packaged, assumed ops-only: ${r.missing.join(", ")})`);
+    if (held) {
+      console.log(`         HELD ON PURPOSE — do not deploy to clear this.`);
+      console.log(`         why:   ${held.reason}`);
+      console.log(`         until: ${held.clearsWhen}`);
+    }
   }
-  const bad = results.filter((r) => !r.ok);
+  const bad = results.filter((r) => !r.ok && !heldFor(r.fn));
+  const held = results.filter((r) => !r.ok && heldFor(r.fn));
+  // A hold that no longer holds anything is stale, and a stale allowlist is how
+  // a real gap eventually hides behind an entry nobody re-read.
+  const staleHolds = HELD.filter((h) => !results.some((r) => !r.ok && h.fn.test(r.fn)));
   console.log(
     bad.length === 0
-      ? `\n  All ${results.length} functions match git.\n`
+      ? `\n  All ${results.length - held.length} unheld functions match git.` +
+        (held.length ? ` ${held.length} held on purpose (see above).\n` : `\n`)
       : `\n  ${bad.length} of ${results.length} functions do NOT match git. Deploy them, or explain why not.\n`,
   );
+  for (const h of staleHolds) {
+    console.log(
+      `  NOTE: the HELD entry matching ${h.fn} no longer matches any drifting function.\n` +
+        `        The hold has served its purpose — delete it from scripts/check-lambda-drift.mjs.\n`,
+    );
+  }
 }
 
 process.exit(exitCode);
