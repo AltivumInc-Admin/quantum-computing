@@ -379,6 +379,37 @@ test("both network waits are bounded, not left to the function timeout", async (
   assert.ok(LOG_DOWNLOAD_TIMEOUT_MS + RANGES_TIMEOUT_MS < 120_000, "both must fit inside the function Timeout");
 });
 
+test("the prefix fetch overlaps the log retrieval instead of queuing behind it", async () => {
+  // Two independent network waits, and the cron makes every run a cold start,
+  // so the memo never helps and the full fetch + parse + index build is paid
+  // every day. quantum-analytics-slow watches wall clock against a 120s
+  // timeout, so the ordering is a monitored quantity, not a micro-optimization.
+  const order = [];
+  const amplify = {
+    calls: [],
+    send: async (cmd) => {
+      amplify.calls.push(cmd);
+      order.push("amplify");
+      return { logUrl: "https://s3.test/presigned" };
+    },
+  };
+  const core = createAnalyticsCore({
+    amplify,
+    ddb: stubClient(),
+    fetchImpl: async (url) => {
+      order.push(url.includes("ip-ranges") ? "ranges" : "log");
+      return url.includes("ip-ranges")
+        ? { ok: true, json: async () => ({ prefixes: [] }) }
+        : { ok: true, text: async () => LOG };
+    },
+    tableName: "t",
+    appId: "app",
+    domain: "d",
+  });
+  await core({ today: "2026-08-20" });
+  assert.equal(order[0], "ranges", "the prefix fetch must be in flight before Amplify is asked");
+});
+
 test("datacenter ranges are applied when they load", async () => {
   // 10.0.0.9 is inside the stubbed 10.0.0.0/8, and is also a declared bot;
   // either way it must not count as a person.

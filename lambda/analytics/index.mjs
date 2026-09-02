@@ -123,6 +123,15 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     // zeroes an aged-out log produces, on the only copy of the history.
     const requested = event.day !== undefined;
 
+    // Started here, awaited after the log is parsed. The prefix list needs
+    // nothing from Amplify, and this function runs once a day on a cron — so
+    // every invocation is a cold container and the memo above never helps:
+    // each run pays the full multi-megabyte fetch, JSON parse and BigInt index
+    // build. Serializing it behind the download simply added the two.
+    // ranges() swallows its own failures and always resolves, so starting it
+    // early cannot produce an unhandled rejection when retrieval throws first.
+    const rangesPromise = ranges();
+
     // One window, unless Amplify refuses its size — then retrieve.mjs halves it
     // and stitches the pieces. A day lost to a size refusal is lost for good:
     // the raw logs age out and nothing can re-fetch them.
@@ -161,7 +170,7 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
       );
     }
 
-    const { index, complete, why } = await ranges();
+    const { index, complete, why } = await rangesPromise;
     const summary = summarizeDay(rows, index, { day, siteHost });
 
     // The published-range fetch is allowed to fail — but a run that degrades
