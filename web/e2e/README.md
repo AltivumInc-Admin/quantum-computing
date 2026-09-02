@@ -109,5 +109,18 @@ npm run test:e2e                  # playwright test
 verbatim — `serve`'s default cleanUrls 301-redirects it and breaks JupyterLite's
 base-URL computation.
 
-On failure, see `playwright-report/` (HTML) and the on-first-retry trace. In CI this
-runs in the `build-smoke` job, reusing the artifacts it already builds.
+In CI this runs in the `build-smoke` job (step **In-browser smoke (Playwright)**),
+reusing the artifacts that job already builds.
+
+On a red CI run, download the **`playwright-report`** artifact from the workflow
+run: it carries `web/playwright-report/` (open `index.html`) and
+`web/test-results/`, which holds the `on-first-retry` trace — open that at
+[trace.playwright.dev](https://trace.playwright.dev) or with
+`npx playwright show-trace <trace.zip>`. Both are CI-only: locally `retries` is
+`0` and the reporter is `list`, so nothing is written. To get a trace from a
+local repro, ask for one:
+
+```bash
+npx playwright test runnable-editor.e2e.ts --trace on
+npx playwright show-report
+```

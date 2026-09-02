@@ -37,7 +37,12 @@ export default defineConfig({
   // pit two heavy WASM boots against each other on a 2-core CI runner and risk
   // timeouts. Wall-clock is a few notebook runs, still well under the build-smoke job.
   workers: 1,
-  reporter: "list",
+  // `list` alone replaces the DEFAULT reporter set, so no playwright-report/ was
+  // ever written and a red CI run left nothing but stdout — while the trace that
+  // `retries: 1` + `trace: "on-first-retry"` exist to capture died with the
+  // runner. In CI both reporters run and ci.yml uploads the two directories on
+  // failure; locally `list` is still the whole story.
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "on-first-retry",

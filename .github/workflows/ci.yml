@@ -340,9 +340,11 @@ jobs:
           fi
           echo "Render path OK: katex + mathml + \\ket macro + hljs present, zero katex-error"
 
-      # Real in-browser smoke: run a browser-runnable notebook under actual Pyodide
-      # + the local qcsim wheel and assert its deterministic output. Reuses the
-      # web/out/ + web/public/lab/ this job already built (no second build).
+      # Real in-browser smokes: the JupyterLite lab under actual Pyodide + the
+      # local qcsim wheel, the tier:"py" grader, the worker watchdog, the
+      # self-hosted Monaco editor, and the (deliberately Pyodide-free) /workspace
+      # Lab launcher. Reuses the web/out/ + web/public/lab/ this job already built
+      # (no second build).
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -351,8 +353,23 @@ jobs:
       - name: Install Playwright (chromium)
         working-directory: web
         run: npx playwright install --with-deps chromium
-      - name: Pyodide in-browser smoke
+      - name: In-browser smoke (Playwright)
         working-directory: web
         env:
           CI: "true"
         run: npx playwright test
+      # Without this a red browser suite left the maintainer nothing: the HTML
+      # report and the on-first-retry trace are written onto the runner and die
+      # with it, so the `list` reporter's stdout was the whole record. Same
+      # convention as drift.yml's `Explain a failure` — a failing check leaves
+      # something actionable behind.
+      - name: Upload the Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
