@@ -281,10 +281,14 @@ export const MAX_PAGES_PER_DAY = 100;
  * happened between the QL-Prod cutover and 2026-08-31: this read
  * quantum.altivum.ai, a hostname the QL-Prod app has never served, and every
  * row was recorded as 0 humans. A domain move must therefore change this
- * WITH the domain — hence SITE_HOST env var, defaulted here to the canonical
- * host and asserted against web/src/lib/site.ts by the parity test.
+ * WITH the domain — hence the SiteHost template parameter, which reaches the
+ * handler as SITE_HOST and is read at the composition root (index.mjs), not
+ * here: this module stays pure, so a caller can classify one day against one
+ * host and the next against another. The literal below is only the default,
+ * and template.test.mjs asserts it equals both the SiteHost parameter default
+ * and the hostname of SITE_URL in web/src/lib/site.ts.
  */
-export const SITE_HOST = process.env.SITE_HOST || "learner.quantumenv.dev";
+export const SITE_HOST = "learner.quantumenv.dev";
 
 export const isHostilePath = (path) => HOSTILE_PATH.test(path ?? "");
 export const isDeclaredBot = (ua) => DECLARED_BOT.test(ua ?? "");
@@ -375,9 +379,13 @@ export function classifyVisitor(rows, rangeIndex) {
  *
  * Every bucket count is returned, not just the human total, because a bare
  * number invites trust it has not earned. `humans` is a floor by construction.
+ *
+ * `siteHost` is an argument rather than a module constant so the one value
+ * whose staleness zeroes the whole report can be varied per call — by a test,
+ * and by backfill.mjs replaying a day the site served under its old hostname.
  */
-export function summarizeDay(rows, rangeIndex, { day } = {}) {
-  const mine = rows.filter((r) => r.host === SITE_HOST);
+export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {}) {
+  const mine = rows.filter((r) => r.host === siteHost);
 
   const byIp = new Map();
   for (const r of mine) {

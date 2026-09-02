@@ -33,7 +33,7 @@ export function previousDay(today) {
   return d.toISOString().slice(0, 10);
 }
 
-export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId, domain }) {
+export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId, domain, siteHost = SITE_HOST }) {
   let cachedRanges = null;
 
   /**
@@ -74,7 +74,7 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     const { rows, malformed } = parseLog(await res.text());
 
     const { index, complete, why } = await ranges();
-    const summary = summarizeDay(rows, index, { day });
+    const summary = summarizeDay(rows, index, { day, siteHost });
 
     // A run that fetched rows but matched NONE of them is a broken host filter,
     // not a quiet day — and the two are indistinguishable from `requests: 0`
@@ -85,7 +85,7 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     if (summary.requests === 0 && summary.offSiteRequests > 0) {
       console.warn(
         `analytics-matched-nothing day=${day} offSiteRequests=${summary.offSiteRequests} ` +
-          `siteHost=${SITE_HOST} — the log had rows and none matched the host filter`
+          `siteHost=${siteHost} — the log had rows and none matched the host filter`
       );
     }
 
@@ -119,6 +119,10 @@ const core = createAnalyticsCore({
   tableName: process.env.TABLE_NAME,
   appId: process.env.AMPLIFY_APP_ID,
   domain: process.env.AMPLIFY_DOMAIN,
+  // Every environment read lives here, at the composition root, the way
+  // lambda/qpu and lambda/review-email do it — classify.mjs stays (data in) ->
+  // (data out) and SITE_HOST is its default, not its source of truth.
+  siteHost: process.env.SITE_HOST || SITE_HOST,
 });
 
 export const handler = (event) => core(event);

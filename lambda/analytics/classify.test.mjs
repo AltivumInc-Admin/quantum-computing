@@ -7,12 +7,13 @@
  * investigation; each is pinned here so the mistake cannot come back.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
   CALLBACK_PATH,
+  SITE_HOST,
   buildRangeIndex,
   classifyVisitor,
   googleSignIns,
@@ -361,6 +362,33 @@ test("traffic to another host header is excluded and reported separately", () =>
   const s = summarizeDay(rows, buildRangeIndex([]));
   assert.equal(s.requests, 1);
   assert.equal(s.offSiteRequests, 1);
+});
+
+test("the host filter is an argument, so one caller can replay two hostnames", () => {
+  // The value whose staleness zeroed this report for weeks must be varyable per
+  // call: the daily run passes the deployed SiteHost, and backfill.mjs passes
+  // whatever hostname the site served on the day it is replaying.
+  const rows = parse(
+    row({ ip: "198.51.100.4", path: "/", host: "quantum.altivum.ai" }),
+    row({ ip: "198.51.100.5", path: "/" }),
+  );
+
+  const now = summarizeDay(rows, buildRangeIndex([]));
+  assert.equal(now.requests, 1, "the default is the canonical host");
+  assert.equal(now.offSiteRequests, 1);
+
+  const then = summarizeDay(rows, buildRangeIndex([]), { siteHost: "quantum.altivum.ai" });
+  assert.equal(then.requests, 1, "the pre-cutover host selects the pre-cutover rows");
+  assert.equal(then.offSiteRequests, 1);
+});
+
+test("SITE_HOST is a plain constant — classify.mjs reads no environment", () => {
+  // The header promises (data in) -> (data out). A module-scope process.env read
+  // makes the one value that matters most impossible for a caller to vary, and
+  // is why index.test.mjs used to rewrite its own fixture to test a wrong host.
+  const src = readFileSync(new URL("./classify.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /process\.env/, "env reads belong at the composition root");
+  assert.equal(typeof SITE_HOST, "string");
 });
 
 test("a visitor who completed a Google sign-in is human, whatever the heuristics say", () => {

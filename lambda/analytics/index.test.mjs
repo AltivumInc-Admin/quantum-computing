@@ -28,7 +28,7 @@ const LOG = [
   "2026-08-19,10:05:00,10.0.0.9,/,200,-,Googlebot/2.1,learner.quantumenv.dev,text/html",
 ].join("\n");
 
-function makeCore({ logText = LOG, rangesOk = true, amplifyResponse } = {}) {
+function makeCore({ logText = LOG, rangesOk = true, amplifyResponse, siteHost } = {}) {
   const amplify = stubClient({
     GenerateAccessLogsCommand: amplifyResponse ?? { logUrl: "https://s3.test/presigned" },
   });
@@ -40,7 +40,16 @@ function makeCore({ logText = LOG, rangesOk = true, amplifyResponse } = {}) {
     }
     return { ok: true, text: async () => logText };
   };
-  return { core: createAnalyticsCore({ amplify, ddb, fetchImpl, tableName: "t", appId: "app", domain: "d" }), amplify, ddb };
+  const core = createAnalyticsCore({
+    amplify,
+    ddb,
+    fetchImpl,
+    tableName: "t",
+    appId: "app",
+    domain: "d",
+    ...(siteHost === undefined ? {} : { siteHost }),
+  });
+  return { core, amplify, ddb };
 }
 
 test("previousDay steps back one UTC day, across a month boundary", () => {
@@ -98,18 +107,24 @@ test("a log whose rows ALL miss the host filter is flagged, not recorded as a qu
   // `requests: 0` alone cannot tell that from a day with no visitors, so the
   // run must SAY so — a metric filter alarms on this line
   // (quantum-analytics-matched-nothing), and offSiteRequests lands on the row.
-  const foreign = LOG.replaceAll("learner.quantumenv.dev", "some-other-host.example");
+  // Injected, not string-replaced into the fixture: the host filter is a
+  // constructor dependency, so a stale one can be reproduced the way a deploy
+  // would actually produce it.
   const warnings = [];
   const realWarn = console.warn;
   console.warn = (msg) => warnings.push(String(msg));
   try {
-    const { core, ddb } = makeCore({ logText: foreign });
+    const { core, ddb } = makeCore({ siteHost: "some-other-host.example" });
     const out = await core({ today: "2026-08-20" });
     assert.equal(out.requests, 0, "none of the rows are ours");
     assert.equal(out.offSiteRequests, 3, "but the log was not empty");
     assert.ok(
       warnings.some((w) => w.includes("analytics-matched-nothing")),
       "must emit the line the metric filter alarms on",
+    );
+    assert.ok(
+      warnings.some((w) => w.includes("siteHost=some-other-host.example")),
+      "the warning must name the host it filtered with, not a module constant",
     );
     assert.equal(ddb.calls[0].input.Item.offSiteRequests.N, "3", "diagnostic persisted on the row");
   } finally {
