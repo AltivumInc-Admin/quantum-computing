@@ -26,8 +26,10 @@
  * function name below exists in more than one, and an unverified green says nothing
  * about which one answered. Unset is allowed and prints as "account unverified".
  *
- * Needs AWS read access (lambda:GetFunction). GitHub Actions has no AWS credentials
- * today, so this runs locally or anywhere credentials exist — see `make drift`.
+ * Needs AWS read access (lambda:GetFunction). It runs daily in GitHub Actions under
+ * the read-only quantum-ci-drift-check role (.github/workflows/drift.yml,
+ * infra/github-oidc-drift-role.yaml), and locally via `make drift` wherever credentials
+ * exist.
  *
  * This file is the I/O SHELL. Everything decidable without AWS — the source filter,
  * the HELD matching, the stale-hold rule, the exit-code policy and the report text —
@@ -37,7 +39,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountCheck } from "./drift/account.mjs";
 import {
