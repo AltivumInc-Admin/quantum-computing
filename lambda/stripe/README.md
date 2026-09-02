@@ -85,7 +85,7 @@ cd lambda/stripe && npm ci && npm test   # node --test: index.test.mjs (the rout
                                          # template.test.mjs (the stack)
 ```
 
-Both suites are fully offline — Stripe and DynamoDB are stubbed and injected
+All of the suites are fully offline — Stripe and DynamoDB are stubbed and injected
 into `createHandlerCore`. `sam validate --lint --region us-east-2` must also pass.
 
 ## The Stripe secret

@@ -12,8 +12,8 @@
 
 /**
  * A stateful stub: TransactWriteItems is actually APPLIED to the row store, so a
- * withdraw-then-reinstate round trip can be asserted end to end. walletDdb above
- * returns a fixed snapshot, which is right for single-event tests but cannot
+ * withdraw-then-reinstate round trip can be asserted end to end. The plainer
+ * walletDdb stub in index.test.mjs returns a fixed snapshot, which is right for single-event tests but cannot
  * express "the second event sees what the first one wrote" — and that sequence is
  * exactly where the dispute arithmetic goes wrong.
  *
