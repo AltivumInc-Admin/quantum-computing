@@ -42,6 +42,11 @@ Resources:
   # lands minutes later. PostConfirmation_ConfirmSignUp is invoked on a
   # federated user's FIRST sign-in as well as on native confirmation, so one
   # trigger covers both email/password and Google.
+  #
+  # The SAME hook also fires as PostConfirmation_ConfirmForgotPassword when an
+  # EXISTING learner completes a password reset — the pool enables
+  # verified_email recovery, and the README's release gate walks that flow. The
+  # handler filters on triggerSource so a reset is never reported as a signup.
   SignupAlertTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -138,6 +143,19 @@ Resources:
 
           exports.handler = async (event) => {
             try {
+              // PostConfirmation is invoked for ConfirmSignUp,
+              // AdminConfirmSignUp AND ConfirmForgotPassword. Only a sign-up
+              // is news: a password reset by a learner who joined months ago
+              // reports PostConfirmation_ConfirmForgotPassword and would
+              // otherwise send a mail headed "New Quantum Learner signup",
+              // inflating the founding-cohort count this alert exists to
+              // feed. Log the skip so a reset still leaves a trace.
+              const trigger = event?.triggerSource ?? "(unknown)";
+              if (trigger !== "PostConfirmation_ConfirmSignUp") {
+                console.log("signup alert skipped, not a sign-up:", trigger);
+                return event;
+              }
+
               const attrs = event?.request?.userAttributes ?? {};
               const email = attrs.email ?? "(no email attribute)";
               const sub = attrs.sub ?? "(unknown)";
@@ -155,7 +173,7 @@ Resources:
                 `Sign-in:   ${viaGoogle ? "Google" : "email + password"}`,
                 `Cognito sub: ${sub}`,
                 `Username:  ${userName}`,
-                `Trigger:   ${event?.triggerSource ?? "(unknown)"}`,
+                `Trigger:   ${trigger}`,
                 `When:      ${new Date().toISOString()}`,
                 "",
                 isInternal

@@ -112,6 +112,18 @@ describe("Cognito new-signup alerter", () => {
       expect(src).toMatch(/length > 99/);
     });
 
+    it("alerts on a sign-up only, not on a password reset", () => {
+      // PostConfirmation is invoked for ConfirmSignUp, AdminConfirmSignUp AND
+      // ConfirmForgotPassword. Without the filter, every forgot-password by an
+      // existing learner mails "New Quantum Learner signup: <their email>" and
+      // inflates the founding-cohort count the alert exists to feed — and the
+      // README's own release gate walks a reset, so the first exercise of this
+      // stack would have produced one.
+      expect(src).toMatch(
+        /if\s*\(\s*trigger\s*!==\s*"PostConfirmation_ConfirmSignUp"\s*\)/,
+      );
+    });
+
     it("flags internal accounts so they are not mistaken for cohort members", () => {
       // Three @altivum.ai accounts exist and must not occupy founding slots.
       expect(src).toContain("INTERNAL_DOMAIN");
