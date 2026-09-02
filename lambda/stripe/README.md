@@ -111,54 +111,78 @@ sam deploy --stack-name quantum-stripe --region us-east-2 \
 
 Note the stack outputs — `BillingUrl` and `WebhookUrl`.
 
-**Phase 2 — wire the webhook and finish the secret:**
+**Phase 2 — wire the webhook and finish the secret, in ONE command:**
 
-1. Register the `WebhookUrl` output **with a pinned API version**, subscribed to
-   **all nine** events in `REQUIRED_WEBHOOK_EVENTS`. Do not retype the list and do
-   not use the Dashboard for this — print it from the code and create the endpoint
-   through the API, because the Dashboard can only pin *your account version* or
-   *latest*, and `api_version` is creation-only (it cannot be patched afterwards):
+`scripts/stripe/rotate-webhook-endpoint.mjs` does the whole phase: it creates
+the endpoint with a pinned API version and all nine events, pipes the signing
+secret Stripe returns straight into Secrets Manager over stdin, recycles the
+function, proves the deployed function verifies against the new secret with a
+genuinely signed probe, and only then retires the old endpoint.
 
-   ```bash
-   node -e "import('./index.mjs').then(m=>console.log(m.REQUIRED_WEBHOOK_EVENTS.join('\n')))"
-   ```
+```bash
+STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
+  node ../../scripts/stripe/rotate-webhook-endpoint.mjs \
+    --expect-account acct_1TuFow07hJdXv6GV \
+    --url <the WebhookUrl output> \
+    --secret-id quantum-stripe \
+    --function quantum-stripe \
+    --confirm-live
+```
 
-   `scripts/stripe/provision-sandbox.mjs` does exactly this, pinned to the SDK's
-   own `apiVersion`, and pipes the signing secret straight into Secrets Manager.
+For a sandbox stack: read the sandbox key instead, pass that account's id to
+`--expect-account`, point `--secret-id`/`--function` at the sandbox names, and
+drop `--confirm-live` (it is mandatory only for an `sk_live_` key).
 
-   > **This list was wrong here for months, and production inherited the mistake.**
-   > It named six events and omitted `charge.refunded`,
-   > `charge.dispute.funds_withdrawn` and `charge.dispute.funds_reinstated`. On
-   > 2026-08-17 the live endpoint was found subscribed to four of the nine, so the
-   > entire clawback path — fully implemented and fully tested — could never fire:
-   > a refund would have returned the customer's money and left the credits spent.
-   > `index.test.mjs` R9 could not catch it because it compares the code's list to
-   > the code's `switch`, never to the Dashboard. `scripts/stripe/check-webhook-parity.mjs`
-   > is the check that closes that loop; run it after any endpoint change.
+> **Never type, paste, echo or `--arg` a `whsec_`.** The signing secret is the
+> credit-minting key of this system: `/webhook` is the only route with
+> `Authorizer: NONE`, the HMAC is its entire authentication, and the handler
+> then trusts `client_reference_id` and `metadata.credits` verbatim. Anyone
+> holding it can grant themselves arbitrary credits in any learner's wallet.
+> The script exists so it lives only inside one process and the `aws` child it
+> is piped to — never in argv, shell history, the process table, or a
+> transcript. This README told you to paste it into `--arg wh` until 2026-09-02.
 
-   Two groups are load-bearing and easy to skip:
-   - **the async pair** — delayed-notification methods (Klarna, Cash App, Amazon
-     Pay, ACH) complete the session with `payment_status: "unpaid"`, and the
-     handler fulfills nothing until `async_payment_succeeded` lands;
-   - **the three clawback events** — without them money can leave and credits stay.
+> **A warm container keeps the OLD secret.** Rotating the Secrets Manager value
+> alone changes nothing for a running function — it goes on verifying against
+> the previous secret and rejecting every delivery with a 400 (rehearsed in the
+> sandbox: 24 invocations, wallet untouched). The forced
+> `update-function-configuration` and the signed probe are the reason this is a
+> script rather than a runbook paragraph; do not substitute "the next cold
+> invocation will pick it up."
 
-   Deliberately NOT subscribed: `charge.dispute.created`, which also fires for
-   inquiries where Stripe withdraws nothing; clawing back there would zero a
-   paying customer's wallet for free.
-2. Copy the endpoint's **Signing secret** (`whsec_…`).
-3. Replace the placeholder with the real signing secret (re-reading the key from
-   1Password so the plaintext still never lands in the shell history):
+The nine events themselves come from `REQUIRED_WEBHOOK_EVENTS` — the script
+imports them, so there is no list to retype. To read them:
 
-   ```bash
-   aws secretsmanager put-secret-value --secret-id quantum-stripe --region us-east-2 \
-     --secret-string "$(jq -nc \
-       --arg sk "$(op read 'op://Quantum Learner/Stripe/add more/Secret Key')" \
-       --arg wh 'whsec_REAL_SIGNING_SECRET' \
-       '{secretKey:$sk, webhookSecret:$wh}')"
-   ```
+```bash
+node -e "import('./index.mjs').then(m=>console.log(m.REQUIRED_WEBHOOK_EVENTS.join('\n')))"
+```
 
-   The running function reads the secret at cold start; a fresh container (a new
-   deploy, or simply the next cold invocation) picks up the updated value.
+Creating the endpoint through the API rather than the Dashboard is not a
+preference: the Dashboard can only pin *your account version* or *latest*, and
+`api_version` is creation-only, so a Dashboard endpoint's payload shape moves
+under the deployed handler. That is exactly how `invoice.subscription` moved to
+`parent.subscription_details` and broke every subscription grant.
+
+> **This list was wrong here for months, and production inherited the mistake.**
+> It named six events and omitted `charge.refunded`,
+> `charge.dispute.funds_withdrawn` and `charge.dispute.funds_reinstated`. On
+> 2026-08-17 the live endpoint was found subscribed to four of the nine, so the
+> entire clawback path — fully implemented and fully tested — could never fire:
+> a refund would have returned the customer's money and left the credits spent.
+> `index.test.mjs` R9 could not catch it because it compares the code's list to
+> the code's `switch`, never to the Dashboard. `scripts/stripe/check-webhook-parity.mjs`
+> is the check that closes that loop; run it after any endpoint change.
+
+Two groups are load-bearing and easy to skip:
+
+- **the async pair** — delayed-notification methods (Klarna, Cash App, Amazon
+  Pay, ACH) complete the session with `payment_status: "unpaid"`, and the
+  handler fulfills nothing until `async_payment_succeeded` lands;
+- **the three clawback events** — without them money can leave and credits stay.
+
+Deliberately NOT subscribed: `charge.dispute.created`, which also fires for
+inquiries where Stripe withdraws nothing; clawing back there would zero a
+paying customer's wallet for free.
 
 **Then:**
 

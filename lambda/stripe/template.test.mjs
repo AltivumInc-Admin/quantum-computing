@@ -90,6 +90,32 @@ test("Stripe keys are read from Secrets Manager at runtime, never inlined", () =
   assert.doesNotMatch(template, /whsec_[A-Za-z0-9]{20,}/, "no literal webhook secret in the template");
 });
 
+test("the README never asks an operator to TYPE the signing secret", () => {
+  // The whsec_ is the credit-minting key: /webhook is the one route with
+  // Authorizer: NONE, the HMAC is its entire authentication, and the handler
+  // then trusts client_reference_id and metadata.credits verbatim. A secret
+  // pasted onto a command line is in argv, the shell history and the process
+  // table. scripts/stripe/rotate-webhook-endpoint.mjs pipes it over stdin
+  // instead; the README's job is to point there and nowhere else.
+  const readme = readFileSync(new URL("./README.md", import.meta.url), "utf8");
+  assert.match(
+    readme,
+    /rotate-webhook-endpoint\.mjs/,
+    "the README must route webhook provisioning through the script"
+  );
+  // Two placeholders are legitimate: the secret's JSON SHAPE, and the
+  // deliberate phase-1 stand-in the script later overwrites. Anything else
+  // that looks like a value being handed to a command is the pattern this
+  // guards against.
+  const ALLOWED = new Set(["whsec_", "whsec_…", "whsec_PLACEHOLDER"]);
+  for (const m of readme.matchAll(/whsec_[A-Za-z0-9_…]*/g)) {
+    assert.ok(
+      ALLOWED.has(m[0]),
+      `README hands a webhook secret to a command: "${m[0]}" — pipe it, never type it`
+    );
+  }
+});
+
 test("the wallet table protects paid balances: Retain + PITR + TTL", () => {
   const b = body("WalletTable");
   assert.equal(typeOf("WalletTable"), "AWS::DynamoDB::Table");
