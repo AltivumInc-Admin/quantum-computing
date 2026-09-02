@@ -12,6 +12,13 @@
  * That class of failure is invisible to every test in this repo, because the
  * Dashboard is not in the repo. This script is the missing half.
  *
+ * It also checks WHICH endpoints are enabled. Subscription and pin say nothing
+ * about whether an endpoint is one we own, and an endpoint added in the Dashboard
+ * — by a compromised login, a mis-scoped collaborator, or a pasted wrong URL —
+ * receives every event payload: customer emails, PaymentIntent ids, subscription
+ * metadata carrying Cognito subs. Give `--expect-url` (repeatable) and any other
+ * enabled endpoint is reported as a problem rather than printed as OK.
+ *
  * It also checks the endpoint's pinned `api_version`. A null version means the
  * endpoint renders events at whatever the ACCOUNT DEFAULT happens to be, which
  * is what moved `invoice.subscription` under `parent.subscription_details` and
@@ -39,7 +46,7 @@ import { resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
 import { diffEvents } from "./lib/parity-rules.mjs";
 
-const { flag, has } = parseArgs(process.argv.slice(2));
+const { all, flag, has } = parseArgs(process.argv.slice(2));
 
 const key = process.env.STRIPE_API_KEY;
 // `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
@@ -50,7 +57,9 @@ try {
 } catch (err) {
   die(2, err.message);
 }
-const expectUrl = flag("--expect-url"); // optional: pin which endpoint we audit
+// Repeatable. Every URL we expect to be receiving our events; anything else
+// enabled on this account is a problem, not a note.
+const expectUrls = all("--expect-url");
 const json = has("--json");
 
 if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
@@ -67,13 +76,31 @@ notes.push(`account ${account.id} (${account.settings?.dashboard?.display_name ?
 // 2. The endpoints.
 const { data: endpoints = [] } = await client.get("webhook_endpoints?limit=100");
 const enabled = endpoints.filter((e) => e.status === "enabled");
-const targets = expectUrl ? enabled.filter((e) => e.url === expectUrl) : enabled;
+const targets = expectUrls.length ? enabled.filter((e) => expectUrls.includes(e.url)) : enabled;
 
 if (targets.length === 0) {
-  problems.push(expectUrl ? `no enabled endpoint with url ${expectUrl}` : "no enabled webhook endpoint at all");
+  problems.push(
+    expectUrls.length ? `no enabled endpoint with url ${expectUrls.join(" or ")}` : "no enabled webhook endpoint at all"
+  );
 }
-if (!expectUrl && targets.length > 1) {
-  notes.push(`${targets.length} enabled endpoints; each is audited separately`);
+
+// An endpoint we did not put there is the one Dashboard change that exfiltrates
+// data, and it is invisible to every other check here: subscribe it to the nine
+// events with a pinned version and it printed OK. Full event payloads carry
+// customer emails, PaymentIntent ids and subscription metadata carrying Cognito
+// subs. So with --expect-url given, a stranger's endpoint is a PROBLEM.
+if (expectUrls.length) {
+  for (const ep of enabled.filter((e) => !expectUrls.includes(e.url))) {
+    problems.push(
+      `UNEXPECTED ENDPOINT ${ep.id} -> ${ep.url} is enabled and receiving our events, and is not one of the ` +
+        `--expect-url values. Every event payload reaches it. Disable it unless you put it there.`
+    );
+  }
+} else if (enabled.length > 1) {
+  notes.push(
+    `${enabled.length} enabled endpoints; each is audited separately. URL identity is NOT checked — ` +
+      `pass --expect-url (repeatable) to make an endpoint nobody expects a failure.`
+  );
 }
 
 const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
@@ -95,7 +122,13 @@ for (const ep of targets) {
     notes.push(`${ep.url}: subscribed to ${extra.length} event(s) the handler ignores: ${extra.join(", ")}`);
   }
   if (wildcard) {
-    notes.push(`${ep.url}: subscribed to "*" — every required event arrives, but so does everything else`);
+    // A problem, not a note: a `*` subscription satisfies `missing` for free, so
+    // it hides the very drift this script exists to find, and it ships event
+    // families the handler never asked for to a destination we chose for nine.
+    problems.push(
+      `${ep.url}: subscribed to "*" — every required event arrives, but so does every other event Stripe ` +
+        `emits, and the missing-event check can never fail. Subscribe to the ${required.length} explicitly.`
+    );
   }
   if (!ep.api_version) {
     problems.push(
@@ -112,6 +145,7 @@ for (const ep of targets) {
     subscribed: [...subscribed].sort(),
     missing,
     extra,
+    wildcard,
   });
 }
 
@@ -122,7 +156,8 @@ if (json) {
 } else {
   console.log(`\n  Stripe webhook parity  (${notes[0]})\n`);
   for (const r of report) {
-    const ok = r.missing.length === 0 && r.apiVersion;
+    // A wildcard is not OK: it makes the missing-event check unfailable.
+    const ok = r.missing.length === 0 && r.apiVersion && !r.wildcard;
     console.log(`  ${ok ? "OK   " : "DRIFT"}  ${r.url}`);
     console.log(`         api_version: ${r.apiVersion ?? "NULL (account default)"}`);
     console.log(`         subscribed: ${r.subscribed.length}/${required.length} required`);

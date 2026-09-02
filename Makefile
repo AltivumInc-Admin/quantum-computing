@@ -41,16 +41,23 @@ lint:
 
 KEYREF ?= op://Quantum Learner/Stripe/add more/Secret Key
 
+# The endpoint we expect to be receiving our events. Threaded into the webhook
+# check so an endpoint NOBODY put there — the one Dashboard change that
+# exfiltrates every event payload — is a failure instead of an OK line. This is
+# the QL-Prod billing webhook recorded in scripts/migration/README.md. Override
+# for a sandbox run, or pass ENDPOINT= (empty) to skip the URL identity check.
+ENDPOINT ?= https://00tlxl2jte.execute-api.us-east-2.amazonaws.com/webhook
+
 stripe-parity:
 	@# Does the Stripe Dashboard match the code? Two things no test in this repo
 	@# can see, because the Dashboard is not in the repo. Read-only; needs a key.
 	@#   make stripe-parity ACCOUNT=live
-	@#   make stripe-parity ACCOUNT=sandbox KEYREF="op://Quantum Learner/Stripe Sandbox/Secret Key"
+	@#   make stripe-parity ACCOUNT=sandbox KEYREF="op://Quantum Learner/Stripe Sandbox/Secret Key" ENDPOINT=https://axikm3lao9.execute-api.us-east-2.amazonaws.com/webhook
 	@# ACCOUNT takes an alias (live/sandbox) resolved through
 	@# scripts/stripe/lib/accounts.mjs, or an explicit acct_... An alias cannot go
 	@# stale the way the written-down sandbox id did.
 	@test -n "$(ACCOUNT)" || { echo "ACCOUNT=acct_... is required"; exit 2; }
-	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT)
+	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT) $(if $(ENDPOINT),--expect-url $(ENDPOINT))
 	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-catalog-parity.mjs --expect-account $(ACCOUNT)
 
 drift:

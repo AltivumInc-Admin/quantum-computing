@@ -24,6 +24,9 @@ export function parseArgs(argv) {
       return i === -1 ? fallback : argv[i + 1];
     },
     has: (name) => argv.includes(name),
+    /** Every value of a repeatable flag, in order. */
+    all: (name) =>
+      argv.reduce((acc, tok, i) => (tok === name && argv[i + 1] !== undefined ? [...acc, argv[i + 1]] : acc), []),
   };
 }
 
