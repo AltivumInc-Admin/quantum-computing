@@ -260,6 +260,58 @@ Resources:
       AlarmActions:
         - !Ref SignupAlertTopic
 
+  # The alarm above watches the failure the handler CATCHES. These two watch
+  # the failures it cannot: a module-load error, a 5s timeout, a
+  # concurrency throttle. Because the handler swallows everything inside the
+  # try, AWS/Lambda Errors can only ever fire for a failure outside it — and
+  # every one of those is a failed PostConfirmation trigger, which Cognito
+  # surfaces to the person signing up. This is the only function in the repo
+  # sitting on a user-blocking path; it was the only one without these.
+  SignupAlertErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-signup-alert-errors
+      AlarmDescription: >-
+        The signup alerter failed in a way its own catch could not swallow —
+        an init error, a timeout, an out-of-memory. Cognito surfaces a failed
+        PostConfirmation trigger to the caller, so the sign-up form is broken
+        for real people right now. Check /aws/lambda/quantum-signup-alert.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SignupAlertFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SignupAlertTopic
+
+  SignupAlertThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-signup-alert-throttles
+      AlarmDescription: >-
+        The signup alerter was throttled at the account concurrency limit, so
+        Cognito's invocation failed and the sign-up with it. Look for whatever
+        else in the account is consuming concurrency.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SignupAlertFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SignupAlertTopic
+
   # SourceAccount rather than SourceArn deliberately. SourceArn would need the
   # pool's ARN, and the pool already references this function's ARN in its
   # LambdaConfig — the permission would then have to be created after the pool

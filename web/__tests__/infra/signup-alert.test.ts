@@ -191,6 +191,23 @@ describe("Cognito new-signup alerter", () => {
     expect(alarm).toMatch(/AlarmActions:\s*\n\s*- !Ref SignupAlertTopic/);
   });
 
+  it("watches the invocation itself, not only the failure it catches", () => {
+    // The handler swallows everything inside its try, so AWS/Lambda Errors can
+    // only fire for a failure OUTSIDE it — a module-load error, a timeout, a
+    // throttle — and every one of those is a failed PostConfirmation trigger
+    // Cognito surfaces to the person signing up. This is the one function in
+    // the repo on a user-blocking path.
+    for (const metric of ["Errors", "Throttles"]) {
+      const alarm = YAML.slice(YAML.indexOf(`SignupAlert${metric}Alarm:`));
+      expect(alarm).toMatch(/Namespace: AWS\/Lambda/);
+      expect(alarm).toMatch(new RegExp(`MetricName: ${metric}`));
+      expect(alarm).toMatch(
+        /Dimensions:\s*\n\s*- Name: FunctionName\s*\n\s*Value: !Ref SignupAlertFunction/,
+      );
+      expect(alarm).toMatch(/AlarmActions:\s*\n\s*- !Ref SignupAlertTopic/);
+    }
+  });
+
   describe("the deployed module shape", () => {
     let src: string;
     beforeAll(() => {
