@@ -1,6 +1,6 @@
 # quantum-analytics
 
-A daily count of who actually reached quantum.altivum.ai.
+A daily count of who actually reached learner.quantumenv.dev.
 
 ## What it is
 
@@ -139,9 +139,11 @@ sam deploy --stack-name quantum-analytics --region us-east-2 \
 > **`SiteHost` and `AmplifyDomain` move together with the site's domain.**
 > `AmplifyDomain` is the ASSOCIATION (the apex) whose logs are fetched;
 > `SiteHost` is the x-host-header that counts as ours. A stale `SiteHost` does
-> not skew the report — it drops every row, records `humans: 0`, and still
-> succeeds, so no alarm fires. That held silently from the QL-Prod cutover
-> until 2026-08-31.
+> not skew the report — it drops every row, records `humans: 0`, and the run
+> still succeeds. From the QL-Prod cutover until 2026-08-31 nothing said so;
+> `quantum-analytics-matched-nothing` is now the alarm that does, and
+> `template.test.mjs` fails if the default here and `web/src/lib/site.ts`
+> disagree.
 
 Confirm the SNS email subscription from the inbox once, or no alarm will ever
 reach a human.
@@ -160,12 +162,21 @@ loop), `scripts/check-lambda-drift.mjs` (`FUNCTIONS`), and
 | `quantum-analytics-throttles` | a scheduled run may have been dropped |
 | `quantum-analytics-did-not-run` | no invocation in 26 hours |
 | `quantum-analytics-slow` | duration approaching the 120s timeout |
+| `quantum-analytics-matched-nothing` | the run fetched rows and matched none of them — `SiteHost` or `AmplifyDomain` names a host the app no longer serves; check `SiteHost` against `web/src/lib/site.ts` |
 | `quantum-analytics-bot-filter-incomplete` | AWS's prefix list could not be fetched, so the datacenter filter did not run and that day's `humans` is an overcount — the run itself succeeded, so nothing else can see it |
 | `quantum-analytics-parse-degraded` | a large share of the day's log lines would not parse, so the counts are an undercount — a wholly unparseable log otherwise records as a quiet day |
 
 `did-not-run` is the only alarm in this stack that **breaches on missing data**,
 and deliberately so: a collector that silently stops looks exactly like a site
 with no visitors, which is the one failure this stack must never produce.
+
+The last three exist for the same reason from the other direction: a run that
+**succeeds** while reporting nothing, an undercount, or an overcount cannot be
+seen by an error-rate alarm, and `requests: 0` alone cannot tell breakage from a
+quiet day. Each is emitted as a distinctive log line the handler writes and a
+metric filter reads; `template.test.mjs` asserts every one of those three
+literals still appears in `index.mjs`, so rewording a warning cannot silently
+disconnect its alarm.
 
 If a day is missed, re-run it once the cause is fixed:
 

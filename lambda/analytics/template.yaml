@@ -1,7 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  quantum-analytics: a daily count of who actually reached quantum.altivum.ai.
+  quantum-analytics: a daily count of who actually reached the host named by the
+  SiteHost parameter below (learner.quantumenv.dev today).
   Amplify's GenerateAccessLogs serves roughly one day per call and refuses wider
   windows, so history only exists if something collects it daily. This reads the
   previous day's access logs, classifies each visitor, and writes ONE row of
