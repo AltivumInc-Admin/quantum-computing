@@ -308,6 +308,21 @@ const presentTenseMetering = new RegExp(
 
 const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
   {
+    // The at-cost / no-markup framing. CLAUDE.md rules 5 and 9 retired it: every
+    // metered surface debits at one shared factor over true cost, so "at cost" is
+    // not what this page sells, and rule 6 forbids the repo from carrying the
+    // spread that would make any such claim checkable. scripts/stripe/
+    // check-catalog-parity.mjs already bars the same three phrasings on the Stripe
+    // product descriptions; this is the same denylist pointed at the page.
+    //
+    // The Spanish arm anchors on "a costo" / "a precio de costo" rather than the
+    // bare noun: es.ts is full of honest cost talk ("te muestra su costo", "el
+    // costo exacto"), and a pattern that fired on those would redden truthful copy.
+    pattern:
+      /\b(at cost|cost price|no mark-?up|without mark-?up|sin (margen|recargo|sobreprecio)|a (precio de )?costo)\b/i,
+    why: "at-cost/no-markup pricing: CLAUDE.md rules 5 and 9 retired that framing, and rule 6 keeps the spread out of this repo entirely",
+  },
+  {
     pattern: presentTenseMetering,
     why: "present-tense metering: the tutor charges nothing, the QPU lambda refuses unfunded submits, and nothing outside lambda/stripe reads the wallet",
   },
@@ -538,7 +553,11 @@ describe("PricingPage copy honesty", () => {
    * anchors on the noun. Human review owns that case.
    */
   describe("the ban list survives negate-then-claim prose", () => {
-    const meteringPattern = UNDELIVERABLE_CLAIMS[0].pattern; // presentTenseMetering
+    // Looked up by identity, not by index: the list is ordered for readability and
+    // a new entry at the front used to silently re-point this at another pattern.
+    const meteringPattern = UNDELIVERABLE_CLAIMS.find(
+      (c) => c.pattern === presentTenseMetering,
+    )!.pattern;
     const entitlementPattern = UNDELIVERABLE_CLAIMS.find(
       (c) => c.pattern === modelEntitlement,
     )!.pattern;
@@ -560,6 +579,34 @@ describe("PricingPage copy honesty", () => {
       expect(
         entitlementPattern.test("No plan includes Opus today. Plus includes Opus at launch."),
       ).toBe(true);
+    });
+
+    /**
+     * The at-cost pattern, held against the sentence that actually shipped — a
+     * denylist entry nobody has fired once is a comment, not a guard.
+     */
+    describe("the at-cost pattern", () => {
+      const atCost = UNDELIVERABLE_CLAIMS.find((c) =>
+        c.pattern.test("billed at cost with no markup"),
+      )!.pattern;
+
+      it.each([
+        ["One credit wallet will meter real quantum hardware, billed at cost with no markup."],
+        ["Hardware runs are billed at cost."],
+        ["Sold with no mark-up over what the provider charges."],
+        ["El hardware se cobra a precio de costo, sin margen."],
+      ])("fires on the retired framing: %s", (text) => {
+        expect(atCost.test(text)).toBe(true);
+      });
+
+      it.each([
+        // Honest cost talk in both locales, which the page is full of.
+        ["The workspace shows you its cost and makes you approve it."],
+        ["El espacio de trabajo te muestra su costo y te hace aprobarlo."],
+        ["Te muestra el costo exacto de cualquier ejecución de hardware."],
+      ])("stays silent on honest cost talk: %s", (text) => {
+        expect(atCost.test(text)).toBe(false);
+      });
     });
 
     it.each([
