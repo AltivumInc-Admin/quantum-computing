@@ -51,15 +51,13 @@
  * signing secret is returned only at creation: aborting after that point loses it.
  */
 import { createHmac } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, putSecretJson, stripeClient } from "./lib/preamble.mjs";
 
-const args = process.argv.slice(2);
-const flag = (n) => {
-  const i = args.indexOf(n);
-  return i === -1 ? undefined : args[i + 1];
-};
+const { flag, has } = parseArgs(process.argv.slice(2));
 const key = process.env.STRIPE_API_KEY;
 // `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
 // through. A retired id throws here rather than failing closed at Stripe.
@@ -67,8 +65,7 @@ let expectAccount;
 try {
   expectAccount = resolveAccount(flag("--expect-account"));
 } catch (err) {
-  console.error(err.message);
-  process.exit(2);
+  die(2, err.message);
 }
 const url = flag("--url");
 const secretId = flag("--secret-id");
@@ -77,12 +74,8 @@ const region = flag("--region") ?? "us-east-2";
 // No default: an unnamed ref used to mean the LIVE 1Password item, on every
 // path including the sandbox one.
 const secretKeyRef = flag("--secret-key-ref");
-const confirmLive = args.includes("--confirm-live");
+const confirmLive = has("--confirm-live");
 
-const die = (c, m) => {
-  console.error(m);
-  process.exit(c);
-};
 if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
 for (const [v, n] of [[expectAccount, "--expect-account"], [url, "--url"], [secretId, "--secret-id"], [fnName, "--function"]]) {
   if (!v) die(2, `${n} is required.`);
@@ -90,33 +83,19 @@ for (const [v, n] of [[expectAccount, "--expect-account"], [url, "--url"], [secr
 const isLive = /^(sk|rk)_live_/.test(key);
 if (isLive && !confirmLive) die(2, "That is a LIVE key. Re-run with --confirm-live if you mean it.");
 
-async function apiAs(withKey, method, path, form) {
-  const init = { method, headers: { Authorization: `Basic ${Buffer.from(`${withKey}:`).toString("base64")}` } };
-  if (form) {
-    init.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    init.body = form.toString();
-  }
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, init);
-  const body = await res.json();
-  if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
-  return body;
-}
-const api = (method, path, form) => apiAs(key, method, path, form);
+const client = stripeClient(key);
+const api = (method, path, form) => client.request(method, path, form);
 
 const say = (verb, what) => console.log(`  ${verb.padEnd(9)} ${what}`);
 
 // ---- identity, before anything ---------------------------------------------------
-const account = await api("GET", "account");
-if (account.id !== expectAccount) {
-  die(1, `WRONG ACCOUNT: key is ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), expected ${expectAccount}.`);
-}
+const account = await assertAccount(client, expectAccount).catch((err) => die(1, err.message));
 console.log(
   `\n  Rotating ${account.id} (${account.settings?.dashboard?.display_name ?? "?"})  ${isLive ? "*** LIVE ***" : "[sandbox]"}\n`
 );
 
 // The SDK's own pin governs outbound calls; the endpoint pin governs the inbound
 // payload shape. They must agree or you debug a difference that does not exist.
-const { readFileSync } = await import("node:fs");
 const apiVersion = readFileSync(new URL("../../lambda/stripe/index.mjs", import.meta.url), "utf8").match(
   /apiVersion:\s*"([^"]+)"/
 )?.[1];
@@ -147,10 +126,9 @@ async function resolveHandlerKey() {
     die(1, `${secretKeyRef} is a ${/^sk_live_/.test(candidate) ? "LIVE" : "test"} key; this rotation is ${isLive ? "LIVE" : "sandbox"}.`);
   }
   // Identity is asserted for this key too, not inherited from the other one.
-  const who = await apiAs(candidate, "GET", "account");
-  if (who.id !== expectAccount) {
-    die(1, `${secretKeyRef} belongs to ${who.id} (${who.settings?.dashboard?.display_name ?? "?"}), expected ${expectAccount}.`);
-  }
+  const who = await assertAccount(stripeClient(candidate), expectAccount, `Refusing to store ${secretKeyRef}.`).catch(
+    (err) => die(1, err.message)
+  );
   say("verified", `${secretKeyRef} -> ${who.id}`);
   return candidate;
 }
@@ -171,17 +149,7 @@ say("created", `${created.id} (${required.length} events, pinned ${created.api_v
 // Deliberately NOT `get-secret-value`: the existing secret is never read. The API
 // key half is the one verified above, the webhook half comes from the create
 // response. Neither is ever printed.
-const payload = JSON.stringify({ secretKey: handlerKey, webhookSecret: created.secret });
-await new Promise((resolve, reject) => {
-  const p = spawn(
-    "aws",
-    ["secretsmanager", "put-secret-value", "--secret-id", secretId, "--region", region, "--secret-string", "file:///dev/stdin"],
-    { stdio: ["pipe", "ignore", "inherit"] }
-  );
-  p.on("error", reject);
-  p.on("close", (c) => (c === 0 ? resolve() : reject(new Error(`aws exited ${c}`))));
-  p.stdin.end(payload);
-});
+await putSecretJson({ secretId, region, payload: { secretKey: handlerKey, webhookSecret: created.secret } });
 say("stored", `signing secret -> secretsmanager:${secretId} (never printed)`);
 
 // ---- recycle warm containers -------------------------------------------------------

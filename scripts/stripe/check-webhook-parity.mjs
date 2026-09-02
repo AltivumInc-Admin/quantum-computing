@@ -36,12 +36,10 @@
  */
 import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
+import { diffEvents } from "./lib/parity-rules.mjs";
 
-const args = process.argv.slice(2);
-const flag = (name) => {
-  const i = args.indexOf(name);
-  return i === -1 ? undefined : args[i + 1];
-};
+const { flag, has } = parseArgs(process.argv.slice(2));
 
 const key = process.env.STRIPE_API_KEY;
 // `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
@@ -50,47 +48,24 @@ let expectAccount;
 try {
   expectAccount = resolveAccount(flag("--expect-account"));
 } catch (err) {
-  console.error(err.message);
-  process.exit(2);
+  die(2, err.message);
 }
 const expectUrl = flag("--expect-url"); // optional: pin which endpoint we audit
-const json = args.includes("--json");
+const json = has("--json");
 
-if (!key) {
-  console.error("STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
-  process.exit(2);
-}
-if (!expectAccount) {
-  console.error("--expect-account <acct_...> is required. Refusing to audit an unidentified account.");
-  process.exit(2);
-}
+if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
+if (!expectAccount) die(2, "--expect-account <acct_...> is required. Refusing to audit an unidentified account.");
 
-async function stripeGet(path) {
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, {
-    headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` },
-  });
-  const body = await res.json();
-  if (body?.error) throw new Error(`${path}: ${body.error.message}`);
-  return body;
-}
-
+const client = stripeClient(key);
 const problems = [];
 const notes = [];
 
 // 1. Identity, before anything else.
-const account = await stripeGet("account");
-if (account.id !== expectAccount) {
-  console.error(
-    `WRONG ACCOUNT: key belongs to ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), ` +
-      `expected ${expectAccount}. Refusing to continue.`
-  );
-  process.exit(1);
-}
-const mode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test/sandbox";
-notes.push(`account ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), key mode ${mode}`);
+const account = await assertAccount(client, expectAccount).catch((err) => die(1, err.message));
+notes.push(`account ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), key mode ${client.mode}`);
 
 // 2. The endpoints.
-const { data: endpoints = [] } = await stripeGet("webhook_endpoints?limit=100");
+const { data: endpoints = [] } = await client.get("webhook_endpoints?limit=100");
 const enabled = endpoints.filter((e) => e.status === "enabled");
 const targets = expectUrl ? enabled.filter((e) => e.url === expectUrl) : enabled;
 
@@ -106,9 +81,7 @@ const report = [];
 
 for (const ep of targets) {
   const subscribed = new Set(ep.enabled_events);
-  const wildcard = subscribed.has("*");
-  const missing = wildcard ? [] : required.filter((e) => !subscribed.has(e));
-  const extra = wildcard ? [] : [...subscribed].filter((e) => !required.includes(e)).sort();
+  const { wildcard, missing, extra } = diffEvents(subscribed, required);
 
   if (missing.length) {
     problems.push(
@@ -141,7 +114,9 @@ for (const ep of targets) {
 }
 
 if (json) {
-  console.log(JSON.stringify({ account: account.id, mode, required, endpoints: report, problems, notes }, null, 2));
+  console.log(
+    JSON.stringify({ account: account.id, mode: client.mode, required, endpoints: report, problems, notes }, null, 2)
+  );
 } else {
   console.log(`\n  Stripe webhook parity  (${notes[0]})\n`);
   for (const r of report) {

@@ -69,12 +69,9 @@
  */
 import { spawnSync } from "node:child_process";
 import { resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
 
-const args = process.argv.slice(2);
-const flag = (n, d) => {
-  const i = args.indexOf(n);
-  return i === -1 ? d : args[i + 1];
-};
+const { flag, has } = parseArgs(process.argv.slice(2));
 const key = process.env.STRIPE_API_KEY;
 // `sandbox` resolves to the provisioned sandbox; an explicit acct_ passes
 // through. A retired id throws here rather than failing closed at Stripe.
@@ -82,14 +79,13 @@ let expectAccount;
 try {
   expectAccount = resolveAccount(flag("--expect-account"));
 } catch (err) {
-  console.error(err.message);
-  process.exit(2);
+  die(2, err.message);
 }
 const table = flag("--table");
 const sub = flag("--sub");
 const region = flag("--region", "us-east-2");
 const only = (flag("--only") ?? "").split(",").filter(Boolean);
-const keep = args.includes("--keep");
+const keep = has("--keep");
 // Which endpoint the replay step resends to. Discovered when the account has
 // exactly one enabled endpoint; required when it has more.
 const webhookEndpoint = flag("--webhook-endpoint");
@@ -112,18 +108,8 @@ if (!/sandbox/.test(table)) {
 }
 if (!sub) fail("--sub <cognito-sub> is required — the identity these wallet rows are keyed by.");
 
-const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
-async function api(method, path, params) {
-  const init = { method, headers: { Authorization: auth } };
-  if (params) {
-    init.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    init.body = params instanceof URLSearchParams ? params.toString() : new URLSearchParams(params).toString();
-  }
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, init);
-  const body = await res.json();
-  if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
-  return body;
-}
+const client = stripeClient(key);
+const api = (method, path, params) => client.request(method, path, params);
 
 /** Read the wallet row. Values, not shapes — this is the assertion surface. */
 function wallet() {
@@ -325,10 +311,7 @@ const assert = (cond, msg) => {
 };
 
 // ---- preflight -----------------------------------------------------------------
-const account = await api("GET", "account");
-if (account.id !== expectAccount) {
-  fail(`WRONG ACCOUNT: key is ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), expected ${expectAccount}.`);
-}
+const account = await assertAccount(client, expectAccount).catch((err) => fail(err.message));
 console.log(`\n  e2e against ${account.id} (${account.settings?.dashboard?.display_name ?? "?"})`);
 console.log(`  wallet rows keyed by ${sub} in ${table}\n`);
 
