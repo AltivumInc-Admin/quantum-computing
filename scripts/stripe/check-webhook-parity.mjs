@@ -74,7 +74,7 @@ const account = await assertAccount(client, expectAccount).catch((err) => die(1,
 notes.push(`account ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), key mode ${client.mode}`);
 
 // 2. The endpoints.
-const { data: endpoints = [] } = await client.get("webhook_endpoints?limit=100");
+const endpoints = await client.listAll("webhook_endpoints");
 const enabled = endpoints.filter((e) => e.status === "enabled");
 const targets = expectUrls.length ? enabled.filter((e) => expectUrls.includes(e.url)) : enabled;
 

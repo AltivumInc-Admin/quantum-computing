@@ -132,7 +132,7 @@ async function resolveHandlerKey() {
 }
 
 const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
-const { data: endpoints = [] } = await api("GET", "webhook_endpoints?limit=100");
+const endpoints = await client.listAll("webhook_endpoints");
 const old = endpoints.find((e) => e.url === url && e.status === "enabled");
 say("found", old ? `${old.id} (${old.enabled_events.length} events, api_version ${old.api_version ?? "NULL"})` : "no existing endpoint at that url");
 

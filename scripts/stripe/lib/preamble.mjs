@@ -37,11 +37,33 @@ export function die(code, msg) {
 }
 
 /**
+ * A Stripe API error that carries the HTTP status, so a caller can tell a
+ * genuine 404 from a throttle or a gateway page. The old helpers branched only
+ * on `body?.error`, which made every failure indistinguishable: a 429 or a 5xx
+ * returning a non-JSON body threw a bare SyntaxError out of res.json(), with no
+ * status and no body text, and provision-sandbox read any error from its product
+ * GET as "not found" and tried to create the product again.
+ */
+export class StripeHttpError extends Error {
+  constructor(message, { status, code, type } = {}) {
+    super(message);
+    this.name = "StripeHttpError";
+    this.status = status;
+    this.code = code;
+    this.type = type;
+  }
+}
+
+const RETRYABLE = (status) => status === 429 || (status >= 500 && status < 600);
+
+/**
  * A Stripe REST client over plain fetch. No SDK: these scripts must run under
  * plain node with no build step and no node_modules, because they are called
- * from CI and from the runbook.
+ * from CI and from the runbook. What the SDK does for you and a hand-rolled
+ * fetch does not — status handling, retries with backoff, and following
+ * pagination — is done here, once.
  */
-export function stripeClient(key, { fetchImpl = fetch } = {}) {
+export function stripeClient(key, { fetchImpl = fetch, sleepImpl = sleep, retries = 4 } = {}) {
   const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
 
   async function request(method, path, form) {
@@ -50,19 +72,106 @@ export function stripeClient(key, { fetchImpl = fetch } = {}) {
       init.headers["Content-Type"] = "application/x-www-form-urlencoded";
       init.body = form instanceof URLSearchParams ? form.toString() : new URLSearchParams(form).toString();
     }
-    const res = await fetchImpl(`https://api.stripe.com/v1/${path}`, init);
-    const body = await res.json();
-    if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
-    return body;
+
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) await sleepImpl(backoffMs(lastError?.retryAfter, attempt));
+
+      let res;
+      try {
+        res = await fetchImpl(`https://api.stripe.com/v1/${path}`, init);
+      } catch (err) {
+        // A transport fault. Retry — but never a write, where a retry could
+        // duplicate an object Stripe already created.
+        lastError = new StripeHttpError(`${method} ${path}: ${err.message}`, {});
+        if (method === "GET" && attempt < retries) continue;
+        throw lastError;
+      }
+
+      const text = await res.text();
+      let body;
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        // A gateway page, not Stripe. Say the status and show the body.
+        lastError = withRetryAfter(
+          new StripeHttpError(`${method} ${path}: HTTP ${res.status} returned a non-JSON body: ${text.slice(0, 200)}`, {
+            status: res.status,
+          }),
+          res
+        );
+        if (RETRYABLE(res.status) && attempt < retries) continue;
+        throw lastError;
+      }
+
+      if (!res.ok || body?.error) {
+        const e = body?.error ?? {};
+        lastError = withRetryAfter(
+          new StripeHttpError(`${method} ${path}: HTTP ${res.status} ${e.message ?? text.slice(0, 200)}`, {
+            status: res.status,
+            code: e.code,
+            type: e.type,
+          }),
+          res
+        );
+        if (RETRYABLE(res.status) && attempt < retries) continue;
+        throw lastError;
+      }
+
+      return body;
+    }
+    throw lastError;
+  }
+
+  /**
+   * Every page of a list, not just the first.
+   *
+   * `limit=100` and a bare read of `data` audits a truncated view on any account
+   * with more than a page of objects — and custom top-ups mint a lookup_key-less
+   * active Price per purchase, competing for the same 100 slots. A key that fell
+   * off the page was then reported as `no ACTIVE price with this lookup_key`, a
+   * false drift verdict on the exact surface these guards police, and
+   * provision-sandbox would mint a duplicate and transfer the lookup key off a
+   * price it could not see.
+   */
+  async function listAll(path, { limit = 100, maxPages = 100 } = {}) {
+    const out = [];
+    let startingAfter;
+    for (let page = 0; page < maxPages; page++) {
+      const sep = path.includes("?") ? "&" : "?";
+      const after = startingAfter ? `&starting_after=${startingAfter}` : "";
+      const body = await request("GET", `${path}${sep}limit=${limit}${after}`);
+      const data = body.data ?? [];
+      out.push(...data);
+      if (!body.has_more || data.length === 0) return out;
+      startingAfter = data[data.length - 1].id;
+    }
+    throw new StripeHttpError(`${path}: more than ${maxPages} pages; refusing to keep listing`, {});
   }
 
   return {
     request,
     get: (path) => request("GET", path),
     post: (path, form) => request("POST", path, form),
+    listAll,
     /** Which half of the account the key addresses. The id alone cannot say. */
     mode: /^(sk|rk)_live_/.test(key) ? "live" : "test/sandbox",
   };
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Stripe's own Retry-After when it sends one; exponential backoff otherwise. */
+function backoffMs(retryAfterSeconds, attempt) {
+  if (Number.isFinite(retryAfterSeconds)) return Math.min(retryAfterSeconds * 1000, 30_000);
+  return Math.min(500 * 2 ** (attempt - 1), 8_000);
+}
+
+function withRetryAfter(err, res) {
+  const header = res.headers?.get?.("retry-after");
+  const seconds = header === null || header === undefined ? NaN : Number(header);
+  if (Number.isFinite(seconds)) err.retryAfter = seconds;
+  return err;
 }
 
 /**

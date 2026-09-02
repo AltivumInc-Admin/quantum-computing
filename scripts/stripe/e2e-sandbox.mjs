@@ -249,8 +249,7 @@ async function disputedCharge({ amountCents, purchasedCredits, amountPaidCents }
  * about an endpoint that is not the one under test.
  */
 async function soleEnabledEndpoint() {
-  const { data = [] } = await api("GET", "webhook_endpoints?limit=100");
-  const enabled = data.filter((e) => e.status === "enabled");
+  const enabled = (await client.listAll("webhook_endpoints")).filter((e) => e.status === "enabled");
   assert(enabled.length > 0, "no enabled webhook endpoint in this account");
   assert(
     enabled.length === 1,

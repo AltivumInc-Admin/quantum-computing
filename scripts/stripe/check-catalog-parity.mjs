@@ -62,7 +62,9 @@ const account = await assertAccount(client, expectAccount).catch((err) => die(1,
 // shared with provision-sandbox and unit-tested in parity-rules.test.mjs — a
 // second copy had already diverged into one that read a parse failure as drift.
 const tiers = tierPrices(readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8"));
-const { data: prices = [] } = await client.get("prices?limit=100&active=true&expand[]=data.product");
+// Every page: a lookup key that fell off the first one used to be reported as
+// "no ACTIVE price with this lookup_key — checkout for it will 500".
+const prices = await client.listAll("prices?active=true&expand[]=data.product");
 const byLookup = new Map(prices.filter((p) => p.lookup_key).map((p) => [p.lookup_key, p]));
 
 const rows = [];

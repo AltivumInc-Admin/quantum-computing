@@ -135,8 +135,11 @@ for (const [id, spec] of Object.entries(PRODUCTS)) {
   let existing = null;
   try {
     existing = await stripe("GET", `products/${id}`);
-  } catch {
-    /* not found */
+  } catch (err) {
+    // ONLY a genuine 404 means "not there". Swallowing everything turned a
+    // throttle, a transport fault or a gateway page into a create attempt
+    // against an id that already exists.
+    if (err.status !== 404) throw err;
   }
   if (!existing) {
     if (dryRun) did("create", `product ${id}`);
@@ -166,7 +169,10 @@ for (const [id, spec] of Object.entries(PRODUCTS)) {
 // the amount calculation and was caught only by the Number.isFinite guard below.
 const tiers = tierPrices(readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8"));
 
-const { data: activePrices = [] } = await stripe("GET", "prices?limit=100&active=true");
+// Every page. A price missing from a truncated first page reads as absent, and
+// the create below would then transfer_lookup_key off a price this script never
+// saw — leaving an orphaned active price with no lookup key and no deactivation.
+const activePrices = await client.listAll("prices?active=true");
 const byLookup = new Map(activePrices.filter((p) => p.lookup_key).map((p) => [p.lookup_key, p]));
 
 for (const [lookup, spec] of Object.entries(CATALOG)) {
@@ -206,7 +212,7 @@ for (const [lookup, spec] of Object.entries(CATALOG)) {
 if (!webhookUrl) {
   console.log(`\n  No --webhook-url given; skipping the endpoint. Catalog is provisioned.\n`);
 } else {
-  const { data: endpoints = [] } = await stripe("GET", "webhook_endpoints?limit=100");
+  const endpoints = await client.listAll("webhook_endpoints");
   const match = endpoints.find((e) => e.url === webhookUrl);
   const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
   const correct =
