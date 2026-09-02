@@ -49,8 +49,17 @@ Three approaches were tried and failed on real data:
 So a visitor counts as human only after surviving every signal in
 `classify.mjs`: no hostile path, no self-declared bot agent, not inside a
 published cloud provider range, loaded app assets, under 100 pages/day, under 20
-pages/minute. One exception outranks all of it — a completed Google sign-in is
-proof of a person, so it is counted as human regardless.
+pages/minute. One exception outranks the behavioural signals — a completed
+Google sign-in is proof of a person — but only when the same address also
+fetched a `_next/static` chunk, and never from inside a published cloud range.
+
+That qualification is the whole point: `referer` is written by the client and
+`/auth/callback` is a real prerendered page, so a bare GET carrying
+`Referer: https://accounts.google.com/` returns 200 with no auth involved. While
+that header outranked everything, one forged row bought a datacenter crawler a
+human verdict and inflated the only Google sign-in figure this account has. A
+forger who also drives a browser from a residential address can still be counted
+once; that is a different class of effort, and it is the residual.
 
 **`humans` is a floor by construction.** Uncertain visitors are dropped.
 

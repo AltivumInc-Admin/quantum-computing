@@ -22,6 +22,14 @@
  * of trusted. Fail toward NOT counting: an uncertain visitor is dropped, so the
  * human count is a floor and never an inflated headline.
  *
+ * ONE RESIDUAL, recorded rather than papered over. The Google sign-in signal
+ * reads a Referer, and a Referer is written by the client — so a forger who
+ * also fetches a _next/static chunk from a non-cloud address can still be
+ * counted as one person. That costs a real browser or a headless one driven
+ * from a residential address, which is a different class of effort from
+ * curl -H, and every other signal still applies. The count is a floor against
+ * accident and ordinary crawling, not against a determined forger.
+ *
  * Pure and dependency-free, mirroring scripts/changelog/rules.mjs: no fs, no
  * network, no process.exit, no AWS. Everything here is (data in) -> (data out)
  * so classify.test.mjs can exercise it with no fixtures on disk. The runner
@@ -331,6 +339,30 @@ export function googleSignIns(rows) {
   );
 }
 
+/**
+ * The same sign-ins, corroborated by something the requester cannot write.
+ *
+ * `referer` is a client-supplied header on a route the static export really
+ * serves, so a bare GET to /auth/callback carrying `Referer:
+ * https://accounts.google.com/` returns 200 with no auth involved. On its own
+ * that header outranked every other signal — one forged row and a datacenter
+ * crawler reading 60 pages a second was counted as a person, and the same row
+ * inflated the only Google sign-in figure this account has.
+ *
+ * The corroboration is already in the log and is the one thing this file
+ * already says a curl-shaped forgery cannot fake: the real hosted-UI redirect
+ * lands in a browser, which boots the app from the same address. An address
+ * inside a published cloud range is excluded outright — that is the strongest
+ * signal here and proof of a person it is not.
+ *
+ * Takes ONE address's rows, like classifyVisitor.
+ */
+export function verifiedGoogleSignIns(rows, rangeIndex) {
+  if (!loadedAppAssets(rows)) return [];
+  if (inRangeIndex(rangeIndex, rows[0]?.ip)) return [];
+  return googleSignIns(rows);
+}
+
 // ---------------------------------------------------------------------------
 // The verdict
 // ---------------------------------------------------------------------------
@@ -344,16 +376,17 @@ export function classifyVisitor(rows, rangeIndex) {
   if (rows.some((r) => isHostilePath(r.path))) return "scanner";
   if (rows.some((r) => isDeclaredBot(r.ua))) return "declared-bot";
 
+  if (inRangeIndex(rangeIndex, rows[0].ip)) return "datacenter";
+
   // PROOF OUTRANKS HEURISTIC. Completing a Google sign-in means clearing an
   // interactive consent screen with a real Google account — evidence of a
   // person that no behavioural signal below can match. Without this, a day can
   // report three Google sign-ins and fewer humans than signers, which is not a
   // conservative estimate but a self-contradiction. Deliberately placed AFTER
-  // the two conviction rules, so a prober cannot launder itself by also
-  // signing in.
-  if (googleSignIns(rows).length > 0) return "human";
-
-  if (inRangeIndex(rangeIndex, rows[0].ip)) return "datacenter";
+  // the two conviction rules AND the published-range check, so a prober cannot
+  // launder itself by also signing in, and one spoofable header cannot outrank
+  // the strongest signal in the file. verifiedGoogleSignIns explains the rest.
+  if (verifiedGoogleSignIns(rows, rangeIndex).length > 0) return "human";
 
   const pages = rows.filter(isPageView);
   if (pages.length === 0) return "no-page-view";
@@ -405,15 +438,18 @@ export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {
     human: 0,
   };
   const humans = [];
+  // Counted per address and corroborated, for the same reason the verdict is:
+  // an uncorroborated callback row is a header anyone can send, and this is the
+  // only Google sign-in figure this account has.
+  let google = 0;
   for (const [ip, list] of byIp) {
     const verdict = classifyVisitor(list, rangeIndex);
     buckets[verdict]++;
     if (verdict === "human") {
       humans.push({ ip, pages: list.filter(isPageView).length });
     }
+    google += verifiedGoogleSignIns(list, rangeIndex).length;
   }
-
-  const google = googleSignIns(mine);
 
   return {
     day: day ?? mine[0]?.date ?? null,
@@ -423,6 +459,6 @@ export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {
     buckets,
     humans: buckets.human,
     humanPageViews: humans.reduce((n, h) => n + h.pages, 0),
-    googleSignIns: google.length,
+    googleSignIns: google,
   };
 }
