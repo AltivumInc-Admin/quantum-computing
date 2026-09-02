@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useLocale, localeCode } from "@/i18n";
 import {
   HARDWARE_RATES,
@@ -107,7 +107,12 @@ function PresetChips({
  */
 export function CostEstimator() {
   const { t, locale } = useLocale();
-  const loc = localeCode(locale);
+  // One formatter for the whole component. `n.toLocaleString(loc)` constructs a
+  // fresh Intl.NumberFormat per call (engines cache only the no-argument form),
+  // and the six sites below — two value readouts, two aria-valuetexts, two preset
+  // rows — all re-render on every `input` event from a range slider, which fires
+  // at pointer rate while dragging.
+  const nf = useMemo(() => new Intl.NumberFormat(localeCode(locale)), [locale]);
   const [deviceIdx, setDeviceIdx] = useState(2); // IQM Garnet — the curriculum's workhorse
   const [shots, setShots] = useState(1000);
   const [modelIdx, setModelIdx] = useState(0);
@@ -170,7 +175,7 @@ export function CostEstimator() {
                 {t("pricingUi.shots")}
               </label>
               <span className="text-sm tabular-nums text-(--mut)">
-                {shots.toLocaleString(loc)}
+                {nf.format(shots)}
               </span>
             </div>
             <input
@@ -187,14 +192,14 @@ export function CostEstimator() {
               // contract explicitly rather than announcing a bare number with
               // no visible focus affordance.
               className="slider w-full focus-ring"
-              aria-valuetext={t("pricingUi.shotsValue", { n: shots.toLocaleString(loc) })}
+              aria-valuetext={t("pricingUi.shotsValue", { n: nf.format(shots) })}
             />
             <div className="mt-3">
               <PresetChips
                 presets={SHOT_PRESETS}
                 value={shots}
                 onSelect={setShots}
-                format={(v) => v.toLocaleString(loc)}
+                format={nf.format}
                 ariaLabel={t("pricingUi.shotPresets")}
               />
             </div>
@@ -258,7 +263,7 @@ export function CostEstimator() {
                 {t("pricingUi.questionsPerMonth")}
               </label>
               <span className="text-sm tabular-nums text-(--mut)">
-                {questions.toLocaleString(loc)}
+                {nf.format(questions)}
               </span>
             </div>
             <input
@@ -270,14 +275,14 @@ export function CostEstimator() {
               value={questions}
               onChange={(e) => setQuestions(Number(e.target.value))}
               className="slider w-full focus-ring"
-              aria-valuetext={t("pricingUi.questionsValue", { n: questions.toLocaleString(loc) })}
+              aria-valuetext={t("pricingUi.questionsValue", { n: nf.format(questions) })}
             />
             <div className="mt-3">
               <PresetChips
                 presets={QUESTION_PRESETS}
                 value={questions}
                 onSelect={setQuestions}
-                format={(v) => v.toLocaleString(loc)}
+                format={nf.format}
                 ariaLabel={t("pricingUi.questionPresets")}
               />
             </div>

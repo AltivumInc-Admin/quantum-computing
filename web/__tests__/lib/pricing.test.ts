@@ -46,6 +46,21 @@ describe("pricing peg and helpers", () => {
     expect(formatCreditNumber(1664, "es-MX")).toBe("1,664");
   });
 
+  it("keeps its formatters keyed by locale AND decimal places", () => {
+    // The formatters are cached across calls (constructing an Intl.NumberFormat
+    // per call is what made a slider drag expensive), so the cache key has to
+    // carry both dimensions: interleave the four combinations and check none
+    // borrows another's formatter.
+    for (let i = 0; i < 2; i++) {
+      expect(formatCreditNumber(1664, "en-US")).toBe("1,664");
+      expect(formatCreditNumber(50.3, "en-US")).toBe("50.3");
+      expect(formatCreditNumber(1664, "es-MX")).toBe("1,664");
+      expect(formatCreditNumber(50.3, "es-MX")).toBe("50.3");
+      // An integer must never pick up the one-decimal formatter.
+      expect(formatCreditNumber(197)).toBe("197");
+    }
+  });
+
   it("rounds to the figure that is displayed, so the plural form matches it", () => {
     expect(roundCredits(197.0000000003)).toBe(197);
     expect(roundCredits(1.02)).toBe(1);

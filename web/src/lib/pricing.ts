@@ -44,8 +44,35 @@ export function creditsToUsd(credits: number): number {
 export function formatCreditNumber(credits: number, localeTag = "en-US"): string {
   const rounded = roundCredits(credits);
   return Number.isInteger(rounded)
-    ? rounded.toLocaleString(localeTag)
-    : rounded.toLocaleString(localeTag, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    ? creditFormatter(localeTag, 0).format(rounded)
+    : creditFormatter(localeTag, 1).format(rounded);
+}
+
+/**
+ * Formatters, kept. `Number.prototype.toLocaleString` with an explicit locale
+ * CONSTRUCTS an Intl.NumberFormat on every call — engines only cache the
+ * no-argument form — and the estimator calls into here from both readouts on
+ * every render, which for a range slider means every pointer move. The static
+ * rate table pays it once per row per locale render on top of that.
+ *
+ * Two keys deep because credits round to one decimal and the integer case must
+ * not print a trailing ".0". The map is bounded by the number of shipped
+ * locales, and the output is byte-identical to the per-call construction.
+ */
+const CREDIT_FORMATTERS = new Map<string, Intl.NumberFormat>();
+function creditFormatter(localeTag: string, decimals: 0 | 1): Intl.NumberFormat {
+  const key = `${localeTag}|${decimals}`;
+  let nf = CREDIT_FORMATTERS.get(key);
+  if (!nf) {
+    nf = new Intl.NumberFormat(
+      localeTag,
+      decimals === 0
+        ? undefined
+        : { minimumFractionDigits: 1, maximumFractionDigits: 1 },
+    );
+    CREDIT_FORMATTERS.set(key, nf);
+  }
+  return nf;
 }
 
 /**
@@ -57,13 +84,21 @@ export function roundCredits(credits: number): number {
   return Math.round(credits * 10) / 10;
 }
 
+/**
+ * USD is deliberately NOT locale-tagged: the peg and every sticker price on this
+ * page are US dollars, and re-grouping them for es-MX would change the currency's
+ * own presentation, not the reader's number format. One formatter, hoisted for
+ * the same reason as the credit ones above.
+ */
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function formatUsd(usd: number): string {
-  return usd.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return USD_FORMATTER.format(usd);
 }
 
 /**
