@@ -63,6 +63,40 @@ const withoutComments = (text) =>
     .filter((l) => !/^\s*#/.test(l))
     .join("\n");
 
+const handlerSrc = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+
+/**
+ * Pin one log-line -> metric filter -> alarm chain end to end.
+ *
+ * These alarms work by string coincidence: the handler console.warns a phrase,
+ * a MetricFilter turns that literal into a metric, and an alarm reads it. Three
+ * hand-synced copies, of which the repo's suites historically pinned one. Reword
+ * any of them and both halves stay green while the alarm goes permanently dark
+ * — and the matched-nothing alarm's own description says NOTHING else would say
+ * so. lambda/qpu pins the identical mechanism (template.test.mjs "the orphaned-
+ * money metric filter ... matches reconcile.mjs's exact log line"); this is the
+ * same assertion, reusable because this stack has more than one such chain.
+ */
+function assertWarnAlarmChain(metricName, alarmId) {
+  const filterId = ofType("AWS::Logs::MetricFilter").find((id) => body(id).includes(`MetricName: ${metricName}`));
+  assert.ok(filterId, `no metric filter producing ${metricName}`);
+  const filter = body(filterId);
+
+  // Attached to the explicitly declared log group, not an implicit one.
+  assert.match(filter, /LogGroupName: !Ref AnalyticsLogGroup/, `${filterId}: wrong log group`);
+  assert.match(filter, /MetricNamespace: QuantumAnalytics/, `${filterId}: wrong namespace`);
+
+  const phrase = filter.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.ok(phrase, `${filterId}: FilterPattern must be a quoted literal phrase`);
+  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
+
+  const alarm = body(alarmId);
+  assert.ok(alarm, `${alarmId} missing`);
+  assert.match(alarm, /Namespace: QuantumAnalytics/, `${alarmId}: namespace must match the filter`);
+  assert.match(alarm, new RegExp(`MetricName: ${metricName}\\b`), `${alarmId}: reads a different metric`);
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/, `${alarmId}: must notify the alerts topic`);
+}
+
 test("the history table carries NO TimeToLive specification", () => {
   // See the header. A TTL here would let DynamoDB delete days of history
   // silently, and the raw logs behind them cannot be re-fetched.
@@ -118,13 +152,31 @@ test("the run cannot be silent: absent invocations breach, and only that alarm d
   }
 });
 
+test("the matched-nothing alarm is wired to index.mjs's exact log line", () => {
+  assertWarnAlarmChain("MatchedNothing", "AnalyticsMatchedNothingAlarm");
+});
+
 test("the alerts topic reaches a human by email, and every alarm notifies it", () => {
   assert.equal(typeOf("AlertsTopic"), "AWS::SNS::Topic");
   assert.match(body("AlertsTopic"), /Protocol: email/);
   assert.match(body("AlertsTopic"), /Endpoint: !Ref AlertEmail/);
 
+  // Named, not counted with >=. A bound that only grows lets an alarm be
+  // DELETED with the suite green, and lets README's Observability table fall
+  // behind a newly added one — which is how the matched-nothing alarm shipped
+  // undocumented. Add an alarm here and the README table has to be revisited.
   const alarms = ofType("AWS::CloudWatch::Alarm");
-  assert.ok(alarms.length >= 4, `expected at least 4 alarms, found: ${alarms}`);
+  assert.deepEqual(
+    [...alarms].sort(),
+    [
+      "AnalyticsDurationAlarm",
+      "AnalyticsErrorsAlarm",
+      "AnalyticsMatchedNothingAlarm",
+      "AnalyticsSilentAlarm",
+      "AnalyticsThrottlesAlarm",
+    ],
+    "the alarm set changed — update README.md's Observability table too",
+  );
   for (const alarm of alarms) {
     assert.match(body(alarm), /AlarmActions: \[!Ref AlertsTopic\]/, `${alarm}: must notify the alerts topic`);
     assert.match(body(alarm), /AlarmDescription:/, `${alarm}: must say what broke and where to look`);
