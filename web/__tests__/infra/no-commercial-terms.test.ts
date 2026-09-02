@@ -29,10 +29,19 @@ import { join } from "path";
 
 const REPO = join(__dirname, "..", "..", "..");
 
+// Build output and per-developer machine state, none of which this guard has any
+// business scanning. `.design-sync` was here for the same reason and is NOT any more:
+// it has been TRACKED since 2026-08-24 (config.json, conventions.md, an operator log
+// and seventeen preview components), so the exemption had the opposite effect it was
+// written for — twenty published files, in a public repo, exempt from the only guard
+// against publishing the spread. The untracked machine state it was meant to skip
+// (.ds-sync/, ds-bundle/, .design-sync/.cache|learnings|node_modules) is gitignored,
+// so ls-files can never surface it anyway. If a preview's class strings ever trip a
+// pattern, exempt that ONE file in ALLOWED with a reason — never the directory.
 const SKIP_DIRS = new Set([
   ".git", "node_modules", ".venv", "venv", "__pycache__", ".next", "out", ".aws-sam",
   ".pytest_cache", "dist", "build", ".claude", ".agents", ".continue", ".factory",
-  ".kiro", ".design-sync", "coverage", "playwright-report", "test-results",
+  ".kiro", "coverage", "playwright-report", "test-results",
   ".ipynb_checkpoints",
 ]);
 
