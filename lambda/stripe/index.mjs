@@ -50,6 +50,13 @@ import {
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 import Stripe from "stripe";
+import {
+  CATALOG,
+  CUSTOM_TOPUP_MAX_USD,
+  CUSTOM_TOPUP_MIN_USD,
+  CUSTOM_TOPUP_PRODUCT,
+  STRIPE_API_VERSION,
+} from "./catalog.mjs";
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -110,47 +117,15 @@ export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
  */
 export const SIGNATURE_REJECTED = "stripe-webhook: signature verification failed";
 
-/**
- * Exactly the event types this handler acts on. Exported so a test can assert
- * it matches the switch's cases, and so the Dashboard subscription in the
- * runbook has a single source of truth to be checked against. A type we handle
- * but never receive is dead code; one we receive but ignore is silent loss.
- */
-export const REQUIRED_WEBHOOK_EVENTS = [
-  "checkout.session.completed",
-  "checkout.session.async_payment_succeeded",
-  "checkout.session.async_payment_failed",
-  "invoice.paid",
-  "customer.subscription.updated",
-  "customer.subscription.deleted",
-  "charge.refunded",
-  "charge.dispute.funds_withdrawn",
-  "charge.dispute.funds_reinstated",
-];
-
-// The published catalog's lookup keys -> what checking out each one means.
-// A /checkout request may name ONLY these keys, so a caller can never coerce an
-// arbitrary Stripe price or credit amount. The credit counts are the server-
-// side source of truth (mirroring web/src/lib/pricing.ts): they are written
-// into Stripe metadata at session creation and read back, verbatim, by the
-// webhook, so the wallet is never at the mercy of a mis-tagged price.
-export const CATALOG = {
-  ql_plus_monthly: { mode: "subscription", tier: "plus", credits: 1900 },
-  ql_pro_monthly: { mode: "subscription", tier: "pro", credits: 6500 },
-  ql_credits_500: { mode: "payment", tier: null, credits: 500 },
-  ql_credits_2000: { mode: "payment", tier: null, credits: 2000 },
-  ql_credits_5000: { mode: "payment", tier: null, credits: 5000 },
-  ql_credits_10000: { mode: "payment", tier: null, credits: 10000 },
-};
-
-// Custom top-ups: any whole-dollar amount in [MIN, MAX], credited 1:1 at the
-// $0.01 peg (100 credits per dollar). Priced ad hoc via price_data against the
-// catalog's ql_credits product, so the Stripe dashboard groups every top-up —
-// fixed pack or custom — under one product. The ceiling bounds fraud and
-// chargeback exposure per transaction, not legitimate use.
-export const CUSTOM_TOPUP_MIN_USD = 5;
-export const CUSTOM_TOPUP_MAX_USD = 500;
-export const CUSTOM_TOPUP_PRODUCT = "ql_credits";
+// What this handler sells, what it must be told about, and the version it speaks
+// live in ./catalog.mjs, which imports NOTHING. The operator scripts that audit
+// the Stripe Dashboard against them use raw fetch and none of the three SDKs
+// imported at the top of this file — importing one constant from here pulled all
+// three in, so `make stripe-parity` could not run on a clean checkout.
+//
+// Re-exported so every existing importer of this module is unchanged.
+export { REQUIRED_WEBHOOK_EVENTS } from "./catalog.mjs";
+export { CATALOG, CUSTOM_TOPUP_MIN_USD, CUSTOM_TOPUP_MAX_USD, CUSTOM_TOPUP_PRODUCT, STRIPE_API_VERSION };
 
 export function createHandlerCore({
   stripe,
@@ -1063,7 +1038,7 @@ export function lazyCore(build) {
 export const handler = lazyCore(async () => {
   const { secretKey, webhookSecret } = await loadSecret(process.env.SECRET_ID);
   return createHandlerCore({
-    stripe: new Stripe(secretKey, { apiVersion: "2026-06-24.dahlia" }),
+    stripe: new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION }),
     ddb: new DynamoDBClient({}),
     tableName: process.env.TABLE_NAME,
     webhookSecret,

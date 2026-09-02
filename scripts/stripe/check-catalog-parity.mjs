@@ -31,7 +31,7 @@
  * Exit 0 = parity, 1 = drift, 2 = usage error.
  */
 import { readFileSync } from "node:fs";
-import { CATALOG } from "../../lambda/stripe/index.mjs";
+import { CATALOG } from "../../lambda/stripe/catalog.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
 import { auditDescription, tierPrices } from "./lib/parity-rules.mjs";

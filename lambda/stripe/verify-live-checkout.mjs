@@ -12,7 +12,8 @@
 //   STRIPE_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
 //     node lambda/stripe/verify-live-checkout.mjs
 import Stripe from "stripe";
-import { createHandlerCore, CATALOG } from "./index.mjs";
+import { createHandlerCore } from "./index.mjs";
+import { CATALOG, STRIPE_API_VERSION } from "./catalog.mjs";
 
 const EXPECT_ACCT = "acct_1TuFow07hJdXv6GV";
 const KEY = process.env.STRIPE_KEY;
@@ -21,7 +22,9 @@ if (!KEY || KEY.includes("*")) {
   process.exit(1);
 }
 
-const stripe = new Stripe(KEY, { apiVersion: "2026-06-24.dahlia" });
+// The deployed handler's own pin, not a fourth hand-typed copy of it: this
+// harness only proves something about production if it speaks the same version.
+const stripe = new Stripe(KEY, { apiVersion: STRIPE_API_VERSION });
 
 const acct = await stripe.accounts.retrieve();
 console.log(`account: ${acct.id} (${acct.settings?.dashboard?.display_name})`);

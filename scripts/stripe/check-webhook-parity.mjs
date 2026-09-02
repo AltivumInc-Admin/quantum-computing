@@ -34,7 +34,7 @@
  *
  * Exit 0 = parity. Exit 1 = drift (or a wrong account). Exit 2 = usage error.
  */
-import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/catalog.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
 import { diffEvents } from "./lib/parity-rules.mjs";

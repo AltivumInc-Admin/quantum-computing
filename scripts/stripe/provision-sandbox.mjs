@@ -50,7 +50,12 @@
  * never written to disk.
  */
 import { readFileSync } from "node:fs";
-import { CATALOG, CUSTOM_TOPUP_PRODUCT, REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import {
+  CATALOG,
+  CUSTOM_TOPUP_PRODUCT,
+  REQUIRED_WEBHOOK_EVENTS,
+  STRIPE_API_VERSION,
+} from "../../lambda/stripe/catalog.mjs";
 import { LIVE_ACCOUNT, resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, putSecretJson, stripeClient } from "./lib/preamble.mjs";
 import { priceNeedsReplacing, tierPrices } from "./lib/parity-rules.mjs";
@@ -82,11 +87,12 @@ if (expectAccount === LIVE_ACCOUNT) {
 }
 if (webhookUrl && !secretId && !dryRun) die(2, "--webhook-url requires --secret-id (where the signing secret goes).");
 
-/** The SDK's own pin — inbound payload shape must match what the handler expects. */
-const API_VERSION =
-  readFileSync(new URL("../../lambda/stripe/index.mjs", import.meta.url), "utf8").match(
-    /apiVersion:\s*"([^"]+)"/
-  )?.[1] ?? die(2, "could not read the SDK apiVersion pin from index.mjs");
+/**
+ * The SDK's own pin — the endpoint's inbound payload shape must match what the
+ * handler expects. Imported, not scraped: this used to be a regex over the text
+ * of index.mjs that took the FIRST quoted `apiVersion:` in the file.
+ */
+const API_VERSION = STRIPE_API_VERSION;
 
 const client = stripeClient(key);
 const stripe = (method, path, form) => client.request(method, path, form);

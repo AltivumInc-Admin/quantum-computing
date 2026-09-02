@@ -52,8 +52,7 @@
  */
 import { createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import { REQUIRED_WEBHOOK_EVENTS, STRIPE_API_VERSION } from "../../lambda/stripe/catalog.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, putSecretJson, stripeClient } from "./lib/preamble.mjs";
 
@@ -96,10 +95,9 @@ console.log(
 
 // The SDK's own pin governs outbound calls; the endpoint pin governs the inbound
 // payload shape. They must agree or you debug a difference that does not exist.
-const apiVersion = readFileSync(new URL("../../lambda/stripe/index.mjs", import.meta.url), "utf8").match(
-  /apiVersion:\s*"([^"]+)"/
-)?.[1];
-if (!apiVersion) die(2, "could not read the SDK apiVersion pin from index.mjs");
+// Imported, not scraped out of index.mjs's text by a regex that took the first
+// quoted `apiVersion:` it found.
+const apiVersion = STRIPE_API_VERSION;
 
 // ---- the API key this rotation will store, resolved and PROVED before any write --
 // Ordering is the point: the replacement endpoint returns its signing secret once
