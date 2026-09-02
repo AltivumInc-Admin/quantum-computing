@@ -235,9 +235,13 @@ export function createHandlerCore({
    * The webhook is the ONLY writer of `tier` and resets it to "free" on
    * customer.subscription.deleted, so this read is authoritative and needs no
    * separate Stripe round-trip. Absent row => free, matching GET /wallet.
+   *
+   * Takes the ALREADY-READ wallet item rather than a sub: /checkout needs the
+   * same row again for the Stripe customer id, and reading it twice per click
+   * bought nothing.
    */
-  async function hasPaidTier(sub) {
-    const tier = (await readWallet(sub))?.tier?.S ?? "free";
+  function isPaidTier(item) {
+    const tier = item?.tier?.S ?? "free";
     return tier === "plus" || tier === "pro";
   }
 
@@ -355,9 +359,46 @@ export function createHandlerCore({
     }
   }
 
-  /** Reuse the user's Stripe customer, or create one bound to their sub. */
-  async function ensureCustomer(sub, email) {
-    const item = await readWallet(sub);
+  /**
+   * A published lookup key -> the Stripe price id behind it, remembered for the
+   * life of the container.
+   *
+   * CATALOG is six fixed keys, and the id behind one changes only when somebody
+   * re-points the lookup key in the Dashboard — yet every Subscribe/Buy click
+   * spent a Stripe round trip re-deriving it, in front of the round trip the
+   * request genuinely cannot avoid. Bounded rather than permanent so a
+   * re-pointed key heals on its own without a redeploy, and evicted outright
+   * when Checkout rejects the id, which is how a stale one actually surfaces.
+   *
+   * The freshness field is `validUntil` on purpose. The obvious name for it is
+   * the DynamoDB TTL attribute's, which is reserved: web/__tests__/infra/
+   * wallet-ttl counts every occurrence of that attribute name in this file, so
+   * that one can never drift onto a row TTL would delete whole. An in-memory
+   * cache has no business spending one of those occurrences.
+   */
+  const priceIds = new Map();
+  const PRICE_ID_TTL_MS = 10 * 60 * 1000;
+
+  async function resolvePriceId(lookupKey) {
+    const cached = priceIds.get(lookupKey);
+    if (cached && cached.validUntil > Date.now()) return cached.priceId;
+    const prices = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
+    const priceId = prices.data?.[0]?.id;
+    // A miss is never cached: "not configured" is a state someone is about to
+    // fix, and remembering it would outlast the fix.
+    if (priceId) priceIds.set(lookupKey, { priceId, validUntil: Date.now() + PRICE_ID_TTL_MS });
+    return priceId;
+  }
+
+  const forgetPriceId = (lookupKey) => priceIds.delete(lookupKey);
+
+  /** Reuse the user's Stripe customer, or create one bound to their sub.
+   *
+   *  `preRead` is the wallet row the caller already has (null is a real answer
+   *  — no row yet — so only `undefined` means "read it yourself"). The lost-race
+   *  path below still re-reads, which is the only read that has to be fresh. */
+  async function ensureCustomer(sub, email, preRead) {
+    const item = preRead === undefined ? await readWallet(sub) : preRead;
     const existing = item?.stripeCustomerId?.S;
     if (existing) return existing;
 
@@ -1081,9 +1122,13 @@ export function createHandlerCore({
         cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
       };
 
+      // ONE wallet read per click, reused for both things this route asks of
+      // it: the paid-tier gate and the Stripe customer id.
+      const wallet = await readWallet(sub);
+
       // ---- Custom top-up: { amountUsd } — whole dollars, bounded, 1:1 credits ----
       if (body?.amountUsd !== undefined) {
-        if (!(await hasPaidTier(sub))) return json(403, { error: "subscription required" });
+        if (!isPaidTier(wallet)) return json(403, { error: "subscription required" });
         const amountUsd = body.amountUsd;
         if (
           !Number.isInteger(amountUsd) ||
@@ -1095,7 +1140,7 @@ export function createHandlerCore({
           });
         }
         const credits = amountUsd * 100; // the $0.01 peg, server-computed
-        const customer = await ensureCustomer(sub, email);
+        const customer = await ensureCustomer(sub, email, wallet);
         const session = await stripe.checkout.sessions.create({
           customer,
           client_reference_id: sub,
@@ -1118,23 +1163,18 @@ export function createHandlerCore({
 
       const spec = CATALOG[body?.lookupKey];
       if (!spec) return json(400, { error: "unknown lookupKey" });
-      if (spec.mode === "payment" && !(await hasPaidTier(sub))) {
+      if (spec.mode === "payment" && !isPaidTier(wallet)) {
         return json(403, { error: "subscription required" });
       }
 
-      const prices = await stripe.prices.list({
-        lookup_keys: [body.lookupKey],
-        active: true,
-        limit: 1,
-      });
-      const price = prices.data?.[0];
-      if (!price) return json(500, { error: "price not configured" });
+      const priceId = await resolvePriceId(body.lookupKey);
+      if (!priceId) return json(500, { error: "price not configured" });
 
-      const customer = await ensureCustomer(sub, email);
+      const customer = await ensureCustomer(sub, email, wallet);
       const common = {
         customer,
         client_reference_id: sub,
-        line_items: [{ price: price.id, quantity: 1 }],
+        line_items: [{ price: priceId, quantity: 1 }],
         ...returnUrls,
       };
       const params =
@@ -1153,7 +1193,17 @@ export function createHandlerCore({
               metadata: { userId: sub, credits: String(spec.credits), kind: "topup" },
             };
 
-      const session = await stripe.checkout.sessions.create(params);
+      let session;
+      try {
+        session = await stripe.checkout.sessions.create(params);
+      } catch (err) {
+        // The memo is the only thing here that can go stale, and a rejected
+        // price id is exactly how that shows up. Drop it so the next click
+        // re-resolves rather than repeating the same bad id until the
+        // container recycles.
+        forgetPriceId(body.lookupKey);
+        throw err;
+      }
       return json(200, { url: session.url });
     }
 

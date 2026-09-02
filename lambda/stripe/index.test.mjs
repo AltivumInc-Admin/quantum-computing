@@ -273,6 +273,84 @@ test("POST /checkout accepts a custom whole-dollar top-up and prices it ad hoc",
   assert.equal(stripe.calls.pricesList.length, 0);
 });
 
+test("POST /checkout reads the wallet ONCE, whichever branch it takes", async () => {
+  // The paid-tier gate and the Stripe customer id are two questions about one
+  // row, and this route used to GetItem it twice per click to answer them.
+  for (const body of [{ lookupKey: "ql_credits_2000" }, { amountUsd: 20 }, { lookupKey: "ql_plus_monthly" }]) {
+    const ddb = paidWallet();
+    const core = createHandlerCore({
+      stripe: stubStripe(),
+      ddb,
+      tableName: TABLE,
+      webhookSecret: SECRET,
+      siteOrigin: ORIGIN,
+    });
+    const res = await core(makeEvent({ method: "POST", path: "/checkout", body }));
+    assert.equal(res.statusCode, 200, JSON.stringify(body));
+    assert.equal(
+      ddb.calls.filter((c) => c.constructor.name === "GetItemCommand").length,
+      1,
+      `${JSON.stringify(body)} must read the wallet exactly once`
+    );
+  }
+});
+
+test("POST /checkout resolves a lookup key at Stripe once per container", async () => {
+  // CATALOG is six fixed keys and a price id moves only when someone
+  // re-points the lookup key in the Dashboard, so re-deriving it on every
+  // click was a Stripe round trip in front of the one that cannot be avoided.
+  const stripe = stubStripe();
+  const core = createHandlerCore({
+    stripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+  await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+  assert.equal(stripe.calls.pricesList.length, 1, "the second click must not re-resolve");
+  assert.equal(stripe.calls.sessionsCreate.length, 2, "both clicks still create a session");
+  assert.equal(stripe.calls.sessionsCreate[1].line_items[0].price, "price_resolved");
+
+  // A different key is a different entry.
+  await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_5000" } }));
+  assert.equal(stripe.calls.pricesList.length, 2);
+});
+
+test("POST /checkout forgets a cached price id that Checkout rejected", async () => {
+  // The memo is the only thing on this path that can go stale, and a rejected
+  // price id is how that surfaces. Keeping it would repeat the bad id until
+  // the container recycled.
+  let failNext = true;
+  const stripe = stubStripe();
+  stripe.checkout.sessions.create = async (p) => {
+    stripe.calls.sessionsCreate.push(p);
+    if (failNext) {
+      failNext = false;
+      const err = new Error("No such price");
+      err.name = "StripeInvalidRequestError";
+      throw err;
+    }
+    return { id: "cs_2", url: "https://checkout.stripe.com/c/cs_2" };
+  };
+  const core = createHandlerCore({
+    stripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await assert.rejects(
+    () => core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } })),
+    /No such price/,
+    "the failure still propagates — nothing is swallowed"
+  );
+  const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(stripe.calls.pricesList.length, 2, "the retry re-resolved instead of reusing the bad id");
+});
+
 test("POST /checkout sends every buyer back to the SAME pair of return URLs", async () => {
   // The catalog branch and the custom-top-up branch used to build these
   // separately, which is how one of them keeps pointing at a route the other
