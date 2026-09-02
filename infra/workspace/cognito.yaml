@@ -152,13 +152,37 @@ Resources:
             requestHandler: { connectionTimeout: 800, requestTimeout: 1500 },
           });
 
+          // ONE token for a field the event did not carry. Three different
+          // ones in one mail ("unknown", "(unknown)", "(no email attribute)")
+          // read as three different conditions when they are the same one.
+          // The angle-bracket placeholders in the runbook below are the
+          // exception on purpose: inside a shell command, <pool> says "fill
+          // this in" where (unknown) would read as a value.
+          const MISSING = "(unknown)";
+
           // SNS rejects a Subject over 100 chars or containing control
           // characters, and that rejection would be an exception on the
           // sign-up path. Clamp rather than trust the address.
           function safeSubject(email) {
-            const clean = String(email || "unknown").replace(/[^\x20-\x7E]/g, "");
+            const clean = String(email || MISSING).replace(/[^\x20-\x7E]/g, "");
             const s = `New Quantum Learner signup: ${clean}`;
             return s.length > 99 ? s.slice(0, 96) + "..." : s;
+          }
+
+          // One person can hold a native AND a Google account under different
+          // subs, so an alert is not proof of a new human. This is the check
+          // that settles it, kept out of the body-building code below because
+          // a four-line CLI command with escaped backticks is the least
+          // readable thing in this file.
+          function rosterCheckHint(poolId, region) {
+            return [
+              "One person can hold TWO accounts (native + Google) with different subs.",
+              "Before treating this as a new human, check the roster by email:",
+              "",
+              `  aws cognito-idp list-users --user-pool-id ${poolId} \\`,
+              `    --region ${region} \\`,
+              `    --query 'Users[].{email:Attributes[?Name==\`email\`].Value|[0],created:UserCreateDate}' --output table`,
+            ];
           }
 
           exports.handler = async (event) => {
@@ -170,16 +194,16 @@ Resources:
               // otherwise send a mail headed "New Quantum Learner signup",
               // inflating the founding-cohort count this alert exists to
               // feed. Log the skip so a reset still leaves a trace.
-              const trigger = event?.triggerSource ?? "(unknown)";
+              const trigger = event?.triggerSource ?? MISSING;
               if (trigger !== "PostConfirmation_ConfirmSignUp") {
                 console.log("signup alert skipped, not a sign-up:", trigger);
                 return event;
               }
 
               const attrs = event?.request?.userAttributes ?? {};
-              const email = attrs.email ?? "(no email attribute)";
-              const sub = attrs.sub ?? "(unknown)";
-              const userName = event?.userName ?? "(unknown)";
+              const email = attrs.email ?? MISSING;
+              const sub = attrs.sub ?? MISSING;
+              const userName = event?.userName ?? MISSING;
               // Federated users arrive with a provider-prefixed userName
               // ("Google_1234..."); native sign-ups do not.
               const viaGoogle = /^google_/i.test(userName);
@@ -191,7 +215,7 @@ Resources:
               const lines = [
                 `Email:     ${email}`,
                 `Sign-in:   ${viaGoogle ? "Google" : "email + password"}`,
-                `Cognito sub: ${sub}`,
+                `User sub:  ${sub}`,
                 `Username:  ${userName}`,
                 `Trigger:   ${trigger}`,
                 `When:      ${new Date().toISOString()}`,
@@ -200,12 +224,12 @@ Resources:
                   ? `NOTE: internal @${internalDomain} account — does not occupy a founding-cohort slot.`
                   : "This is an external signup.",
                 "",
-                "One person can hold TWO accounts (native + Google) with different subs.",
-                "Before treating this as a new human, check the roster by email:",
-                "",
-                `  aws cognito-idp list-users --user-pool-id ${event?.userPoolId ?? "<pool>"} \\`,
-                `    --region ${process.env.AWS_REGION} \\`,
-                `    --query 'Users[].{email:Attributes[?Name==\`email\`].Value|[0],created:UserCreateDate}' --output table`,
+                // AWS_REGION is runtime-reserved and always set in Lambda; the
+                // fallback is for anything that runs this module elsewhere.
+                ...rosterCheckHint(
+                  event?.userPoolId ?? "<pool>",
+                  process.env.AWS_REGION || "<region>"
+                ),
               ];
 
               await sns.send(

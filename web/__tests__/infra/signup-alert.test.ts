@@ -311,7 +311,34 @@ describe("Cognito new-signup alerter", () => {
       await expect(handler(event)).resolves.toBe(event);
 
       expect(published).toHaveLength(1);
-      expect(published[0].Subject).toContain("no email attribute");
+      // ONE token for every absent field. Mixing "unknown", "(unknown)" and
+      // "(no email attribute)" in one mail reads as three conditions when it
+      // is the same one.
+      expect(published[0].Subject).toBe("New Quantum Learner signup: (unknown)");
+      expect(published[0].Message).toContain("Email:     (unknown)");
+      expect(published[0].Message).toContain("User sub:  (unknown)");
+      expect(published[0].Message).toContain("Username:  (unknown)");
+    });
+
+    it("aligns the field labels and keeps the roster runbook runnable", async () => {
+      const { handler, published } = loadHandler();
+      await handler(signupEvent());
+      const message = published[0].Message!;
+
+      // The six field lines are a fixed-width block; a label that overflows
+      // its column makes the mail look broken, which is how `Cognito sub:`
+      // read before it became `User sub:`.
+      const fields = message.split("\n").filter((l) => /^[A-Z][A-Za-z -]*:/.test(l));
+      expect(fields).toHaveLength(6);
+      for (const line of fields) {
+        expect(line[10]).toBe(" ");
+        expect(line[11]).not.toBe(" ");
+      }
+
+      // The runbook is a command an operator pastes, so the pool id and the
+      // region have to actually land in it.
+      expect(message).toContain("--user-pool-id us-east-2_examplepool");
+      expect(message).toContain("--region us-east-2");
     });
 
     it("swallows an SNS rejection — the sign-up completes anyway", async () => {
