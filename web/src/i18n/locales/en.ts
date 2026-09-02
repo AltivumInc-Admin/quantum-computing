@@ -838,6 +838,12 @@ export const en: TranslationDict = {
       "Everything you need to learn quantum computing is already free — just a free account. Email or Google, no credit card.",
     free: "Free",
     plan: "plan",
+    // A refund or dispute that outran the balance leaves a debt, and while it is
+    // nonzero both metered backends refuse every spend no matter what the balance
+    // says. The chip carries the short label; the sentence is its description.
+    spendPaused: "Spending paused",
+    spendPausedDetail:
+      "A refund or dispute left {{owed}} owed on this wallet. Spending is paused until that is settled, whatever the balance shows.",
     buyCredits: "Buy credits",
     buyCreditsAmount: "Buy {{amount}}",
     starting: "Starting…",

@@ -58,6 +58,45 @@ test("wears the hero chip recipe and sets the credit figure in mono", async () =
   expect(figure.className).toContain("font-mono");
 });
 
+test("explains why a wallet with clawback debt will not spend", async () => {
+  // While clawbackOwedCredits is nonzero BOTH metered backends refuse every
+  // spend — their debit conditions require the attribute absent or zero — so a
+  // learner in debt saw a healthy balance and nothing said why nothing worked.
+  // /wallet returns the field for exactly this purpose; this was its only
+  // possible consumer and it read it nowhere.
+  (isBillingConfigured as jest.Mock).mockReturnValue(true);
+  (getWallet as jest.Mock).mockResolvedValue({
+    tier: "plus",
+    credits: 1890,
+    subscriptionStatus: "active",
+    clawbackOwedCredits: 250,
+  });
+  renderBadge();
+  const badge = await screen.findByTestId("wallet-badge");
+  expect(badge).toHaveTextContent("Spending paused");
+  // The reason, not just the label, and carried where AT will read it.
+  expect(badge).toHaveAccessibleDescription(/250 credits owed|left 250 credits/i);
+  expect(badge).toHaveAccessibleDescription(/until that is settled/i);
+  // The balance is still shown — it is real — but not in the accent that reads
+  // as spendable.
+  expect(badge).toHaveTextContent("1,890 credits");
+  expect(badge.className).toContain("border-warm/40");
+});
+
+test("a wallet with no debt field renders exactly as before", async () => {
+  (isBillingConfigured as jest.Mock).mockReturnValue(true);
+  (getWallet as jest.Mock).mockResolvedValue({
+    tier: "plus",
+    credits: 1890,
+    subscriptionStatus: "active",
+  });
+  renderBadge();
+  const badge = await screen.findByTestId("wallet-badge");
+  expect(badge).not.toHaveTextContent(/paused/i);
+  expect(badge).not.toHaveAttribute("aria-describedby");
+  expect(badge.className).toContain("bg-(--field)");
+});
+
 test("renders nothing when billing is not configured (never calls the API)", () => {
   (isBillingConfigured as jest.Mock).mockReturnValue(false);
   renderBadge();

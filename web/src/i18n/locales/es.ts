@@ -777,6 +777,10 @@ export const es: TranslationDict = {
       "Todo lo que necesitas para aprender computación cuántica ya es gratis — solo una cuenta gratuita. Correo o Google, sin tarjeta de crédito.",
     free: "Gratis",
     plan: "plan",
+    // Ver la nota en en.ts: mientras haya deuda, ningún gasto se permite.
+    spendPaused: "Gasto en pausa",
+    spendPausedDetail:
+      "Un reembolso o una disputa dejó {{owed}} pendientes en esta billetera. El gasto está en pausa hasta que se salde, sin importar lo que muestre el saldo.",
     buyCredits: "Comprar créditos",
     buyCreditsAmount: "Comprar {{amount}}",
     starting: "Iniciando…",
