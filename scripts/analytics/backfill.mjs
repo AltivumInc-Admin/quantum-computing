@@ -32,10 +32,11 @@
  * result; it mutates nothing.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { buildRangeIndex, parseLog, summarizeDay } from "../../lambda/analytics/classify.mjs";
 import { fetchDayCsv } from "../../lambda/analytics/retrieve.mjs";
@@ -123,12 +124,30 @@ if (!cacheRel.startsWith("..") && !isAbsolute(cacheRel)) {
   }
 }
 
-const aws = (a) =>
-  execFileSync("aws", profile ? [...a, "--profile", profile] : a, {
+/**
+ * One aws-CLI call. Asynchronous, because the CLI's startup is the slow part.
+ *
+ * execFileSync blocks the event loop for the whole subprocess — CLI startup
+ * included — so a run from launch to today was ~65 process spawns and ~65
+ * downloads, strictly one after another, none of which share any state.
+ */
+const execFileAsync = promisify(execFile);
+const aws = async (a) => {
+  const { stdout } = await execFileAsync("aws", profile ? [...a, "--profile", profile] : a, {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
   });
+  return stdout;
+};
+
+/**
+ * How many days are retrieved at once.
+ *
+ * Enough to hide the CLI's startup behind another day's download, low enough
+ * not to look like a burst to an API this account calls once a day. The output,
+ * exit codes and cache layout are identical either way.
+ */
+const CONCURRENCY = 4;
 
 const days = () => {
   const out = [];
@@ -147,7 +166,7 @@ const days = () => {
  * secrets travel by environment or in-process, never in argv.
  */
 async function fetchWindow(startIso, endIso) {
-  const out = aws([
+  const out = await aws([
     "amplify",
     "generate-access-logs",
     "--app-id",
@@ -183,10 +202,12 @@ async function loadRanges() {
   try {
     const res = await fetch(AWS_RANGES);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Parsed ONCE: this document is several megabytes, and the first parse was
+    // only ever a validity check whose result was thrown away.
     const text = await res.text();
-    JSON.parse(text);
+    const data = JSON.parse(text);
     writeFileSync(path, text);
-    return { index: buildRangeIndex(JSON.parse(text)), source: "fetched" };
+    return { index: buildRangeIndex(data), source: "fetched" };
   } catch (err) {
     if (existsSync(path)) {
       return { index: buildRangeIndex(JSON.parse(readFileSync(path, "utf8"))), source: "cached" };
@@ -204,8 +225,8 @@ async function loadRanges() {
  * resolved once, printed to stderr, and a failure to resolve it stops the run
  * rather than letting ambient credentials silently answer for someone else.
  */
-function whoAmI() {
-  const out = aws(["sts", "get-caller-identity", "--output", "json"]);
+async function whoAmI() {
+  const out = await aws(["sts", "get-caller-identity", "--output", "json"]);
   const { Account } = JSON.parse(out);
   return { account: Account };
 }
@@ -215,7 +236,7 @@ async function main() {
 
   let caller;
   try {
-    caller = whoAmI();
+    caller = await whoAmI();
   } catch (err) {
     console.error("  Could not resolve AWS credentials (aws sts get-caller-identity failed).");
     console.error(`  ${String(err?.stderr ?? err?.message ?? err).trim().split("\n").pop()}`);
@@ -229,10 +250,9 @@ async function main() {
   const { index, source } = await loadRanges();
   const today = new Date().toISOString().slice(0, 10);
   const list = days();
-  const rows = [];
-  const gaps = [];
 
-  for (const day of list) {
+  /** Retrieve, parse and summarize one day. Returns a row OR a gap, never both. */
+  async function collect(day) {
     const cached = join(cacheDir, `${day}.csv`);
     let csv;
     if (existsSync(cached)) {
@@ -245,25 +265,22 @@ async function main() {
         // visitor logs, and a cache outside the repo is unprotected otherwise.
         if (day < today) writeFileSync(cached, csv, { mode: 0o600 });
       } catch (err) {
-        gaps.push({ day, why: err.message });
         if (!asJson) process.stderr.write(`  ${day}  UNAVAILABLE\n`);
-        continue;
+        return { gap: { day, why: err.message } };
       }
     }
 
     const { rows: parsed, malformed } = parseLog(csv);
     const summary = summarizeDay(parsed, index, { day, siteHost });
     summary.malformed = malformed;
-    rows.push(summary);
 
     // The same check index.mjs makes before it alarms: a day that fetched rows
     // and matched NONE of them is a wrong host filter, not a quiet day. Without
     // it this script prints zeroes and exits 0 — the exact failure the deployed
     // stack now pages on, silent in the tool that populates the history.
     if (summary.requests === 0 && summary.offSiteRequests > 0) {
-      gaps.push({ day, why: `MISMATCHED: ${summary.offSiteRequests} row(s), none for host ${siteHost}` });
       if (!asJson) process.stderr.write(`  ${day}  MISMATCHED  (host ${siteHost})\n`);
-      continue;
+      return { gap: { day, why: `MISMATCHED: ${summary.offSiteRequests} row(s), none for host ${siteHost}` } };
     }
 
     if (!asJson) {
@@ -273,6 +290,27 @@ async function main() {
           `${String(summary.googleSignIns).padStart(2)} google\n`,
       );
     }
+    return { summary };
+  }
+
+  // A fixed pool over an index-keyed array: days are retrieved concurrently
+  // (progress lines appear as each finishes, which is why every one names its
+  // day) but rows and gaps are assembled in date order regardless.
+  const results = new Array(list.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, list.length) }, async () => {
+      for (let i = next++; i < list.length; i = next++) {
+        results[i] = await collect(list[i]);
+      }
+    }),
+  );
+
+  const rows = [];
+  const gaps = [];
+  for (const r of results) {
+    if (r.gap) gaps.push(r.gap);
+    else rows.push(r.summary);
   }
 
   writeFileSync(join(cacheDir, "daily.json"), JSON.stringify({ from, to, rows, gaps }, null, 2));
