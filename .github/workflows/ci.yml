@@ -345,11 +345,23 @@ jobs:
       # self-hosted Monaco editor, and the (deliberately Pyodide-free) /workspace
       # Lab launcher. Reuses the web/out/ + web/public/lab/ this job already built
       # (no second build).
+      # The cached artifact is a ~150 MB Chromium build whose revision depends on
+      # ONE thing: the resolved @playwright/test version. Keying it on the whole
+      # lockfile threw the browser away on every Next/React/Tailwind/Jest bump.
+      # package.json carries a caret range, so the resolved version has to be read
+      # from web/node_modules, which the build step above already populated.
+      - name: Resolve the Playwright version
+        id: playwright-version
+        working-directory: web
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+          # A miss on a new version still restores the previous browser dir, so
+          # the install below only downloads what actually changed.
+          restore-keys: playwright-${{ runner.os }}-
       - name: Install Playwright (chromium)
         working-directory: web
         run: npx playwright install --with-deps chromium
