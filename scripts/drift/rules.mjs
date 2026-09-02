@@ -147,21 +147,28 @@ export const heldFor = (held, fn) => held.find((h) => h.fn.test(fn));
  * a real gap eventually hides behind an entry nobody re-read.
  */
 export const staleHolds = (held, results) =>
-  held.filter((h) => !results.some((r) => !r.ok && !isVacuous(r) && h.fn.test(r.fn)));
+  held.filter((h) => !results.some((r) => !r.error && !r.ok && !isVacuous(r) && h.fn.test(r.fn)));
 
 /** The verdict for a finished run: exit code and the summary partitions. */
 export function verdict(results, held) {
-  const vacuous = results.filter(isVacuous);
-  const bad = results.filter((r) => !r.ok && !isVacuous(r) && !heldFor(held, r.fn));
-  const heldRows = results.filter((r) => !r.ok && !isVacuous(r) && heldFor(held, r.fn));
-  // Reproduces the accumulation the download loop performed inline: a row that
-  // could not be checked raises the code to 2, undeclared drift sets it to 1.
-  let exitCode = 0;
-  for (const r of results) {
-    if (r.error) exitCode = Math.max(exitCode, 2);
-    else if (isVacuous(r) || (!r.ok && !heldFor(held, r.fn))) exitCode = 1;
-  }
-  return { exitCode, bad, vacuous, held: heldRows, staleHolds: staleHolds(held, results) };
+  // THREE partitions, not two. A row that threw was never read, so it is neither
+  // a match nor a mismatch: counting it as drift told an operator to "deploy the
+  // drifted functions" about a function whose artifact was never fetched, and
+  // counting an unreachable HELD row as held claimed a deliberate hold on an
+  // outage. Every summary below is computed from `checked` alone.
+  const unchecked = results.filter((r) => r.error);
+  const checked = results.filter((r) => !r.error);
+  const vacuous = checked.filter(isVacuous);
+  const bad = checked.filter((r) => !r.ok && !isVacuous(r) && !heldFor(held, r.fn));
+  const heldRows = checked.filter((r) => !r.ok && !isVacuous(r) && heldFor(held, r.fn));
+  // Drift and could-not-check are accumulated SEPARATELY: one Math.max let an
+  // unrelated credentials failure promote a real drift exit of 1 to 2, and one
+  // plain assignment let a later clean row demote a 2 to 1. Drift wins, because
+  // "somebody owes a deploy" is the actionable half and must not be hidden
+  // behind an infrastructure excuse.
+  const drifted = bad.length > 0 || vacuous.length > 0;
+  const exitCode = drifted ? 1 : unchecked.length ? 2 : 0;
+  return { exitCode, bad, vacuous, unchecked, checked, held: heldRows, staleHolds: staleHolds(held, results) };
 }
 
 /**
@@ -199,6 +206,13 @@ export function render(results, held, target) {
     }
   }
   const v = verdict(results, held);
+  if (v.unchecked.length) {
+    lines.push(
+      `\n  ${v.unchecked.length} of ${results.length} functions could NOT be checked. The report above says\n` +
+        `  NOTHING about them: their artifacts were never read. That is credentials,\n` +
+        `  permissions or the network — not a deploy anyone owes.`,
+    );
+  }
   if (v.vacuous.length) {
     lines.push(
       `\n  ${v.vacuous.length} of ${results.length} functions compared NOTHING. A zero-file comparison\n` +
@@ -209,10 +223,10 @@ export function render(results, held, target) {
     lines.push(
       `\n  ${v.bad.length} of ${results.length} functions do NOT match git. Deploy them, or explain why not.\n`,
     );
-  } else if (v.vacuous.length === 0) {
-    // Only claimable when every row actually compared something.
+  } else if (v.vacuous.length === 0 && v.unchecked.length === 0) {
+    // Only claimable when every row was read AND actually compared something.
     lines.push(
-      `\n  All ${results.length - v.held.length} unheld functions match git.` +
+      `\n  All ${v.checked.length - v.held.length} unheld functions match git.` +
         (v.held.length ? ` ${v.held.length} held on purpose (see above).\n` : `\n`),
     );
   }

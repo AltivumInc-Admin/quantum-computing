@@ -76,8 +76,24 @@ const sh = (cmd, args, opts = {}) =>
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["pipe", "pipe", "pipe"],
+    // A hung child would otherwise hang the whole daily job silently; the job
+    // itself carries a timeout too, but a per-call one names WHICH call hung.
+    timeout: 180_000,
     ...opts,
   }).trim();
+
+/**
+ * One retry for the control-plane calls. A throttle or a blip on one of the
+ * twenty-odd API calls this run makes should not read as "could not check" for
+ * the whole function — and the second failure still throws, with its stderr.
+ */
+const shRetry = (cmd, args, opts) => {
+  try {
+    return sh(cmd, args, opts);
+  } catch {
+    return sh(cmd, args, opts);
+  }
+};
 
 /** Hand-written source in a directory: the pure filter, applied to what is on disk. */
 const sourceFiles = (dir) => {
@@ -113,7 +129,7 @@ for (const { fn, dir } of FUNCTIONS) {
   // is preferred over its message; this is the fallback (see failureReason).
   let stage = "aws lambda get-function failed";
   try {
-    const url = sh("aws", ["lambda", "get-function", "--function-name", fn, "--region", REGION,
+    const url = shRetry("aws", ["lambda", "get-function", "--function-name", fn, "--region", REGION,
       "--query", "Code.Location", "--output", "text"]);
     tmp = mkdtempSync(join(tmpdir(), `drift-${fn}-`));
     // The presigned URL goes to curl on STDIN, never in argv: argv is what
@@ -128,6 +144,8 @@ for (const { fn, dir } of FUNCTIONS) {
         "silent",
         "show-error",
         "fail",
+        "retry = 3",
+        "retry-all-errors",
         "max-time = 120",
         "",
       ].join("\n"),
@@ -148,7 +166,7 @@ for (const { fn, dir } of FUNCTIONS) {
     }
 
     stage = "aws lambda get-function-configuration failed";
-    const lastModified = sh("aws", ["lambda", "get-function-configuration", "--function-name", fn,
+    const lastModified = shRetry("aws", ["lambda", "get-function-configuration", "--function-name", fn,
       "--region", REGION, "--query", "LastModified", "--output", "text"]);
 
     // Only a file present in BOTH and differing is drift. A file that exists in git but

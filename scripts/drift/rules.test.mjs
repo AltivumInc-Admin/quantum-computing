@@ -85,12 +85,45 @@ test("a row that could not be checked prints as ?? and exits 2", () => {
   assert.match(out, /\?\? {2}quantum-stripe\s+could not check — aws lambda get-function failed/);
 });
 
-test("a drifted row alongside an errored row is still reported as drift", () => {
+test("a drifted row alongside an errored row still exits 1, and the error is not drift", () => {
   const results = [drifting("quantum-stripe"), errored("quantum-tutor")];
   const v = verdict(results, HOLD);
-  assert.deepEqual(v.bad.map((r) => r.fn), ["quantum-stripe", "quantum-tutor"]);
+  // The errored row is neither a match nor a mismatch: it was never read.
+  assert.deepEqual(v.bad.map((r) => r.fn), ["quantum-stripe"]);
+  assert.deepEqual(v.unchecked.map((r) => r.fn), ["quantum-tutor"]);
+  // Drift must not hide behind an infrastructure excuse.
+  assert.equal(v.exitCode, 1);
   const out = render(results, HOLD, TARGET).join("\n");
   assert.match(out, /DIFFERS from git: lambda\/x\/index\.mjs/);
+  assert.match(out, /1 of 2 functions do NOT match git/);
+  assert.match(out, /1 of 2 functions could NOT be checked/);
+});
+
+test("an unreachable HELD function is not reported as held", () => {
+  // A hold says the drift is deliberate. An outage is not drift, and printing
+  // "3 held on purpose" while exiting 2 claimed a decision nobody made.
+  const results = [clean("quantum-tutor"), errored("quantum-review-email-sender")];
+  const v = verdict(results, HOLD);
+  assert.equal(v.held.length, 0);
+  assert.equal(v.exitCode, 2);
+  const out = render(results, HOLD, TARGET).join("\n");
+  assert.doesNotMatch(out, /held on purpose/);
+  assert.doesNotMatch(out, /All \d+ unheld functions match git/);
+  assert.match(out, /says\n  NOTHING about them/);
+});
+
+test("an outage cannot make a stale hold look live", () => {
+  assert.deepEqual(staleHolds(HOLD, [errored("quantum-review-email-prefs")]), HOLD);
+});
+
+test("everything failing reads as could-not-check, not as eleven undeployed functions", () => {
+  const results = ["quantum-tutor", "quantum-stripe"].map((fn) => errored(fn));
+  const v = verdict(results, HOLD);
+  assert.equal(v.exitCode, 2);
+  assert.equal(v.bad.length, 0);
+  const out = render(results, HOLD, TARGET).join("\n");
+  assert.doesNotMatch(out, /do NOT match git/);
+  assert.match(out, /2 of 2 functions could NOT be checked/);
 });
 
 test("a clean run says so, with no hold noise", () => {
