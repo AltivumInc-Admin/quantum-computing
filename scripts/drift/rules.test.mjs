@@ -18,6 +18,7 @@ import {
   render,
   sourceFiles,
   staleHolds,
+  stampHolds,
   verdict,
 } from "./rules.mjs";
 
@@ -58,12 +59,12 @@ test("undeclared drift fails the run", () => {
 
 test("declared drift prints as HELD and does NOT fail the run", () => {
   const results = [clean("quantum-tutor"), drifting("quantum-review-email-sender", "lambda/review-email")];
-  const v = verdict(results, HOLD);
+  const v = verdict(stampHolds(results, HOLD), HOLD);
   assert.equal(v.exitCode, 0);
   assert.equal(v.bad.length, 0);
   assert.deepEqual(v.held.map((r) => r.fn), ["quantum-review-email-sender"]);
 
-  const out = render(results, HOLD, TARGET).join("\n");
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.match(out, /HELD {4}quantum-review-email-sender/);
   assert.match(out, /HELD ON PURPOSE/);
   assert.match(out, /why: {3}a stated reason/);
@@ -73,14 +74,14 @@ test("declared drift prints as HELD and does NOT fail the run", () => {
 
 test("a hold matching nothing that drifts reports itself stale", () => {
   const results = [clean("quantum-tutor"), clean("quantum-review-email-sender")];
-  assert.deepEqual(staleHolds(HOLD, results), HOLD);
-  const out = render(results, HOLD, TARGET).join("\n");
+  assert.deepEqual(staleHolds(HOLD, stampHolds(results, HOLD)), HOLD);
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.match(out, /no longer matches any drifting function/);
   assert.match(out, /delete it from scripts\/check-lambda-drift\.mjs/);
 });
 
 test("a live hold is not reported stale", () => {
-  assert.deepEqual(staleHolds(HOLD, [drifting("quantum-review-email-prefs")]), []);
+  assert.deepEqual(staleHolds(HOLD, stampHolds([drifting("quantum-review-email-prefs")], HOLD)), []);
 });
 
 test("heldFor names the entry covering a function, and nothing else", () => {
@@ -90,20 +91,20 @@ test("heldFor names the entry covering a function, and nothing else", () => {
 
 test("a row that could not be checked prints as ?? and exits 2", () => {
   const results = [clean("quantum-tutor"), errored("quantum-stripe")];
-  assert.equal(verdict(results, HOLD).exitCode, 2);
-  const out = render(results, HOLD, TARGET).join("\n");
+  assert.equal(verdict(stampHolds(results, HOLD), HOLD).exitCode, 2);
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.match(out, /\?\? {2}quantum-stripe\s+could not check — aws lambda get-function failed/);
 });
 
 test("a drifted row alongside an errored row still exits 1, and the error is not drift", () => {
   const results = [drifting("quantum-stripe"), errored("quantum-tutor")];
-  const v = verdict(results, HOLD);
+  const v = verdict(stampHolds(results, HOLD), HOLD);
   // The errored row is neither a match nor a mismatch: it was never read.
   assert.deepEqual(v.bad.map((r) => r.fn), ["quantum-stripe"]);
   assert.deepEqual(v.unchecked.map((r) => r.fn), ["quantum-tutor"]);
   // Drift must not hide behind an infrastructure excuse.
   assert.equal(v.exitCode, 1);
-  const out = render(results, HOLD, TARGET).join("\n");
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.match(out, /DIFFERS from git: lambda\/x\/index\.mjs/);
   assert.match(out, /1 of 2 functions do NOT match git/);
   assert.match(out, /1 of 2 functions could NOT be checked/);
@@ -113,50 +114,50 @@ test("an unreachable HELD function is not reported as held", () => {
   // A hold says the drift is deliberate. An outage is not drift, and printing
   // "3 held on purpose" while exiting 2 claimed a decision nobody made.
   const results = [clean("quantum-tutor"), errored("quantum-review-email-sender")];
-  const v = verdict(results, HOLD);
+  const v = verdict(stampHolds(results, HOLD), HOLD);
   assert.equal(v.held.length, 0);
   assert.equal(v.exitCode, 2);
-  const out = render(results, HOLD, TARGET).join("\n");
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.doesNotMatch(out, /held on purpose/);
   assert.doesNotMatch(out, /All \d+ unheld functions match git/);
   assert.match(out, /says\n  NOTHING about them/);
 });
 
 test("an outage cannot make a stale hold look live", () => {
-  assert.deepEqual(staleHolds(HOLD, [errored("quantum-review-email-prefs")]), HOLD);
+  assert.deepEqual(staleHolds(HOLD, stampHolds([errored("quantum-review-email-prefs")], HOLD)), HOLD);
 });
 
 test("everything failing reads as could-not-check, not as eleven undeployed functions", () => {
   const results = ["quantum-tutor", "quantum-stripe"].map((fn) => errored(fn));
-  const v = verdict(results, HOLD);
+  const v = verdict(stampHolds(results, HOLD), HOLD);
   assert.equal(v.exitCode, 2);
   assert.equal(v.bad.length, 0);
-  const out = render(results, HOLD, TARGET).join("\n");
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.doesNotMatch(out, /do NOT match git/);
   assert.match(out, /2 of 2 functions could NOT be checked/);
 });
 
 test("a clean run says so, with no hold noise", () => {
-  const out = render([clean("quantum-tutor")], [], TARGET).join("\n");
+  const out = render(stampHolds([clean("quantum-tutor")], []), [], TARGET).join("\n");
   assert.match(out, /All 1 unheld functions match git\./);
   assert.doesNotMatch(out, /held on purpose/);
-  assert.equal(verdict([clean("quantum-tutor")], []).exitCode, 0);
+  assert.equal(verdict(stampHolds([clean("quantum-tutor")], []), []).exitCode, 0);
 });
 
 test("files git has but the package lacks are informational, not drift", () => {
   const row = { fn: "quantum-qpu-submit", dir: "lambda/qpu", ok: true, compared: 2, drifted: [], missing: ["deploy-check.mjs"], lastModified: "x" };
-  assert.equal(verdict([row], []).exitCode, 0);
-  assert.match(render([row], [], TARGET).join("\n"), /not packaged, assumed ops-only: deploy-check\.mjs/);
+  assert.equal(verdict(stampHolds([row], []), []).exitCode, 0);
+  assert.match(render(stampHolds([row], []), [], TARGET).join("\n"), /not packaged, assumed ops-only: deploy-check\.mjs/);
 });
 
 test("a row that compared nothing is VACUOUS, fails the run, and says so", () => {
   const results = [clean("quantum-tutor"), vacuous("quantum-stripe")];
   assert.equal(isVacuous(results[1]), true);
-  const v = verdict(results, HOLD);
+  const v = verdict(stampHolds(results, HOLD), HOLD);
   assert.equal(v.exitCode, 1);
   assert.deepEqual(v.vacuous.map((r) => r.fn), ["quantum-stripe"]);
 
-  const out = render(results, HOLD, TARGET).join("\n");
+  const out = render(stampHolds(results, HOLD), HOLD, TARGET).join("\n");
   assert.match(out, /VACUOUS quantum-stripe/);
   assert.match(out, /NOTHING WAS COMPARED/);
   assert.match(out, /1 of 2 functions compared NOTHING/);
@@ -166,26 +167,26 @@ test("a row that compared nothing is VACUOUS, fails the run, and says so", () =>
 
 test("every file landing in missing is vacuous too, not a clean row", () => {
   const row = { fn: "quantum-analytics", dir: "lambda/analytics", ok: false, compared: 0, drifted: [], missing: ["index.mjs"], lastModified: "x" };
-  assert.equal(verdict([row], []).exitCode, 1);
-  assert.match(render([row], [], TARGET).join("\n"), /VACUOUS quantum-analytics/);
+  assert.equal(verdict(stampHolds([row], []), []).exitCode, 1);
+  assert.match(render(stampHolds([row], []), [], TARGET).join("\n"), /VACUOUS quantum-analytics/);
 });
 
 test("a HELD entry cannot excuse a vacuous row", () => {
   // A hold declares that DRIFT is deliberate. Nothing here was compared closely
   // enough to have drifted, so the hold has nothing to say about it.
   const results = [vacuous("quantum-review-email-sender", "lambda/review-email")];
-  const v = verdict(results, HOLD);
+  const v = verdict(stampHolds(results, HOLD), HOLD);
   assert.equal(v.exitCode, 1);
   assert.equal(v.held.length, 0);
-  assert.match(render(results, HOLD, TARGET).join("\n"), /VACUOUS quantum-review-email-sender/);
+  assert.match(render(stampHolds(results, HOLD), HOLD, TARGET).join("\n"), /VACUOUS quantum-review-email-sender/);
 });
 
 test("a vacuous held row does not make a stale hold look live", () => {
-  assert.deepEqual(staleHolds(HOLD, [vacuous("quantum-review-email-prefs")]), HOLD);
+  assert.deepEqual(staleHolds(HOLD, stampHolds([vacuous("quantum-review-email-prefs")], HOLD)), HOLD);
 });
 
 test("the compared count prints on every row, so a shrinking one is visible", () => {
-  const out = render([clean("quantum-tutor")], [], TARGET).join("\n");
+  const out = render(stampHolds([clean("quantum-tutor")], []), [], TARGET).join("\n");
   assert.match(out, /3 compared/);
 });
 
@@ -224,9 +225,9 @@ test("even a URL on stderr is redacted before it is reported", () => {
 
 test("a module in the package that the repository never had is drift", () => {
   const row = { ...clean("quantum-tutor"), ok: false, extra: ["leftover.mjs"] };
-  const v = verdict([row], HOLD);
+  const v = verdict(stampHolds([row], HOLD), HOLD);
   assert.equal(v.exitCode, 1);
-  assert.match(render([row], HOLD, TARGET).join("\n"), /ONLY IN THE PACKAGE: leftover\.mjs/);
+  assert.match(render(stampHolds([row], HOLD), HOLD, TARGET).join("\n"), /ONLY IN THE PACKAGE: leftover\.mjs/);
 });
 
 test("a repointed entry point is drift, and the row says both sides", () => {
@@ -235,9 +236,9 @@ test("a repointed entry point is drift, and the row says both sides", () => {
     ok: false,
     handlerDrift: { deployed: "old.handler", declared: "index.handler" },
   };
-  assert.equal(verdict([row], HOLD).exitCode, 1);
+  assert.equal(verdict(stampHolds([row], HOLD), HOLD).exitCode, 1);
   assert.match(
-    render([row], HOLD, TARGET).join("\n"),
+    render(stampHolds([row], HOLD), HOLD, TARGET).join("\n"),
     /ENTRYPOINT: deployed Handler is old\.handler, the template declares index\.handler/,
   );
 });
@@ -252,4 +253,28 @@ test("an entry point missing on either side is nothing to compare, not a mismatc
     deployed: "a.handler",
     declared: "b.handler",
   });
+});
+
+test("held-ness is stamped once, on the row, for every consumer to read", () => {
+  // It used to be re-derived four times and recorded nowhere, which is why
+  // --json could not express a hold at all.
+  const [ok, drift, hold] = stampHolds(
+    [clean("quantum-tutor"), drifting("quantum-stripe"), drifting("quantum-review-email-prefs")],
+    HOLD,
+  );
+  assert.equal(ok.held, null);
+  assert.equal(drift.held, null);
+  assert.deepEqual(hold.held, {
+    pattern: String(HOLD[0].fn),
+    reason: HOLD[0].reason,
+    clearsWhen: HOLD[0].clearsWhen,
+  });
+});
+
+test("a stamped row survives JSON, hold and all", () => {
+  // The --json consumer must be able to tell a deliberate hold from real drift.
+  const stamped = stampHolds([drifting("quantum-review-email-prefs")], HOLD);
+  const round = JSON.parse(JSON.stringify(stamped));
+  assert.equal(round[0].ok, false);
+  assert.equal(round[0].held.reason, HOLD[0].reason);
 });

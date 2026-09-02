@@ -47,6 +47,7 @@ import {
   handlerMismatch,
   render,
   sourceFiles as filterSources,
+  stampHolds,
   verdict,
 } from "./drift/rules.mjs";
 
@@ -221,13 +222,36 @@ for (const { fn, dir } of FUNCTIONS) {
 }
 
 // A DECLARED hold does not fail the run — it prints as HELD with its reason.
-// Undeclared drift still fails, which is the whole point of the check.
-const { exitCode } = verdict(results, HELD);
+// Undeclared drift still fails, which is the whole point of the check. Stamped
+// ONCE here, so the printer, both summary lists and the --json payload report
+// the same verdict instead of each re-deriving it.
+const stamped = stampHolds(results, HELD);
+const { exitCode, staleHolds } = verdict(stamped, HELD);
 
 if (JSON_OUT) {
-  console.log(JSON.stringify({ region: REGION, accountVerified: identity.verified, results }, null, 2));
+  // The JSON says everything the human report says: which rows are held and
+  // why, which holds have gone stale, and what the process is about to exit
+  // with. It used to carry only ok:false, which a reader could not tell from
+  // real drift.
+  console.log(
+    JSON.stringify(
+      {
+        region: REGION,
+        accountVerified: identity.verified,
+        exitCode,
+        staleHolds: staleHolds.map((h) => ({
+          pattern: String(h.fn),
+          reason: h.reason,
+          clearsWhen: h.clearsWhen,
+        })),
+        results: stamped,
+      },
+      null,
+      2,
+    ),
+  );
 } else {
-  for (const line of render(results, HELD, { region: REGION, accountVerified: identity.verified })) {
+  for (const line of render(stamped, HELD, { region: REGION, accountVerified: identity.verified })) {
     console.log(line);
   }
 }

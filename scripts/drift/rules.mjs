@@ -172,14 +172,40 @@ export const isVacuous = (r) => !r.error && (r.compared ?? 0) === 0;
 export const heldFor = (held, fn) => held.find((h) => h.fn.test(fn));
 
 /**
+ * Record, ONCE, whether each row's drift is deliberate.
+ *
+ * Held-ness used to be re-derived four times — once to decide the exit code,
+ * once per row while printing, and twice more to build the summary lists — and
+ * the result object never carried it. So --json, a documented mode, emitted
+ * ok:false for the deliberately-held functions with no way to tell them from
+ * real drift: the exact distinction the HELD mechanism exists to make.
+ *
+ * A row is held only if it is a CHECKED row that actually drifted. An outage is
+ * not a deliberate hold, and neither is a comparison of nothing.
+ */
+export const stampHolds = (results, held) =>
+  results.map((r) => {
+    const hold = !r.error && !r.ok && !isVacuous(r) ? heldFor(held, r.fn) : undefined;
+    return {
+      ...r,
+      held: hold ? { pattern: String(hold.fn), reason: hold.reason, clearsWhen: hold.clearsWhen } : null,
+    };
+  });
+
+/**
  * A hold that no longer holds anything is stale, and a stale allowlist is how
  * a real gap eventually hides behind an entry nobody re-read.
  */
 export const staleHolds = (held, results) =>
-  held.filter((h) => !results.some((r) => !r.error && !r.ok && !isVacuous(r) && h.fn.test(r.fn)));
+  held.filter((h) => !results.some((r) => r.held && h.fn.test(r.fn)));
 
-/** The verdict for a finished run: exit code and the summary partitions. */
-export function verdict(results, held) {
+/**
+ * The verdict for a finished run: exit code and the summary partitions.
+ *
+ * `results` must be stamped (see stampHolds); `held` is needed only to report
+ * a hold that has stopped holding anything.
+ */
+export function verdict(results, held = []) {
   // THREE partitions, not two. A row that threw was never read, so it is neither
   // a match nor a mismatch: counting it as drift told an operator to "deploy the
   // drifted functions" about a function whose artifact was never fetched, and
@@ -188,8 +214,8 @@ export function verdict(results, held) {
   const unchecked = results.filter((r) => r.error);
   const checked = results.filter((r) => !r.error);
   const vacuous = checked.filter(isVacuous);
-  const bad = checked.filter((r) => !r.ok && !isVacuous(r) && !heldFor(held, r.fn));
-  const heldRows = checked.filter((r) => !r.ok && !isVacuous(r) && heldFor(held, r.fn));
+  const bad = checked.filter((r) => !r.ok && !isVacuous(r) && !r.held);
+  const heldRows = checked.filter((r) => r.held);
   // Drift and could-not-check are accumulated SEPARATELY: one Math.max let an
   // unrelated credentials failure promote a real drift exit of 1 to 2, and one
   // plain assignment let a later clean row demote a 2 to 1. Drift wins, because
@@ -208,6 +234,8 @@ export function verdict(results, held) {
  * account and an unverified green is not evidence.
  */
 export function render(results, held, target) {
+  // `held` is used only for the stale-hold notice; each row already carries its
+  // own verdict, stamped once by stampHolds.
   const lines = [`\n  Deployed-vs-git drift  (${targetLabel(target)})\n`];
   for (const r of results) {
     if (r.error) {
@@ -215,7 +243,7 @@ export function render(results, held, target) {
       continue;
     }
     const vacuous = isVacuous(r);
-    const hold = !vacuous && !r.ok && heldFor(held, r.fn);
+    const hold = r.held;
     const mark = vacuous ? "VACUOUS" : r.ok ? "OK" : hold ? "HELD" : "DRIFT";
     // The compared count is on EVERY row, not just the empty ones: a number
     // quietly shrinking to one is the same fault caught a release earlier.
