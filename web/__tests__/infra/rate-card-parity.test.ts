@@ -76,17 +76,14 @@ describe("the shared rate factor is one mechanism across both metered stacks", (
     expect(param).toMatch(/^ {4}Default: ""$/m);
   });
 
-  it("both pricing handlers read the SAME env key, via Number()", () => {
+  it.each([
+    ["lambda/tutor/index.mjs", tutorIndex],
+    ["lambda/qpu/index.mjs", qpuIndex],
+  ])("%s reads the SAME env key, via Number()", (_name, src) => {
     // The env-key name is load-bearing: check-rate-parity.mjs compares the
     // deployed values under this exact key, so a rename on one side would make
     // the parity check silently vacuous. Pin the code to the templates.
-    for (const [name, src] of [
-      ["lambda/tutor/index.mjs", tutorIndex],
-      ["lambda/qpu/index.mjs", qpuIndex],
-    ] as const) {
-      expect(src).toMatch(/Number\(process\.env\.RATE_CARD\)/);
-      void name;
-    }
+    expect(src).toMatch(/Number\(process\.env\.RATE_CARD\)/);
   });
 
   it("the deployed check queries the env key the templates set", () => {

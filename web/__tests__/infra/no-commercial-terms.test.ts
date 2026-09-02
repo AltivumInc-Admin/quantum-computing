@@ -1,6 +1,6 @@
 import { execSync } from "child_process";
 import { readFileSync } from "fs";
-import { join, relative, sep } from "path";
+import { join } from "path";
 
 /**
  * THIS REPOSITORY IS PUBLIC. COMMERCIAL TERMS DO NOT BELONG IN IT.
@@ -42,10 +42,15 @@ const SKIP_DIRS = new Set([
 // notebook was previously a blind spot the size of the entire curriculum.
 const SCAN_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|md|yaml|yml|json|sh|toml|ipynb)$/;
 
-/** Files exempt, each with a reason. Keep this list at zero if at all possible. */
+/**
+ * Files exempt, each with a reason. Keep this list at zero if at all possible.
+ *
+ * Keyed on git's own POSIX paths, which is what every scan below works in — no
+ * platform-separator juggling at the call sites, and one spelling to match.
+ */
 const ALLOWED = new Map<string, string>([
   [
-    join("web", "__tests__", "infra", "no-commercial-terms.test.ts"),
+    "web/__tests__/infra/no-commercial-terms.test.ts",
     "this file — it necessarily contains the patterns it bans",
   ],
 ]);
@@ -185,41 +190,43 @@ const BANNED: Array<{ name: string; re: RegExp }> = [
 // guard pass in CI while failing on a contributor's machine. ls-files gives
 // both the same file set. Consequence for teeth checks: a planted violation
 // must be `git add -f`ed to trip the scan, exactly like the samconfig teeth.
-function trackedFiles(): string[] {
-  return execSync("git ls-files -z", { cwd: REPO })
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean)
-    .filter((rel) => SCAN_EXT.test(rel))
-    .filter((rel) => !rel.split("/").some((seg) => SKIP_DIRS.has(seg)))
-    .map((rel) => join(REPO, rel));
+/** Every tracked path, as git spells it: repo-relative, POSIX separators. */
+function trackedRelPaths(): string[] {
+  return execSync("git ls-files -z", { cwd: REPO }).toString("utf8").split("\0").filter(Boolean);
 }
 
-describe("the public repo discloses no commercial terms", () => {
-  const files = trackedFiles();
+/** One enumeration, shared by both guards below; each keeps its own canary. */
+const TRACKED = trackedRelPaths();
 
+/** The subset this guard reads: scannable extensions, outside the skipped trees. */
+const SCANNABLE = TRACKED.filter((rel) => SCAN_EXT.test(rel)).filter(
+  (rel) => !rel.split("/").some((seg) => SKIP_DIRS.has(seg)),
+);
+
+describe("the public repo discloses no commercial terms", () => {
   it("scans a meaningful number of files (the walker itself must not silently no-op)", () => {
     // A guard that scans nothing passes forever. This is the guard's guard.
-    expect(files.length).toBeGreaterThan(200);
+    expect(SCANNABLE.length).toBeGreaterThan(200);
   });
 
   it("contains no markup, per-credit cost, margin, or breakeven figure", () => {
     const findings: string[] = [];
-    for (const file of files) {
-      const rel = relative(REPO, file).split(sep).join(sep);
+    for (const rel of SCANNABLE) {
       if (ALLOWED.has(rel)) continue;
       let text: string;
       try {
-        text = readFileSync(file, "utf8");
+        text = readFileSync(join(REPO, rel), "utf8");
       } catch {
         continue; // binary or unreadable
       }
-      for (const { name, re } of BANNED) {
-        const lines = text.split("\n");
-        lines.forEach((line, i) => {
+      // Split once per FILE, not once per pattern: sixteen patterns over a
+      // thousand-odd files is sixteen thousand re-splits for one answer.
+      const lines = text.split("\n");
+      lines.forEach((line, i) => {
+        for (const { name, re } of BANNED) {
           if (re.test(line)) findings.push(`${rel}:${i + 1}  [${name}]  ${line.trim().slice(0, 120)}`);
-        });
-      }
+        }
+      });
     }
     expect(findings.join("\n")).toBe("");
   });
@@ -332,25 +339,20 @@ describe("the banned patterns catch what they must and spare what they must", ()
  * command line" for exactly this reason.
  */
 describe("sam deploy --guided output never lands in git", () => {
-  const tracked = execSync("git ls-files -z", { cwd: REPO })
-    .toString("utf8")
-    .split("\0")
-    .filter(Boolean);
-
   it("sees the tracked file list (this guard must not silently no-op)", () => {
-    expect(tracked.length).toBeGreaterThan(200);
+    expect(TRACKED.length).toBeGreaterThan(200);
   });
 
   it("no samconfig file is tracked, at any depth", () => {
-    const hits = tracked.filter((p) => /(^|\/)samconfig[^/]*\.(toml|ya?ml)$/i.test(p));
+    const hits = TRACKED.filter((p) => /(^|\/)samconfig[^/]*\.(toml|ya?ml)$/i.test(p));
     expect(hits).toEqual([]);
   });
 
   it("no tracked file carries a parameter_overrides value assignment", () => {
     const findings: string[] = [];
-    for (const rel of tracked) {
+    for (const rel of TRACKED) {
       if (!SCAN_EXT.test(rel)) continue;
-      if (ALLOWED.has(rel.split("/").join(sep))) continue;
+      if (ALLOWED.has(rel)) continue;
       let text: string;
       try {
         text = readFileSync(join(REPO, rel), "utf8");
