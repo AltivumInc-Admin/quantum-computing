@@ -1226,6 +1226,22 @@ test("R9: the required webhook subscription list matches the switch's handled ca
   }
 });
 
+test("R10: no invisible character hides inside a string literal in this package", () => {
+  // D2's key assertion read `"<U+200B>:amt" in ...` for months: a zero-width
+  // space before the colon made the lookup target a key nothing ever writes,
+  // so the negation was unconditionally true and the test could not fail. It
+  // survived three commits that edited the same cluster, because it looks
+  // exactly right. Nothing about the money paths is safe to assert with a
+  // character no reviewer can see.
+  // Written as escapes on purpose: a literal here would trip the guard itself.
+  const INVISIBLE = /[\u200B-\u200D\uFEFF\u2060]/;
+  for (const file of ["./index.mjs", "./index.test.mjs", "./template.test.mjs"]) {
+    const src = readFileSync(new URL(file, import.meta.url), "utf8");
+    const line = src.split("\n").findIndex((l) => INVISIBLE.test(l));
+    assert.equal(line, -1, `${file}:${line + 1} contains a zero-width or invisible character`);
+  }
+});
+
 /**
  * A stateful stub: TransactWriteItems is actually APPLIED to the row store, so a
  * withdraw-then-reinstate round trip can be asserted end to end. walletDdb above
@@ -1528,8 +1544,7 @@ test("D2: a purchase smaller than the debt adds NO spendable credits", async () 
     },
   });
   const w = txOf(ddb)[1].Update;
-  assert.ok(!("​:amt" in w.ExpressionAttributeValues), "no positive credit delta");
-  assert.equal(w.ExpressionAttributeValues[":amt"]?.N ?? "0", "0");
+  assert.equal(w.ExpressionAttributeValues[":amt"], undefined, "no positive credit delta leg at all");
   assert.equal(w.ExpressionAttributeValues[":owed"].N, "-500", "all of it clears debt");
 });
 
