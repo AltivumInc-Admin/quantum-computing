@@ -3,10 +3,30 @@
  */
 // web/__tests__/app/pricing-page.test.tsx
 import "@testing-library/jest-dom";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import PricingPage, { metadata } from "@/app/pricing/page";
 import { LocaleProvider, getDict, localeCode } from "@/i18n";
 import { TIERS, CREDIT_USD, formatCreditNumber } from "@/lib/pricing";
+
+// Only the network calls are stubbed. billingUrl/isBillingConfigured stay real
+// so the env-gating tests below still exercise the actual gate; getWallet in
+// particular decides whether a tier card shows checkout or the billing portal.
+jest.mock("@/lib/billing-client", () => ({
+  ...jest.requireActual("@/lib/billing-client"),
+  getWallet: jest.fn().mockRejectedValue(new Error("401")),
+  openPortal: jest.fn(),
+  startCheckout: jest.fn(),
+  startTopUp: jest.fn(),
+}));
+import { getWallet } from "@/lib/billing-client";
+
+// Default for every test: no wallet answers, which is what a signed-out visitor
+// gets. Reset per test rather than once, so a test that installs a subscriber
+// cannot leak that wallet into the ones after it and quietly change which
+// controls the tier cards render.
+beforeEach(() => {
+  (getWallet as jest.Mock).mockRejectedValue(new Error("401"));
+});
 
 function renderPricing() {
   return render(
@@ -125,6 +145,47 @@ describe("PricingPage", () => {
       // The FAQ answers "how", not "when".
       expect(screen.getByText("How do I buy credits?")).toBeInTheDocument();
       expect(screen.queryByText("When can I buy credits?")).not.toBeInTheDocument();
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
+  it("offers a subscriber the portal on their own tier, and checkout on the others", async () => {
+    // The cards rendered CheckoutButton for Plus and Pro whenever billing was
+    // live, regardless of who was looking, and /checkout consults hasPaidTier
+    // only for mode "payment" — so an active Plus subscriber saw an enabled "Get
+    // Plus" that opens Checkout for a SECOND Plus subscription. Meanwhile POST
+    // /portal and openPortal() were fully built with no consumer in web/src, so
+    // a subscriber had no on-site way to change or cancel.
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    (getWallet as jest.Mock).mockResolvedValue({
+      tier: "plus",
+      credits: 1890,
+      subscriptionStatus: "active",
+    });
+    try {
+      renderPricing();
+      expect(await screen.findByText("Current plan")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Get Plus" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+      // The upgrade is still purchasable.
+      expect(screen.getByRole("button", { name: "Get Pro" })).toBeInTheDocument();
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
+  it("shows both buy buttons when no wallet answers (signed out)", async () => {
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    (getWallet as jest.Mock).mockRejectedValue(new Error("401"));
+    try {
+      renderPricing();
+      await waitFor(() => expect(getWallet).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Get Plus" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Get Pro" })).toBeInTheDocument();
+      expect(screen.queryByText("Current plan")).not.toBeInTheDocument();
     } finally {
       delete process.env.NEXT_PUBLIC_BILLING_URL;
     }

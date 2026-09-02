@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import { getWallet, isBillingConfigured, type Wallet } from "@/lib/billing-client";
+import { useId } from "react";
+import { type Wallet } from "@/lib/billing-client";
 import { formatCreditNumber, roundCredits } from "@/lib/pricing";
 import { useLocale, localeCode } from "@/i18n";
 
 
 /**
- * A quiet chip showing the signed-in learner's wallet. Renders nothing until it
- * has data — inert when billing is unconfigured, signed out, or the fetch fails
- * (a pricing page must never break because the wallet is momentarily
- * unreachable).
+ * A quiet chip showing the signed-in learner's wallet. Renders nothing without
+ * data — the page owns the single getWallet() call (see useWallet), because the
+ * tier cards need the same answer and two fetches for one page would be two
+ * requests for one truth. Absent means unconfigured, signed out, or a fetch that
+ * did not come back: a pricing page must never break because the wallet is
+ * momentarily unreachable.
  */
 function tierLabel(
   tier: Wallet["tier"],
@@ -21,25 +23,9 @@ function tierLabel(
   return tier === "plus" ? "Plus" : "Pro";
 }
 
-export function WalletBadge() {
+export function WalletBadge({ wallet }: { wallet: Wallet | null }) {
   const { t, locale } = useLocale();
-  const [wallet, setWallet] = useState<Wallet | null>(null);
   const owedNoteId = useId();
-
-  useEffect(() => {
-    if (!isBillingConfigured()) return;
-    let live = true;
-    getWallet()
-      .then((w) => {
-        if (live) setWallet(w);
-      })
-      .catch(() => {
-        /* signed out or transient — show nothing */
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
 
   if (!wallet) return null;
 

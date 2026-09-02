@@ -722,6 +722,10 @@ export const es: TranslationDict = {
     },
     creditsEveryMonth: "{{credits}} cada mes",
     getTier: "Obtener {{name}}",
+    // Ver la nota en en.ts: la tarjeta del plan actual no ofrece comprarlo otra vez.
+    currentPlan: "Plan actual",
+    managePlan: "Gestionar la facturación",
+    portalFailed: "No se pudo abrir el portal de facturación. Inténtalo de nuevo.",
     startFreeWhileWait: "Empieza gratis mientras esperas",
     launchingSoon: "Próximamente",
     signUpFree: "Regístrate gratis",

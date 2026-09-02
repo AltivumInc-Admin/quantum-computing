@@ -24,7 +24,9 @@ import {
 import { isBillingConfigured } from "@/lib/billing-client";
 import { CostEstimator } from "@/components/pricing/cost-estimator";
 import { CheckoutButton } from "@/components/pricing/checkout-button";
+import { ManagePlan } from "@/components/pricing/manage-plan";
 import { WalletBadge } from "@/components/pricing/wallet-badge";
+import { useWallet } from "@/components/pricing/use-wallet";
 import { TopUp } from "@/components/pricing/top-up";
 import { useLocale, type TFunction } from "@/i18n";
 import { localeCode } from "@/i18n";
@@ -92,6 +94,10 @@ export function PricingPageContent() {
   const loc = localeCode(locale);
   const configured = isAuthConfigured();
   const billingLive = isBillingConfigured();
+  // One fetch for the page: the hero chip renders it, and the tier cards need it
+  // to tell a subscriber apart from a visitor. Null while it is in flight, and
+  // permanently null for a signed-out or unconfigured visitor.
+  const wallet = useWallet();
   const exampleShots = 1000;
   const tutorRatesHeadingId = useId();
   const hardwareRatesHeadingId = useId();
@@ -165,7 +171,7 @@ export function PricingPageContent() {
             <span className="inline-flex items-center rounded-chip border border-(--bd) bg-(--field) px-3 py-1.5 text-sm font-medium text-(--mut) tabular-nums">
               {t("pricingUi.topUpFrom", { amount: minTop })}
             </span>
-            <WalletBadge />
+            <WalletBadge wallet={wallet} />
           </div>
         </header>
 
@@ -286,10 +292,16 @@ export function PricingPageContent() {
                     {tier.id === "free" ? (
                       <SignupCta size="sm" t={t} />
                     ) : billingLive && tier.checkoutLookupKey ? (
-                      <CheckoutButton
-                        lookupKey={tier.checkoutLookupKey}
-                        label={t("pricingUi.getTier", { name: tier.name })}
-                      />
+                      // A subscriber's own tier offers the portal, not a second
+                      // subscription to the plan they already hold.
+                      wallet?.tier === tier.id ? (
+                        <ManagePlan />
+                      ) : (
+                        <CheckoutButton
+                          lookupKey={tier.checkoutLookupKey}
+                          label={t("pricingUi.getTier", { name: tier.name })}
+                        />
+                      )
                     ) : (
                       <div className="flex flex-col gap-2">
                         <span className="inline-flex w-fit items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-caption">

@@ -783,6 +783,12 @@ export const en: TranslationDict = {
     },
     creditsEveryMonth: "{{credits}} every month",
     getTier: "Get {{name}}",
+    // Shown on the card for the tier the caller is actually on, in place of its
+    // buy button: /checkout would happily open a second subscription to the plan
+    // they already hold, and the portal is where a plan is changed or cancelled.
+    currentPlan: "Current plan",
+    managePlan: "Manage billing",
+    portalFailed: "Could not open the billing portal. Please try again.",
     startFreeWhileWait: "Start free while you wait",
     launchingSoon: "Launching soon",
     signUpFree: "Sign up free",
