@@ -44,6 +44,14 @@ const meteredFunctions = (template: string): string[] =>
     .map((block) => block.match(/^ +FunctionName: (quantum-[\w-]+)\s*$/m)?.[1])
     .filter((name): name is string => Boolean(name));
 
+// The scan and its canary share one regex and one exception list: two copies
+// would let the canary keep passing while the scan itself stopped matching.
+const NUMERIC_DEFAULT = /^ {4}Default:\s*([\d.]+)\s*$/gm;
+// Operational knobs, not money — the only numeric defaults grandfathered in:
+// LogRetentionInDays (30), MaxConcurrency (5), MonthlyBraketBudget (150, our
+// AWS budget threshold, not a customer-facing figure).
+const GRANDFATHERED = ["30", "5", "150"];
+
 describe("the shared rate factor is one mechanism across both metered stacks", () => {
   it.each([
     ["lambda/tutor/template.yaml", tutorTemplate],
@@ -124,13 +132,23 @@ describe("the shared rate factor is one mechanism across both metered stacks", (
     // under a name nobody banned. Every parameter in both templates is a
     // string today, and money constants live in code where the rule-6 guard
     // scans them — a numeric template Default has no legitimate use here.
-    const numericDefaults = [...template.matchAll(/^ {4}Default:\s*([\d.]+)\s*$/gm)]
+    const numericDefaults = [...template.matchAll(NUMERIC_DEFAULT)]
       .map((m) => m[1])
-      // Operational knobs, not money — the only numeric defaults grandfathered
-      // in: LogRetentionInDays (30), MaxConcurrency (5), MonthlyBraketBudget
-      // (150, our AWS budget threshold, not a customer-facing figure).
-      .filter((v) => !["30", "5", "150"].includes(v));
+      .filter((v) => !GRANDFATHERED.includes(v));
     expect(numericDefaults).toEqual([]);
+  });
+
+  it("the numeric-Default scan still sees the defaults it filters (no silent no-op)", () => {
+    // The assertion above passes on an empty list whether the regex found five
+    // candidates or zero, because every match today is filtered out. So a
+    // re-indent of either template, or moving the parameters under a nested
+    // block, would turn the guard into a no-op that still reports green. This
+    // is the guard's guard — the shape wallet-ttl.test.ts already uses.
+    const found = [tutorTemplate, qpuTemplate].flatMap((template) =>
+      [...template.matchAll(NUMERIC_DEFAULT)].map((m) => m[1]),
+    );
+    expect(found.length).toBeGreaterThanOrEqual(5);
+    for (const value of GRANDFATHERED) expect(found).toContain(value);
   });
 
   it("both kernels REQUIRE the injected factor — no unity default anywhere", () => {
