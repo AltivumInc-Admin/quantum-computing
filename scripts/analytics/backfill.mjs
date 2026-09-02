@@ -34,7 +34,8 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { buildRangeIndex, parseLog, summarizeDay } from "../../lambda/analytics/classify.mjs";
 import { fetchDayCsv } from "../../lambda/analytics/retrieve.mjs";
@@ -88,6 +89,38 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
 if (from > to) {
   console.error(`  --from ${from} is after --to ${to}.`);
   process.exit(2);
+}
+
+/**
+ * The cache holds RAW CloudFront rows — addresses, agents, paths, referers: the
+ * exact data this whole feature exists to never persist. --cache accepts any
+ * path, and only its DEFAULT value is gitignored, so `--cache logs/` or
+ * `--cache .` writes visitor logs into a tracked directory of a repo the
+ * project treats as public, with nothing in the script or in CI to notice. Ask
+ * git what it would do rather than trusting the operator to remember.
+ */
+const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const cacheAbs = resolve(cacheDir);
+const cacheRel = relative(REPO_ROOT, cacheAbs);
+if (!cacheRel.startsWith("..") && !isAbsolute(cacheRel)) {
+  // Ask about the FILES, not the directory: `.analytics-cache/` is a
+  // directory-only pattern, and git cannot match it against a path that does
+  // not exist yet — which is every first run. The written names are what
+  // matters anyway.
+  const ignored = (name) => {
+    try {
+      execFileSync("git", ["check-ignore", "-q", join(cacheAbs, name)], { cwd: REPO_ROOT, stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!ignored("1970-01-01.csv") || !ignored("daily.json")) {
+    console.error(`  --cache ${cacheDir} is inside this PUBLIC repo and is NOT gitignored.`);
+    console.error("  Cached logs are raw CloudFront rows: visitor addresses, user agents, paths.");
+    console.error("  Use the default .analytics-cache/, add the path to .gitignore, or cache outside the repo.");
+    process.exit(2);
+  }
 }
 
 const aws = (a) =>
@@ -208,7 +241,9 @@ async function main() {
       try {
         csv = await fetchDay(day);
         // Today is still accumulating; caching it would freeze a partial day.
-        if (day < today) writeFileSync(cached, csv);
+        // 0600 because the umask default is not a decision anyone made about
+        // visitor logs, and a cache outside the repo is unprotected otherwise.
+        if (day < today) writeFileSync(cached, csv, { mode: 0o600 });
       } catch (err) {
         gaps.push({ day, why: err.message });
         if (!asJson) process.stderr.write(`  ${day}  UNAVAILABLE\n`);

@@ -123,7 +123,10 @@ pass `--profile` when the default credentials are not the ones you mean.
 It is read-only and writes no DynamoDB rows — it reports and caches locally.
 Exit codes: `0` every day retrieved, `1` retrieved with gaps **or a day whose
 rows all missed the host filter** (`MISMATCHED`), `2` could not run.
-Raw cached logs contain visitor addresses and are gitignored; do not commit them.
+Raw cached logs contain visitor addresses, agents and paths. The script refuses
+to run if `--cache` resolves inside this repo and `git check-ignore` does not
+already cover it, and writes each CSV `0600` — the guard enforces this, not the
+operator remembering.
 
 ## Deploy
 
