@@ -28,18 +28,6 @@ import { TopUp } from "@/components/pricing/top-up";
 import { useLocale, type TFunction } from "@/i18n";
 import { localeCode } from "@/i18n";
 
-const TECH_KEY: Record<string, string> = {
-  "Superconducting, 108 qubits": "pricingUi.techSuperconducting108",
-  Superconducting: "pricingUi.techSuperconducting",
-  "Neutral-atom analog": "pricingUi.techNeutralAtom",
-  "Trapped-ion": "pricingUi.techTrappedIon",
-};
-
-const SIM_DESC_KEY: Record<string, string> = {
-  "State-vector simulator, up to 34 qubits": "pricingUi.simSv1",
-  "Density-matrix (noise) simulator, up to 17 qubits": "pricingUi.simDm1",
-};
-
 /**
  * Resolve a tier's copy from the keys the tier itself carries. The keys used to be
  * rebuilt here from the tier id with a hardcoded five-bullet range, which silently
@@ -422,13 +410,12 @@ export function PricingPageContent() {
                   <tbody>
                     {HARDWARE_RATES.map((r) => {
                       const total = jobCredits(r, exampleShots);
-                      const techKey = TECH_KEY[r.technology];
                       return (
                         <tr key={r.name} className="border-t border-(--bd)">
                           <td className="px-6 py-3">
                             <span className="font-medium text-(--ink)">{r.name}</span>
                             <span className="block text-xs text-caption">
-                              {techKey ? t(techKey) : r.technology}
+                              {t(r.technologyKey)}
                             </span>
                           </td>
                           <td className="px-3 py-3 text-right tabular-nums text-(--mut)">
@@ -444,13 +431,12 @@ export function PricingPageContent() {
                       );
                     })}
                     {SIMULATOR_RATES.map((s) => {
-                      const descKey = SIM_DESC_KEY[s.description];
                       return (
                         <tr key={s.name} className="border-t border-(--bd)">
                           <td className="px-6 py-3">
                             <span className="font-medium text-(--ink)">{s.name}</span>
                             <span className="block text-xs text-caption">
-                              {descKey ? t(descKey) : s.description}
+                              {t(s.descriptionKey)}
                             </span>
                           </td>
                           <td

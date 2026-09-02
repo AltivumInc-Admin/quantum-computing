@@ -84,8 +84,18 @@ export interface HardwareRate {
   /** Device name as shown to users. */
   name: string;
   provider: string;
-  /** Short technology descriptor for the rate table. */
-  technology: string;
+  /**
+   * i18n key for the short technology descriptor in the rate table.
+   *
+   * A KEY, not copy — the same correction the Tier docblock below records. This
+   * was an English literal, and both components that render it recovered the key
+   * by looking the English string up (a Record in pricing-page-content.tsx, a
+   * hand-written ternary chain in cost-estimator.tsx), each falling back to
+   * rendering the raw English on a miss. A new row, or a one-character edit to a
+   * descriptor, silently shipped English inside the Spanish page in whichever
+   * component had not been updated.
+   */
+  technologyKey: string;
   /** Published credits per shot. */
   creditsPerShot: number;
   /** True when the device also carries the flat per-task fee. */
@@ -103,56 +113,56 @@ export const HARDWARE_RATES: HardwareRate[] = [
   {
     name: "Rigetti Cepheus-1-108Q",
     provider: "Rigetti",
-    technology: "Superconducting, 108 qubits",
+    technologyKey: "pricingUi.techSuperconducting108",
     creditsPerShot: 0.048,
     perTask: true,
   },
   {
     name: "Rigetti Ankaa-3",
     provider: "Rigetti",
-    technology: "Superconducting",
+    technologyKey: "pricingUi.techSuperconducting",
     creditsPerShot: 0.101,
     perTask: true,
   },
   {
     name: "IQM Garnet",
     provider: "IQM",
-    technology: "Superconducting",
+    technologyKey: "pricingUi.techSuperconducting",
     creditsPerShot: 0.163,
     perTask: true,
   },
   {
     name: "IQM Emerald",
     provider: "IQM",
-    technology: "Superconducting",
+    technologyKey: "pricingUi.techSuperconducting",
     creditsPerShot: 0.18,
     perTask: true,
   },
   {
     name: "QuEra Aquila",
     provider: "QuEra",
-    technology: "Neutral-atom analog",
+    technologyKey: "pricingUi.techNeutralAtom",
     creditsPerShot: 1.12,
     perTask: true,
   },
   {
     name: "AQT IBEX-Q1",
     provider: "AQT",
-    technology: "Trapped-ion",
+    technologyKey: "pricingUi.techTrappedIon",
     creditsPerShot: 2.64,
     perTask: true,
   },
   {
     name: "IonQ Forte-1",
     provider: "IonQ",
-    technology: "Trapped-ion",
+    technologyKey: "pricingUi.techTrappedIon",
     creditsPerShot: 9.0,
     perTask: true,
   },
   {
     name: "IonQ Forte Enterprise",
     provider: "IonQ",
-    technology: "Trapped-ion",
+    technologyKey: "pricingUi.techTrappedIon",
     creditsPerShot: 9.0,
     perTask: true,
   },
@@ -160,7 +170,8 @@ export const HARDWARE_RATES: HardwareRate[] = [
 
 export interface SimulatorRate {
   name: string;
-  description: string;
+  /** i18n key for the one-line description in the rate table. Key, not copy. */
+  descriptionKey: string;
   creditsPerMinute: number;
 }
 
@@ -168,12 +179,12 @@ export interface SimulatorRate {
 export const SIMULATOR_RATES: SimulatorRate[] = [
   {
     name: "SV1",
-    description: "State-vector simulator, up to 34 qubits",
+    descriptionKey: "pricingUi.simSv1",
     creditsPerMinute: 8.4,
   },
   {
     name: "DM1",
-    description: "Density-matrix (noise) simulator, up to 17 qubits",
+    descriptionKey: "pricingUi.simDm1",
     creditsPerMinute: 8.4,
   },
 ];
@@ -192,7 +203,14 @@ export interface TutorRate {
   model: string;
   /** Typical credits for one question (a full asked-and-answered exchange). */
   typicalCreditsPerQuestion: number;
-  note: string;
+  /**
+   * i18n key for the one-line character note under the estimator's readout. This
+   * was an English literal duplicated verbatim into en.ts as tutorNote*, and
+   * nothing read it: the estimator picked the blurb with a ternary on `model`, so
+   * all four strings here were dead copy — the exact defect the Tier docblock
+   * below records for the old `features` array.
+   */
+  noteKey: string;
 }
 
 /**
@@ -216,22 +234,22 @@ export const TUTOR_RATES: TutorRate[] = [
   {
     model: "Claude Haiku",
     typicalCreditsPerQuestion: 1,
-    note: "Fast and sharp — the everyday tutor.",
+    noteKey: "pricingUi.tutorNoteHaiku",
   },
   {
     model: "Claude Sonnet",
     typicalCreditsPerQuestion: 2,
-    note: "Deeper reasoning for tougher derivations.",
+    noteKey: "pricingUi.tutorNoteSonnet",
   },
   {
     model: "Claude Opus",
     typicalCreditsPerQuestion: 4,
-    note: "Full-strength reasoning, circuit review.",
+    noteKey: "pricingUi.tutorNoteOpus",
   },
   {
     model: "Claude Fable",
     typicalCreditsPerQuestion: 7,
-    note: "The frontier model, for the hardest questions.",
+    noteKey: "pricingUi.tutorNoteFable",
   },
 ];
 

@@ -143,23 +143,11 @@ export function CostEstimator() {
               onChange={(e) => setDeviceIdx(Number(e.target.value))}
               className="w-full rounded-control border border-(--bd) bg-(--surface-2) px-3 py-2 text-sm text-(--ink) focus-ring"
             >
-              {HARDWARE_RATES.map((r, i) => {
-                const techKey =
-                  r.technology === "Superconducting, 108 qubits"
-                    ? "pricingUi.techSuperconducting108"
-                    : r.technology === "Superconducting"
-                      ? "pricingUi.techSuperconducting"
-                      : r.technology === "Neutral-atom analog"
-                        ? "pricingUi.techNeutralAtom"
-                        : r.technology === "Trapped-ion"
-                          ? "pricingUi.techTrappedIon"
-                          : null;
-                return (
-                  <option key={r.name} value={i}>
-                    {r.name} — {techKey ? t(techKey) : r.technology}
-                  </option>
-                );
-              })}
+              {HARDWARE_RATES.map((r, i) => (
+                <option key={r.name} value={i}>
+                  {r.name} — {t(r.technologyKey)}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -292,14 +280,10 @@ export function CostEstimator() {
             {
               model: tutor.model,
               count: tutor.typicalCreditsPerQuestion,
-              note:
-                tutor.model === "Claude Haiku"
-                  ? t("pricingUi.tutorNoteHaiku")
-                  : tutor.model === "Claude Sonnet"
-                    ? t("pricingUi.tutorNoteSonnet")
-                    : tutor.model === "Claude Opus"
-                      ? t("pricingUi.tutorNoteOpus")
-                      : t("pricingUi.tutorNoteFable"),
+              // The row's own key. This was a ternary chain on `tutor.model`,
+              // which meant a fifth model fell through to the Fable blurb and
+              // TutorRate.note was read by nothing at all.
+              note: t(tutor.noteKey),
             },
             tutor.typicalCreditsPerQuestion,
           )}

@@ -177,6 +177,41 @@ describe("tiers", () => {
    * exist, resolve, and are not the raw key echoed back); the claims themselves are
    * checked against rendered DOM in __tests__/app/pricing-page.test.tsx.
    */
+  /**
+   * The same wiring check for the RATE rows, which carried the identical defect
+   * one file over: HardwareRate.technology, SimulatorRate.description and
+   * TutorRate.note were English literals, reverse-mapped back to keys three
+   * different ways (a Record on the page, a ternary chain in the estimator, and
+   * — for the tutor note — not at all), each with a silent raw-English fallback.
+   * A key that misses now reddens here instead of shipping English inside the
+   * Spanish page.
+   */
+  it("every rate row's copy key resolves to real text in both locales", () => {
+    const keys = [
+      ...HARDWARE_RATES.map((r) => r.technologyKey),
+      ...SIMULATOR_RATES.map((s) => s.descriptionKey),
+      ...TUTOR_RATES.map((r) => r.noteKey),
+    ];
+    expect(keys.length).toBe(
+      HARDWARE_RATES.length + SIMULATOR_RATES.length + TUTOR_RATES.length,
+    );
+    for (const key of keys) {
+      expect(key).toMatch(/^pricingUi\./);
+      for (const locale of ["en", "es"] as const) {
+        const text = translate(locale, key);
+        expect(text).not.toBe(key); // translate() echoes the key when it misses
+        expect(text.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("every tutor rate has its OWN note key, so none is dead copy", () => {
+    // The estimator chose the blurb by a ternary on the model name, so a fifth
+    // model would have silently rendered the Fable note. One key per row.
+    const notes = TUTOR_RATES.map((r) => r.noteKey);
+    expect(new Set(notes).size).toBe(notes.length);
+  });
+
   it("every tier's copy keys resolve to real text in both locales", () => {
     for (const tier of TIERS) {
       expect(tier.featureKeys.length).toBeGreaterThan(0);
