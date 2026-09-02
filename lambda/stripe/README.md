@@ -4,6 +4,21 @@ Billing for the Quantum Learner **credit wallet** — the backend that turns a
 Stripe payment into wallet credits and tier entitlements. One Lambda behind an
 HTTP API v2, deployed in **us-east-2** (the Cognito pool's region).
 
+## Layout
+
+| File | What it holds |
+| --- | --- |
+| `index.mjs` | The four routes, Checkout construction, the webhook switch (which event reaches which module), and the production wiring. `createHandlerCore(deps)` is the one public entry. |
+| `catalog.mjs` | What is sold, which events matter, the pinned API version. Imports nothing, so the operator scripts under `scripts/stripe/` can read it without the SDKs. |
+| `wallet-store.mjs` | The three row kinds and `applyOnce`, the exactly-once transaction — the **only** place a balance is written. The repo-wide credit-writer and TTL guards pin this file. |
+| `fulfillment.mjs` | Money in: Checkout Sessions, paid invoices, and the debt split every grant goes through. |
+| `clawback.mjs` | Money out: `reclaim()`, the refund and dispute arithmetic. |
+
+Every module the handler imports must be listed in `package.json`'s `files`:
+`sam build` packages with `npm pack`, which ships only that allowlist, and a
+module left off it is missing from the deployed bundle. `template.test.mjs`
+asserts the list matches the import graph.
+
 ## Routes
 
 | Method | Path | Auth | Purpose |
@@ -21,7 +36,7 @@ in-handler by the `Stripe-Signature` HMAC.
 ## Data model
 
 One table, `quantum-stripe-wallet`, `pk`-prefixed rows (the `lambda/qpu` idiom).
-Four prefixes are in use — the first three written by this Lambda (`index.mjs`),
+Four prefixes are in use — the first three written by this Lambda (`wallet-store.mjs`),
 the fourth by `scripts/founding-credit/`:
 
 - `WALLET#<sub>` — `credits` (N), `tier` (S), `stripeCustomerId` (S),
@@ -50,7 +65,7 @@ row at that timestamp, wallet balance and all, with no application code involved
 (`attribute_not_exists(pk)`) *and* applies the credit/tier change. A duplicate
 delivery re-attempts the same conditional put, the transaction cancels, and the
 balance is untouched. Credit counts are the server-side source of truth
-(`CATALOG` in `index.mjs`, mirroring `web/src/lib/pricing.ts`) — never read from
+(`CATALOG` in `catalog.mjs`, mirroring `web/src/lib/pricing.ts`) — never read from
 the client.
 
 Purchased balances are money the learner paid for, so the table is
@@ -65,7 +80,9 @@ Purchased balances are money the learner paid for, so the table is
 > CORS on 2026-08-31.
 
 ```bash
-cd lambda/stripe && npm ci && npm test   # node --test: index.test.mjs + template.test.mjs
+cd lambda/stripe && npm ci && npm test   # node --test: index.test.mjs (the routes, through createHandlerCore),
+                                         # wallet-store / fulfillment / clawback .test.mjs (each module directly),
+                                         # template.test.mjs (the stack)
 ```
 
 Both suites are fully offline — Stripe and DynamoDB are stubbed and injected
@@ -207,7 +224,7 @@ paying customer's wallet for free.
 Two log groups, and the difference matters when the storefront is down:
 
 - `/aws/lambda/<prefix>` — everything the handler itself logs. Every
-  `console.error` in `index.mjs` is pinned to a metric filter and an alarm
+  `console.error` in the handler's modules is pinned to a metric filter and an alarm
   (`template.test.mjs` asserts that in both directions), because the money
   paths return 200 and so trip neither the Lambda `Errors` alarm nor the 5xx one.
 - `/aws/apigateway/<prefix>` — the gateway's access log. A JWT the Cognito
@@ -228,7 +245,7 @@ the same handler code works against either — only the secret differs.
 
 ## Catalog coupling
 
-`CATALOG` in `index.mjs`, the tier prices/credits in `web/src/lib/pricing.ts`,
+`CATALOG` in `catalog.mjs`, the tier prices/credits in `web/src/lib/pricing.ts`,
 and the Stripe products/prices must agree. If you change a credit grant, change
 it in all three. The offline test that guards the first two is
 `web/__tests__/infra/tier-catalog-parity.test.ts`, which reads BOTH files and

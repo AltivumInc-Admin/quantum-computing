@@ -1082,8 +1082,9 @@ test("webhook ignores unrelated event types without touching DynamoDB", async ()
 // Money that comes back to the platform must take its credits with it. This
 // design was rewritten after an adversarial review overturned three of four
 // original steps; each test below pins one of those corrections.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { CLAWBACK_UNRECLAIMED, REQUIRED_WEBHOOK_EVENTS } from "./index.mjs";
+import { ledgerDdb } from "./__fixtures__/ledger-ddb.mjs";
 
 /** A ddb stub with per-row state, so the OCC conditions are really exercised. */
 function walletDdb({ grant, wallet, transactOutcomes } = {}) {
@@ -1291,10 +1292,21 @@ test("R8: dispute clawback uses funds_withdrawn; funds_reinstated restores it", 
   assert.equal(txOf(ddb2)[1].Update.ExpressionAttributeValues[":amt"].N, "2000", "credits restored");
 });
 
+/** Every hand-written .mjs in this package, tests included when `tests` is set. */
+function packageModules({ tests = false } = {}) {
+  const here = new URL(".", import.meta.url);
+  const top = readdirSync(here).filter((f) => f.endsWith(".mjs") && (tests || !f.includes(".test.")));
+  if (!tests) return top;
+  return [...top, ...readdirSync(new URL("./__fixtures__/", import.meta.url)).map((f) => `__fixtures__/${f}`)];
+}
+
 test("R9: the required webhook subscription list matches the switch's handled cases", async () => {
   // The Dashboard subscription and the code must not drift: a type we handle
   // but never receive is dead code; one we receive but ignore is silent loss.
-  const src = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+  // Scanned across EVERY module, not index.mjs alone: the switch lives there
+  // today, but a case that moved into fulfillment.mjs or clawback.mjs with the
+  // rest of the money logic must not fall out of this comparison.
+  const src = packageModules().map((f) => readFileSync(new URL(`./${f}`, import.meta.url), "utf8")).join("\n");
   const cases = [...src.matchAll(/^\s+case "([a-z_]+\.[a-z_.]+)":/gm)].map((m) => m[1]);
   for (const t of REQUIRED_WEBHOOK_EVENTS) {
     assert.ok(cases.includes(t), `${t} is required but has no case`);
@@ -1313,88 +1325,12 @@ test("R10: no invisible character hides inside a string literal in this package"
   // character no reviewer can see.
   // Written as escapes on purpose: a literal here would trip the guard itself.
   const INVISIBLE = /[\u200B-\u200D\uFEFF\u2060]/;
-  for (const file of ["./index.mjs", "./index.test.mjs", "./template.test.mjs"]) {
-    const src = readFileSync(new URL(file, import.meta.url), "utf8");
+  for (const file of packageModules({ tests: true })) {
+    const src = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
     const line = src.split("\n").findIndex((l) => INVISIBLE.test(l));
     assert.equal(line, -1, `${file}:${line + 1} contains a zero-width or invisible character`);
   }
 });
-
-/**
- * A stateful stub: TransactWriteItems is actually APPLIED to the row store, so a
- * withdraw-then-reinstate round trip can be asserted end to end. walletDdb above
- * returns a fixed snapshot, which is right for single-event tests but cannot
- * express "the second event sees what the first one wrote" — and that sequence is
- * exactly where the dispute arithmetic goes wrong.
- *
- * Only the expression shapes this handler actually emits are supported:
- * `SET a = :x, b = :y` and `ADD credits :amt, clawbackOwedCredits :owed`.
- */
-function ledgerDdb(rows = {}) {
-  const store = new Map(Object.entries(rows));
-  const num = (item, k) => Number(item?.[k]?.N ?? 0);
-  return {
-    store,
-    wallet: (sub) => store.get(`WALLET#${sub}`),
-    receipt: (pi) => store.get(`RECEIPT#${pi}`),
-    async send(cmd) {
-      const name = cmd.constructor.name;
-      if (name === "GetItemCommand") {
-        const item = store.get(cmd.input.Key.pk.S);
-        return item ? { Item: item } : {};
-      }
-      if (name !== "TransactWriteItemsCommand") return {};
-      // Validate every condition BEFORE applying anything (transaction semantics).
-      for (const leg of cmd.input.TransactItems) {
-        const op = leg.Put ?? leg.Update ?? leg.ConditionCheck;
-        const pk = (leg.Put ? leg.Put.Item.pk : op.Key.pk).S;
-        const cond = op.ConditionExpression;
-        if (!cond) continue;
-        const cur = store.get(pk);
-        if (cond.includes("attribute_not_exists(pk)") && cur) {
-          const e = new Error("cancelled");
-          e.name = "TransactionCanceledException";
-          e.CancellationReasons = cmd.input.TransactItems.map((l) =>
-            l === leg ? { Code: "ConditionalCheckFailed" } : { Code: "None" }
-          );
-          throw e;
-        }
-        const eq = cond.match(/(\w+) = (:\w+)/);
-        if (eq && cur && num(cur, eq[1]) !== Number(op.ExpressionAttributeValues[eq[2]].N)) {
-          const e = new Error("cancelled");
-          e.name = "TransactionCanceledException";
-          e.CancellationReasons = cmd.input.TransactItems.map((l) =>
-            l === leg ? { Code: "ConditionalCheckFailed" } : { Code: "None" }
-          );
-          throw e;
-        }
-      }
-      for (const leg of cmd.input.TransactItems) {
-        if (leg.Put) {
-          store.set(leg.Put.Item.pk.S, { ...leg.Put.Item });
-          continue;
-        }
-        if (!leg.Update) continue;
-        const pk = leg.Update.Key.pk.S;
-        const item = { ...(store.get(pk) ?? { pk: { S: pk } }) };
-        const vals = leg.Update.ExpressionAttributeValues ?? {};
-        const expr = leg.Update.UpdateExpression;
-        const setPart = expr.match(/SET (.*?)(?= ADD |$)/)?.[1];
-        for (const a of setPart ? setPart.split(",") : []) {
-          const [k, v] = a.split("=").map((s) => s.trim());
-          if (vals[v]) item[k] = { ...vals[v] };
-        }
-        const addPart = expr.match(/ADD (.*)$/)?.[1];
-        for (const a of addPart ? addPart.split(",") : []) {
-          const [k, v] = a.trim().split(/\s+/);
-          item[k] = { N: String(num(item, k) + Number(vals[v].N)) };
-        }
-        store.set(pk, item);
-      }
-      return {};
-    },
-  };
-}
 
 const disputeEvt = (id, type, amount = 2000) => ({
   id,

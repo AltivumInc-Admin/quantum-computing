@@ -32,19 +32,24 @@
 // learners ($200 ceiling), by hand, from a roster reviewed in git. It is
 // deliberately NOT here: an admin path on an internet-facing function is a
 // credit mint the day anyone adds a Function URL or a new event source, and
-// web/__tests__/infra/credit-writers.test.ts asserts this file never learns
-// the cohort's key prefix. If you are reading this because the gift looks
-// like a contradiction — it is not one, and deleting it is not the fix.
+// web/__tests__/infra/credit-writers.test.ts asserts no module this function
+// ships ever learns the cohort's key prefix. If you are reading this because
+// the gift looks like a contradiction — it is not one, and deleting it is not
+// the fix.
 // DI-core like lambda/sync + lambda/qpu: createHandlerCore(deps)
 // unit-tests under node --test with stubbed Stripe + DynamoDB; the production
 // handler lazily builds the real deps from env on first invocation.
+//
+// Four modules, one entry point (this file exports createHandlerCore and the
+// production handler; index.test.mjs drives the routes through it):
+//   catalog.mjs       what is sold, which events matter, the API version — no imports
+//   wallet-store.mjs  the rows and applyOnce, the ONLY place a balance is written
+//   fulfillment.mjs   money IN: checkout sessions, paid invoices, the debt split
+//   clawback.mjs      money OUT: refunds and disputes, reclaim() and its arithmetic
+// index.mjs keeps the HTTP routes, the Checkout construction and the webhook
+// switch that decides which event reaches which module.
 
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  UpdateItemCommand,
-  TransactWriteItemsCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import {
   SecretsManagerClient,
   GetSecretValueCommand,
@@ -57,6 +62,9 @@ import {
   CUSTOM_TOPUP_PRODUCT,
   STRIPE_API_VERSION,
 } from "./catalog.mjs";
+import { createWalletStore, walletKey } from "./wallet-store.mjs";
+import { createClawback, CLAWBACK_UNRECLAIMED } from "./clawback.mjs";
+import { createFulfillment, idOf } from "./fulfillment.mjs";
 
 const json = (statusCode, body) => ({
   statusCode,
@@ -64,60 +72,12 @@ const json = (statusCode, body) => ({
   body: JSON.stringify(body),
 });
 
-const walletKey = (sub) => ({ pk: { S: `WALLET#${sub}` } });
-const eventKey = (id) => ({ pk: { S: `EVENT#${id}` } });
-/**
- * A PURCHASE RECEIPT — "PaymentIntent pi_X bought N credits for user Y".
- *
- * NOT a gift. No wallet delta THIS FUNCTION writes is a gift: every one is
- * either a completed Stripe purchase or the return of the learner's own unused
- * reserve (lambda/qpu releaseReservation, lambda/tutor settle). This row exists
- * solely so a REFUND can reverse exactly what a specific payment bought.
- *
- * The founding-cohort gift (scripts/founding-credit/) writes no receipt, by
- * design: reclaim() finds receipts only by GetItem on receiptKey(paymentIntent)
- * — no scan, no index — so gifted credits are structurally unreachable from
- * every refund path and can never be clawed back against a payment that never
- * happened.
- *
- * Keyed by PaymentIntent id because that is the only link surviving from a
- * Charge back to what it bought: `Charge.invoice` was removed in the Basil
- * relocation — the same wave that moved the subscription id under
- * `Invoice.parent` and silently broke every credit purchase — so a refund
- * cannot re-derive the purchase from Stripe's object graph. No TTL: Stripe's
- * dispute window outlives the 30-day EVENT# marker.
- */
-const receiptKey = (pi) => ({ pk: { S: `RECEIPT#${pi}` } });
-
-// Transaction leg positions. EVENT and WALLET keep their historical indexes so
-// the reason-code contract stays stable; RECEIPT is appended.
-const EVENT_LEG = 0;
-const WALLET_LEG = 1;
-const RECEIPT_LEG = 2;
-
-/**
- * applyOnce's third outcome: nothing was decided, the write simply lost a race
- * — a guarded row moved under us, or DynamoDB cancelled on TransactionConflict.
- * Every caller must re-read and retry rather than treat it as a result.
- */
-export const CLAWBACK_RETRY = Symbol("clawback-retry");
-
-/**
- * The ONE literal phrase every unreclaimable-money branch ends with. A single
- * CloudWatch metric filter pins this string, so a branch added later is
- * covered for free — the deliberate mirror of "credits NOT granted".
- */
-export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
-
-/**
- * The mirror of CLAWBACK_UNRECLAIMED for money coming IN. Every branch that
- * ends a settled purchase without moving the wallet ends with this phrase, and
- * one metric filter pins it, so a grant-side branch added later is covered for
- * free. It has to be an umbrella rather than one literal per branch because
- * these paths all answer 200: Stripe marks the event delivered and never
- * retries, so an unwatched branch is a buyer who paid and was never credited.
- */
-export const GRANT_WITHHELD = "credits NOT granted";
+// The pinned phrases and the retry sentinel moved with the code that uses them;
+// re-exported so every importer of this module (the suite, the operator
+// scripts) is unchanged.
+export { CLAWBACK_RETRY } from "./wallet-store.mjs";
+export { CLAWBACK_UNRECLAIMED } from "./clawback.mjs";
+export { GRANT_WITHHELD } from "./fulfillment.mjs";
 
 /**
  * Pinned phrase for a webhook whose signature did not verify. A metric filter in
@@ -187,12 +147,13 @@ export function createHandlerCore({
   // sandbox table while the live table never moves.
   expectLivemode,
 }) {
-  async function readWallet(sub) {
-    const res = await ddb.send(
-      new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
-    );
-    return res.Item ?? null;
-  }
+  // The money logic, composed once per core. The store is the only thing that
+  // writes the wallet table; fulfillment and clawback decide how much moves and
+  // hand it to the store; this file decides which Stripe event reaches which.
+  const store = createWalletStore({ ddb, tableName, eventTtlSeconds });
+  const { readWallet, applyOnceRetrying } = store;
+  const { reclaim } = createClawback({ ddb, tableName, store });
+  const { fulfillCheckoutSession, fulfillInvoicePaid } = createFulfillment({ stripe, store });
 
   /**
    * Top-ups are a subscriber convenience, not a way in.
@@ -218,120 +179,6 @@ export function createHandlerCore({
   function isPaidTier(item) {
     const tier = item?.tier?.S ?? "free";
     return tier === "plus" || tier === "pro";
-  }
-
-  /**
-   * Apply a wallet change exactly once for a given Stripe event. The event-id
-   * put and the wallet update are one transaction: a repeated delivery fails
-   * the attribute_not_exists condition, the whole transaction cancels, and the
-   * balance is left alone. Returns false when the event was already applied.
-   */
-  async function applyOnce({
-    eventId,
-    sub,
-    // SIGNED. A clawback passes a negative value; the old `addCredits > 0`
-    // guard silently dropped it while still burning the idempotency key, so
-    // the event could never be reprocessed and the credits never moved.
-    deltaCredits = 0,
-    setTier,
-    setSubStatus,
-    owedCredits = 0,
-    // OCC for debt paydowns. Every owedCredits < 0 is computed from a GetItem
-    // OUTSIDE this transaction; two concurrent money-in events (a renewal
-    // racing a top-up, two invoice.paid deliveries) would otherwise both read
-    // owed=N and both ADD -N, driving the field negative — which the spend
-    // gates (clawbackOwedCredits = 0) refuse as hard as a positive debt, and
-    // which no code path can ever repair (splitAgainstDebt exits on owed <= 0).
-    // Passing the read value pins the wallet leg to it; a loser returns
-    // CLAWBACK_RETRY so the caller re-reads and recomputes.
-    expectedOwed,
-    // Optional third leg: the purchase receipt that makes a refund findable.
-    // ALWAYS APPENDED at index RECEIPT_LEG so EVENT_LEG/WALLET_LEG keep their
-    // positions — the catch below and the suite's positional pins both depend
-    // on the reason indexes not shifting.
-    receiptLeg,
-  }) {
-    const sets = ["updatedAt = :now"];
-    const adds = [];
-    const values = { ":now": { N: String(Date.now()) } };
-    if (deltaCredits !== 0) {
-      adds.push("credits :amt");
-      values[":amt"] = { N: String(deltaCredits) };
-    }
-    if (owedCredits !== 0) {
-      adds.push("clawbackOwedCredits :owed");
-      values[":owed"] = { N: String(owedCredits) };
-    }
-    if (setTier) {
-      sets.push("tier = :tier");
-      values[":tier"] = { S: setTier };
-    }
-    if (setSubStatus) {
-      sets.push("subscriptionStatus = :ss");
-      values[":ss"] = { S: setSubStatus };
-    }
-    let expr = "SET " + sets.join(", ");
-    if (adds.length) expr += " ADD " + adds.join(", ");
-
-    const hasOwedGuard = Number.isFinite(expectedOwed);
-    if (hasOwedGuard) {
-      values[":expectedOwed"] = { N: String(expectedOwed) };
-    }
-
-    try {
-      await ddb.send(
-        new TransactWriteItemsCommand({
-          TransactItems: [
-            {
-              Put: {
-                TableName: tableName,
-                Item: {
-                  ...eventKey(eventId),
-                  expiresAt: {
-                    N: String(Math.floor(Date.now() / 1000) + eventTtlSeconds),
-                  },
-                },
-                ConditionExpression: "attribute_not_exists(pk)",
-              },
-            },
-            {
-              Update: {
-                TableName: tableName,
-                Key: walletKey(sub),
-                UpdateExpression: expr,
-                ExpressionAttributeValues: values,
-                ...(hasOwedGuard
-                  ? { ConditionExpression: "clawbackOwedCredits = :expectedOwed" }
-                  : {}),
-              },
-            },
-            ...(receiptLeg ? [receiptLeg] : []),
-          ],
-        })
-      );
-      return true;
-    } catch (err) {
-      // Branch PER LEG by name, never on "the first reason" — with the GRANT
-      // leg present, more than one condition can cancel this transaction and
-      // conflating them would read an OCC loss as a replay (silently dropping
-      // a clawback) or a replay as a fault (a pointless Stripe retry storm).
-      if (err?.name === "TransactionCanceledException") {
-        const reasons = err.CancellationReasons ?? [];
-        const failed = (i) => reasons[i]?.Code === "ConditionalCheckFailed";
-        if (failed(EVENT_LEG)) return false; // already processed
-        if (hasOwedGuard && failed(WALLET_LEG)) return CLAWBACK_RETRY; // lost update
-        if (receiptLeg && failed(RECEIPT_LEG)) return CLAWBACK_RETRY; // lost update
-        // DynamoDB also cancels with TransactionConflict when another
-        // transaction is touching one of these items — exactly the renewal-
-        // racing-a-top-up interleaving the debt paths are built for. It is
-        // pure contention, not a decision: re-reading and retrying in-process
-        // settles it in milliseconds, whereas letting it escape becomes a 500,
-        // pages the operator, and defers a paid grant to Stripe's exponential
-        // redelivery. (lambda/qpu/reconcile.mjs draws the same distinction.)
-        if (reasons.some((r) => r?.Code === "TransactionConflict")) return CLAWBACK_RETRY;
-      }
-      throw err;
-    }
   }
 
   /**
@@ -406,412 +253,6 @@ export function createHandlerCore({
     }
   }
 
-  /** Normalize `string | Object | null` to an id — every Stripe reference may
-   *  arrive expanded depending on the endpoint's configuration. */
-  function idOf(ref) {
-    if (typeof ref === "string") return ref;
-    return typeof ref?.id === "string" ? ref.id : undefined;
-  }
-
-  /**
-   * The PaymentIntent behind a paid invoice. `Invoice.charge` and
-   * `Invoice.payment_intent` were BOTH removed in Basil; the surviving link is
-   * `payments[].payment.payment_intent`, and `payments` is not expanded on the
-   * raw webhook payload, so the invoice must be re-retrieved. Guarded the same
-   * way invoiceSubscriptionId is: an unresolvable id is logged, never guessed.
-   */
-  async function invoicePaymentIntent(invoiceId) {
-    try {
-      const full = await stripe.invoices.retrieve(invoiceId, { expand: ["payments"] });
-      for (const p of full?.payments?.data ?? []) {
-        const pi = idOf(p?.payment?.payment_intent);
-        if (pi) return pi;
-      }
-    } catch (err) {
-      console.error("invoice.paid: could not expand payments", invoiceId, err?.name);
-    }
-    return undefined;
-  }
-
-  /** The durable purchase receipt a future refund will look up. Only built when the
-   *  key is a real PaymentIntent — a falsy key would merge unrelated users'
-   *  purchases under one row (e.g. a 100%-off session, which has no PI at all).
-   *
-   *  `amountPaidCents` is what the buyer actually paid (session.amount_total or
-   *  invoice.amount_paid, both already in the smallest currency unit). It is the
-   *  denominator a partial DISPUTE needs: the Dispute object carries only its own
-   *  amount, never the charge total, so without this field a $5 dispute on a $20
-   *  purchase is indistinguishable from a full one. Refunds never need it — the
-   *  Charge object carries both numbers itself. */
-  function receiptRowLeg(paymentIntent, sub, credits, amountPaidCents) {
-    if (!paymentIntent || !(credits > 0)) return undefined;
-    const item = {
-      ...receiptKey(paymentIntent),
-      sub: { S: sub },
-      purchasedCredits: { N: String(credits) },
-      refundedCredits: { N: "0" },
-      disputedCredits: { N: "0" },
-      createdAt: { N: String(Date.now()) },
-    };
-    if (Number.isFinite(amountPaidCents) && amountPaidCents > 0) {
-      item.amountPaidCents = { N: String(Math.round(amountPaidCents)) };
-    }
-    return { Put: { TableName: tableName, Item: item } };
-  }
-
-  // Where the subscription id lives on an Invoice, across API versions.
-  //
-  // The shape of evt.data.object is decided by the API version pinned on the
-  // WEBHOOK ENDPOINT in the Stripe Dashboard, NOT by the SDK's apiVersion at the
-  // bottom of this file: that pin only shapes our outbound REST calls, while the
-  // event object is parsed verbatim out of the raw request body. So this handler
-  // can be handed either shape at any time and must read both.
-  //
-  // Modern (the vendored stripe 18.5.0 Invoice type in
-  // node_modules/stripe/types/Invoices.d.ts): there is NO top-level
-  // `subscription` property at all; the id moved to
-  // parent.subscription_details.subscription. Reading only the retired
-  // top-level field is exactly what made every subscription credit grant fail
-  // silently: the id came back undefined, the handler returned early, and the
-  // route still answered 200.
-  //
-  // Legacy (an endpoint still pinned to an API version from before the move):
-  // obj.subscription.
-  //
-  // Either form may be an expanded Subscription object instead of a bare id
-  // string (the type is `string | Stripe.Subscription`), so normalize to the id.
-  function invoiceSubscriptionId(invoice) {
-    return idOf(invoice.parent?.subscription_details?.subscription ?? invoice.subscription);
-  }
-
-  // Does this invoice claim to have come from a subscription? Used ONLY to
-  // decide whether an unresolvable subscription id is worth shouting about. A
-  // genuine one-off invoice (billing_reason "manual", parent.type
-  // "quote_details", or no parent at all) legitimately has no subscription and
-  // must stay quiet, or the noise trains us to ignore the signal.
-  //
-  // billing_reason is checked as well as parent.type because it is the field
-  // that would survive ANOTHER relocation of the id: if Stripe moves the
-  // subscription reference a second time, `parent` may be gone too, but
-  // billing_reason "subscription_cycle" still tells us a renewal just went
-  // uncredited.
-  function looksSubscriptionInvoice(invoice) {
-    return (
-      invoice.parent?.type === "subscription_details" ||
-      (typeof invoice.billing_reason === "string" &&
-        invoice.billing_reason.startsWith("subscription"))
-    );
-  }
-
-  /**
-   * Split a purchase between clearing debt and adding spendable credits.
-   *
-   * Product rule: an owing learner must CLEAR the debt — so money pays down
-   * `clawbackOwedCredits` before any of it becomes spendable. A purchase
-   * smaller than the debt adds nothing spendable, which is the honest outcome:
-   * the learner is buying their way back to zero, and the top-up surface says
-   * so rather than quietly crediting a balance they cannot use.
-   */
-  async function splitAgainstDebt(sub, credits) {
-    const item = await readWallet(sub);
-    const owed = Number(item?.clawbackOwedCredits?.N ?? 0);
-    // expectedOwed is the OCC token for the paydown: applyOnce pins the wallet
-    // leg to the value read here, so a concurrent paydown cancels the
-    // transaction instead of compounding into a negative, gate-wedging debt.
-    if (!(owed > 0)) return { deltaCredits: credits, owedCredits: 0 };
-    const applied = Math.min(owed, credits);
-    return { deltaCredits: credits - applied, owedCredits: -applied, expectedOwed: owed };
-  }
-
-  /**
-   * applyOnce for the writes that read nothing first — a tier light-up, a
-   * cancellation, a status change. Their only CLAWBACK_RETRY is a
-   * TransactionConflict, which is contention and nothing else, so retrying the
-   * IDENTICAL write is always correct; there is no state to recompute. The
-   * debt paths keep their own loops because they must re-read before retrying.
-   *
-   * Same budget and same ending as those loops: past it, throw, and let
-   * Stripe redeliver rather than drop a write on the floor.
-   */
-  async function applyOnceRetrying(label, args) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const outcome = await applyOnce(args);
-      if (outcome !== CLAWBACK_RETRY) {
-        return { sub: args.sub, outcome: outcome ? "applied" : "replay" };
-      }
-    }
-    throw new Error(`${label}: wallet write contended past retry budget for ${args.sub}`);
-  }
-
-  /**
-   * Grant credits through the debt split, retrying a lost paydown race against
-   * freshly read state — the same loop-and-reread discipline reclaim() uses,
-   * with the same ending: past the budget, throw so Stripe redelivers.
-   */
-  async function grantThroughDebt(evt, sub, credits, extra) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const split = await splitAgainstDebt(sub, credits);
-      const outcome = await applyOnce({ eventId: evt.id, sub, ...split, ...extra });
-      if (outcome !== CLAWBACK_RETRY) {
-        return {
-          sub,
-          deltaCredits: split.deltaCredits,
-          owedDelta: split.owedCredits,
-          outcome: outcome ? "applied" : "replay",
-        };
-      }
-      // Lost the race: loop, re-read the debt, recompute the split.
-    }
-    throw new Error(`${evt.type}: debt paydown contended past retry budget for ${sub}`);
-  }
-
-  /**
-   * Fulfill a Checkout Session: credits for a top-up, tier light-up for a
-   * subscription. Shared by checkout.session.completed and
-   * checkout.session.async_payment_succeeded — for delayed-notification
-   * methods (Klarna, Cash App, Amazon Pay, ACH) the session "completes" with
-   * payment_status "unpaid" BEFORE any money moves, and the money outcome
-   * arrives later as async_payment_succeeded/failed. Stripe's fulfillment
-   * contract: fulfill when payment_status != "unpaid" ("no_payment_required",
-   * e.g. a 100%-off promotion, still fulfills); an unpaid session fulfills
-   * nothing and waits. Idempotency is per EVENT id, and the unpaid completion
-   * writes nothing, so the eventual async_payment_succeeded is the one and
-   * only grant for the purchase — no double-credit window.
-   */
-  async function fulfillCheckoutSession(evt, obj) {
-    // Settlement first, identity second — deliberately in that order. An
-    // unpaid session is a non-event and must stay quiet; a SETTLED one with
-    // nobody to credit is money taken and withheld, and has to say so.
-    if (obj.payment_status === "unpaid") return; // money not settled yet
-    const sub = obj.client_reference_id;
-    if (!sub) {
-      console.error(
-        `${evt.type}: settled session carries no client_reference_id; ${GRANT_WITHHELD}`,
-        evt.id,
-        obj.id
-      );
-      return;
-    }
-    if (obj.mode === "payment") {
-      const credits = Number(obj.metadata?.credits);
-      if (Number.isFinite(credits) && credits > 0) {
-        return await grantThroughDebt(evt, sub, credits, {
-          receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits, Number(obj.amount_total)),
-        });
-      } else {
-        // The credit count is written into metadata server-side at session
-        // creation, so its absence means the session was minted somewhere
-        // else (a Dashboard payment link, an older deploy) — the buyer paid
-        // and there is nothing here that says what they bought.
-        console.error(
-          `${evt.type}: settled top-up session carries no usable metadata.credits; ${GRANT_WITHHELD}`,
-          evt.id,
-          obj.id,
-          sub
-        );
-      }
-    } else if (obj.mode === "subscription") {
-      // Credits for the period arrive on invoice.paid; here we only light up
-      // the tier immediately so the UI reflects the purchase without waiting.
-      return await applyOnceRetrying(evt.type, {
-        eventId: evt.id,
-        sub,
-        setTier: obj.metadata?.tier,
-        setSubStatus: "active",
-      });
-    }
-  }
-
-  /**
-   * Reclaim credits for money that went back to the customer.
-   *
-   * The arithmetic is ABSOLUTE, not incremental: Stripe's `amount_refunded` is
-   * cumulative, so we compute a target ("this purchase should be reclaimed to N")
-   * and move only `target - alreadyReclaimed`. That makes a replayed, stale, or
-   * out-of-order delivery a no-op rather than a double-clawback, and — because
-   * the target is recomputed from live Stripe state — it stays correct even
-   * after the 30-day EVENT# idempotency marker has expired, which matters
-   * because Stripe's dispute window is longer than that.
-   *
-   * `field` is which counter this kind of clawback owns. Refunds and disputes
-   * keep SEPARATE counters so their numerators can never interact: a partial
-   * refund arriving after a dispute must not look like a reduction and hand
-   * credits back.
-   */
-  async function reclaim({ eventId, paymentIntent, field, fraction, disputedAmountCents, restore = false, label }) {
-    if (!paymentIntent) {
-      console.error(`${label}: no payment_intent on the charge; ${CLAWBACK_UNRECLAIMED}`, eventId);
-      return;
-    }
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const got = await ddb.send(
-        new GetItemCommand({ TableName: tableName, Key: receiptKey(paymentIntent) })
-      );
-      const row = got.Item;
-      if (!row) {
-        // Not ours (a Dashboard-created charge, or one predating this feature).
-        // 200 rather than throw: a retry storm cannot conjure a receipt that was
-        // never written, and Stripe would hammer us for days.
-        console.error(
-          `${label}: no purchase receipt for this payment_intent; ${CLAWBACK_UNRECLAIMED}`,
-          eventId,
-          paymentIntent
-        );
-        return;
-      }
-      const sub = row.sub?.S;
-      const purchased = Number(row.purchasedCredits?.N ?? 0);
-      const seen = Number(row[field]?.N ?? 0);
-      if (!sub || !Number.isFinite(purchased)) {
-        console.error(`${label}: purchase receipt is malformed; ${CLAWBACK_UNRECLAIMED}`, eventId, paymentIntent);
-        return;
-      }
-
-      // Disputes pro-rate against what was actually PAID (#230): the Dispute
-      // object carries only its own amount — "usually the amount of the charge,
-      // but it can differ" (partial disputes, currency conversion, banks
-      // bundling recurring charges) — so the denominator must come from the
-      // receipt. A receipt without one (written before amountPaidCents existed)
-      // gets NO reclaim rather than a guessed `fraction: 1`: rule 7 says fail
-      // toward undercharging, and the pinned phrase routes it to a human. The
-      // legacy set is empty today (zero live volume), so this branch is a
-      // safety net, not a live cost.
-      let effectiveFraction = fraction;
-      if (!restore && disputedAmountCents !== undefined) {
-        const paidCents = Number(row.amountPaidCents?.N ?? 0);
-        if (!(paidCents > 0)) {
-          console.error(
-            `${label}: no amountPaidCents on the receipt to pro-rate the disputed amount against; ${CLAWBACK_UNRECLAIMED}`,
-            eventId,
-            paymentIntent
-          );
-          return;
-        }
-        if (!(disputedAmountCents > 0)) {
-          console.error(
-            `${label}: dispute carries no usable amount to pro-rate; ${CLAWBACK_UNRECLAIMED}`,
-            eventId,
-            paymentIntent,
-            disputedAmountCents
-          );
-          return;
-        }
-        // The min-1 cap is what keeps a cross-currency dispute (amount
-        // denominated differently than the charge) from over-reclaiming.
-        effectiveFraction = Math.min(1, disputedAmountCents / paidCents);
-      }
-
-      // Never reclaim more than was purchased, and never let a stale event push
-      // the counter backwards into a re-grant. `floor` so a rounding edge
-      // always favours the customer.
-      const target = restore ? 0 : Math.min(purchased, Math.floor(purchased * effectiveFraction));
-      if (!Number.isFinite(target)) {
-        // Unreachable while the callers Number() their inputs — but NaN passes
-        // both move checks below and would be written into DynamoDB as the
-        // counter, so refuse loudly rather than trust the callers forever.
-        console.error(`${label}: computed a non-finite target; ${CLAWBACK_UNRECLAIMED}`, eventId, paymentIntent);
-        return;
-      }
-      const move = target - seen;
-      if (move === 0) return; // nothing owed — no write at all
-      if (move < 0 && !restore) {
-        // For refunds this is a stale/out-of-order delivery and silence is
-        // right. For disputes it is new information — the disputed amount went
-        // DOWN, so the learner sits over-reclaimed — and the counter cannot
-        // move down outside `restore` without opening the re-grant hole. Defer
-        // to a human, loudly: the pinned phrase is what the metric filter pages on.
-        if (disputedAmountCents !== undefined) {
-          console.error(
-            `${label}: dispute target ${target} is below the ${seen} already reclaimed — learner is over-reclaimed pending manual review; ${CLAWBACK_UNRECLAIMED}`,
-            eventId,
-            paymentIntent
-          );
-        }
-        return; // never re-grant outside restore
-      }
-
-      // Floor the balance at zero and record any shortfall separately. A
-      // negative `credits` would read as "metering unconfigured" to the
-      // client's counter() and hide the top-up path exactly when the learner
-      // needs it; debt belongs in its own field, as an explicit decision.
-      const wallet = await readWallet(sub);
-      const balance = Number(wallet?.credits?.N ?? 0);
-      const owedNow = Number(wallet?.clawbackOwedCredits?.N ?? 0);
-      // How much of this counter's clawback landed in DEBT rather than coming out
-      // of credits. Tracked per counter on the receipt because a restore has to
-      // undo BOTH halves, and `move` alone cannot say how the original clawback
-      // split. No `attribute_exists` init in receiptRowLeg and no OCC clause of
-      // its own: unlike `${field}`, nothing conditions on it, so the `?? 0`
-      // default is the whole legacy story — a receipt written before this field
-      // existed restores exactly as it used to.
-      const unrecoveredField = `${field}Unrecovered`;
-      const seenUnrecovered = Number(row[unrecoveredField]?.N ?? 0);
-
-      let deltaCredits, owedDelta, targetUnrecovered;
-      if (move > 0) {
-        const applied = Math.min(move, Math.max(0, balance));
-        deltaCredits = -applied;
-        owedDelta = move - applied;
-        targetUnrecovered = seenUnrecovered + owedDelta;
-      } else {
-        // Restoring: give back exactly what was TAKEN and clear exactly the debt
-        // that was CREATED. Returning the whole `move` while leaving the debt
-        // standing hands a learner who WON their dispute a balance the spend
-        // gates then refuse (both gates test `clawbackOwedCredits = 0`), payable
-        // only by buying their way clear — rule 7 inverted.
-        //
-        // Bounded by `owedNow` because the learner may have already paid part of
-        // it down mid-dispute; clearing the full original shortfall would drive
-        // the field NEGATIVE, and `= 0` locks a negative debt out just as hard as
-        // a positive one. Whatever the debt no longer needs comes back as credits,
-        // which is what keeps the learner whole across a paydown.
-        const owedCleared = Math.min(Math.max(0, owedNow), seenUnrecovered);
-        deltaCredits = -move - owedCleared;
-        owedDelta = -owedCleared;
-        targetUnrecovered = 0;
-      }
-
-      const outcome = await applyOnce({
-        eventId,
-        sub,
-        deltaCredits,
-        owedCredits: owedDelta,
-        // A restore subtracts debt computed from the owedNow read above — the
-        // same outside-the-transaction read the grant paths make, with the
-        // same negative-debt race. Pin it; a loser lands on CLAWBACK_RETRY and
-        // this loop re-reads. (Additions never need the guard: ADD of a
-        // positive cannot drive the field negative.)
-        ...(owedDelta < 0 ? { expectedOwed: owedNow } : {}),
-        receiptLeg: {
-          Update: {
-            TableName: tableName,
-            Key: receiptKey(paymentIntent),
-            // ABSOLUTE set guarded by the value we read — the optimistic
-            // concurrency token. TransactWriteItems has no read leg, so the
-            // GetItem above is outside the transaction and this condition is
-            // the only thing closing the lost-update window. Guarding `${field}`
-            // alone is sufficient: the two counters only ever move together.
-            UpdateExpression: `SET ${field} = :target, ${unrecoveredField} = :targetUnrecovered`,
-            ConditionExpression: `attribute_exists(pk) AND ${field} = :seen`,
-            ExpressionAttributeValues: {
-              ":target": { N: String(target) },
-              ":seen": { N: String(seen) },
-              ":targetUnrecovered": { N: String(targetUnrecovered) },
-            },
-          },
-        },
-      });
-      if (outcome !== CLAWBACK_RETRY) {
-        // Committed, or a replay.
-        return { sub, deltaCredits, owedDelta, outcome: outcome ? "applied" : "replay" };
-      }
-      // Lost the race: loop, re-read, recompute against fresh state.
-    }
-    // Contended past the retry budget. Throw so Stripe retries the delivery —
-    // this is real money and dropping it silently is the one unacceptable end.
-    throw new Error(`${label}: contended past retry budget for ${paymentIntent}`);
-  }
-
   async function handleEvent(evt) {
     const obj = evt.data?.object ?? {};
     switch (evt.type) {
@@ -839,91 +280,8 @@ export function createHandlerCore({
       // invoice.payment_succeeded for the same money; handling both would grant
       // twice (distinct event ids dodge idempotency), so we handle invoice.paid
       // alone — first period and every renewal.
-      case "invoice.paid": {
-        const subId = invoiceSubscriptionId(obj);
-        if (!subId) {
-          // An invoice that says it came from a subscription but carries no
-          // resolvable subscription id is a silently withheld credit grant: we
-          // answer 200, Stripe treats the event as delivered and never retries,
-          // and the buyer's balance never moves for that period. Leave evidence
-          // in the log group instead of returning into the void.
-          //
-          // NOTE: this console.error does NOT by itself trip quantum-stripe-errors
-          // (that alarm watches AWS/Lambda Errors, which counts FAILED
-          // invocations) or quantum-stripe-5xx (this path still returns 200).
-          // Turning it into a page needs a log metric filter on this message in
-          // template.yaml. Throwing here would trip both alarms, but it would
-          // also make Stripe retry for days an invoice we can never handle, so
-          // the retry storm buys nothing.
-          if (looksSubscriptionInvoice(obj)) {
-            console.error(
-              `invoice.paid: no subscription id resolved on a subscription invoice; ${GRANT_WITHHELD}`,
-              evt.id,
-              obj.id,
-              obj.billing_reason,
-              obj.parent?.type
-            );
-          }
-          return; // otherwise a genuine one-off invoice: nothing to grant
-        }
-        const subscription = await stripe.subscriptions.retrieve(subId);
-        const sub = subscription.metadata?.userId;
-        if (!sub) {
-          // subscription_data.metadata is stamped by /checkout, so a paid
-          // subscription without a userId is one this handler cannot attribute
-          // to any learner. Same 200-and-never-retried shape as the branch
-          // above, so it needs the same pinned phrase.
-          console.error(
-            `invoice.paid: subscription carries no metadata.userId; ${GRANT_WITHHELD}`,
-            evt.id,
-            obj.id,
-            subId
-          );
-          return;
-        }
-        const credits = Number(subscription.metadata?.credits);
-        const granted = Number.isFinite(credits) && credits > 0 ? credits : 0;
-        if (granted === 0) {
-          // The tier still lights up below (they are a paying subscriber), but
-          // the period's credits do not land — the one case where the wallet
-          // and the tier disagree, and therefore the one that must be visible.
-          console.error(
-            `invoice.paid: subscription carries no parseable metadata.credits, tier set but period ${GRANT_WITHHELD}`,
-            evt.id,
-            obj.id,
-            subId
-          );
-        }
-        // Resolve the PaymentIntent NOW, while the invoice is in hand — at
-        // refund time the charge carries no link back to it.
-        const pi = granted > 0 ? await invoicePaymentIntent(obj.id) : undefined;
-        if (granted > 0 && !pi) {
-          // The grant still happens (the buyer paid), but it will not be
-          // refundable automatically. Same pinned phrase, so the one filter
-          // covers it and a human can reconcile.
-          console.error(
-            `invoice.paid: no payment_intent resolved, grant will not be auto-refundable; ${CLAWBACK_UNRECLAIMED}`,
-            evt.id,
-            obj.id
-          );
-        }
-        // Renewals garnish FULLY (founder decision 2026-08-17, issue #218): the
-        // grant pays clawbackOwedCredits down to zero before anything becomes
-        // spendable — the identical splitAgainstDebt rule top-ups use, so
-        // money-in behaves one way everywhere. Before this, invoice.paid was
-        // the one grant path that skipped the split, so a renewing subscriber
-        // accumulated credits the debt-gate refused while the debt never moved.
-        // The receipt still records the FULL grant: a refund of this invoice
-        // claws back against what was granted, not the post-garnish remainder.
-        const extra = {
-          setTier: subscription.metadata?.tier,
-          setSubStatus: "active",
-          receiptLeg: receiptRowLeg(pi, sub, granted, Number(obj.amount_paid)),
-        };
-        return granted > 0
-          ? await grantThroughDebt(evt, sub, granted, extra)
-          : await applyOnceRetrying(evt.type, { eventId: evt.id, sub, ...extra });
-      }
+      case "invoice.paid":
+        return await fulfillInvoicePaid(evt, obj);
 
       case "customer.subscription.deleted": {
         const sub = obj.metadata?.userId;

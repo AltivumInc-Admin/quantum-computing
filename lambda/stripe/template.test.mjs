@@ -272,9 +272,58 @@ test("the parameter defaults reproduce today's LIVE names exactly (a zero-diff u
 // 200 is greppable, not alertable — which is exactly how a buyer stays
 // silently uncredited. Same idiom as lambda/qpu's orphaned-row filter: the
 // FilterPattern's literal phrase is pinned to a string that literally appears
-// in index.mjs, so editing the log line cannot silently disconnect the alarm.
+// in the handler, so editing the log line cannot silently disconnect the alarm.
 
-const handlerSrc = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+/**
+ * The handler's source is every module package.json SHIPS, concatenated. Not
+ * index.mjs alone — the money logic split into wallet-store / fulfillment /
+ * clawback on 2026-09-02, and a pinned phrase that moved files must still be
+ * seen. And not "every .mjs in the directory" — verify-live-checkout.mjs is an
+ * operator script whose FATAL lines must never be alarm-watched. The "files"
+ * allowlist is the exact boundary between the two, because it is what actually
+ * deploys (see the packaging test below).
+ */
+const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+const SHIPPED_MODULES = pkg.files.filter((f) => f.endsWith(".mjs"));
+const handlerSrc = SHIPPED_MODULES.map((f) => readFileSync(new URL(`./${f}`, import.meta.url), "utf8")).join("\n");
+
+// ---- what index.mjs imports must be what package.json ships --------------------
+// sam build packages a Node function with `npm pack`, and npm pack honours the
+// "files" allowlist in package.json (.aws-sam/build/StripeFunction holds the
+// tarball's three files — README.md included, mtimes normalized to 1985 the way
+// npm pack writes them — plus the install step's node_modules). A module
+// index.mjs imports but "files" omits is simply absent from the deployed bundle,
+// and the function dies at cold start with ERR_MODULE_NOT_FOUND on every
+// invocation. The catalog.mjs split of 2026-09-02 sat that way for a morning:
+// `npm pack --dry-run` listed index.mjs alone. Nothing in the suite could see
+// it, because the tests import the modules from disk, where they all exist.
+
+/** The transitive `from "./x.mjs"` closure from an entry module — imports and re-exports. */
+function localImportGraph(entry) {
+  const seen = new Set();
+  const queue = [entry];
+  while (queue.length) {
+    const file = queue.shift();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const src = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+    for (const m of src.matchAll(/from\s+"\.\/([^"]+\.mjs)"/g)) queue.push(m[1]);
+  }
+  return seen;
+}
+
+test("package.json ships exactly the modules the handler imports", () => {
+  assert.ok(pkg.files.includes("index.mjs"), "the entry point must ship");
+  const imported = [...localImportGraph("index.mjs")].sort();
+  assert.deepEqual(
+    [...SHIPPED_MODULES].sort(),
+    imported,
+    'package.json "files" must list every module index.mjs reaches, and nothing else — npm pack ships only what is listed'
+  );
+  for (const f of pkg.files) {
+    assert.doesNotMatch(f, /\.test\.|__fixtures__/, `${f}: tests and fixtures must never ship`);
+  }
+});
 
 /** The MetricFilter producing `metricName`, plus its quoted literal phrase. */
 function filterFor(metricName) {
@@ -298,7 +347,7 @@ test("an uncredited subscription invoice is alertable, not just greppable", () =
   // live money; "the default is still QuantumStripe" is pinned by the zero-diff test.
   assert.match(b, /MetricNamespace: !Ref MetricNamespace/);
   // The phrase must literally appear in the handler, or the alarm watches nothing.
-  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
+  assert.ok(handlerSrc.includes(phrase), `the handler no longer logs the phrase "${phrase}"`);
 
   const alarm = body("UncreditedInvoiceAlarm");
   assert.ok(alarm, "UncreditedInvoiceAlarm missing");
@@ -314,7 +363,7 @@ test("an uncredited subscription invoice is alertable, not just greppable", () =
 test("a failed delayed payment is alertable", () => {
   const { b, phrase } = filterFor("AsyncPaymentFailed");
   assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
-  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
+  assert.ok(handlerSrc.includes(phrase), `the handler no longer logs the phrase "${phrase}"`);
   const alarm = body("AsyncPaymentFailedAlarm");
   assert.ok(alarm, "AsyncPaymentFailedAlarm missing");
   assert.match(alarm, /TreatMissingData: notBreaching/);
@@ -411,7 +460,7 @@ test("a JWT the gateway refuses is visible somewhere, and it is not the function
 
 test("a failed webhook transaction is alertable — it is the only clawback-fault signal", () => {
   const { phrase } = filterFor("WebhookHandlerFault");
-  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs "${phrase}"`);
+  assert.ok(handlerSrc.includes(phrase), `the handler no longer logs "${phrase}"`);
   assert.match(body("WebhookHandlerFaultAlarm"), /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 

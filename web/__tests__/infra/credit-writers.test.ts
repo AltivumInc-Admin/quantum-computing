@@ -29,8 +29,14 @@ const REPO = join(__dirname, "..", "..", "..");
  */
 const ALLOWED = new Map<string, string>([
   [
+    "lambda/stripe/wallet-store.mjs",
+    "the billing Lambda's store — applyOnce, the one transaction every credit delta in that function goes " +
+      "through; every positive delta is a completed Stripe purchase or a clawback reversal",
+  ],
+  [
     "lambda/stripe/index.mjs",
-    "the billing Lambda — every positive delta is a completed Stripe purchase or a clawback reversal",
+    "the billing Lambda's routes — /checkout stores the Stripe customer id on the wallet row (walletKey + " +
+      "UpdateItemCommand), never a credit; the deltas moved to wallet-store.mjs on 2026-09-02",
   ],
   [
     "lambda/qpu/qpu-core.mjs",
@@ -103,9 +109,17 @@ function walk(dir: string, acc: string[] = []): string[] {
  * balance move, regardless of how the expression is assembled. A guard that can
  * only see one spelling of the mutation is a guard that reports a wrong answer
  * with total confidence.
+ *
+ * "Constructs a WALLET# key" has two spellings since 2026-09-02: the literal
+ * template, and a call to `walletKey(`, which lambda/stripe/wallet-store.mjs
+ * now EXPORTS. Before the split the builder was private to index.mjs, so any
+ * other file had to spell the prefix itself; after it, a file could import the
+ * builder and issue an UpdateItemCommand on the wallet row without the literal
+ * ever appearing. Counting the call keeps the guard covering exactly what it
+ * covered before.
  */
 const CREDIT_WRITE =
-  /ADD\s+credits\b|adds\.push\("credits |(?=[\s\S]*`WALLET#\$\{)[\s\S]*(?:update-item|UpdateItemCommand)/;
+  /ADD\s+credits\b|adds\.push\("credits |(?=[\s\S]*(?:`WALLET#\$\{|\bwalletKey\())[\s\S]*(?:update-item|UpdateItemCommand)/;
 
 describe("credit-writer allowlist", () => {
   const offenders: string[] = [];
@@ -138,12 +152,21 @@ describe("credit-writer allowlist", () => {
     // already been burned by a gate that failed open (the `effectiveCap > 0`
     // guard exists because a cap of 0 alone was not sufficient). The gift is a
     // hand-run script instead, and the deployed Lambda must not know it exists.
-    const billing = readFileSync(join(REPO, "lambda/stripe/index.mjs"), "utf8");
-    const withoutComments = billing
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-    expect(withoutComments).not.toContain("FOUNDING#");
-    expect(withoutComments).not.toMatch(/founding[-_]?cohort/i);
+    //
+    // EVERY module of the function, not index.mjs alone: the credit writer
+    // (applyOnce) lives in wallet-store.mjs since 2026-09-02, and a mint could
+    // land in any file the handler imports.
+    const dir = join(REPO, "lambda/stripe");
+    const modules = readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.includes(".test."));
+    expect(modules).toEqual(expect.arrayContaining(["index.mjs", "wallet-store.mjs"]));
+    for (const file of modules) {
+      const billing = readFileSync(join(dir, file), "utf8");
+      const withoutComments = billing
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      expect(withoutComments).not.toContain("FOUNDING#");
+      expect(withoutComments).not.toMatch(/founding[-_]?cohort/i);
+    }
   });
 
   it("the founding gift never writes a subscription tier", () => {

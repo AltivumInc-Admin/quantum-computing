@@ -17,8 +17,9 @@ import { join } from "path";
  * Today exactly two writes of `expiresAt` exist, and both are safe BY THE ROW
  * THEY TARGET, not by the file they live in:
  *
- *  1. lambda/stripe/index.mjs — the EVENT# idempotency marker Put (the row is
- *     `...eventKey(eventId)`). Expiring is that row's entire purpose: it only
+ *  1. lambda/stripe/wallet-store.mjs — the EVENT# idempotency marker Put (the
+ *     row is `...eventKey(eventId)`), inside applyOnce, which moved there from
+ *     index.mjs on 2026-09-02. Expiring is that row's entire purpose: it only
  *     needs to outlive Stripe's retry window. It shares a table with WALLET#
  *     rows, which is exactly why the attribute name is so dangerous elsewhere.
  *  2. lambda/qpu/qpu-core.mjs — the day-cap leg (`SET expiresAt = :ttl` on the
@@ -53,10 +54,10 @@ const SKIP = /node_modules|\.aws-sam/;
  */
 const EXPECTED_WRITES = new Map<string, { count: number; why: string }>([
   [
-    "lambda/stripe/index.mjs",
+    "lambda/stripe/wallet-store.mjs",
     {
       count: 1,
-      why: "the EVENT# idempotency Put — expiring is that row's whole purpose",
+      why: "the EVENT# idempotency Put in applyOnce — expiring is that row's whole purpose",
     },
   ],
   [
@@ -118,7 +119,12 @@ describe("expiresAt never reaches a row DynamoDB TTL could vaporize", () => {
 
   it("scans the billing, tutor and QPU sources (the walker must not no-op)", () => {
     expect(sources.map((s) => s.rel)).toEqual(
-      expect.arrayContaining(["lambda/stripe/index.mjs", "lambda/qpu/qpu-core.mjs", "lambda/tutor/index.mjs"]),
+      expect.arrayContaining([
+        "lambda/stripe/index.mjs",
+        "lambda/stripe/wallet-store.mjs",
+        "lambda/qpu/qpu-core.mjs",
+        "lambda/tutor/index.mjs",
+      ]),
     );
   });
 
