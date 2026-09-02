@@ -145,12 +145,32 @@ test("a signed-out click routes to sign-up", async () => {
   await waitFor(() => expect(navigate).toHaveBeenCalledWith("/login?mode=signup"));
 });
 
-test("a failed checkout surfaces a retry message", async () => {
+test("a failed checkout surfaces a retry message and keeps the button focused", async () => {
   (startTopUp as jest.Mock).mockRejectedValue(new Error("500"));
   renderTopUp();
-  await userEvent.click(screen.getByRole("button", { name: "Buy 2,000 credits" }));
+  const button = screen.getByRole("button", { name: "Buy 2,000 credits" });
+  await userEvent.click(button);
   expect(await screen.findByRole("alert")).toHaveTextContent(/could not start checkout/i);
   expect(navigate).not.toHaveBeenCalled();
+  // `disabled={busy}` blurred the button mid-flight, so the alert's "try again"
+  // asked a keyboard buyer to re-tab the whole page. `disabled` is kept for the
+  // validation case only, where there is genuinely nothing to press.
+  expect(screen.getByRole("button", { name: "Buy 2,000 credits" })).toHaveFocus();
+});
+
+test("a second click while busy does not start a second Checkout Session", async () => {
+  let release: (url: string) => void = () => {};
+  (startTopUp as jest.Mock).mockReturnValue(
+    new Promise<string>((resolve) => {
+      release = resolve;
+    }),
+  );
+  renderTopUp();
+  await userEvent.click(screen.getByRole("button", { name: "Buy 2,000 credits" }));
+  await userEvent.click(screen.getByRole("button", { name: "Starting…" }));
+  expect(startTopUp).toHaveBeenCalledTimes(1);
+  release("https://checkout.stripe.com/c/pay/cs_x");
+  await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
 });
 
 test("a 403 tells a free account it needs a plan, not to try again", async () => {

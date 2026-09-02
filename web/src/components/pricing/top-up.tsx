@@ -55,6 +55,11 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
 
   async function go() {
     if (!valid) return;
+    // Double-submit guard in code rather than `disabled={busy}`, which would blur
+    // the button mid-flight and leave a keyboard buyer at <body> with an alert
+    // asking them to retry a control they can no longer reach. `disabled` stays
+    // for the VALIDATION case, where there is genuinely nothing to press.
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -140,8 +145,11 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
         <button
           type="button"
           onClick={go}
-          disabled={!valid || busy}
-          className="surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-60"
+          disabled={!valid}
+          aria-busy={busy}
+          className={`surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-60 ${
+            busy ? "opacity-60" : ""
+          }`}
         >
           {busy
             ? t("pricingUi.starting")
