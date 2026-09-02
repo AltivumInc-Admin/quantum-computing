@@ -23,6 +23,12 @@ AWS calls. `GenerateAccessLogs` serves roughly one day per call and refuses
 wider windows — 7- and 14-day requests fail with `Unable to complete request for
 the given time range` — so a history only exists if something collects it daily.
 
+A single busy day can be refused the same way, and Amplify's retention is
+finite, so a day lost to a size refusal is lost permanently. `retrieve.mjs`
+halves the window and stitches the CSV halves back into one; both the scheduled
+Lambda and the backfill script go through it, the way both go through
+`classify.mjs`, so the daily answer and the historical one cannot diverge.
+
 It also carries the only Google sign-in signal this account has. Cognito's
 `FederationSuccesses` metric reads 0 despite federated accounts existing,
 CloudTrail records no Cognito sign-in events, and Cognito threat protection

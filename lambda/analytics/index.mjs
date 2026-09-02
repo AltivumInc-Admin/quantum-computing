@@ -14,15 +14,17 @@
  * and are already disclosed as operational service logs. Keep it that way: the
  * moment this writes an IP, that promise needs rewriting.
  *
- * All classification lives in classify.mjs, which the ops script
- * scripts/analytics/backfill.mjs imports from here — the same code answers the
- * historical question and the daily one, so the two can never disagree.
+ * All classification lives in classify.mjs and all retrieval in retrieve.mjs,
+ * both of which the ops script scripts/analytics/backfill.mjs imports from here
+ * — the same code answers the historical question and the daily one, so the two
+ * can never disagree.
  */
 
 import { AmplifyClient, GenerateAccessLogsCommand } from "@aws-sdk/client-amplify";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 
 import { SITE_HOST, buildRangeIndex, parseLog, summarizeDay } from "./classify.mjs";
+import { fetchDayCsv } from "./retrieve.mjs";
 
 export const AWS_RANGES_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
 
@@ -91,19 +93,25 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     // zeroes an aged-out log produces, on the only copy of the history.
     const requested = event.day !== undefined;
 
-    const { logUrl } = await amplify.send(
-      new GenerateAccessLogsCommand({
-        appId,
-        domainName: domain,
-        startTime: new Date(`${day}T00:00:00Z`),
-        endTime: new Date(`${day}T23:59:59Z`),
-      }),
-    );
-    if (!logUrl) throw new Error(`no logUrl returned for ${day}`);
+    // One window, unless Amplify refuses its size — then retrieve.mjs halves it
+    // and stitches the pieces. A day lost to a size refusal is lost for good:
+    // the raw logs age out and nothing can re-fetch them.
+    const csv = await fetchDayCsv(day, async (startIso, endIso) => {
+      const { logUrl } = await amplify.send(
+        new GenerateAccessLogsCommand({
+          appId,
+          domainName: domain,
+          startTime: new Date(startIso),
+          endTime: new Date(endIso),
+        }),
+      );
+      if (!logUrl) throw new Error(`no logUrl returned for ${day}`);
 
-    const res = await fetchImpl(logUrl);
-    if (!res.ok) throw new Error(`log download for ${day} failed: HTTP ${res.status}`);
-    const { rows, malformed } = parseLog(await res.text());
+      const res = await fetchImpl(logUrl);
+      if (!res.ok) throw new Error(`log download for ${day} failed: HTTP ${res.status}`);
+      return res.text();
+    });
+    const { rows, malformed } = parseLog(csv);
 
     const { index, complete, why } = await ranges();
     const summary = summarizeDay(rows, index, { day, siteHost });

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { LAUNCH_DAY, createAnalyticsCore, previousDay } from "./index.mjs";
 
@@ -51,6 +52,27 @@ function makeCore({ logText = LOG, rangesOk = true, amplifyResponse, siteHost } 
   });
   return { core, amplify, ddb };
 }
+
+test("every module the handler imports is packaged for deployment", () => {
+  // `sam build` packages this directory the way npm pack would, so package.json's
+  // `files` list decides what reaches Lambda. A new local module that is imported
+  // but not listed passes every test here and then fails at runtime, in
+  // production, with MODULE_NOT_FOUND — the tests run from the source tree,
+  // which always has the file.
+  const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+  const seen = new Set();
+  const walk = (file) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const src = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
+    for (const m of src.matchAll(/^import [^;]*? from "\.\/([\w.-]+)";$/gm)) walk(m[1]);
+  };
+  walk("index.mjs");
+
+  for (const file of seen) {
+    assert.ok(pkg.files.includes(file), `${file} is imported by the handler but not in package.json files`);
+  }
+});
 
 test("previousDay steps back one UTC day, across a month boundary", () => {
   assert.equal(previousDay("2026-08-20"), "2026-08-19");
@@ -291,6 +313,63 @@ test("throws when the log download fails, instead of recording an empty day", as
     domain: "d",
   });
   await assert.rejects(() => core({ today: "2026-08-20" }), /HTTP 403/);
+  assert.equal(ddb.calls.length, 0);
+});
+
+test("a size refusal is retried in narrower windows, not lost with the day", async () => {
+  // Amplify refuses windows it considers too large, and its log retention is
+  // finite — so a day that fails this way ages out and is gone for good. The
+  // ops script always halved the window on this exact message; the Lambda,
+  // written later against the same API, made one call and threw.
+  let refusedFullDay = false;
+  const amplify = {
+    calls: [],
+    send: async (cmd) => {
+      amplify.calls.push(cmd);
+      const wholeDay = cmd.input.endTime.getTime() - cmd.input.startTime.getTime() > 12 * 3600 * 1000;
+      if (wholeDay && !refusedFullDay) {
+        refusedFullDay = true;
+        throw new Error("Unable to complete request for the given time range");
+      }
+      return { logUrl: `https://s3.test/${cmd.input.startTime.toISOString()}` };
+    },
+  };
+  const ddb = stubClient();
+  const core = createAnalyticsCore({
+    amplify,
+    ddb,
+    fetchImpl: async (url) =>
+      url.includes("ip-ranges")
+        ? { ok: true, json: async () => ({ prefixes: [] }) }
+        : { ok: true, text: async () => LOG },
+    tableName: "t",
+    appId: "app",
+    domain: "d",
+  });
+
+  const out = await core({ today: "2026-08-20" });
+  assert.ok(amplify.calls.length > 1, "the refused window must be narrowed and retried");
+  assert.equal(out.day, "2026-08-19");
+  assert.equal(ddb.calls.length, 1, "still exactly one row for the day");
+});
+
+test("any other Amplify failure still throws, so the errors alarm fires", async () => {
+  // Narrowing must not swallow a wrong app id or a dead credential: retrying it
+  // four times in smaller windows would turn a clear failure into a slow one.
+  const amplify = stubClient({
+    GenerateAccessLogsCommand: new Error("AccessDeniedException: amplify:GenerateAccessLogs"),
+  });
+  const ddb = stubClient();
+  const core = createAnalyticsCore({
+    amplify,
+    ddb,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ prefixes: [] }), text: async () => LOG }),
+    tableName: "t",
+    appId: "app",
+    domain: "d",
+  });
+  await assert.rejects(() => core({ today: "2026-08-20" }), /AccessDeniedException/);
+  assert.equal(amplify.calls.length, 1, "a real failure is not retried");
   assert.equal(ddb.calls.length, 0);
 });
 

@@ -37,6 +37,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { buildRangeIndex, parseLog, summarizeDay } from "../../lambda/analytics/classify.mjs";
+import { fetchDayCsv } from "../../lambda/analytics/retrieve.mjs";
 
 const LAUNCH = "2026-06-28"; // Oldest day with retrievable logs, verified.
 const AWS_RANGES = "https://ip-ranges.amazonaws.com/ip-ranges.json";
@@ -134,23 +135,14 @@ async function fetchWindow(startIso, endIso) {
   return res.text();
 }
 
-/** Retrieve a day, halving the window when the API refuses its size. */
-async function fetchDay(day, depth = 0, startIso = `${day}T00:00:00Z`, endIso = `${day}T23:59:59Z`) {
-  try {
-    return await fetchWindow(startIso, endIso);
-  } catch (err) {
-    const msg = String(err?.stderr ?? err?.message ?? err);
-    const sizeRefusal = /reduce time range|Unable to complete request/i.test(msg);
-    if (!sizeRefusal || depth >= 4) throw new Error(msg.trim().split("\n").pop());
-
-    const midMs = (Date.parse(startIso) + Date.parse(endIso)) / 2;
-    const mid = new Date(midMs).toISOString().replace(/\.\d{3}Z$/, "Z");
-    const a = await fetchDay(day, depth + 1, startIso, mid);
-    const b = await fetchDay(day, depth + 1, mid, endIso);
-    // Drop the second header so the halves concatenate into one valid CSV.
-    return a + "\n" + b.split(/\r?\n/).slice(1).join("\n");
-  }
-}
+/**
+ * Retrieve a day, halving the window when the API refuses its size.
+ *
+ * The halving lives in lambda/analytics/retrieve.mjs, shared with the scheduled
+ * collector — it was written here first, against the real API, and the Lambda
+ * went without it until a size refusal would have cost a day permanently.
+ */
+const fetchDay = (day) => fetchDayCsv(day, fetchWindow);
 
 /** AWS's published prefixes, cached. A network failure must not fail the run. */
 async function loadRanges() {
