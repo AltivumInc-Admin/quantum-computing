@@ -132,3 +132,26 @@ test("a Handler is attributed to the function in its own resource block", () => 
     { fn: "quantum-beta", handler: "beta.handler" },
   ]);
 });
+
+test("the CI role grants exactly the functions the drift check reads", () => {
+  // Both Lambda reads return the function's environment in full, so this grant
+  // is the blast radius of a public repository's workflow. It was a name
+  // prefix across every region, which put every future quantum-* function in
+  // scope; now it is a list, and a list can go stale in the other direction.
+  const template = readFileSync(join(REPO, "infra", "github-oidc-drift-role.yaml"), "utf8");
+  const granted = [...template.matchAll(/function:(quantum-[A-Za-z0-9-]+) *$/gm)].map((m) => m[1]);
+  assert.deepEqual(granted.sort(), FUNCTIONS.map((f) => f.fn).sort());
+});
+
+test("the CI role stays scoped: no wildcard resource, no ListFunctions", () => {
+  // Comment lines stripped: this is an assertion about the POLICY, and the
+  // policy explains in prose why the deleted grant is not coming back.
+  const policy = readFileSync(join(REPO, "infra", "github-oidc-drift-role.yaml"), "utf8")
+    .split("\n")
+    .filter((line) => !/^ *#/.test(line))
+    .join("\n");
+  assert.doesNotMatch(policy, /ListFunctions/);
+  assert.doesNotMatch(policy, /^ *Resource: *"\*" *$/m);
+  // A wildcarded region segment would reach same-named functions elsewhere.
+  assert.doesNotMatch(policy, /arn:aws:lambda:\*:/);
+});

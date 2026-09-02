@@ -85,6 +85,9 @@ jobs:
           role-to-assume: ${{ vars.AWS_DRIFT_ROLE_ARN }}
           aws-region: us-east-2
           role-session-name: quantum-drift-check
+          # The job takes about a minute. The role's MaxSessionDuration is already at
+          # the IAM minimum of 3600 and cannot go lower, so the cap goes here instead.
+          role-duration-seconds: 900
 
       # DRIFT_EXPECT_ACCOUNT pins WHICH account the report describes: the same
       # function names exist in more than one, so a green run that cannot name
