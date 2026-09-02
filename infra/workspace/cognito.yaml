@@ -110,7 +110,20 @@ Resources:
           // notifier becomes a broken sign-up for real people. Every path
           // below is wrapped and every path returns the event unchanged. An
           // alert is worth strictly less than a working front door.
-          import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+          //
+          // CommonJS, deliberately. Code.ZipFile writes this source to
+          // index.js with no package.json beside it, so there is no
+          // `"type": "module"` to declare and the runtime loads it as
+          // CommonJS; an `import` statement would be a SyntaxError raised at
+          // module load, BEFORE the try below exists — the one failure this
+          // banner cannot defend against, and it would fail every sign-up.
+          // The repo's other inline handlers (infra/redirect/*.yaml) are
+          // CommonJS for the same reason; only the lambda/ directories may
+          // use ESM, and they earn it with a package.json a ZipFile has no
+          // way to carry. Every supported Node.js runtime bundles the AWS SDK
+          // for JavaScript v3, so this require resolves with no deployment
+          // package.
+          const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
 
           const sns = new SNSClient({});
 
@@ -123,7 +136,7 @@ Resources:
             return s.length > 99 ? s.slice(0, 96) + "..." : s;
           }
 
-          export const handler = async (event) => {
+          exports.handler = async (event) => {
             try {
               const attrs = event?.request?.userAttributes ?? {};
               const email = attrs.email ?? "(no email attribute)";

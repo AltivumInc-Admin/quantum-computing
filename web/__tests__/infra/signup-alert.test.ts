@@ -67,6 +67,21 @@ describe("Cognito new-signup alerter", () => {
   describe("the handler must never throw — it is on the sign-up path", () => {
     const src = zipFileSource();
 
+    it("is CommonJS, because Code.ZipFile deploys it as a bare index.js", () => {
+      // No package.json travels with an inline ZipFile, so there is no
+      // `"type": "module"` and the runtime loads index.js as CommonJS. An
+      // ESM `import`/`export` would be a SyntaxError raised at module load —
+      // outside the try below, so the never-throw contract would never run
+      // and every sign-up would see a failed trigger.
+      expect(src).toContain('require("@aws-sdk/client-sns")');
+      expect(src).toContain("exports.handler");
+      expect(src).not.toMatch(/^\s*import\s/m);
+      expect(src).not.toMatch(/^\s*export\s/m);
+      // And it must actually parse as a CommonJS module body. Compiling it
+      // raises on a syntax error without running it.
+      expect(() => new Function("require", "exports", "module", src)).not.toThrow();
+    });
+
     it("wraps its work in try/catch and swallows the error", () => {
       expect(src).toContain("try {");
       expect(src).toMatch(/catch\s*\(\s*err\s*\)\s*{/);
