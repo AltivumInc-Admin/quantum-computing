@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { LAUNCH_DAY, createAnalyticsCore, previousDay } from "./index.mjs";
+import {
+  LAUNCH_DAY,
+  LOG_DOWNLOAD_TIMEOUT_MS,
+  RANGES_TIMEOUT_MS,
+  createAnalyticsCore,
+  previousDay,
+} from "./index.mjs";
 
 /** Records commands and dispatches on the command's own class name. */
 function stubClient(responses = {}) {
@@ -34,9 +40,13 @@ function makeCore({ logText = LOG, rangesOk = true, amplifyResponse, siteHost } 
     GenerateAccessLogsCommand: amplifyResponse ?? { logUrl: "https://s3.test/presigned" },
   });
   const ddb = stubClient();
+  // A function so a test can flip it between invocations of the same core.
+  const rangesState = typeof rangesOk === "function" ? rangesOk : () => rangesOk;
   const fetchImpl = async (url) => {
     if (url.includes("ip-ranges")) {
-      if (!rangesOk) throw new Error("network down");
+      const state = rangesState();
+      if (state === "not-ok") return { ok: false, status: 503 };
+      if (!state) throw new Error("network down");
       return { ok: true, json: async () => ({ prefixes: [{ ip_prefix: "10.0.0.0/8" }] }) };
     }
     return { ok: true, text: async () => logText };
@@ -282,6 +292,72 @@ test("a healthy run says nothing about the bot filter — the alarm must not cry
   } finally {
     console.warn = realWarn;
   }
+});
+
+test("a failed prefix fetch is NOT cached — the next run retries it", async () => {
+  // ranges() memoized its own failure, so a warm container re-stamped
+  // botFilterComplete: false on every later invocation even once the network
+  // recovered. The documented recovery for a failed scheduled run is a manual
+  // re-invoke, which lands on exactly that container.
+  let healthy = false;
+  const { core, ddb } = makeCore({ rangesOk: () => healthy });
+
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const first = await core({ today: "2026-08-20" });
+    assert.equal(first.botFilterComplete, false);
+
+    healthy = true;
+    const second = await core({ today: "2026-08-20" });
+    assert.equal(second.botFilterComplete, true, "the recovered network must be used");
+    assert.equal(ddb.calls[1].input.Item.botFilterNote, undefined, "and the note must not linger");
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test("a non-ok prefix response degrades exactly like a thrown fetch", async () => {
+  // The !res.ok branch was never exercised, and it is the likelier failure:
+  // a 503 from the CDN resolves, it does not reject.
+  const { core, ddb } = makeCore({ rangesOk: () => "not-ok" });
+  const realWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const out = await core({ today: "2026-08-20" });
+    assert.equal(out.botFilterComplete, false);
+    assert.match(ddb.calls[0].input.Item.botFilterNote.S, /HTTP 503/);
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test("both network waits are bounded, not left to the function timeout", async () => {
+  // A stalled connection is not a rejection the degrade path can absorb: it
+  // burns the whole 120s budget and ends as an anonymous Lambda timeout, taking
+  // a day the raw logs cannot give back.
+  const signals = {};
+  const amplify = stubClient({ GenerateAccessLogsCommand: { logUrl: "https://s3.test/presigned" } });
+  const core = createAnalyticsCore({
+    amplify,
+    ddb: stubClient(),
+    fetchImpl: async (url, init) => {
+      signals[url.includes("ip-ranges") ? "ranges" : "log"] = init?.signal;
+      return url.includes("ip-ranges")
+        ? { ok: true, json: async () => ({ prefixes: [] }) }
+        : { ok: true, text: async () => LOG };
+    },
+    tableName: "t",
+    appId: "app",
+    domain: "d",
+  });
+  await core({ today: "2026-08-20" });
+
+  assert.ok(signals.ranges instanceof AbortSignal, "the prefix fetch must carry a timeout");
+  assert.ok(signals.log instanceof AbortSignal, "the log download must carry a timeout");
+  assert.ok(LOG_DOWNLOAD_TIMEOUT_MS > RANGES_TIMEOUT_MS, "the optional fetch gets the shorter leash");
+  assert.ok(LOG_DOWNLOAD_TIMEOUT_MS + RANGES_TIMEOUT_MS < 120_000, "both must fit inside the function Timeout");
 });
 
 test("datacenter ranges are applied when they load", async () => {

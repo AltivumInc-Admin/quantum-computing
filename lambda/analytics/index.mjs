@@ -28,6 +28,17 @@ import { fetchDayCsv } from "./retrieve.mjs";
 
 export const AWS_RANGES_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
 
+/**
+ * Both network waits are bounded, because the function's 120s Timeout was the
+ * ONLY bound on either. A stalled connection is not a rejection the degrade
+ * path can absorb — it burns the whole budget and ends as an anonymous Lambda
+ * timeout, taking a day the raw logs cannot give back. The prefix list is
+ * optional, so it gets a short leash; the log download is the run's whole
+ * purpose, so it gets most of the budget and fails by name.
+ */
+export const RANGES_TIMEOUT_MS = 10_000;
+export const LOG_DOWNLOAD_TIMEOUT_MS = 60_000;
+
 /** Oldest day with retrievable logs, verified. Nothing before it can exist. */
 export const LAUNCH_DAY = "2026-06-28";
 
@@ -68,17 +79,23 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
    * If this cannot be fetched the run still proceeds, but the result is stamped
    * so nobody reads an inflated human count as a real one. Silently degrading
    * to "everything is human" would be worse than a gap.
+   *
+   * ONLY A SUCCESS IS MEMOIZED. Caching the failure alongside the success made
+   * a warm container re-stamp botFilterComplete: false on every later run even
+   * after the network recovered — and the documented recovery for a failed
+   * scheduled run is a manual re-invoke, which lands on exactly that container.
+   * A degraded result is cheap to retry and expensive to keep.
    */
   async function ranges() {
     if (cachedRanges) return cachedRanges;
     try {
-      const res = await fetchImpl(AWS_RANGES_URL);
+      const res = await fetchImpl(AWS_RANGES_URL, { signal: AbortSignal.timeout(RANGES_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       cachedRanges = { index: buildRangeIndex(await res.json()), complete: true };
+      return cachedRanges;
     } catch (err) {
-      cachedRanges = { index: buildRangeIndex([]), complete: false, why: err.message };
+      return { index: buildRangeIndex([]), complete: false, why: err.message };
     }
-    return cachedRanges;
   }
 
   return async function core(event = {}) {
@@ -107,9 +124,17 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
       );
       if (!logUrl) throw new Error(`no logUrl returned for ${day}`);
 
-      const res = await fetchImpl(logUrl);
-      if (!res.ok) throw new Error(`log download for ${day} failed: HTTP ${res.status}`);
-      return res.text();
+      // The presigned URL is a bearer credential with an hour of life; the body
+      // is a few megabytes. Named on timeout so the log group says which half
+      // of the retrieval stalled, rather than the invocation simply ending.
+      try {
+        const res = await fetchImpl(logUrl, { signal: AbortSignal.timeout(LOG_DOWNLOAD_TIMEOUT_MS) });
+        if (!res.ok) throw new Error(`log download for ${day} failed: HTTP ${res.status}`);
+        return await res.text();
+      } catch (err) {
+        if (err?.name !== "TimeoutError" && err?.name !== "AbortError") throw err;
+        throw new Error(`log download for ${day} timed out after ${LOG_DOWNLOAD_TIMEOUT_MS}ms`);
+      }
     });
     const { rows, malformed } = parseLog(csv);
 
