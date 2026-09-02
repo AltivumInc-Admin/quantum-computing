@@ -108,6 +108,21 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     const { index, complete, why } = await ranges();
     const summary = summarizeDay(rows, index, { day, siteHost });
 
+    // The published-range fetch is allowed to fail — but a run that degrades
+    // this way SUCCEEDS, so errors, throttles, did-not-run, slow and
+    // matched-nothing all stay green while every cloud-hosted crawler that
+    // survived the other signals is counted as a person. Recording it on the
+    // row alone means the only way to notice is to hand-read a boolean, which
+    // is the "plausible numbers, every alarm green" mode this stack exists to
+    // close. Emitted as a distinctive line so a metric filter can alarm on it
+    // (quantum-analytics-bot-filter-incomplete).
+    if (!complete) {
+      console.warn(
+        `analytics-bot-filter-incomplete day=${day} why=${why} — the datacenter filter did not ` +
+          `run, so humans is an OVERCOUNT for this day`,
+      );
+    }
+
     // A run that fetched rows but matched NONE of them is a broken host filter,
     // not a quiet day — and the two are indistinguishable from `requests: 0`
     // alone, which is why this stack recorded zeroes for weeks while every

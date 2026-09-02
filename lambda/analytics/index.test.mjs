@@ -226,12 +226,40 @@ test("a genuinely empty log stays silent — zero is a measurement, not a breaka
 });
 
 test("marks the row when the bot filter could not run, rather than inflating quietly", async () => {
-  const { core, ddb } = makeCore({ rangesOk: false });
-  const out = await core({ today: "2026-08-20" });
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const { core, ddb } = makeCore({ rangesOk: false });
+    const out = await core({ today: "2026-08-20" });
 
-  assert.equal(out.botFilterComplete, false);
-  assert.equal(ddb.calls[0].input.Item.botFilterComplete.BOOL, false);
-  assert.match(ddb.calls[0].input.Item.botFilterNote.S, /network down/);
+    assert.equal(out.botFilterComplete, false);
+    assert.equal(ddb.calls[0].input.Item.botFilterComplete.BOOL, false);
+    assert.match(ddb.calls[0].input.Item.botFilterNote.S, /network down/);
+
+    // The row alone is not enough: this run SUCCEEDS, so every other alarm in
+    // the stack stays green while humans is an overcount. The line is what a
+    // metric filter can see (quantum-analytics-bot-filter-incomplete).
+    assert.ok(
+      warnings.some((w) => w.includes("analytics-bot-filter-incomplete")),
+      "must emit the line the metric filter alarms on",
+    );
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test("a healthy run says nothing about the bot filter — the alarm must not cry wolf", async () => {
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const { core } = makeCore();
+    await core({ today: "2026-08-20" });
+    assert.equal(warnings.some((w) => w.includes("analytics-bot-filter-incomplete")), false);
+  } finally {
+    console.warn = realWarn;
+  }
 });
 
 test("datacenter ranges are applied when they load", async () => {

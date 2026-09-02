@@ -215,6 +215,44 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # The other silent degradation. ranges() is written to degrade rather than
+  # fail — an unreachable prefix list must not cost a whole day — but the run
+  # then SUCCEEDS with the datacenter filter switched off entirely, and
+  # botFilterComplete on the row is the only trace. Nothing reads a DynamoDB
+  # attribute on a schedule, so this pair is what turns it into a notification.
+  AnalyticsBotFilterMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref AnalyticsLogGroup
+      FilterPattern: '"analytics-bot-filter-incomplete"'
+      MetricTransformations:
+        - MetricNamespace: QuantumAnalytics
+          MetricName: BotFilterIncomplete
+          MetricValue: "1"
+          Unit: Count
+
+  AnalyticsBotFilterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-bot-filter-incomplete
+      AlarmDescription: >-
+        The run could not fetch AWS's published prefix list, so the datacenter
+        filter did not run at all and that day's `humans` is an OVERCOUNT — every
+        cloud-hosted crawler surviving the other signals was counted as a person.
+        The run itself succeeded, so no other alarm can see it. The row carries
+        botFilterComplete: false and botFilterNote. One bad day is a network
+        blip; a run of them means the fetch is broken.
+      Namespace: QuantumAnalytics
+      MetricName: BotFilterIncomplete
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      # Quiet is healthy here: the metric only exists on a degraded day.
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   AnalyticsSilentAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

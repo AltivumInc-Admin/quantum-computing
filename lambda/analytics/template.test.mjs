@@ -156,6 +156,10 @@ test("the matched-nothing alarm is wired to index.mjs's exact log line", () => {
   assertWarnAlarmChain("MatchedNothing", "AnalyticsMatchedNothingAlarm");
 });
 
+test("the bot-filter-incomplete alarm is wired to index.mjs's exact log line", () => {
+  assertWarnAlarmChain("BotFilterIncomplete", "AnalyticsBotFilterAlarm");
+});
+
 test("the alerts topic reaches a human by email, and every alarm notifies it", () => {
   assert.equal(typeOf("AlertsTopic"), "AWS::SNS::Topic");
   assert.match(body("AlertsTopic"), /Protocol: email/);
@@ -169,6 +173,7 @@ test("the alerts topic reaches a human by email, and every alarm notifies it", (
   assert.deepEqual(
     [...alarms].sort(),
     [
+      "AnalyticsBotFilterAlarm",
       "AnalyticsDurationAlarm",
       "AnalyticsErrorsAlarm",
       "AnalyticsMatchedNothingAlarm",
