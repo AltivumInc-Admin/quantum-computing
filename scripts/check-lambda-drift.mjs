@@ -37,16 +37,12 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountCheck } from "./drift/account.mjs";
-import { render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
+import { FUNCTIONS, render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const REGION = process.env.AWS_REGION || "us-east-2";
 const JSON_OUT = process.argv.includes("--json");
 
-/**
- * Deployed function -> the source directory it is built from. One entry per function,
- * because several stacks ship more than one function from a single directory.
- */
 /**
  * Functions whose drift is DELIBERATE, with the reason and who to ask.
  *
@@ -71,25 +67,6 @@ const HELD = [
     clearsWhen:
       "Shop's cutover completes — the platform session coordinates it (runbook: docs/platform-subdomain-migration.md in the quantum-env repo). Then deploy lambda/review-email and DELETE this entry.",
   },
-];
-
-const FUNCTIONS = [
-  { fn: "quantum-stripe", dir: "lambda/stripe" },
-  // The sandbox stack runs the SAME source and is where payment changes are
-  // rehearsed. Unwatched, a green e2e run is a claim about deployed sandbox code
-  // that nothing ties to git — a false green, which is worse than no green.
-  // NOTE: red here has two meanings, unlike every other row: "deploy it" or
-  // "you are mid-rehearsal with an unmerged branch checked out".
-  { fn: "quantum-stripe-sandbox", dir: "lambda/stripe" },
-  { fn: "quantum-tutor", dir: "lambda/tutor" },
-  { fn: "quantum-qpu-submit", dir: "lambda/qpu" },
-  { fn: "quantum-qpu-reconcile", dir: "lambda/qpu" },
-  { fn: "quantum-qpu-killswitch", dir: "lambda/qpu" },
-  { fn: "quantum-workspace-sync", dir: "lambda/sync" },
-  { fn: "quantum-analytics", dir: "lambda/analytics" },
-  { fn: "quantum-review-email-prefs", dir: "lambda/review-email" },
-  { fn: "quantum-review-email-sender", dir: "lambda/review-email" },
-  { fn: "quantum-review-email-unsubscribe", dir: "lambda/review-email" },
 ];
 
 const sh = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();

@@ -18,6 +18,80 @@
  */
 import { targetLabel } from "./account.mjs";
 
+/**
+ * Deployed function -> the source directory it is built from. One entry per function,
+ * because several stacks ship more than one function from a single directory.
+ *
+ * It lives HERE, in the pure module, for one reason: this is a hand-maintained
+ * registry — the fourth in this repo, and lambda/analytics/README.md records
+ * that lambda/stripe was missed in two of the others for three weeks. A
+ * registry needs a guard, and a guard needs to import it without AWS.
+ * registryGaps() below compares it to what the templates actually declare.
+ */
+export const FUNCTIONS = [
+  { fn: "quantum-stripe", dir: "lambda/stripe" },
+  // The sandbox stack runs the SAME source and is where payment changes are
+  // rehearsed. Unwatched, a green e2e run is a claim about deployed sandbox code
+  // that nothing ties to git — a false green, which is worse than no green.
+  // NOTE: red here has two meanings, unlike every other row: "deploy it" or
+  // "you are mid-rehearsal with an unmerged branch checked out".
+  { fn: "quantum-stripe-sandbox", dir: "lambda/stripe" },
+  { fn: "quantum-tutor", dir: "lambda/tutor" },
+  { fn: "quantum-qpu-submit", dir: "lambda/qpu" },
+  { fn: "quantum-qpu-reconcile", dir: "lambda/qpu" },
+  { fn: "quantum-qpu-killswitch", dir: "lambda/qpu" },
+  { fn: "quantum-workspace-sync", dir: "lambda/sync" },
+  { fn: "quantum-analytics", dir: "lambda/analytics" },
+  { fn: "quantum-review-email-prefs", dir: "lambda/review-email" },
+  { fn: "quantum-review-email-sender", dir: "lambda/review-email" },
+  { fn: "quantum-review-email-unsubscribe", dir: "lambda/review-email" },
+];
+
+/**
+ * Registered names no template DECLARES literally, each with a reason.
+ *
+ * Keep this at the length it is. The one legitimate case is a template whose
+ * FunctionName is a parameter, which is deployed twice under two names — there
+ * is nothing in git for a scanner to find, so the exemption is written down
+ * instead, in the style of the ALLOWED map in no-commercial-terms.test.ts.
+ */
+export const UNDERIVABLE = [
+  {
+    fn: "quantum-stripe",
+    reason:
+      "lambda/stripe/template.yaml declares `FunctionName: !Ref NamePrefix`; quantum-stripe is that parameter's Default, not a literal in the file.",
+  },
+  {
+    fn: "quantum-stripe-sandbox",
+    reason:
+      "the same template deployed a second time with NamePrefix overridden — the sandbox twin, where payment changes are rehearsed.",
+  },
+];
+
+/** Function names a CloudFormation template declares as a literal. */
+export const declaredFunctionNames = (template) =>
+  [...template.matchAll(/^ *FunctionName: *(quantum-[A-Za-z0-9-]+) *$/gm)].map((m) => m[1]);
+
+/**
+ * Does the registry match what the templates declare?
+ *
+ * Fails in BOTH directions on purpose. A function added to a template but not
+ * here is never downloaded and the summary still says "All N unheld functions
+ * match git" — a green report that silently excludes it. A name here that no
+ * template declares is either a typo or a function that no longer exists, and
+ * both read as "could not check" forever.
+ */
+export function registryGaps(declared, registered, underivable = UNDERIVABLE) {
+  const excused = new Set(underivable.map((u) => u.fn));
+  const byName = new Map(registered.map((r) => [r.fn, r]));
+  const unregistered = declared.filter((d) => !byName.has(d.fn));
+  const underived = registered.filter((r) => !excused.has(r.fn) && !declared.some((d) => d.fn === r.fn));
+  const misdirected = declared
+    .filter((d) => byName.has(d.fn) && byName.get(d.fn).dir !== d.dir)
+    .map((d) => ({ fn: d.fn, declaredIn: d.dir, registeredAs: byName.get(d.fn).dir }));
+  return { unregistered, underived, misdirected };
+}
+
 /** Hand-written source among these filenames: .mjs/.js at the top level, minus tests. */
 export const sourceFiles = (names) =>
   names
