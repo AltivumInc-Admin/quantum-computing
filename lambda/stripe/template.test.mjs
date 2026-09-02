@@ -90,6 +90,32 @@ test("Stripe keys are read from Secrets Manager at runtime, never inlined", () =
   assert.doesNotMatch(template, /whsec_[A-Za-z0-9]{20,}/, "no literal webhook secret in the template");
 });
 
+test("the README never asks an operator to TYPE the signing secret", () => {
+  // The whsec_ is the credit-minting key: /webhook is the one route with
+  // Authorizer: NONE, the HMAC is its entire authentication, and the handler
+  // then trusts client_reference_id and metadata.credits verbatim. A secret
+  // pasted onto a command line is in argv, the shell history and the process
+  // table. scripts/stripe/rotate-webhook-endpoint.mjs pipes it over stdin
+  // instead; the README's job is to point there and nowhere else.
+  const readme = readFileSync(new URL("./README.md", import.meta.url), "utf8");
+  assert.match(
+    readme,
+    /rotate-webhook-endpoint\.mjs/,
+    "the README must route webhook provisioning through the script"
+  );
+  // Two placeholders are legitimate: the secret's JSON SHAPE, and the
+  // deliberate phase-1 stand-in the script later overwrites. Anything else
+  // that looks like a value being handed to a command is the pattern this
+  // guards against.
+  const ALLOWED = new Set(["whsec_", "whsec_…", "whsec_PLACEHOLDER"]);
+  for (const m of readme.matchAll(/whsec_[A-Za-z0-9_…]*/g)) {
+    assert.ok(
+      ALLOWED.has(m[0]),
+      `README hands a webhook secret to a command: "${m[0]}" — pipe it, never type it`
+    );
+  }
+});
+
 test("the wallet table protects paid balances: Retain + PITR + TTL", () => {
   const b = body("WalletTable");
   assert.equal(typeOf("WalletTable"), "AWS::DynamoDB::Table");
@@ -99,6 +125,14 @@ test("the wallet table protects paid balances: Retain + PITR + TTL", () => {
   // Idempotency rows expire; wallet rows (no expiresAt) never do.
   assert.match(b, /AttributeName: expiresAt/);
   assert.match(b, /Enabled: true/);
+  // The stack's own Description is the first thing anyone reads about this
+  // table. It listed WALLET# and EVENT# only, though every refund path reads a
+  // RECEIPT# row this Lambda writes — and a row prefix nobody knows exists is
+  // one nobody protects.
+  const description = template.match(/^Description: >\n([\s\S]*?)\n\S/m)?.[1] ?? "";
+  for (const prefix of ["WALLET#", "EVENT#", "RECEIPT#"]) {
+    assert.ok(description.includes(prefix), `the stack Description omits the ${prefix} rows`);
+  }
 });
 
 test("the function's DynamoDB access is least-privilege and scoped to one table", () => {
@@ -206,13 +240,20 @@ test("the parameter defaults reproduce today's LIVE names exactly (a zero-diff u
       .replace(/^!Ref MetricNamespace$/, "QuantumStripe");
 
   const resolved = new Set(physicalNames().map(({ value }) => resolve(value)));
-  // Exactly what `aws cloudformation describe-stack-resources` reports today.
+  // Every name `aws cloudformation describe-stack-resources` reports today. It
+  // is one-directional on purpose: each of these must still be produced, but
+  // the template may legitimately declare names not yet deployed (a new alarm
+  // arrives here only once it exists in the live stack).
   for (const live of [
     "quantum-stripe-wallet",
     "quantum-stripe",
     "quantum-stripe-alerts",
     "quantum-stripe-errors",
     "quantum-stripe-uncredited-invoice",
+    // Born from an unnoticed rotation, and the one alarm whose live name this
+    // list forgot — so it was the only one a NamePrefix regression could have
+    // silently replaced.
+    "quantum-stripe-signature-rejected",
     "quantum-stripe-async-payment-failed",
     "quantum-stripe-unreclaimed-refund",
     "quantum-stripe-webhook-fault",
@@ -247,6 +288,11 @@ function filterFor(metricName) {
 
 test("an uncredited subscription invoice is alertable, not just greppable", () => {
   const { b, phrase } = filterFor("UncreditedInvoice");
+  // The UMBRELLA phrase, exactly as the clawback side does it: five branches
+  // end a settled purchase without moving the wallet, and pinning one branch's
+  // literal watched exactly one of them while the other four returned 200 into
+  // the void.
+  assert.equal(phrase, "credits NOT granted", "one phrase must cover every withheld grant");
   assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
   // The literal namespace moved to a parameter so a sandbox stack cannot page on
   // live money; "the default is still QuantumStripe" is pinned by the zero-diff test.
@@ -275,13 +321,20 @@ test("a failed delayed payment is alertable", () => {
   assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 
-test("every metric filter in this stack watches the stripe log group and notifies a human", () => {
+test("every metric filter in this stack watches a log group this stack owns and notifies a human", () => {
   const filters = ofType("AWS::Logs::MetricFilter");
   assert.ok(filters.length >= 2, `expected the money-path filters, found: ${filters}`);
   const alarms = ofType("AWS::CloudWatch::Alarm");
   for (const f of filters) {
     const b = body(f);
-    assert.match(b, /LogGroupName: !Ref StripeLogGroup/, `${f}: wrong log group`);
+    // Two groups, and only two. The function's, where every console.error
+    // lands; and the GATEWAY's, which is the only place a rejection that never
+    // reached the function can be seen at all.
+    assert.match(
+      b,
+      /LogGroupName: !Ref (StripeLogGroup|StripeApiLogGroup)/,
+      `${f}: wrong log group`
+    );
     const metric = b.match(/MetricName: (\S+)/)?.[1];
     const alarm = alarms.find((a) => new RegExp(`MetricName: ${metric}\\b`).test(body(a)));
     assert.ok(alarm, `${f}: metric ${metric} has no alarm — a filter nobody watches is decoration`);
@@ -296,6 +349,63 @@ test("every unreclaimable-money branch is covered by ONE shared filter", () => {
   assert.ok(handlerSrc.includes(phrase));
   const alarm = body("UnreclaimedRefundAlarm");
   assert.ok(alarm, "UnreclaimedRefundAlarm missing");
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
+});
+
+test("the Stripe client's deadline stays under the function's, so the handler's error paths can run", () => {
+  // A runtime timeout kill is not an exception: it runs no catch block, so the
+  // "webhook handling failed" line below is never emitted and its alarm never
+  // fires. stripe-node's defaults (80,000 ms, 2 retries) are five times this
+  // function's whole budget for a single attempt, so without an explicit
+  // deadline a stalled Stripe call is ALWAYS ended by the runtime.
+  const fnTimeout = Number(body("StripeFunction").match(/^\s+Timeout: (\d+)/m)?.[1]);
+  assert.ok(Number.isFinite(fnTimeout), "StripeFunction must declare a Timeout");
+
+  const opts = handlerSrc.match(/export const STRIPE_CLIENT_OPTIONS = \{([\s\S]*?)\};/)?.[1];
+  assert.ok(opts, "index.mjs must export STRIPE_CLIENT_OPTIONS");
+  const timeoutMs = Number(opts.match(/timeout:\s*(\d+)/)?.[1]);
+  const retries = Number(opts.match(/maxNetworkRetries:\s*(\d+)/)?.[1]);
+  assert.ok(Number.isFinite(timeoutMs), "STRIPE_CLIENT_OPTIONS must pin an explicit timeout");
+  assert.ok(Number.isFinite(retries), "STRIPE_CLIENT_OPTIONS must pin maxNetworkRetries");
+
+  // Attempts x per-request timeout, plus the SDK's backoff between them
+  // (jittered, capped at 2 s per sleep), must all fit inside the runtime's.
+  const MAX_BACKOFF_MS = 2000;
+  const worstCaseMs = (retries + 1) * timeoutMs + retries * MAX_BACKOFF_MS;
+  assert.ok(
+    worstCaseMs < fnTimeout * 1000,
+    `Stripe's worst case ${worstCaseMs}ms must stay under the function's ${fnTimeout}s`
+  );
+});
+
+test("a JWT the gateway refuses is visible somewhere, and it is not the function's log group", () => {
+  // The Cognito authorizer runs BEFORE any invocation, so a refused token
+  // produces no log line, no Lambda metric, and no 5xx. Without access logs a
+  // stale UserPoolClientId takes the storefront down leaving nothing behind at
+  // all — the client renders a 401 as absence.
+  const api = body("StripeApi");
+  assert.match(api, /AccessLogSettings:/, "the HTTP API must write access logs");
+  assert.match(api, /DestinationArn: !GetAtt StripeApiLogGroup\.Arn/);
+  // The field that names WHY a token was refused (audience, issuer, expiry).
+  assert.match(api, /\$context\.authorizer\.error/, "the log must record the authorizer's reason");
+  assert.match(api, /\$context\.status/, "and the status the metric filter counts");
+
+  assert.equal(typeOf("StripeApiLogGroup"), "AWS::Logs::LogGroup");
+  assert.match(body("StripeApiLogGroup"), /DeletionPolicy: Retain/);
+  assert.match(body("StripeApiLogGroup"), /RetentionInDays: !Ref LogRetentionInDays/);
+
+  const filter = body("AuthRejectedMetricFilter");
+  assert.ok(filter, "AuthRejectedMetricFilter missing");
+  assert.match(filter, /LogGroupName: !Ref StripeApiLogGroup/);
+  assert.match(filter, /\$\.status = "401"/);
+
+  const alarm = body("AuthRejectedAlarm");
+  assert.ok(alarm, "AuthRejectedAlarm missing");
+  assert.match(alarm, /MetricName: AuthRejected/);
+  // NOT the money-path threshold of 0: one expired token is a learner with a
+  // tab left open, and paging on that trains the operator to ignore the topic.
+  assert.doesNotMatch(alarm, /Threshold: 0\b/, "a lone expired token must not page");
+  assert.match(alarm, /TreatMissingData: notBreaching/);
   assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 

@@ -95,7 +95,11 @@ const EVENT_LEG = 0;
 const WALLET_LEG = 1;
 const RECEIPT_LEG = 2;
 
-/** applyOnce's third outcome: the RECEIPT row moved under us — re-read, retry. */
+/**
+ * applyOnce's third outcome: nothing was decided, the write simply lost a race
+ * — a guarded row moved under us, or DynamoDB cancelled on TransactionConflict.
+ * Every caller must re-read and retry rather than treat it as a result.
+ */
 export const CLAWBACK_RETRY = Symbol("clawback-retry");
 
 /**
@@ -104,6 +108,16 @@ export const CLAWBACK_RETRY = Symbol("clawback-retry");
  * covered for free — the deliberate mirror of "credits NOT granted".
  */
 export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
+
+/**
+ * The mirror of CLAWBACK_UNRECLAIMED for money coming IN. Every branch that
+ * ends a settled purchase without moving the wallet ends with this phrase, and
+ * one metric filter pins it, so a grant-side branch added later is covered for
+ * free. It has to be an umbrella rather than one literal per branch because
+ * these paths all answer 200: Stripe marks the event delivered and never
+ * retries, so an unwatched branch is a buyer who paid and was never credited.
+ */
+export const GRANT_WITHHELD = "credits NOT granted";
 
 /**
  * Pinned phrase for a webhook whose signature did not verify. A metric filter in
@@ -116,6 +130,36 @@ export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
  * the 5xx alarm cannot see it (this is a 4xx).
  */
 export const SIGNATURE_REJECTED = "stripe-webhook: signature verification failed";
+
+/**
+ * Pinned phrase for a delivery whose mode does not match the key this stack
+ * holds. Signature verification proves the payload came from Stripe; it does
+ * NOT prove it came from the account this stack is supposed to serve, and the
+ * same template deploys twice by design (NamePrefix quantum-stripe-sandbox).
+ * A live event landing on the sandbox function would grant a real purchase
+ * into the sandbox wallet table while the live table never moves — money taken
+ * and credits written where nobody will look for them.
+ */
+export const LIVEMODE_MISMATCH = "stripe-webhook: event livemode does not match the key this stack holds";
+
+/**
+ * Refuse a live Stripe key in a stack named as a sandbox. The mirror of
+ * scripts/stripe/e2e-sandbox.mjs's `if (!/sandbox/.test(table))` refusal,
+ * moved to where it actually matters: the scripts hold a key for one run, the
+ * deployed function holds it for the life of the container. Thrown from the
+ * lazy build so the function never serves a request with the wrong key, and
+ * lazyCore un-memoizes the failure so a corrected secret recovers on the next
+ * invocation without a redeploy.
+ */
+export function assertKeyMatchesStack(secretKey, stackPrefix) {
+  const live = /^(sk|rk)_live_/.test(secretKey ?? "");
+  if (live && /sandbox/.test(stackPrefix ?? "")) {
+    throw new Error(
+      `refusing to start: a LIVE Stripe key in stack "${stackPrefix}" — a sandbox stack must never hold one`
+    );
+  }
+  return live;
+}
 
 // What this handler sells, what it must be told about, and the version it speaks
 // live in ./catalog.mjs, which imports NOTHING. The operator scripts that audit
@@ -136,6 +180,12 @@ export function createHandlerCore({
   // Idempotency rows self-expire — 30 days comfortably outstrips Stripe's
   // ~3-day event-retry window, then TTL reclaims them.
   eventTtlSeconds = 60 * 60 * 24 * 30,
+  // Which Stripe mode this deployment's key belongs to, or undefined to make
+  // no claim (every offline test). When it IS a boolean, a delivery whose
+  // evt.livemode disagrees is refused: the wallet table is per-stack, so a
+  // live event reaching the sandbox function grants a real purchase into the
+  // sandbox table while the live table never moves.
+  expectLivemode,
 }) {
   async function readWallet(sub) {
     const res = await ddb.send(
@@ -160,9 +210,13 @@ export function createHandlerCore({
    * The webhook is the ONLY writer of `tier` and resets it to "free" on
    * customer.subscription.deleted, so this read is authoritative and needs no
    * separate Stripe round-trip. Absent row => free, matching GET /wallet.
+   *
+   * Takes the ALREADY-READ wallet item rather than a sub: /checkout needs the
+   * same row again for the Stripe customer id, and reading it twice per click
+   * bought nothing.
    */
-  async function hasPaidTier(sub) {
-    const tier = (await readWallet(sub))?.tier?.S ?? "free";
+  function isPaidTier(item) {
+    const tier = item?.tier?.S ?? "free";
     return tier === "plus" || tier === "pro";
   }
 
@@ -267,14 +321,59 @@ export function createHandlerCore({
         if (failed(EVENT_LEG)) return false; // already processed
         if (hasOwedGuard && failed(WALLET_LEG)) return CLAWBACK_RETRY; // lost update
         if (receiptLeg && failed(RECEIPT_LEG)) return CLAWBACK_RETRY; // lost update
+        // DynamoDB also cancels with TransactionConflict when another
+        // transaction is touching one of these items — exactly the renewal-
+        // racing-a-top-up interleaving the debt paths are built for. It is
+        // pure contention, not a decision: re-reading and retrying in-process
+        // settles it in milliseconds, whereas letting it escape becomes a 500,
+        // pages the operator, and defers a paid grant to Stripe's exponential
+        // redelivery. (lambda/qpu/reconcile.mjs draws the same distinction.)
+        if (reasons.some((r) => r?.Code === "TransactionConflict")) return CLAWBACK_RETRY;
       }
       throw err;
     }
   }
 
-  /** Reuse the user's Stripe customer, or create one bound to their sub. */
-  async function ensureCustomer(sub, email) {
-    const item = await readWallet(sub);
+  /**
+   * A published lookup key -> the Stripe price id behind it, remembered for the
+   * life of the container.
+   *
+   * CATALOG is six fixed keys, and the id behind one changes only when somebody
+   * re-points the lookup key in the Dashboard — yet every Subscribe/Buy click
+   * spent a Stripe round trip re-deriving it, in front of the round trip the
+   * request genuinely cannot avoid. Bounded rather than permanent so a
+   * re-pointed key heals on its own without a redeploy, and evicted outright
+   * when Checkout rejects the id, which is how a stale one actually surfaces.
+   *
+   * The freshness field is `validUntil` on purpose. The obvious name for it is
+   * the DynamoDB TTL attribute's, which is reserved: web/__tests__/infra/
+   * wallet-ttl counts every occurrence of that attribute name in this file, so
+   * that one can never drift onto a row TTL would delete whole. An in-memory
+   * cache has no business spending one of those occurrences.
+   */
+  const priceIds = new Map();
+  const PRICE_ID_TTL_MS = 10 * 60 * 1000;
+
+  async function resolvePriceId(lookupKey) {
+    const cached = priceIds.get(lookupKey);
+    if (cached && cached.validUntil > Date.now()) return cached.priceId;
+    const prices = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
+    const priceId = prices.data?.[0]?.id;
+    // A miss is never cached: "not configured" is a state someone is about to
+    // fix, and remembering it would outlast the fix.
+    if (priceId) priceIds.set(lookupKey, { priceId, validUntil: Date.now() + PRICE_ID_TTL_MS });
+    return priceId;
+  }
+
+  const forgetPriceId = (lookupKey) => priceIds.delete(lookupKey);
+
+  /** Reuse the user's Stripe customer, or create one bound to their sub.
+   *
+   *  `preRead` is the wallet row the caller already has (null is a real answer
+   *  — no row yet — so only `undefined` means "read it yourself"). The lost-race
+   *  path below still re-reads, which is the only read that has to be fresh. */
+  async function ensureCustomer(sub, email, preRead) {
+    const item = preRead === undefined ? await readWallet(sub) : preRead;
     const existing = item?.stripeCustomerId?.S;
     if (existing) return existing;
 
@@ -307,27 +406,6 @@ export function createHandlerCore({
     }
   }
 
-  // Where the subscription id lives on an Invoice, across API versions.
-  //
-  // The shape of evt.data.object is decided by the API version pinned on the
-  // WEBHOOK ENDPOINT in the Stripe Dashboard, NOT by the SDK's apiVersion at the
-  // bottom of this file: that pin only shapes our outbound REST calls, while the
-  // event object is parsed verbatim out of the raw request body. So this handler
-  // can be handed either shape at any time and must read both.
-  //
-  // Modern (the vendored stripe 18.5.0 Invoice type in
-  // node_modules/stripe/types/Invoices.d.ts): there is NO top-level
-  // `subscription` property at all; the id moved to
-  // parent.subscription_details.subscription. Reading only the retired
-  // top-level field is exactly what made every subscription credit grant fail
-  // silently: the id came back undefined, the handler returned early, and the
-  // route still answered 200.
-  //
-  // Legacy (an endpoint still pinned to an API version from before the move):
-  // obj.subscription.
-  //
-  // Either form may be an expanded Subscription object instead of a bare id
-  // string (the type is `string | Stripe.Subscription`), so normalize to the id.
   /** Normalize `string | Object | null` to an id — every Stripe reference may
    *  arrive expanded depending on the endpoint's configuration. */
   function idOf(ref) {
@@ -381,10 +459,29 @@ export function createHandlerCore({
     return { Put: { TableName: tableName, Item: item } };
   }
 
+  // Where the subscription id lives on an Invoice, across API versions.
+  //
+  // The shape of evt.data.object is decided by the API version pinned on the
+  // WEBHOOK ENDPOINT in the Stripe Dashboard, NOT by the SDK's apiVersion at the
+  // bottom of this file: that pin only shapes our outbound REST calls, while the
+  // event object is parsed verbatim out of the raw request body. So this handler
+  // can be handed either shape at any time and must read both.
+  //
+  // Modern (the vendored stripe 18.5.0 Invoice type in
+  // node_modules/stripe/types/Invoices.d.ts): there is NO top-level
+  // `subscription` property at all; the id moved to
+  // parent.subscription_details.subscription. Reading only the retired
+  // top-level field is exactly what made every subscription credit grant fail
+  // silently: the id came back undefined, the handler returned early, and the
+  // route still answered 200.
+  //
+  // Legacy (an endpoint still pinned to an API version from before the move):
+  // obj.subscription.
+  //
+  // Either form may be an expanded Subscription object instead of a bare id
+  // string (the type is `string | Stripe.Subscription`), so normalize to the id.
   function invoiceSubscriptionId(invoice) {
-    const raw = invoice.parent?.subscription_details?.subscription ?? invoice.subscription;
-    if (typeof raw === "string") return raw;
-    return typeof raw?.id === "string" ? raw.id : undefined;
+    return idOf(invoice.parent?.subscription_details?.subscription ?? invoice.subscription);
   }
 
   // Does this invoice claim to have come from a subscription? Used ONLY to
@@ -407,6 +504,68 @@ export function createHandlerCore({
   }
 
   /**
+   * Split a purchase between clearing debt and adding spendable credits.
+   *
+   * Product rule: an owing learner must CLEAR the debt — so money pays down
+   * `clawbackOwedCredits` before any of it becomes spendable. A purchase
+   * smaller than the debt adds nothing spendable, which is the honest outcome:
+   * the learner is buying their way back to zero, and the top-up surface says
+   * so rather than quietly crediting a balance they cannot use.
+   */
+  async function splitAgainstDebt(sub, credits) {
+    const item = await readWallet(sub);
+    const owed = Number(item?.clawbackOwedCredits?.N ?? 0);
+    // expectedOwed is the OCC token for the paydown: applyOnce pins the wallet
+    // leg to the value read here, so a concurrent paydown cancels the
+    // transaction instead of compounding into a negative, gate-wedging debt.
+    if (!(owed > 0)) return { deltaCredits: credits, owedCredits: 0 };
+    const applied = Math.min(owed, credits);
+    return { deltaCredits: credits - applied, owedCredits: -applied, expectedOwed: owed };
+  }
+
+  /**
+   * applyOnce for the writes that read nothing first — a tier light-up, a
+   * cancellation, a status change. Their only CLAWBACK_RETRY is a
+   * TransactionConflict, which is contention and nothing else, so retrying the
+   * IDENTICAL write is always correct; there is no state to recompute. The
+   * debt paths keep their own loops because they must re-read before retrying.
+   *
+   * Same budget and same ending as those loops: past it, throw, and let
+   * Stripe redeliver rather than drop a write on the floor.
+   */
+  async function applyOnceRetrying(label, args) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const outcome = await applyOnce(args);
+      if (outcome !== CLAWBACK_RETRY) {
+        return { sub: args.sub, outcome: outcome ? "applied" : "replay" };
+      }
+    }
+    throw new Error(`${label}: wallet write contended past retry budget for ${args.sub}`);
+  }
+
+  /**
+   * Grant credits through the debt split, retrying a lost paydown race against
+   * freshly read state — the same loop-and-reread discipline reclaim() uses,
+   * with the same ending: past the budget, throw so Stripe redelivers.
+   */
+  async function grantThroughDebt(evt, sub, credits, extra) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const split = await splitAgainstDebt(sub, credits);
+      const outcome = await applyOnce({ eventId: evt.id, sub, ...split, ...extra });
+      if (outcome !== CLAWBACK_RETRY) {
+        return {
+          sub,
+          deltaCredits: split.deltaCredits,
+          owedDelta: split.owedCredits,
+          outcome: outcome ? "applied" : "replay",
+        };
+      }
+      // Lost the race: loop, re-read the debt, recompute the split.
+    }
+    throw new Error(`${evt.type}: debt paydown contended past retry budget for ${sub}`);
+  }
+
+  /**
    * Fulfill a Checkout Session: credits for a top-up, tier light-up for a
    * subscription. Shared by checkout.session.completed and
    * checkout.session.async_payment_succeeded — for delayed-notification
@@ -419,58 +578,42 @@ export function createHandlerCore({
    * writes nothing, so the eventual async_payment_succeeded is the one and
    * only grant for the purchase — no double-credit window.
    */
-  /**
-   * Split a purchase between clearing debt and adding spendable credits.
-   *
-   * Product rule: an owing learner must CLEAR the debt — so money pays down
-   * `clawbackOwedCredits` before any of it becomes spendable. A purchase
-   * smaller than the debt adds nothing spendable, which is the honest outcome:
-   * the learner is buying their way back to zero, and the top-up surface says
-   * so rather than quietly crediting a balance they cannot use.
-   */
-  async function splitAgainstDebt(sub, credits) {
-    const res = await ddb.send(
-      new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
-    );
-    const owed = Number(res.Item?.clawbackOwedCredits?.N ?? 0);
-    // expectedOwed is the OCC token for the paydown: applyOnce pins the wallet
-    // leg to the value read here, so a concurrent paydown cancels the
-    // transaction instead of compounding into a negative, gate-wedging debt.
-    if (!(owed > 0)) return { deltaCredits: credits, owedCredits: 0 };
-    const applied = Math.min(owed, credits);
-    return { deltaCredits: credits - applied, owedCredits: -applied, expectedOwed: owed };
-  }
-
-  /**
-   * Grant credits through the debt split, retrying a lost paydown race against
-   * freshly read state — the same loop-and-reread discipline reclaim() uses,
-   * with the same ending: past the budget, throw so Stripe redelivers.
-   */
-  async function grantThroughDebt(evt, sub, credits, extra) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const split = await splitAgainstDebt(sub, credits);
-      const outcome = await applyOnce({ eventId: evt.id, sub, ...split, ...extra });
-      if (outcome !== CLAWBACK_RETRY) return;
-      // Lost the race: loop, re-read the debt, recompute the split.
-    }
-    throw new Error(`${evt.type}: debt paydown contended past retry budget for ${sub}`);
-  }
-
   async function fulfillCheckoutSession(evt, obj) {
-    const sub = obj.client_reference_id;
-    if (!sub) return;
+    // Settlement first, identity second — deliberately in that order. An
+    // unpaid session is a non-event and must stay quiet; a SETTLED one with
+    // nobody to credit is money taken and withheld, and has to say so.
     if (obj.payment_status === "unpaid") return; // money not settled yet
+    const sub = obj.client_reference_id;
+    if (!sub) {
+      console.error(
+        `${evt.type}: settled session carries no client_reference_id; ${GRANT_WITHHELD}`,
+        evt.id,
+        obj.id
+      );
+      return;
+    }
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
-        await grantThroughDebt(evt, sub, credits, {
+        return await grantThroughDebt(evt, sub, credits, {
           receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits, Number(obj.amount_total)),
         });
+      } else {
+        // The credit count is written into metadata server-side at session
+        // creation, so its absence means the session was minted somewhere
+        // else (a Dashboard payment link, an older deploy) — the buyer paid
+        // and there is nothing here that says what they bought.
+        console.error(
+          `${evt.type}: settled top-up session carries no usable metadata.credits; ${GRANT_WITHHELD}`,
+          evt.id,
+          obj.id,
+          sub
+        );
       }
     } else if (obj.mode === "subscription") {
       // Credits for the period arrive on invoice.paid; here we only light up
       // the tier immediately so the UI reflects the purchase without waiting.
-      await applyOnce({
+      return await applyOnceRetrying(evt.type, {
         eventId: evt.id,
         sub,
         setTier: obj.metadata?.tier,
@@ -591,11 +734,9 @@ export function createHandlerCore({
       // negative `credits` would read as "metering unconfigured" to the
       // client's counter() and hide the top-up path exactly when the learner
       // needs it; debt belongs in its own field, as an explicit decision.
-      const walletRes = await ddb.send(
-        new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
-      );
-      const balance = Number(walletRes.Item?.credits?.N ?? 0);
-      const owedNow = Number(walletRes.Item?.clawbackOwedCredits?.N ?? 0);
+      const wallet = await readWallet(sub);
+      const balance = Number(wallet?.credits?.N ?? 0);
+      const owedNow = Number(wallet?.clawbackOwedCredits?.N ?? 0);
       // How much of this counter's clawback landed in DEBT rather than coming out
       // of credits. Tracked per counter on the receipt because a restore has to
       // undo BOTH halves, and `move` alone cannot say how the original clawback
@@ -660,7 +801,10 @@ export function createHandlerCore({
           },
         },
       });
-      if (outcome !== CLAWBACK_RETRY) return; // committed, or a replay
+      if (outcome !== CLAWBACK_RETRY) {
+        // Committed, or a replay.
+        return { sub, deltaCredits, owedDelta, outcome: outcome ? "applied" : "replay" };
+      }
       // Lost the race: loop, re-read, recompute against fresh state.
     }
     // Contended past the retry budget. Throw so Stripe retries the delivery —
@@ -672,10 +816,8 @@ export function createHandlerCore({
     const obj = evt.data?.object ?? {};
     switch (evt.type) {
       case "checkout.session.completed":
-      case "checkout.session.async_payment_succeeded": {
-        await fulfillCheckoutSession(evt, obj);
-        return;
-      }
+      case "checkout.session.async_payment_succeeded":
+        return await fulfillCheckoutSession(evt, obj);
 
       case "checkout.session.async_payment_failed": {
         // The delayed payment fell through: the buyer was told at checkout,
@@ -715,7 +857,7 @@ export function createHandlerCore({
           // the retry storm buys nothing.
           if (looksSubscriptionInvoice(obj)) {
             console.error(
-              "invoice.paid: no subscription id resolved on a subscription invoice; credits NOT granted",
+              `invoice.paid: no subscription id resolved on a subscription invoice; ${GRANT_WITHHELD}`,
               evt.id,
               obj.id,
               obj.billing_reason,
@@ -726,9 +868,32 @@ export function createHandlerCore({
         }
         const subscription = await stripe.subscriptions.retrieve(subId);
         const sub = subscription.metadata?.userId;
-        if (!sub) return;
+        if (!sub) {
+          // subscription_data.metadata is stamped by /checkout, so a paid
+          // subscription without a userId is one this handler cannot attribute
+          // to any learner. Same 200-and-never-retried shape as the branch
+          // above, so it needs the same pinned phrase.
+          console.error(
+            `invoice.paid: subscription carries no metadata.userId; ${GRANT_WITHHELD}`,
+            evt.id,
+            obj.id,
+            subId
+          );
+          return;
+        }
         const credits = Number(subscription.metadata?.credits);
         const granted = Number.isFinite(credits) && credits > 0 ? credits : 0;
+        if (granted === 0) {
+          // The tier still lights up below (they are a paying subscriber), but
+          // the period's credits do not land — the one case where the wallet
+          // and the tier disagree, and therefore the one that must be visible.
+          console.error(
+            `invoice.paid: subscription carries no parseable metadata.credits, tier set but period ${GRANT_WITHHELD}`,
+            evt.id,
+            obj.id,
+            subId
+          );
+        }
         // Resolve the PaymentIntent NOW, while the invoice is in hand — at
         // refund time the charge carries no link back to it.
         const pi = granted > 0 ? await invoicePaymentIntent(obj.id) : undefined;
@@ -755,76 +920,70 @@ export function createHandlerCore({
           setSubStatus: "active",
           receiptLeg: receiptRowLeg(pi, sub, granted, Number(obj.amount_paid)),
         };
-        if (granted > 0) {
-          await grantThroughDebt(evt, sub, granted, extra);
-        } else {
-          await applyOnce({ eventId: evt.id, sub, ...extra });
-        }
-        return;
+        return granted > 0
+          ? await grantThroughDebt(evt, sub, granted, extra)
+          : await applyOnceRetrying(evt.type, { eventId: evt.id, sub, ...extra });
       }
 
       case "customer.subscription.deleted": {
         const sub = obj.metadata?.userId;
         if (!sub) return;
-        await applyOnce({ eventId: evt.id, sub, setTier: "free", setSubStatus: "canceled" });
-        return;
+        return await applyOnceRetrying(evt.type, {
+          eventId: evt.id,
+          sub,
+          setTier: "free",
+          setSubStatus: "canceled",
+        });
       }
 
       case "customer.subscription.updated": {
         const sub = obj.metadata?.userId;
         if (!sub) return;
-        await applyOnce({ eventId: evt.id, sub, setSubStatus: obj.status });
-        return;
+        return await applyOnceRetrying(evt.type, { eventId: evt.id, sub, setSubStatus: obj.status });
       }
 
       // Money going back to the customer takes its credits with it.
       case "charge.refunded": {
-        const c = evt.data.object;
-        const amount = Number(c.amount ?? 0);
-        const refunded = Number(c.amount_refunded ?? 0);
+        const amount = Number(obj.amount ?? 0);
+        const refunded = Number(obj.amount_refunded ?? 0);
         if (!(amount > 0)) return;
         // amount_refunded is CUMULATIVE, so this fraction is absolute: the
         // target it produces is "what this grant should total", not a delta.
-        await reclaim({
+        return await reclaim({
           eventId: evt.id,
-          paymentIntent: idOf(c.payment_intent),
+          paymentIntent: idOf(obj.payment_intent),
           field: "refundedCredits",
           fraction: refunded / amount,
           label: "charge.refunded",
         });
-        return;
       }
 
       // Disputes: act on the FUNDS-MOVEMENT events, never charge.dispute.created
       // — that also fires for inquiries where Stripe withdraws nothing, and
       // clawing back there would zero a paying customer's wallet for free.
       case "charge.dispute.funds_withdrawn": {
-        const d = evt.data.object;
-        await reclaim({
+        return await reclaim({
           eventId: evt.id,
-          paymentIntent: idOf(d.payment_intent),
+          paymentIntent: idOf(obj.payment_intent),
           field: "disputedCredits",
           // Pro-rated by reclaim() against the receipt's amountPaidCents — a
           // dispute's amount is NOT guaranteed to be the whole charge (#230).
           // Tracked on its own counter, so a later partial refund's arithmetic
           // cannot read this as a reduction and re-grant.
-          disputedAmountCents: Number(d.amount),
+          disputedAmountCents: Number(obj.amount),
           label: "charge.dispute.funds_withdrawn",
         });
-        return;
       }
 
       case "charge.dispute.funds_reinstated": {
-        const d = evt.data.object;
-        await reclaim({
+        return await reclaim({
           eventId: evt.id,
-          paymentIntent: idOf(d.payment_intent),
+          paymentIntent: idOf(obj.payment_intent),
           field: "disputedCredits",
           fraction: 0,
           restore: true,
           label: "charge.dispute.funds_reinstated",
         });
-        return;
       }
 
       default:
@@ -865,13 +1024,41 @@ export function createHandlerCore({
         console.error(SIGNATURE_REJECTED, err?.message ?? "unknown");
         return json(400, { error: "signature verification failed" });
       }
+      // A verified signature says "Stripe sent this", not "the account this
+      // stack serves sent this". 400 rather than 5xx for the same reason as
+      // above: retrying cannot make a sandbox stack the right home for a live
+      // event. The pinned phrase is what turns it into a page.
+      if (
+        typeof expectLivemode === "boolean" &&
+        typeof evt.livemode === "boolean" &&
+        evt.livemode !== expectLivemode
+      ) {
+        console.error(LIVEMODE_MISMATCH, evt.id, evt.type, `livemode=${evt.livemode}`);
+        return json(400, { error: "livemode mismatch" });
+      }
+      let summary;
       try {
-        await handleEvent(evt);
+        summary = await handleEvent(evt);
       } catch (err) {
         // A 5xx tells Stripe to retry later; idempotency makes that safe.
         console.error("webhook handling failed", evt.type, err);
         return json(500, { error: "handler error" });
       }
+      // ONE structured line per accepted delivery — the only console.log in
+      // this file. Until it existed the money path could not be audited from
+      // CloudWatch at all: a learner saying "I paid and got nothing" could
+      // only be investigated by reading DynamoDB rows and the Stripe Dashboard
+      // side by side, a redelivery storm was indistinguishable from a run of
+      // fresh purchases, and no Logs Insights query could count grants,
+      // clawbacks or replays. `outcome` distinguishes a committed write from a
+      // replayed one (which applyOnce already knew and every caller threw
+      // away) and from a delivery that decided to write nothing.
+      //
+      // CREDITS ONLY — never a dollar amount, never a customer email. The log
+      // group is a support tool, not a second copy of the ledger.
+      console.log(
+        JSON.stringify({ msg: "stripe-webhook", type: evt.type, eventId: evt.id, outcome: "noop", ...summary })
+      );
       return json(200, { received: true });
     }
 
@@ -902,9 +1089,21 @@ export function createHandlerCore({
         return json(400, { error: "invalid JSON body" });
       }
 
+      // Where Stripe sends the buyer back, either way. Built once: both
+      // branches below hand Checkout the same pair, and two copies is how one
+      // of them quietly keeps pointing at a route the other has moved off.
+      const returnUrls = {
+        success_url: `${siteOrigin}/workspace?checkout=success`,
+        cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+      };
+
+      // ONE wallet read per click, reused for both things this route asks of
+      // it: the paid-tier gate and the Stripe customer id.
+      const wallet = await readWallet(sub);
+
       // ---- Custom top-up: { amountUsd } — whole dollars, bounded, 1:1 credits ----
       if (body?.amountUsd !== undefined) {
-        if (!(await hasPaidTier(sub))) return json(403, { error: "subscription required" });
+        if (!isPaidTier(wallet)) return json(403, { error: "subscription required" });
         const amountUsd = body.amountUsd;
         if (
           !Number.isInteger(amountUsd) ||
@@ -916,7 +1115,7 @@ export function createHandlerCore({
           });
         }
         const credits = amountUsd * 100; // the $0.01 peg, server-computed
-        const customer = await ensureCustomer(sub, email);
+        const customer = await ensureCustomer(sub, email, wallet);
         const session = await stripe.checkout.sessions.create({
           customer,
           client_reference_id: sub,
@@ -932,33 +1131,26 @@ export function createHandlerCore({
             },
           ],
           metadata: { userId: sub, credits: String(credits), kind: "topup" },
-          success_url: `${siteOrigin}/workspace?checkout=success`,
-          cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+          ...returnUrls,
         });
         return json(200, { url: session.url });
       }
 
       const spec = CATALOG[body?.lookupKey];
       if (!spec) return json(400, { error: "unknown lookupKey" });
-      if (spec.mode === "payment" && !(await hasPaidTier(sub))) {
+      if (spec.mode === "payment" && !isPaidTier(wallet)) {
         return json(403, { error: "subscription required" });
       }
 
-      const prices = await stripe.prices.list({
-        lookup_keys: [body.lookupKey],
-        active: true,
-        limit: 1,
-      });
-      const price = prices.data?.[0];
-      if (!price) return json(500, { error: "price not configured" });
+      const priceId = await resolvePriceId(body.lookupKey);
+      if (!priceId) return json(500, { error: "price not configured" });
 
-      const customer = await ensureCustomer(sub, email);
+      const customer = await ensureCustomer(sub, email, wallet);
       const common = {
         customer,
         client_reference_id: sub,
-        line_items: [{ price: price.id, quantity: 1 }],
-        success_url: `${siteOrigin}/workspace?checkout=success`,
-        cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+        line_items: [{ price: priceId, quantity: 1 }],
+        ...returnUrls,
       };
       const params =
         spec.mode === "subscription"
@@ -976,7 +1168,17 @@ export function createHandlerCore({
               metadata: { userId: sub, credits: String(spec.credits), kind: "topup" },
             };
 
-      const session = await stripe.checkout.sessions.create(params);
+      let session;
+      try {
+        session = await stripe.checkout.sessions.create(params);
+      } catch (err) {
+        // The memo is the only thing here that can go stale, and a rejected
+        // price id is exactly how that shows up. Drop it so the next click
+        // re-resolves rather than repeating the same bad id until the
+        // container recycles.
+        forgetPriceId(body.lookupKey);
+        throw err;
+      }
       return json(200, { url: session.url });
     }
 
@@ -1020,6 +1222,33 @@ async function loadSecret(secretId) {
  * Exported for tests; the retry semantics are load-bearing during webhook
  * secret rotation.
  */
+/**
+ * Every Stripe call must finish INSIDE the Lambda's own timeout, or the
+ * runtime kills the invocation and none of this handler's error paths run:
+ * the webhook's "webhook handling failed" line is never emitted (so
+ * WebhookHandlerFaultAlarm stays silent and only the dimensionless Errors
+ * alarm fires, with no event type recorded), and a /checkout killed between
+ * customers.create and the UpdateItem that stores the id orphans a Stripe
+ * customer with no retry able to reach it.
+ *
+ * stripe-node's defaults are an 80,000 ms per-request timeout and 2 network
+ * retries — five times the template's `Timeout: 15` for a single attempt, so
+ * a stalled call is ALWAYS ended by the runtime rather than by us. These
+ * numbers are chosen so the worst case stays under it: two attempts of 6 s
+ * plus the SDK's jittered backoff (capped at 2 s) is ~14 s, leaving a stalled
+ * call to surface as a StripeConnectionError inside the handler — logged with
+ * the event type and 500'd for redelivery on the webhook, rendered as a
+ * failure by the button on /checkout.
+ *
+ * template.test.mjs pins this against the template's Timeout; change one and
+ * it reddens rather than silently reopening the gap.
+ */
+export const STRIPE_CLIENT_OPTIONS = {
+  apiVersion: STRIPE_API_VERSION,
+  timeout: 6000,
+  maxNetworkRetries: 1,
+};
+
 export function lazyCore(build) {
   let corePromise;
   return async (event) => {
@@ -1037,11 +1266,17 @@ export function lazyCore(build) {
 
 export const handler = lazyCore(async () => {
   const { secretKey, webhookSecret } = await loadSecret(process.env.SECRET_ID);
+  // Before the client exists, not after: a sandbox stack holding the live key
+  // would mint real Checkout Sessions and grant real purchases into the
+  // sandbox wallet table. STACK_PREFIX is the template's NamePrefix, so the
+  // stack names itself and the function believes the name.
+  const live = assertKeyMatchesStack(secretKey, process.env.STACK_PREFIX);
   return createHandlerCore({
-    stripe: new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION }),
+    stripe: new Stripe(secretKey, STRIPE_CLIENT_OPTIONS),
     ddb: new DynamoDBClient({}),
     tableName: process.env.TABLE_NAME,
     webhookSecret,
     siteOrigin: process.env.SITE_ORIGIN,
+    expectLivemode: live,
   });
 });

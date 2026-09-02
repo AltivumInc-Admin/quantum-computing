@@ -2,7 +2,14 @@
 // both stubbed and injected into createHandlerCore, mirroring lambda/sync.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHandlerCore, lazyCore, CATALOG, SIGNATURE_REJECTED } from "./index.mjs";
+import {
+  createHandlerCore,
+  lazyCore,
+  assertKeyMatchesStack,
+  CATALOG,
+  SIGNATURE_REJECTED,
+  LIVEMODE_MISMATCH,
+} from "./index.mjs";
 
 const TABLE = "quantum-stripe-wallet";
 const ORIGIN = "https://quantum.altivum.ai";
@@ -266,6 +273,116 @@ test("POST /checkout accepts a custom whole-dollar top-up and prices it ad hoc",
   assert.equal(stripe.calls.pricesList.length, 0);
 });
 
+test("POST /checkout reads the wallet ONCE, whichever branch it takes", async () => {
+  // The paid-tier gate and the Stripe customer id are two questions about one
+  // row, and this route used to GetItem it twice per click to answer them.
+  for (const body of [{ lookupKey: "ql_credits_2000" }, { amountUsd: 20 }, { lookupKey: "ql_plus_monthly" }]) {
+    const ddb = paidWallet();
+    const core = createHandlerCore({
+      stripe: stubStripe(),
+      ddb,
+      tableName: TABLE,
+      webhookSecret: SECRET,
+      siteOrigin: ORIGIN,
+    });
+    const res = await core(makeEvent({ method: "POST", path: "/checkout", body }));
+    assert.equal(res.statusCode, 200, JSON.stringify(body));
+    assert.equal(
+      ddb.calls.filter((c) => c.constructor.name === "GetItemCommand").length,
+      1,
+      `${JSON.stringify(body)} must read the wallet exactly once`
+    );
+  }
+});
+
+test("POST /checkout resolves a lookup key at Stripe once per container", async () => {
+  // CATALOG is six fixed keys and a price id moves only when someone
+  // re-points the lookup key in the Dashboard, so re-deriving it on every
+  // click was a Stripe round trip in front of the one that cannot be avoided.
+  const stripe = stubStripe();
+  const core = createHandlerCore({
+    stripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+  await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+  assert.equal(stripe.calls.pricesList.length, 1, "the second click must not re-resolve");
+  assert.equal(stripe.calls.sessionsCreate.length, 2, "both clicks still create a session");
+  assert.equal(stripe.calls.sessionsCreate[1].line_items[0].price, "price_resolved");
+
+  // A different key is a different entry.
+  await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_5000" } }));
+  assert.equal(stripe.calls.pricesList.length, 2);
+});
+
+test("POST /checkout forgets a cached price id that Checkout rejected", async () => {
+  // The memo is the only thing on this path that can go stale, and a rejected
+  // price id is how that surfaces. Keeping it would repeat the bad id until
+  // the container recycled.
+  let failNext = true;
+  const stripe = stubStripe();
+  stripe.checkout.sessions.create = async (p) => {
+    stripe.calls.sessionsCreate.push(p);
+    if (failNext) {
+      failNext = false;
+      const err = new Error("No such price");
+      err.name = "StripeInvalidRequestError";
+      throw err;
+    }
+    return { id: "cs_2", url: "https://checkout.stripe.com/c/cs_2" };
+  };
+  const core = createHandlerCore({
+    stripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await assert.rejects(
+    () => core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } })),
+    /No such price/,
+    "the failure still propagates — nothing is swallowed"
+  );
+  const res = await core(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(stripe.calls.pricesList.length, 2, "the retry re-resolved instead of reusing the bad id");
+});
+
+test("POST /checkout sends every buyer back to the SAME pair of return URLs", async () => {
+  // The catalog branch and the custom-top-up branch used to build these
+  // separately, which is how one of them keeps pointing at a route the other
+  // has moved off. Both read from one hoisted object now; this pins it.
+  const catalogStripe = stubStripe();
+  const catalogCore = createHandlerCore({
+    stripe: catalogStripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await catalogCore(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+
+  const customStripe = stubStripe();
+  const customCore = createHandlerCore({
+    stripe: customStripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await customCore(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd: 20 } }));
+
+  const catalog = catalogStripe.calls.sessionsCreate[0];
+  const custom = customStripe.calls.sessionsCreate[0];
+  assert.equal(catalog.success_url, `${ORIGIN}/workspace?checkout=success`);
+  assert.equal(catalog.cancel_url, `${ORIGIN}/pricing?checkout=cancelled`);
+  assert.equal(custom.success_url, catalog.success_url);
+  assert.equal(custom.cancel_url, catalog.cancel_url);
+});
+
 test("POST /checkout rejects out-of-bounds or fractional custom amounts", async () => {
   const core = createHandlerCore({ stripe: stubStripe(), ddb: paidWallet(), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   for (const amountUsd of [4, 501, 12.5, -5, "20", 0]) {
@@ -386,6 +503,91 @@ test("a rejected signature is ALERTABLE, not silent", async () => {
   );
 });
 
+// ---- a stack must only serve its own Stripe account ------------------------
+// template.yaml deploys twice by design (NamePrefix quantum-stripe-sandbox),
+// each stack with its own secret and its own wallet table. Nothing used to
+// check that the key in the secret and the events arriving actually belong to
+// the account the stack is meant to serve.
+
+test("a LIVE key in a sandbox stack is refused before the client is built", () => {
+  assert.throws(
+    () => assertKeyMatchesStack("sk_live_abc123", "quantum-stripe-sandbox"),
+    /LIVE Stripe key/,
+    "a sandbox stack holding the live key would grant real purchases into the sandbox table"
+  );
+  // Restricted keys carry the same authority for this purpose.
+  assert.throws(() => assertKeyMatchesStack("rk_live_abc123", "quantum-stripe-sandbox"), /LIVE Stripe key/);
+  // The legitimate pairings, and the mode each one reports.
+  assert.equal(assertKeyMatchesStack("sk_live_abc123", "quantum-stripe"), true);
+  assert.equal(assertKeyMatchesStack("sk_test_abc123", "quantum-stripe-sandbox"), false);
+  assert.equal(assertKeyMatchesStack("sk_test_abc123", undefined), false);
+});
+
+test("a correctly signed event from the WRONG mode is refused, alertably", async () => {
+  // Signature verification proves Stripe sent it, not that the account this
+  // stack serves sent it. A live event granting into the sandbox wallet table
+  // writes credits where nobody will look for them.
+  const ddb = stubDdb();
+  const core = createHandlerCore({
+    stripe: stubStripe({
+      event: {
+        id: "evt_live_at_sandbox",
+        type: "checkout.session.completed",
+        livemode: true,
+        data: { object: { id: "cs_x", mode: "payment", payment_status: "paid", client_reference_id: "user-1", metadata: { credits: "2000" } } },
+      },
+    }),
+    ddb,
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+    expectLivemode: false, // this stack holds a test-mode key
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await core(
+      makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
+    );
+  });
+  assert.equal(res.statusCode, 400, "retrying cannot make this stack the right home for the event");
+  assert.equal(ddb.calls.length, 0, "nothing may be written");
+  assert.equal(lines.length, 1);
+  assert.ok(
+    lines[0].join(" ").includes(LIVEMODE_MISMATCH),
+    `must carry the pinned phrase ${JSON.stringify(LIVEMODE_MISMATCH)} so the metric filter can see it`
+  );
+});
+
+test("a matching livemode passes through, and an unset expectation checks nothing", async () => {
+  for (const [expectLivemode, livemode] of [
+    [true, true],
+    [false, false],
+    [undefined, true], // every offline test: the core makes no claim
+  ]) {
+    const ddb = stubDdb();
+    const core = createHandlerCore({
+      stripe: stubStripe({
+        event: {
+          id: `evt_ok_${String(expectLivemode)}_${livemode}`,
+          type: "customer.subscription.deleted",
+          livemode,
+          data: { object: { metadata: { userId: "user-1" } } },
+        },
+      }),
+      ddb,
+      tableName: TABLE,
+      webhookSecret: SECRET,
+      siteOrigin: ORIGIN,
+      expectLivemode,
+    });
+    const res = await core(
+      makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
+    );
+    assert.equal(res.statusCode, 200, `expectLivemode=${expectLivemode} livemode=${livemode}`);
+    assert.equal(ddb.calls.length, 1, "the delivery was handled");
+  }
+});
+
 test("webhook checkout.session.completed (top-up) grants credits atomically, once", async () => {
   const ddb = stubDdb();
   const event = {
@@ -449,6 +651,19 @@ async function deliverWebhook(event, stripeOver = {}) {
     makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
   );
   return { res, ddb, stripe };
+}
+
+/** Capture console.log for the duration of `fn` — the audit line, parsed. */
+async function captureAudit(fn) {
+  const original = console.log;
+  const lines = [];
+  console.log = (...args) => lines.push(args.join(" "));
+  try {
+    await fn();
+  } finally {
+    console.log = original;
+  }
+  return lines.map((l) => JSON.parse(l));
 }
 
 /** Capture console.error for the duration of `fn` (node:test has no spy sugar). */
@@ -570,6 +785,125 @@ test("webhook invoice.paid stays silent for a genuine one-off invoice", async ()
   assert.equal(out.res.statusCode, 200);
   assert.equal(out.ddb.calls.length, 0);
   assert.deepEqual(lines, []);
+});
+
+// ---- every withheld grant leaves the ONE alertable phrase -------------------
+// All the branches below answer 200, so Stripe marks the event delivered and
+// never retries: a buyer paid and their balance did not move. GRANT_WITHHELD is
+// the umbrella phrase one metric filter pins (template.yaml's
+// UncreditedInvoiceMetricFilter), the grant-side mirror of CLAWBACK_UNRECLAIMED.
+
+/** Drive `event` and return the delivery plus every console.error, joined. */
+async function deliverCapturing(event, stripeOver = {}) {
+  let out;
+  const lines = await captureConsoleError(async () => {
+    out = await deliverWebhook(event, stripeOver);
+  });
+  return { out, lines, logged: lines.map((l) => l.join(" ")) };
+}
+
+test("webhook settled session with no client_reference_id LOGS the withheld grant", async () => {
+  const event = {
+    id: "evt_cs_nosub",
+    type: "checkout.session.completed",
+    data: {
+      object: { id: "cs_nosub", mode: "payment", payment_status: "paid", metadata: { credits: "2000" } },
+    },
+  };
+  const { out, lines, logged } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200); // contract unchanged: no retry storm
+  assert.equal(out.ddb.calls.length, 0, "nothing granted");
+  assert.equal(lines.length, 1, "a settled session nobody owns must be logged");
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_cs_nosub/); // the event id, for log lookup
+  assert.match(logged[0], /cs_nosub/); // and the session id
+});
+
+test("webhook UNPAID session with no client_reference_id stays silent", async () => {
+  // The settlement guard runs first on purpose: an unpaid session is a
+  // non-event, and logging it would be the noise that trains us to ignore the
+  // line the test above pins.
+  const event = {
+    id: "evt_cs_unpaid_nosub",
+    type: "checkout.session.completed",
+    data: { object: { id: "cs_unpaid_nosub", mode: "payment", payment_status: "unpaid" } },
+  };
+  const { out, lines } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0);
+  assert.deepEqual(lines, []);
+});
+
+test("webhook settled top-up with unusable metadata.credits LOGS the withheld grant", async () => {
+  const event = {
+    id: "evt_cs_nocredits",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_nocredits",
+        mode: "payment",
+        payment_status: "paid",
+        client_reference_id: "user-11",
+        metadata: { credits: "not-a-number" },
+      },
+    },
+  };
+  const { out, lines, logged } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0, "nothing granted");
+  assert.equal(lines.length, 1);
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_cs_nocredits/);
+  assert.match(logged[0], /user-11/);
+});
+
+test("webhook invoice.paid LOGS when the subscription carries no metadata.userId", async () => {
+  const event = {
+    id: "evt_inv_nouser",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_nouser",
+        billing_reason: "subscription_cycle",
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_nouser" } },
+      },
+    },
+  };
+  // stubStripe's default subscription is `{ metadata: {} }` — exactly this shape.
+  const { out, lines, logged } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0, "nothing granted");
+  assert.equal(lines.length, 1);
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_inv_nouser/);
+  assert.match(logged[0], /sub_nouser/);
+});
+
+test("webhook invoice.paid LOGS a tier lit with no parseable credits", async () => {
+  // The one case where the wallet and the tier disagree: the subscriber goes
+  // active but the period's credits never land.
+  const event = {
+    id: "evt_inv_zerocredits",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_zerocredits",
+        billing_reason: "subscription_cycle",
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_z" } },
+      },
+    },
+  };
+  const { out, lines, logged } = await deliverCapturing(event, {
+    subscription: { metadata: { userId: "user-12", tier: "plus" } }, // no credits
+  });
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(lines.length, 1);
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_inv_zerocredits/);
+  // The tier still lights up — that half is correct and must not regress.
+  const tx = txItems(out.ddb);
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "plus");
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"], undefined, "no credit delta");
 });
 
 // ---- delayed-notification payment methods ----------------------------------
@@ -865,6 +1199,52 @@ test("R5: a lost-update race retries in-process against freshly read state", asy
   assert.ok(ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length >= 2);
 });
 
+/** A TransactionCanceledException whose reasons carry `code` at every leg. */
+const cancelledWith = (code) => {
+  const e = new Error("cancelled");
+  e.name = "TransactionCanceledException";
+  e.CancellationReasons = [{ Code: code }, { Code: code }, { Code: code }];
+  return e;
+};
+
+test("R5b: a TransactionConflict retries in-process instead of 500ing", async () => {
+  // DynamoDB cancels with TransactionConflict — NOT ConditionalCheckFailed —
+  // when a concurrent transaction is touching the same WALLET# item. It is
+  // contention, not a decision: letting it escape turned a race an in-process
+  // re-read settles in milliseconds into a 500, a page, and a paid grant
+  // deferred to Stripe's exponential redelivery.
+  const ddb = walletDdb({
+    grant: RECEIPT_ROW,
+    wallet: { credits: { N: "5000" } },
+    transactOutcomes: [cancelledWith("TransactionConflict"), {}],
+  });
+  const res = await deliver(ddb, refundEvt());
+  assert.equal(res.statusCode, 200);
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 2);
+  // The retry re-read rather than replaying stale state.
+  assert.ok(ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length >= 2);
+});
+
+test("R5c: a cancellation code we do not recognize still 500s, alertably", async () => {
+  // The 500 contract is what makes Stripe redeliver, and nothing pinned it.
+  // An unknown cancellation reason must NOT be quietly swallowed by the new
+  // conflict branch.
+  const ddb = walletDdb({
+    grant: RECEIPT_ROW,
+    wallet: { credits: { N: "5000" } },
+    transactOutcomes: [cancelledWith("ValidationError")],
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await deliver(ddb, refundEvt());
+  });
+  assert.equal(res.statusCode, 500, "Stripe must be told to retry");
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 1, "no retry loop");
+  const logged = lines.map((l) => l.join(" ")).join("\n");
+  assert.match(logged, /webhook handling failed/, "the phrase WebhookHandlerFaultMetricFilter pins");
+  assert.match(logged, /charge\.refunded/, "with the event type, so the log group says what broke");
+});
+
 test("R6: a replayed refund is a no-op that still 200s and does not retry", async () => {
   const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } }, transactOutcomes: [cancelledAt(0)] });
   const res = await deliver(ddb, refundEvt());
@@ -921,6 +1301,22 @@ test("R9: the required webhook subscription list matches the switch's handled ca
   }
   for (const c of new Set(cases)) {
     assert.ok(REQUIRED_WEBHOOK_EVENTS.includes(c), `${c} is handled but not in REQUIRED_WEBHOOK_EVENTS`);
+  }
+});
+
+test("R10: no invisible character hides inside a string literal in this package", () => {
+  // D2's key assertion read `"<U+200B>:amt" in ...` for months: a zero-width
+  // space before the colon made the lookup target a key nothing ever writes,
+  // so the negation was unconditionally true and the test could not fail. It
+  // survived three commits that edited the same cluster, because it looks
+  // exactly right. Nothing about the money paths is safe to assert with a
+  // character no reviewer can see.
+  // Written as escapes on purpose: a literal here would trip the guard itself.
+  const INVISIBLE = /[\u200B-\u200D\uFEFF\u2060]/;
+  for (const file of ["./index.mjs", "./index.test.mjs", "./template.test.mjs"]) {
+    const src = readFileSync(new URL(file, import.meta.url), "utf8");
+    const line = src.split("\n").findIndex((l) => INVISIBLE.test(l));
+    assert.equal(line, -1, `${file}:${line + 1} contains a zero-width or invisible character`);
   }
 });
 
@@ -1226,8 +1622,7 @@ test("D2: a purchase smaller than the debt adds NO spendable credits", async () 
     },
   });
   const w = txOf(ddb)[1].Update;
-  assert.ok(!("​:amt" in w.ExpressionAttributeValues), "no positive credit delta");
-  assert.equal(w.ExpressionAttributeValues[":amt"]?.N ?? "0", "0");
+  assert.equal(w.ExpressionAttributeValues[":amt"], undefined, "no positive credit delta leg at all");
   assert.equal(w.ExpressionAttributeValues[":owed"].N, "-500", "all of it clears debt");
 });
 
@@ -1399,6 +1794,197 @@ test("D8: a lost debt-paydown race re-reads and retries against fresh state", as
   const second = txs[1].input.TransactItems[1].Update;
   assert.equal(second.ExpressionAttributeValues[":amt"].N, "2000", "fresh read: no debt, full grant");
   assert.equal(second.ExpressionAttributeValues[":owed"], undefined, "nothing left to garnish");
+});
+
+test("D9: a debt paydown contended PAST the budget throws, 500s, and says so", async () => {
+  // D8 stops at one lost race. What actually protects the money when
+  // contention persists is the throw after four CLAWBACK_RETRY outcomes, the
+  // webhook catch that turns it into a 500 (which is what makes Stripe
+  // redeliver), and the pinned log line WebhookHandlerFaultMetricFilter
+  // watches. None of the three was exercised by any test.
+  const ddb = walletDdb({
+    wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "800" } },
+    transactOutcomes: [cancelledAt(1), cancelledAt(1), cancelledAt(1), cancelledAt(1)],
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await deliver(ddb, {
+      id: "evt_topup_wedged",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_wedged",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_wedged",
+          client_reference_id: "user-9",
+          metadata: { credits: "2000" },
+        },
+      },
+    });
+  });
+  assert.equal(res.statusCode, 500, "the grant must not be dropped — Stripe has to redeliver");
+  assert.equal(
+    ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length,
+    4,
+    "the budget is four attempts, not an unbounded spin"
+  );
+  assert.equal(
+    ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "WALLET#user-9").length,
+    4,
+    "each attempt re-reads the debt rather than replaying a stale split"
+  );
+  const logged = lines.map((l) => l.join(" ")).join("\n");
+  assert.match(logged, /webhook handling failed/);
+  assert.match(logged, /checkout\.session\.completed/);
+});
+
+test("D10: a clawback contended PAST the budget throws, 500s, and says so", async () => {
+  // The reclaim() half of the same contract, contended on the RECEIPT leg.
+  const ddb = walletDdb({
+    grant: RECEIPT_ROW,
+    wallet: { credits: { N: "5000" } },
+    transactOutcomes: [cancelledAt(2), cancelledAt(2), cancelledAt(2), cancelledAt(2)],
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await deliver(ddb, refundEvt({ id: "ch_wedged" }));
+  });
+  assert.equal(res.statusCode, 500, "real money going back must never be dropped silently");
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 4);
+  assert.equal(
+    ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length,
+    4,
+    "each attempt re-reads the receipt"
+  );
+  const logged = lines.map((l) => l.join(" ")).join("\n");
+  assert.match(logged, /webhook handling failed/);
+  assert.match(logged, /charge\.refunded/);
+});
+
+test("customer.subscription.updated writes ONLY subscriptionStatus", async () => {
+  // This is the path that records past_due / unpaid — what the spend surfaces
+  // read to explain a refusal — and no delivery test drove it. It must not
+  // touch tier or credits: a card that failed is not a plan change, and a
+  // stray :amt here would be a credit nobody paid for.
+  const ddb = walletDdb({ wallet: { credits: { N: "1000" } } });
+  const res = await deliver(ddb, {
+    id: "evt_sub_updated",
+    type: "customer.subscription.updated",
+    data: { object: { id: "sub_1", status: "past_due", metadata: { userId: "user-9" } } },
+  });
+  assert.equal(res.statusCode, 200);
+  const tx = txOf(ddb);
+  assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_sub_updated", "still exactly once");
+  const w = tx[1].Update;
+  assert.equal(w.ExpressionAttributeValues[":ss"].S, "past_due");
+  assert.equal(w.ExpressionAttributeValues[":tier"], undefined, "a failed payment is not a plan change");
+  assert.equal(w.ExpressionAttributeValues[":amt"], undefined, "and it grants nothing");
+});
+
+test("customer.subscription.updated without a userId touches DynamoDB not at all", async () => {
+  const ddb = walletDdb({});
+  const res = await deliver(ddb, {
+    id: "evt_sub_updated_anon",
+    type: "customer.subscription.updated",
+    data: { object: { id: "sub_1", status: "past_due", metadata: {} } },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(ddb.calls.length, 0);
+});
+
+// ---- the audit line -------------------------------------------------------------
+// Every accepted delivery leaves exactly one structured line, so the money path
+// can be read from CloudWatch instead of by joining DynamoDB rows to the Stripe
+// Dashboard by hand. Credits only: never a dollar amount, never an email.
+
+test("a grant and its replay leave one audit line each, with different outcomes", async () => {
+  const grantEvt = {
+    id: "evt_audit_1",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_audit",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_audit",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  };
+
+  const first = walletDdb({ wallet: { credits: { N: "0" } } });
+  const applied = await captureAudit(() => deliver(first, grantEvt));
+  assert.equal(applied.length, 1, "exactly one line per delivery");
+  assert.deepEqual(applied[0], {
+    msg: "stripe-webhook",
+    type: "checkout.session.completed",
+    eventId: "evt_audit_1",
+    outcome: "applied",
+    sub: "user-9",
+    deltaCredits: 2000,
+    owedDelta: 0,
+  });
+
+  // The same event again: the EVENT# leg cancels the transaction and the
+  // wallet is untouched. Indistinguishable from a fresh purchase until now.
+  const again = walletDdb({ wallet: { credits: { N: "2000" } }, transactOutcomes: [cancelledAt(0)] });
+  const replay = await captureAudit(() => deliver(again, grantEvt));
+  assert.equal(replay.length, 1);
+  assert.equal(replay[0].outcome, "replay");
+  assert.equal(replay[0].eventId, "evt_audit_1");
+});
+
+test("a delivery that writes nothing still says so, as a noop", async () => {
+  const ddb = walletDdb({});
+  const lines = await captureAudit(() =>
+    deliver(ddb, {
+      id: "evt_audit_noop",
+      type: "customer.subscription.updated",
+      data: { object: { id: "sub_1", status: "past_due", metadata: {} } },
+    })
+  );
+  assert.equal(ddb.calls.length, 0);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].outcome, "noop");
+});
+
+test("a clawback's audit line reports the NEGATIVE delta it actually applied", async () => {
+  const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } } });
+  const lines = await captureAudit(() => deliver(ddb, refundEvt()));
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].type, "charge.refunded");
+  assert.equal(lines[0].outcome, "applied");
+  assert.equal(lines[0].deltaCredits, -2000);
+  assert.equal(lines[0].owedDelta, 0);
+});
+
+test("the audit line carries no money and no personal data", async () => {
+  // The log group is a support tool, not a second copy of the ledger. A dollar
+  // amount or a customer email here would be a disclosure with no upside.
+  const ddb = walletDdb({ wallet: { credits: { N: "0" } } });
+  const lines = await captureAudit(() =>
+    deliver(ddb, {
+      id: "evt_audit_priv",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_priv",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_priv",
+          client_reference_id: "user-9",
+          amount_total: 2000,
+          customer_details: { email: "buyer@example.com" },
+          metadata: { credits: "2000" },
+        },
+      },
+    })
+  );
+  const serialized = JSON.stringify(lines[0]);
+  assert.doesNotMatch(serialized, /@/, "no email may reach the log group");
+  assert.doesNotMatch(serialized, /amount|cents|usd/i, "credits only — never a currency amount");
 });
 
 // ---- the denominator a partial dispute needs (#230) ----------------------------
