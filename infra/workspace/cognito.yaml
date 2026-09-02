@@ -138,7 +138,19 @@ Resources:
           // package.
           const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
 
-          const sns = new SNSClient({});
+          // Bounded on purpose. The SDK defaults are standard retry mode (up
+          // to 3 attempts, with backoff) and NO request timeout, so a
+          // throttled or stalled SNS endpoint leaves this awaiting send when
+          // the 5s function timeout fires — and a Lambda timeout is not an
+          // exception: the catch never runs, `return event` never happens,
+          // and Cognito gets exactly the trigger failure the banner above
+          // promises cannot occur. Two attempts of at most 1.5s each reject
+          // INTO the catch with seconds of the ceiling still unspent, even
+          // after a cold start at 128 MB.
+          const sns = new SNSClient({
+            maxAttempts: 2,
+            requestHandler: { connectionTimeout: 800, requestTimeout: 1500 },
+          });
 
           // SNS rejects a Subject over 100 chars or containing control
           // characters, and that rejection would be an exception on the

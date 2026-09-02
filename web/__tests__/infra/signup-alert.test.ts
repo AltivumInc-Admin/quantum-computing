@@ -253,6 +253,32 @@ describe("Cognito new-signup alerter", () => {
       expect(published[0].Message).toContain("TWO accounts");
     });
 
+    it("bounds the publish so it cannot outlive the function timeout", async () => {
+      // The SDK defaults are up to 3 attempts and NO request timeout, so a
+      // stalled SNS endpoint would leave the handler awaiting send when the
+      // function timeout fires. A Lambda timeout is not an exception: the
+      // catch never runs, the event is never returned, and Cognito gets the
+      // trigger failure the never-throw contract exists to prevent. The
+      // ceiling is the template's own Timeout, read from the template so the
+      // two cannot be tuned apart.
+      const { handler, clientConfigs } = loadHandler();
+      await handler(signupEvent());
+
+      const config = clientConfigs[0] as {
+        maxAttempts?: number;
+        requestHandler?: { connectionTimeout?: number; requestTimeout?: number };
+      };
+      expect(config.maxAttempts).toBeGreaterThan(0);
+      expect(config.requestHandler?.connectionTimeout).toBeGreaterThan(0);
+      expect(config.requestHandler?.requestTimeout).toBeGreaterThan(0);
+
+      const fn = YAML.slice(YAML.indexOf("SignupAlertFunction:"));
+      const timeoutMs = Number(/Timeout:\s*(\d+)/.exec(fn)![1]) * 1000;
+      expect(config.maxAttempts! * config.requestHandler!.requestTimeout!).toBeLessThan(
+        timeoutMs,
+      );
+    });
+
     it("names Google as the sign-in method for a federated userName", async () => {
       const { handler, published } = loadHandler();
       // Federated users arrive provider-prefixed; native sign-ups do not.
