@@ -1108,6 +1108,52 @@ test("R5: a lost-update race retries in-process against freshly read state", asy
   assert.ok(ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length >= 2);
 });
 
+/** A TransactionCanceledException whose reasons carry `code` at every leg. */
+const cancelledWith = (code) => {
+  const e = new Error("cancelled");
+  e.name = "TransactionCanceledException";
+  e.CancellationReasons = [{ Code: code }, { Code: code }, { Code: code }];
+  return e;
+};
+
+test("R5b: a TransactionConflict retries in-process instead of 500ing", async () => {
+  // DynamoDB cancels with TransactionConflict — NOT ConditionalCheckFailed —
+  // when a concurrent transaction is touching the same WALLET# item. It is
+  // contention, not a decision: letting it escape turned a race an in-process
+  // re-read settles in milliseconds into a 500, a page, and a paid grant
+  // deferred to Stripe's exponential redelivery.
+  const ddb = walletDdb({
+    grant: RECEIPT_ROW,
+    wallet: { credits: { N: "5000" } },
+    transactOutcomes: [cancelledWith("TransactionConflict"), {}],
+  });
+  const res = await deliver(ddb, refundEvt());
+  assert.equal(res.statusCode, 200);
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 2);
+  // The retry re-read rather than replaying stale state.
+  assert.ok(ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length >= 2);
+});
+
+test("R5c: a cancellation code we do not recognize still 500s, alertably", async () => {
+  // The 500 contract is what makes Stripe redeliver, and nothing pinned it.
+  // An unknown cancellation reason must NOT be quietly swallowed by the new
+  // conflict branch.
+  const ddb = walletDdb({
+    grant: RECEIPT_ROW,
+    wallet: { credits: { N: "5000" } },
+    transactOutcomes: [cancelledWith("ValidationError")],
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await deliver(ddb, refundEvt());
+  });
+  assert.equal(res.statusCode, 500, "Stripe must be told to retry");
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 1, "no retry loop");
+  const logged = lines.map((l) => l.join(" ")).join("\n");
+  assert.match(logged, /webhook handling failed/, "the phrase WebhookHandlerFaultMetricFilter pins");
+  assert.match(logged, /charge\.refunded/, "with the event type, so the log group says what broke");
+});
+
 test("R6: a replayed refund is a no-op that still 200s and does not retry", async () => {
   const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } }, transactOutcomes: [cancelledAt(0)] });
   const res = await deliver(ddb, refundEvt());

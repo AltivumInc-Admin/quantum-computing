@@ -88,7 +88,11 @@ const EVENT_LEG = 0;
 const WALLET_LEG = 1;
 const RECEIPT_LEG = 2;
 
-/** applyOnce's third outcome: the RECEIPT row moved under us — re-read, retry. */
+/**
+ * applyOnce's third outcome: nothing was decided, the write simply lost a race
+ * — a guarded row moved under us, or DynamoDB cancelled on TransactionConflict.
+ * Every caller must re-read and retry rather than treat it as a result.
+ */
 export const CLAWBACK_RETRY = Symbol("clawback-retry");
 
 /**
@@ -338,6 +342,14 @@ export function createHandlerCore({
         if (failed(EVENT_LEG)) return false; // already processed
         if (hasOwedGuard && failed(WALLET_LEG)) return CLAWBACK_RETRY; // lost update
         if (receiptLeg && failed(RECEIPT_LEG)) return CLAWBACK_RETRY; // lost update
+        // DynamoDB also cancels with TransactionConflict when another
+        // transaction is touching one of these items — exactly the renewal-
+        // racing-a-top-up interleaving the debt paths are built for. It is
+        // pure contention, not a decision: re-reading and retrying in-process
+        // settles it in milliseconds, whereas letting it escape becomes a 500,
+        // pages the operator, and defers a paid grant to Stripe's exponential
+        // redelivery. (lambda/qpu/reconcile.mjs draws the same distinction.)
+        if (reasons.some((r) => r?.Code === "TransactionConflict")) return CLAWBACK_RETRY;
       }
       throw err;
     }
@@ -496,6 +508,24 @@ export function createHandlerCore({
   }
 
   /**
+   * applyOnce for the writes that read nothing first — a tier light-up, a
+   * cancellation, a status change. Their only CLAWBACK_RETRY is a
+   * TransactionConflict, which is contention and nothing else, so retrying the
+   * IDENTICAL write is always correct; there is no state to recompute. The
+   * debt paths keep their own loops because they must re-read before retrying.
+   *
+   * Same budget and same ending as those loops: past it, throw, and let
+   * Stripe redeliver rather than drop a write on the floor.
+   */
+  async function applyOnceRetrying(label, args) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const outcome = await applyOnce(args);
+      if (outcome !== CLAWBACK_RETRY) return outcome;
+    }
+    throw new Error(`${label}: wallet write contended past retry budget for ${args.sub}`);
+  }
+
+  /**
    * Grant credits through the debt split, retrying a lost paydown race against
    * freshly read state — the same loop-and-reread discipline reclaim() uses,
    * with the same ending: past the budget, throw so Stripe redelivers.
@@ -558,7 +588,7 @@ export function createHandlerCore({
     } else if (obj.mode === "subscription") {
       // Credits for the period arrive on invoice.paid; here we only light up
       // the tier immediately so the UI reflects the purchase without waiting.
-      await applyOnce({
+      await applyOnceRetrying(evt.type, {
         eventId: evt.id,
         sub,
         setTier: obj.metadata?.tier,
@@ -867,7 +897,7 @@ export function createHandlerCore({
         if (granted > 0) {
           await grantThroughDebt(evt, sub, granted, extra);
         } else {
-          await applyOnce({ eventId: evt.id, sub, ...extra });
+          await applyOnceRetrying(evt.type, { eventId: evt.id, sub, ...extra });
         }
         return;
       }
@@ -875,14 +905,14 @@ export function createHandlerCore({
       case "customer.subscription.deleted": {
         const sub = obj.metadata?.userId;
         if (!sub) return;
-        await applyOnce({ eventId: evt.id, sub, setTier: "free", setSubStatus: "canceled" });
+        await applyOnceRetrying(evt.type, { eventId: evt.id, sub, setTier: "free", setSubStatus: "canceled" });
         return;
       }
 
       case "customer.subscription.updated": {
         const sub = obj.metadata?.userId;
         if (!sub) return;
-        await applyOnce({ eventId: evt.id, sub, setSubStatus: obj.status });
+        await applyOnceRetrying(evt.type, { eventId: evt.id, sub, setSubStatus: obj.status });
         return;
       }
 
