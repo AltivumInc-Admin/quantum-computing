@@ -898,6 +898,12 @@ export const en: TranslationDict = {
     topUpFootnote:
       "Top-ups require an active plan. Purchased credits never expire, and you will see the exact amount on the Stripe checkout page before paying.",
     checkoutFailed: "Could not start checkout. Please try again.",
+    // The Checkout return legs. "On the way", never "added": the webhook grants
+    // the credits, so at the moment this renders the balance may not have moved.
+    checkoutSuccess:
+      "Payment received. Your credits are on the way — they land in your wallet once Stripe confirms the payment, which is usually a matter of seconds.",
+    checkoutCancelled: "Checkout cancelled — nothing was charged.",
+    dismissNotice: "Dismiss",
     // The server's 403, said plainly. Top-ups are a subscriber convenience, so
     // "try again" is advice that cannot work for a free account — this states the
     // rule the footnote already carries, at the moment it actually bites.

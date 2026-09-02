@@ -24,6 +24,7 @@ import {
 import { isBillingConfigured } from "@/lib/billing-client";
 import { CostEstimator } from "@/components/pricing/cost-estimator";
 import { CheckoutButton } from "@/components/pricing/checkout-button";
+import { CheckoutReturnNotice } from "@/components/pricing/checkout-return-notice";
 import { ManagePlan } from "@/components/pricing/manage-plan";
 import { WalletBadge } from "@/components/pricing/wallet-badge";
 import { useWallet } from "@/components/pricing/use-wallet";
@@ -185,6 +186,10 @@ export function PricingPageContent() {
         </div>
 
         <section aria-labelledby="tiers-heading" className="mt-24 reveal">
+          {/* The Lambda's cancel_url lands here. Without this, a learner who backed
+              out of Checkout returned to a page indistinguishable from a fresh
+              visit, with no acknowledgement that nothing was charged. */}
+          <CheckoutReturnNotice outcome="cancelled" />
           <div className="flex items-center gap-4 mb-4">
             <h2 id="tiers-heading" className="font-display text-display-xl text-(--ink)">
               {t("pricingUi.tiersHeading")}

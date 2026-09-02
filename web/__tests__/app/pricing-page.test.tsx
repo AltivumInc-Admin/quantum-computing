@@ -191,6 +191,26 @@ describe("PricingPage", () => {
     }
   });
 
+  it("acknowledges a cancelled checkout on the page Stripe returns to", () => {
+    // cancel_url is `${siteOrigin}/pricing?checkout=cancelled`, and nothing in
+    // web/src read the parameter — so backing out of Checkout dropped the learner
+    // back here on a page indistinguishable from a fresh visit.
+    window.history.replaceState({}, "", "/pricing?checkout=cancelled");
+    try {
+      renderPricing();
+      expect(screen.getByTestId("checkout-cancelled")).toHaveTextContent(
+        /nothing was charged/i,
+      );
+    } finally {
+      window.history.replaceState({}, "", "/pricing");
+    }
+  });
+
+  it("shows no checkout notice on an ordinary visit", () => {
+    renderPricing();
+    expect(screen.queryByTestId("checkout-cancelled")).not.toBeInTheDocument();
+  });
+
   it("gates sign-up CTAs on the Cognito env (configured)", () => {
     setAuthEnv(true);
     renderPricing();
