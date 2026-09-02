@@ -215,16 +215,24 @@ export interface TutorRate {
 
 /**
  * PLANNED per-question tutor rates. These are published prices, not charges:
- * nothing on this platform debits the wallet yet. `lambda/tutor/index.mjs` binds one
- * `process.env.TUTOR_MODEL_ID` (the deployed profile resolves to Claude Haiku 4.5) and
- * `<AskTutor />` posts only `{slug, question}` — there is no model parameter, no tier
- * lookup, and no wallet call anywhere on the tutor path. Every question today is
- * answered free by that single model.
+ * nothing on this platform debits the wallet yet.
+ *
+ * The MECHANISM exists — `lambda/tutor/index.mjs` reads `body.model`, resolves it
+ * against `ROSTER` in `lambda/tutor/tutor-billing.mjs`, reads the caller's tier and
+ * reserves against the wallet, and `<AskTutor />` posts `{slug, question, model,
+ * meta}`. What is missing is CONFIGURATION: the deployed function carries an empty
+ * `WalletTableName` and an empty `RATE_CARD`, so `metering` is undefined, every
+ * paid-model request is refused rather than served, and each question is answered
+ * free on the free-tier default. That configuration gate — not absent code — is what
+ * keeps this page's future-tense copy honest, and flipping it is a deploy, not a
+ * feature. (This docblock asserted the opposite as fact until 2026-09, which would
+ * lead a maintainer to badly wrong conclusions about what a deploy would enable.)
  *
  * Deliberately NO "which tier unlocks this model" field: a `plus`/`pro` chip beside
- * Sonnet or Opus advertised an unlock the codebase cannot perform, which is the same
- * dishonesty as the credentials wall promising a medal the budget cannot buy. The
- * tier mapping comes back when model selection and metering actually ship.
+ * Sonnet or Opus advertises an unlock this page cannot demonstrate while metering is
+ * off, which is the same dishonesty as the credentials wall promising a medal the
+ * budget cannot buy. `ROSTER` is the server-authoritative tier-to-model mapping and
+ * stays the only one; the column comes back when metering is switched on.
  *
  * Tutor pricing will be metered by tokens under the hood; these are the typical
  * per-question figures for a normal lesson exchange, used for display and the
@@ -325,9 +333,11 @@ export const TIERS: Tier[] = [
     // Three bullets, all true today (the credit grant lands via lambda/stripe's
     // invoice.paid handler, and WALLET# rows carry no expiresAt so credits do roll
     // over). The two dropped bullets — "Claude Sonnet and Opus unlocked in the tutor"
-    // and "Run on any quantum backend from your balance" — described capabilities with
-    // no implementation anywhere: the tutor binds one model id and never reads the
-    // wallet, and lambda/qpu hardcodes IQM Garnet as a platform-sponsored allowance.
+    // and "Run on any quantum backend from your balance" — describe capabilities the
+    // deployed configuration refuses: the tutor's roster gate exists but every paid
+    // model is refused while WalletTableName and RATE_CARD are empty, and lambda/qpu
+    // hardcodes IQM Garnet with LIFETIME_CAP_MICROS = 0, so there is no allowance at
+    // all. They come back with the deploy that turns metering on, not before.
     featureKeys: ["pricingUi.plusF0", "pricingUi.plusF1", "pricingUi.plusF2"],
     footnoteKey: "pricingUi.plusFootnote",
   },

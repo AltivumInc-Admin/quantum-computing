@@ -349,9 +349,10 @@ export function PricingPageContent() {
                 <thead>
                   {/* No "Tier" column. It rendered a plus/pro chip beside Sonnet, Opus,
                       and Fable, which reads as "this tier unlocks this model" — an unlock
-                      nothing in the codebase performs (the tutor lambda binds one model
-                      id and takes no model parameter). The column returns with the
-                      feature, not before it. */}
+                      the deployed tutor refuses to perform: the roster gate exists in
+                      lambda/tutor, but with no wallet table and no rate card it turns
+                      every paid model away and answers free. The column returns with
+                      the configuration, not before it. */}
                   <tr className="border-t border-(--bd) text-left">
                     <th scope="col" className="px-6 py-2.5 font-medium text-caption">
                       {t("pricingUi.model")}

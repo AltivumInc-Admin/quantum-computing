@@ -280,9 +280,11 @@ const modelEntitlement = new RegExp(
 );
 
 /**
- * Metering asserted in the PRESENT tense. Nothing meters anything: lambda/tutor answers
- * every question on one hardcoded model and charges nothing, lambda/qpu grants no
- * allowance (LIFETIME_CAP_MICROS = 0) and refuses every submit it cannot fund, and no
+ * Metering asserted in the PRESENT tense. Nothing meters anything: lambda/tutor's
+ * metering is gated on deployed configuration it does not have (WalletTableName and
+ * RATE_CARD are both empty, so `metering` is undefined, every paid model is refused
+ * and every question is answered free), lambda/qpu grants no allowance
+ * (LIFETIME_CAP_MICROS = 0) and refuses every submit it cannot fund, and no
  * code path outside lambda/stripe touches the wallet. So
  * every metering sentence on this page has to be future tense, and this is the pattern
  * the page metadata needed — its description read "one credit wallet METERS the only two
@@ -359,10 +361,14 @@ const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
     why: "estimate parity by definite article: the number shown before a run is AWS dollars from qpu-budget.ts, not this page's credit figure",
   },
   {
-    // lambda/tutor/index.mjs binds one process.env.TUTOR_MODEL_ID; ask-tutor.tsx posts
-    // only {slug, question}. No model parameter, no tier lookup, no per-tier routing.
+    // lambda/tutor/index.mjs DOES read body.model and gate it on ROSTER by the
+    // caller's tier — but only when `metering` is defined, which needs a wallet
+    // table and a rate card the deployed function does not have. Without them
+    // every paid model is refused (METERING_UNAVAILABLE) and every question is
+    // answered free on the free-tier default, so an "unlocked" claim is one a
+    // buyer cannot cash. Retire this when that configuration ships, not before.
     pattern: /\b(unlock(ed|s|ing)?|desbloquea\w*)\b/i,
-    why: "tutor model unlocks: the tutor takes no model parameter and no tier is consulted",
+    why: "tutor model unlocks: the deployed tutor has no wallet table or rate card, so it refuses every paid model",
   },
   {
     // Same reason, said the other way round: a model presented as bundled with a plan.

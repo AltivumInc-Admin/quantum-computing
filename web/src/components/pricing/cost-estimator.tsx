@@ -94,10 +94,11 @@ function PresetChips({
  * lib/qpu-budget.ts `costMicros`, off the separate table in
  * components/quantum/cost.ts. Different table, different currency, ~12.6% apart, so
  * do not describe the two as one estimate (pricing-page.test.tsx bars that claim in
- * the copy). Tutor: nothing is metered, and the deployed tutor answers on one
- * hardcoded model that takes no parameter from the client — so the model chips are a
- * what-if forecast, labelled and disclosed as one rather than a selector for
- * something purchasable today.
+ * the copy). Tutor: nothing is metered. lambda/tutor DOES take a model parameter and
+ * gate it on the caller's tier, but the deployed function has no wallet table and no
+ * rate card, so it refuses every paid model and serves the free-tier default — so
+ * the model chips are a what-if forecast, labelled and disclosed as one rather than
+ * a selector for something purchasable today.
  */
 export function CostEstimator() {
   const { t, locale } = useLocale();

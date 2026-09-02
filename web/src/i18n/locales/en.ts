@@ -847,7 +847,8 @@ export const en: TranslationDict = {
     tutorModel: "Tutor model to price",
     modelToPrice: "Model to price",
     // Renders directly above the model chips: the chips are a forecasting control,
-    // not an entitlement you can buy. The tutor takes no model parameter today.
+    // not an entitlement you can buy. The deployed tutor refuses every paid model
+    // (no wallet table, no rate card) and answers on the free-tier default.
     modelNotSelectableYet:
       "Not selectable yet — every question today is answered free by Claude Haiku. Price any model here to see what metering would cost.",
     presets: "Presets",
