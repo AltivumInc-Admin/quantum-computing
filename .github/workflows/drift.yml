@@ -14,6 +14,10 @@ name: Deploy drift
 # Requires the quantum-ci-drift-check role (infra/github-oidc-drift-role.yaml) and the
 # AWS_DRIFT_ROLE_ARN repository variable. If either is absent the job skips rather than
 # failing, so this file can merge before the role exists.
+#
+# Set DRIFT_EXPECT_ACCOUNT as a second repository variable, naming the account this
+# report is supposed to describe. The checked function names exist in more than one
+# account, so without it a green run cannot say which one it read.
 
 on:
   schedule:
@@ -32,6 +36,10 @@ jobs:
   drift:
     name: Deployed-vs-git drift
     runs-on: ubuntu-latest
+    # Eleven package downloads and roughly two dozen API calls; a minute is
+    # typical. A cap means a hung child fails visibly instead of holding the
+    # concurrency group until GitHub's six-hour default expires.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -46,6 +54,19 @@ jobs:
           if [ -z "$ROLE_ARN" ]; then
             echo "AWS_DRIFT_ROLE_ARN is not set — deploy infra/github-oidc-drift-role.yaml"
             echo "and add the role ARN as a repository variable. Skipping."
+            # LOUD, not silent. Without the annotation this job succeeds every
+            # morning having downloaded no artifact and compared no source, and
+            # the green badge is indistinguishable from a working check. The
+            # documented skip-cleanly behaviour is kept — the job still passes,
+            # this file still merges before the role exists — but it stops
+            # looking like a check that ran.
+            echo "::warning::AWS_DRIFT_ROLE_ARN is unset — the deployed-vs-git check inspected nothing today"
+            {
+              echo "### Deployed-vs-git drift"
+              echo ""
+              echo "**SKIPPED — nothing was inspected.** \`AWS_DRIFT_ROLE_ARN\` is unset, so no"
+              echo "credentials were minted, no artifact was downloaded and no source was compared."
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -64,22 +85,91 @@ jobs:
           role-to-assume: ${{ vars.AWS_DRIFT_ROLE_ARN }}
           aws-region: us-east-2
           role-session-name: quantum-drift-check
+          # The job takes about a minute. The role's MaxSessionDuration is already at
+          # the IAM minimum of 3600 and cannot go lower, so the cap goes here instead.
+          role-duration-seconds: 900
 
+      # DRIFT_EXPECT_ACCOUNT pins WHICH account the report describes: the same
+      # function names exist in more than one, so a green run that cannot name
+      # its account is not evidence. Same skip-cleanly-if-unset shape as the
+      # role above — unset prints "account unverified" and the job still runs.
+      # The variable holds an account number, which is why it is a repository
+      # variable and not a literal in this file.
+      #
+      # The exit code is recorded, not just the pass/fail: 1 means somebody owes
+      # a deploy, 2 means the check could not read what it needed. The failure
+      # annotation below says the right one instead of always blaming a deploy.
       - name: Compare every deployed Lambda against this commit
+        id: lambda
         if: steps.cfg.outputs.ready == 'true'
-        run: node scripts/check-lambda-drift.mjs
+        shell: bash
+        env:
+          DRIFT_EXPECT_ACCOUNT: ${{ vars.DRIFT_EXPECT_ACCOUNT }}
+        run: |
+          set +e
+          node scripts/check-lambda-drift.mjs
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
 
       - name: Compare the deployed rate configuration across pricing functions
         # Runs even when code drift failed above (mid-cutover, code drift is the
         # normal state — exactly when rate parity matters most). Value-blind by
         # construction: the script prints presence and MATCH/MISMATCH, never the
         # value and never a digest of it, so it is safe in a public Actions log.
+        id: parity
         if: always() && steps.cfg.outputs.ready == 'true'
-        run: node scripts/check-rate-parity.mjs
+        shell: bash
+        env:
+          DRIFT_EXPECT_ACCOUNT: ${{ vars.DRIFT_EXPECT_ACCOUNT }}
+        run: |
+          set +e
+          node scripts/check-rate-parity.mjs
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
 
       - name: Explain a failure
         if: failure() && steps.cfg.outputs.ready == 'true'
+        shell: bash
+        env:
+          DRIFT_CODE: ${{ steps.lambda.outputs.code }}
+          PARITY_CODE: ${{ steps.parity.outputs.code }}
         run: |
-          echo "::error::Production does not match main. Deploy the drifted functions, or"
-          echo "::error::record why they are intentionally behind. Run 'make drift' locally"
-          echo "::error::for the same report. Merging is not shipping."
+          if [ "$DRIFT_CODE" = "1" ]; then
+            echo "::error::Production does not match main. Deploy the drifted functions, or"
+            echo "::error::record why they are intentionally behind (the HELD list). Run"
+            echo "::error::'make drift' locally for the same report. Merging is not shipping."
+          elif [ "$DRIFT_CODE" = "2" ]; then
+            echo "::error::The drift check could not READ some functions — credentials,"
+            echo "::error::permissions, or a function that no longer exists. It says nothing"
+            echo "::error::about whether production matches main. Read the row's reason."
+          fi
+          if [ "$PARITY_CODE" = "1" ]; then
+            echo "::error::The two pricing functions do not carry consistent rate"
+            echo "::error::configuration (rule 5). See the parity step's output."
+          elif [ "$PARITY_CODE" = "2" ]; then
+            echo "::error::Rate parity could not be checked."
+          fi
+
+      # The counterpart to the skip warning above: an executed run says so on
+      # the run page, so "it ran and was clean" and "it never ran" are told
+      # apart without opening a log. Value-blind, like the scripts themselves.
+      - name: Record what this run inspected
+        if: always() && steps.cfg.outputs.ready == 'true'
+        shell: bash
+        env:
+          DRIFT_CODE: ${{ steps.lambda.outputs.code }}
+          PARITY_CODE: ${{ steps.parity.outputs.code }}
+        run: |
+          count=$(node -e 'import("./scripts/drift/rules.mjs").then((m) => console.log(m.FUNCTIONS.length))')
+          {
+            echo "### Deployed-vs-git drift"
+            echo ""
+            echo "Compared **$count** deployed functions against this commit."
+            echo ""
+            echo "| check | exit |"
+            echo "| --- | --- |"
+            echo "| deployed-vs-git (0 clean, 1 drift, 2 could not check) | ${DRIFT_CODE:-did not run} |"
+            echo "| rate-card parity (0 consistent, 1 divergent, 2 could not check) | ${PARITY_CODE:-did not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"

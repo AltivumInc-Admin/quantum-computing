@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-02-pricing-page-reads-right",
+    shipped: "2026-09-02",
+    kind: "fixed",
+    title: "The pricing page reads right in Spanish, and says only what is true",
+    body: "Every credit figure on the Spanish pricing page is now written the Spanish way, with the Spanish word and the Spanish thousands separator, and each plan's bullet points take their numbers from the same table as the prices, so the two can no longer disagree. The description search engines show for the page no longer makes a pricing claim the wallet does not implement. For screen-reader and keyboard users: the preset buttons announce which one is selected, both rate tables have names, the hardware table scrolls from the keyboard, and the highlighted plan's badge is readable in the dark theme.",
+    href: "/pricing",
+  },
+  {
     id: "2026-08-31-learner-quantumenv-dev",
     shipped: "2026-08-31",
     kind: "improved",

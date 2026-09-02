@@ -17,6 +17,7 @@ const read = (rel: string) => readFileSync(join(REPO, rel), "utf8");
 
 const tutorTemplate = read("lambda/tutor/template.yaml");
 const qpuTemplate = read("lambda/qpu/template.yaml");
+const parityCheck = read("scripts/check-rate-parity.mjs");
 const tutorIndex = read("lambda/tutor/index.mjs");
 const qpuIndex = read("lambda/qpu/index.mjs");
 const qpuReconcile = read("lambda/qpu/reconcile.mjs");
@@ -26,6 +27,30 @@ const qpuReconcile = read("lambda/qpu/reconcile.mjs");
 // key inside the secret, same NoValue else-branch.
 const RESOLVE_LINE =
   'RATE_CARD: !If [HasRateCard, !Sub "{{resolve:secretsmanager:${RateCardSecret}:SecretString:factor}}", !Ref AWS::NoValue]';
+
+// The env key, taken FROM the contract rather than typed a second time — a
+// second literal is a second thing to rename, which is the failure this file
+// exists to prevent.
+const ENV_KEY = RESOLVE_LINE.split(":")[0];
+
+/**
+ * The functions a template configures with the rate factor: the literal
+ * FunctionName in whichever resource block carries the resolve line.
+ */
+const meteredFunctions = (template: string): string[] =>
+  template
+    .split(/^ {2}(?=[A-Za-z0-9]+:\s*$)/m)
+    .filter((block) => block.split("\n").some((line) => line.trim() === RESOLVE_LINE))
+    .map((block) => block.match(/^ +FunctionName: (quantum-[\w-]+)\s*$/m)?.[1])
+    .filter((name): name is string => Boolean(name));
+
+// The scan and its canary share one regex and one exception list: two copies
+// would let the canary keep passing while the scan itself stopped matching.
+const NUMERIC_DEFAULT = /^ {4}Default:\s*([\d.]+)\s*$/gm;
+// Operational knobs, not money — the only numeric defaults grandfathered in:
+// LogRetentionInDays (30), MaxConcurrency (5), MonthlyBraketBudget (150, our
+// AWS budget threshold, not a customer-facing figure).
+const GRANDFATHERED = ["30", "5", "150"];
 
 describe("the shared rate factor is one mechanism across both metered stacks", () => {
   it.each([
@@ -51,17 +76,37 @@ describe("the shared rate factor is one mechanism across both metered stacks", (
     expect(param).toMatch(/^ {4}Default: ""$/m);
   });
 
-  it("both pricing handlers read the SAME env key, via Number()", () => {
+  it.each([
+    ["lambda/tutor/index.mjs", tutorIndex],
+    ["lambda/qpu/index.mjs", qpuIndex],
+  ])("%s reads the SAME env key, via Number()", (_name, src) => {
     // The env-key name is load-bearing: check-rate-parity.mjs compares the
     // deployed values under this exact key, so a rename on one side would make
     // the parity check silently vacuous. Pin the code to the templates.
-    for (const [name, src] of [
-      ["lambda/tutor/index.mjs", tutorIndex],
-      ["lambda/qpu/index.mjs", qpuIndex],
-    ] as const) {
-      expect(src).toMatch(/Number\(process\.env\.RATE_CARD\)/);
-      void name;
-    }
+    expect(src).toMatch(/Number\(process\.env\.RATE_CARD\)/);
+  });
+
+  it("the deployed check queries the env key the templates set", () => {
+    // This file pins the key in the templates and the handlers, and says why:
+    // check-rate-parity.mjs compares deployed values under that exact key. But
+    // it never read that script, so a coordinated rename kept the suite green
+    // while the script queried a key that no longer exists — the CLI returns
+    // None, both rows classify ABSENT, and the run prints "metering is off on
+    // both surfaces — consistent" and exits 0, indistinguishable from a
+    // correct green. Pin the script to the contract too.
+    expect(parityCheck).toContain(`Environment.Variables.${ENV_KEY}`);
+  });
+
+  it("the deployed check names every function the templates meter", () => {
+    // A third metered surface must not be parity-unchecked by omission: the
+    // script's list is hand-maintained, and nothing derived it.
+    const metered = [...meteredFunctions(tutorTemplate), ...meteredFunctions(qpuTemplate)].sort();
+    expect(metered).toEqual(["quantum-qpu-submit", "quantum-tutor"]);
+
+    const listed = parityCheck.match(/^const FUNCTIONS = \[(.*)\];$/m)?.[1] ?? "";
+    expect(listed).not.toBe("");
+    const checked = [...listed.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+    expect(checked).toEqual(metered);
   });
 
   it("the reconciler neither reads the factor nor carries the env var", () => {
@@ -84,13 +129,23 @@ describe("the shared rate factor is one mechanism across both metered stacks", (
     // under a name nobody banned. Every parameter in both templates is a
     // string today, and money constants live in code where the rule-6 guard
     // scans them — a numeric template Default has no legitimate use here.
-    const numericDefaults = [...template.matchAll(/^ {4}Default:\s*([\d.]+)\s*$/gm)]
+    const numericDefaults = [...template.matchAll(NUMERIC_DEFAULT)]
       .map((m) => m[1])
-      // Operational knobs, not money — the only numeric defaults grandfathered
-      // in: LogRetentionInDays (30), MaxConcurrency (5), MonthlyBraketBudget
-      // (150, our AWS budget threshold, not a customer-facing figure).
-      .filter((v) => !["30", "5", "150"].includes(v));
+      .filter((v) => !GRANDFATHERED.includes(v));
     expect(numericDefaults).toEqual([]);
+  });
+
+  it("the numeric-Default scan still sees the defaults it filters (no silent no-op)", () => {
+    // The assertion above passes on an empty list whether the regex found five
+    // candidates or zero, because every match today is filtered out. So a
+    // re-indent of either template, or moving the parameters under a nested
+    // block, would turn the guard into a no-op that still reports green. This
+    // is the guard's guard — the shape wallet-ttl.test.ts already uses.
+    const found = [tutorTemplate, qpuTemplate].flatMap((template) =>
+      [...template.matchAll(NUMERIC_DEFAULT)].map((m) => m[1]),
+    );
+    expect(found.length).toBeGreaterThanOrEqual(5);
+    for (const value of GRANDFATHERED) expect(found).toContain(value);
   });
 
   it("both kernels REQUIRE the injected factor — no unity default anywhere", () => {

@@ -29,15 +29,19 @@
  * makes sandbox behaviour predictive. Run check-catalog-parity.mjs against both
  * accounts; sandbox should pass and live's failures are the worklist.
  *
- * SAFETY. This script WRITES, so it refuses to run unless BOTH hold:
+ * SAFETY. This script WRITES, so it refuses to run unless ALL of these hold:
  *   - the key is a test/sandbox key (never sk_live_ / rk_live_)
+ *   - --expect-account is not the LIVE account id. A standard Stripe account
+ *     returns the same acct_ for its test and live keys, so the id alone cannot
+ *     separate the modes: naming the live account here can only be a mistake.
  *   - --expect-account matches the authenticated account exactly
  * Every `stripe` CLI profile on this machine points at the wrong account, so
- * identity is never inferred — only asserted.
+ * identity is never inferred — only asserted. `--expect-account sandbox` is the
+ * alias for the provisioned sandbox (scripts/stripe/lib/accounts.mjs).
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe Sandbox/Secret Key") \
  *     node scripts/stripe/provision-sandbox.mjs \
- *       --expect-account acct_1TuFpH0a2DloOdGu \
+ *       --expect-account sandbox \
  *       --webhook-url https://<api-id>.execute-api.us-east-2.amazonaws.com/webhook \
  *       --secret-id quantum-stripe-sandbox
  *
@@ -45,18 +49,28 @@
  * straight into Secrets Manager by this process: never printed, never in argv,
  * never written to disk.
  */
-import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { CATALOG, CUSTOM_TOPUP_PRODUCT, REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import {
+  CATALOG,
+  CUSTOM_TOPUP_PRODUCT,
+  REQUIRED_WEBHOOK_EVENTS,
+  STRIPE_API_VERSION,
+} from "../../lambda/stripe/catalog.mjs";
+import { LIVE_ACCOUNT, resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, putSecretJson, stripeClient } from "./lib/preamble.mjs";
+import { priceNeedsReplacing, tierPrices } from "./lib/parity-rules.mjs";
 
-const args = process.argv.slice(2);
-const flag = (n) => {
-  const i = args.indexOf(n);
-  return i === -1 ? undefined : args[i + 1];
-};
-const dryRun = args.includes("--dry-run");
+const { flag, has } = parseArgs(process.argv.slice(2));
+const dryRun = has("--dry-run");
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `sandbox` resolves to the provisioned sandbox; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  die(2, err.message);
+}
 const webhookUrl = flag("--webhook-url");
 const secretId = flag("--secret-id");
 const region = flag("--region") ?? "us-east-2";
@@ -64,31 +78,24 @@ const region = flag("--region") ?? "us-east-2";
 if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
 if (!expectAccount) die(2, "--expect-account <acct_...> is required. This script writes; it will not guess.");
 if (/^(sk|rk)_live_/.test(key)) die(2, "REFUSING: that is a LIVE key. This script only ever provisions a sandbox.");
+// The key-prefix refusal above and this one are two halves of the same guard. A
+// standard Stripe account returns the SAME acct_ for its test and its live key,
+// so the id cannot tell the modes apart — but naming the live account as the
+// thing to provision is unambiguous, and it is the shape a copy-paste takes.
+if (expectAccount === LIVE_ACCOUNT) {
+  die(2, `REFUSING: ${LIVE_ACCOUNT} is the LIVE account. This script only ever provisions a sandbox.`);
+}
 if (webhookUrl && !secretId && !dryRun) die(2, "--webhook-url requires --secret-id (where the signing secret goes).");
 
-function die(code, msg) {
-  console.error(msg);
-  process.exit(code);
-}
+/**
+ * The SDK's own pin — the endpoint's inbound payload shape must match what the
+ * handler expects. Imported, not scraped: this used to be a regex over the text
+ * of index.mjs that took the FIRST quoted `apiVersion:` in the file.
+ */
+const API_VERSION = STRIPE_API_VERSION;
 
-/** The SDK's own pin — inbound payload shape must match what the handler expects. */
-const API_VERSION =
-  readFileSync(new URL("../../lambda/stripe/index.mjs", import.meta.url), "utf8").match(
-    /apiVersion:\s*"([^"]+)"/
-  )?.[1] ?? die(2, "could not read the SDK apiVersion pin from index.mjs");
-
-const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
-async function stripe(method, path, form) {
-  const init = { method, headers: { Authorization: auth } };
-  if (form) {
-    init.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    init.body = form.toString();
-  }
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, init);
-  const body = await res.json();
-  if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
-  return body;
-}
+const client = stripeClient(key);
+const stripe = (method, path, form) => client.request(method, path, form);
 
 const log = [];
 const did = (verb, what) => {
@@ -97,14 +104,7 @@ const did = (verb, what) => {
 };
 
 // ---- identity, before any write ------------------------------------------------
-const account = await stripe("GET", "account");
-if (account.id !== expectAccount) {
-  die(
-    1,
-    `WRONG ACCOUNT: key belongs to ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), ` +
-      `expected ${expectAccount}. Refusing to write.`
-  );
-}
+const account = await assertAccount(client, expectAccount, "Refusing to write.").catch((err) => die(1, err.message));
 console.log(
   `\n  Provisioning ${account.id} (${account.settings?.dashboard?.display_name ?? "?"})` +
     `${dryRun ? "  [DRY RUN — no writes]" : ""}\n`
@@ -135,8 +135,11 @@ for (const [id, spec] of Object.entries(PRODUCTS)) {
   let existing = null;
   try {
     existing = await stripe("GET", `products/${id}`);
-  } catch {
-    /* not found */
+  } catch (err) {
+    // ONLY a genuine 404 means "not there". Swallowing everything turned a
+    // throttle, a transport fault or a gateway page into a create attempt
+    // against an id that already exists.
+    if (err.status !== 404) throw err;
   }
   if (!existing) {
     if (dryRun) did("create", `product ${id}`);
@@ -160,29 +163,28 @@ for (const [id, spec] of Object.entries(PRODUCTS)) {
 }
 
 // ---- prices --------------------------------------------------------------------
-function tierUsd(lookup) {
-  const src = readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8");
-  const body = src.match(/export const TIERS[^=]*=\s*\[([\s\S]*?)\n\];/)?.[1] ?? "";
-  for (const block of body.split(/\n  \},?\n?/)) {
-    if (block.match(/checkoutLookupKey:\s*"([a-z0-9_]+)"/)?.[1] !== lookup) continue;
-    return Number(block.match(/priceUsdPerMonth:\s*(\d+)/)?.[1]);
-  }
-  return undefined;
-}
+// One parse of pricing.ts, hoisted out of the loop, through the same parser
+// check-catalog-parity uses. The private copy that lived here re-read the file on
+// every CATALOG iteration and returned undefined on a miss, which became NaN at
+// the amount calculation and was caught only by the Number.isFinite guard below.
+const tiers = tierPrices(readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8"));
 
-const { data: activePrices = [] } = await stripe("GET", "prices?limit=100&active=true");
+// Every page. A price missing from a truncated first page reads as absent, and
+// the create below would then transfer_lookup_key off a price this script never
+// saw — leaving an orphaned active price with no lookup key and no deactivation.
+const activePrices = await client.listAll("prices?active=true");
 const byLookup = new Map(activePrices.filter((p) => p.lookup_key).map((p) => [p.lookup_key, p]));
 
 for (const [lookup, spec] of Object.entries(CATALOG)) {
   const recurring = spec.mode === "subscription";
   // Subscriptions bill the published monthly price; top-ups cost their credit
   // count exactly, because 1 credit is pegged to 1 cent.
-  const amount = recurring ? tierUsd(lookup) * 100 : spec.credits;
+  const amount = recurring ? Math.round(tiers[lookup]?.usd * 100) : spec.credits;
   const product = recurring ? (spec.tier === "plus" ? "ql_plus" : "ql_pro") : CUSTOM_TOPUP_PRODUCT;
   if (!Number.isFinite(amount)) die(1, `${lookup}: could not resolve an amount from pricing.ts`);
 
   const current = byLookup.get(lookup);
-  if (current && current.unit_amount === amount && Boolean(current.recurring) === recurring && current.product === product) {
+  if (!priceNeedsReplacing(current, { amount, recurring, product })) {
     did("ok", `price ${lookup} (${amount}c)`);
     continue;
   }
@@ -210,7 +212,7 @@ for (const [lookup, spec] of Object.entries(CATALOG)) {
 if (!webhookUrl) {
   console.log(`\n  No --webhook-url given; skipping the endpoint. Catalog is provisioned.\n`);
 } else {
-  const { data: endpoints = [] } = await stripe("GET", "webhook_endpoints?limit=100");
+  const endpoints = await client.listAll("webhook_endpoints");
   const match = endpoints.find((e) => e.url === webhookUrl);
   const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
   const correct =
@@ -242,21 +244,10 @@ if (!webhookUrl) {
     // The signing secret is returned ONLY here. Pipe it to Secrets Manager on
     // stdin — never printed, never in argv, never on disk.
     if (!created.secret) die(1, "Stripe returned no signing secret on create; cannot continue.");
-    const payload = JSON.stringify({ secretKey: key, webhookSecret: created.secret });
-    await new Promise((resolve, reject) => {
-      const p = spawn(
-        "aws",
-        [
-          "secretsmanager", "put-secret-value",
-          "--secret-id", secretId,
-          "--region", region,
-          "--secret-string", "file:///dev/stdin",
-        ],
-        { stdio: ["pipe", "ignore", "inherit"] }
-      );
-      p.on("error", reject);
-      p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`aws exited ${code}`))));
-      p.stdin.end(payload);
+    await putSecretJson({
+      secretId,
+      region,
+      payload: { secretKey: key, webhookSecret: created.secret },
     });
     did("stored", `signing secret -> secretsmanager:${secretId} (${region}), never printed`);
   }

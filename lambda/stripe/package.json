@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "files": ["index.mjs"],
+  "files": ["index.mjs", "catalog.mjs", "wallet-store.mjs", "clawback.mjs", "fulfillment.mjs"],
   "scripts": {
     "test": "node --test"
   },

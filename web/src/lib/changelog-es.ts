@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-02-pricing-page-reads-right": {
+    title: "La página de precios se lee bien en español, y dice solo lo que es cierto",
+    body: "Cada cifra de créditos de la página de precios en español se escribe ahora a la española, con la palabra en español y el separador de miles español, y las viñetas de cada plan toman sus números de la misma tabla que los precios, así que ya no pueden contradecirse. La descripción que los buscadores muestran de la página ya no hace una afirmación sobre precios que el monedero no implementa. Para quienes usan lector de pantalla o teclado: los botones de valores predefinidos anuncian cuál está seleccionado, las dos tablas de tarifas tienen nombre, la tabla de hardware se desplaza con el teclado, y la etiqueta del plan destacado se lee bien en el tema oscuro.",
+  },
   "2026-08-31-learner-quantumenv-dev": {
     title: "Quantum Learner se une a la plataforma Quantum Env",
     body: "La dirección del sitio ahora es learner.quantumenv.dev, junto a las demás aplicaciones de Quantum Env. La dirección anterior, quantumlearner.dev, redirige aquí automáticamente, y todos los marcadores y enlaces compartidos siguen funcionando. El inicio de sesión no cambia, incluido Google.",

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { RunnableEditor } from "@/components/quantum/runnable-editor";
+import { getRunnableFences } from "@/lib/py-challenge-fences";
 
 /**
  * E2E fixture for the inline runnable code editor — the ONLY page that mounts
@@ -12,9 +13,15 @@ import { RunnableEditor } from "@/components/quantum/runnable-editor";
  * Why a fixture instead of the lesson page: every /learn/* route sits behind the
  * sign-up wall (auth-wall.tsx exempts /e2e-fixtures/*), and the lesson's own
  * approach gate + surrounding widgets would make the spec a test of the lesson
- * rather than of the editor. The `source` below is the GUIDE fence verbatim —
- * `tests/test_guide_runnable_fences.py` is what keeps the shipped fences
- * themselves honest.
+ * rather than of the editor.
+ *
+ * The source is READ from the shipped GUIDE at build time, the way the sibling
+ * py-Rep fixture reads its ```qchallenge fences. It used to be a hand-kept copy
+ * with a comment asserting it was verbatim and nothing enforcing that claim:
+ * `tests/test_guide_runnable_fences.py` validates the shipped fence but never
+ * compared it to the fixture, so the e2e could have gone on proving a fence no
+ * learner sees. Now a GUIDE edit either flows through to the spec or fails the
+ * build.
  *
  * Unlinked from navigation, excluded from the sitemap allowlist
  * (src/app/sitemap.ts), and noindex'd here (deliberately NOT robots-disallowed —
@@ -27,17 +34,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Verbatim copy of the ```runnable fence in 01-foundations/GUIDE.md — the single
-// runnable fence that ships to learners today.
-const SOURCE = `from braket.circuits import Circuit
-
-# Entangle two qubits: a Hadamard on q0, then a CNOT controlled by q0.
-circuit = Circuit().h(0).cnot(0, 1)
-
-# Inspect the resulting state vector (amplitudes of |00>, |01>, |10>, |11>).
-print(circuit.state_vector())`;
+// The section whose ```runnable fence the e2e drives. 01-foundations ships the
+// only one today; the first fence is the one the lesson leads with.
+const SECTION = "01-foundations";
 
 export default function RunnableEditorFixturePage() {
+  const [source] = getRunnableFences(SECTION);
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -47,7 +49,7 @@ export default function RunnableEditorFixturePage() {
         Exercises the ```runnable fence path (self-hosted Monaco + real Pyodide
         and the qcsim wheel, in-browser). Not part of the curriculum.
       </p>
-      <RunnableEditor source={SOURCE} />
+      <RunnableEditor source={source} />
     </main>
   );
 }

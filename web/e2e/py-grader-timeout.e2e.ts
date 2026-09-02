@@ -1,4 +1,13 @@
 import { test, expect } from "@playwright/test";
+import {
+  assertBoots,
+  assertSameOrigin,
+  BELL_SOLUTION,
+  FIXTURE_PY_CHALLENGE,
+  instrument,
+  PY_TIER_CAPTION,
+  SOLVED,
+} from "./_support/instrument";
 
 /**
  * End-to-end proof of the worker watchdog — the guarantee that a learner's
@@ -24,13 +33,10 @@ import { test, expect } from "@playwright/test";
  *      reboot included.
  */
 
-// Static export + serve.json cleanUrls:false → served at the literal exported
-// filename; the query string only feeds TimeoutOverride.
-const FIXTURE = "/e2e-fixtures/py-challenge.html?timeoutMs=2000";
+// The shared fixture path plus the query string that feeds TimeoutOverride.
+const FIXTURE = `${FIXTURE_PY_CHALLENGE}?timeoutMs=2000`;
 
 const INFINITE_LOOP = "while True:\n    pass";
-const SOLUTION =
-  "from braket.circuits import Circuit\ncircuit = Circuit().h(0).cnot(0, 1)";
 
 test("watchdog: an infinite loop is killed with a reset message, and a fresh runtime still grades", async ({
   page,
@@ -39,25 +45,12 @@ test("watchdog: an infinite loop is killed with a reset message, and a fresh run
   // Two full Pyodide boots on a cold CI runner can exceed the config default.
   test.setTimeout(360_000);
 
-  const origin = new URL(baseURL!).origin;
-  const external: string[] = [];
-  const bootFetches: string[] = [];
-  page.on("request", (req) => {
-    const u = req.url();
-    if (/^https?:/.test(u) && new URL(u).origin !== origin) {
-      external.push(`${req.method()} ${u}`);
-    }
-    if (u.includes("pyodide.asm.wasm")) bootFetches.push(u);
-  });
-  page.on("console", (m) => {
-    if (m.type() === "error") console.log("[fixture console error]", m.text());
-  });
-  page.on("pageerror", (e) => console.log("[fixture page error]", e.message));
+  const { external, bootFetches } = instrument(page, baseURL, "fixture");
 
   await page.goto(FIXTURE);
-  await expect(
-    page.getByText("graded with real qcsim in your browser")
-  ).toBeVisible();
+  // Post-hydrate, so explicit: the small expect default is sized for the
+  // negative guards below, not for a cold runner's first paint.
+  await expect(page.getByText(PY_TIER_CAPTION)).toBeVisible({ timeout: 30_000 });
 
   const editor = page.getByLabel("Your circuit");
   const check = page.getByRole("button", { name: "Check" });
@@ -80,23 +73,14 @@ test("watchdog: an infinite loop is killed with a reset message, and a fresh run
 
   // 2) The page never froze and the runtime rebooted cleanly: a correct
   // solution submitted right after the kill grades to the exact solved literal.
-  await editor.fill(SOLUTION);
+  await editor.fill(BELL_SOLUTION);
   await check.click();
-  await expect(verdict).toContainText(
-    "Correct — verified against the reference state vector.",
-    { timeout: 150_000 }
-  );
+  await expect(verdict).toContainText(SOLVED, { timeout: 150_000 });
 
   // 3) Exactly two boots: the kill discarded the first interpreter, the
   // regrade booted (and used) a fresh one.
-  expect(
-    bootFetches,
-    `expected exactly 2 Pyodide boots (kill + fresh reboot), saw ${bootFetches.length}:\n${bootFetches.join("\n")}`
-  ).toHaveLength(2);
+  assertBoots(bootFetches, 2, "kill + fresh reboot");
 
   // 4) Boot, kill, reboot, grade — all fully same-origin.
-  expect(
-    external,
-    `timeout flow made third-party requests:\n${external.join("\n")}`
-  ).toEqual([]);
+  assertSameOrigin(external, "the timeout flow");
 });

@@ -29,8 +29,26 @@ const REPO = join(__dirname, "..", "..", "..");
  */
 const ALLOWED = new Map<string, string>([
   [
+    "lambda/stripe/wallet-store.mjs",
+    "the billing Lambda's store — applyOnce, the one transaction every credit delta in that function goes " +
+      "through; every positive delta is a completed Stripe purchase or a clawback reversal",
+  ],
+  [
     "lambda/stripe/index.mjs",
-    "the billing Lambda — every positive delta is a completed Stripe purchase or a clawback reversal",
+    "the billing Lambda's routes — /checkout stores the Stripe customer id on the wallet row (walletKey + " +
+      "UpdateItemCommand), never a credit, and the subscription-lifecycle cases call applyOnceRetrying " +
+      "with a tier or a status and no delta; the deltas moved to wallet-store.mjs on 2026-09-02",
+  ],
+  [
+    "lambda/stripe/clawback.mjs",
+    "reclaim() — decides every refund and dispute delta and hands it to the store's applyOnce; every " +
+      "positive delta is a restore (charge.dispute.funds_reinstated) of exactly what a withdrawal took " +
+      "from the same receipt, bounded by that receipt's own counters",
+  ],
+  [
+    "lambda/stripe/fulfillment.mjs",
+    "the two grant paths — a settled Checkout Session and a paid subscription invoice — through " +
+      "splitAgainstDebt; every positive delta is a completed Stripe purchase, less the debt it clears first",
   ],
   [
     "lambda/qpu/qpu-core.mjs",
@@ -103,9 +121,34 @@ function walk(dir: string, acc: string[] = []): string[] {
  * balance move, regardless of how the expression is assembled. A guard that can
  * only see one spelling of the mutation is a guard that reports a wrong answer
  * with total confidence.
+ *
+ * "Constructs a WALLET# key" has two spellings since 2026-09-02: the literal
+ * template, and a call to `walletKey(`, which lambda/stripe/wallet-store.mjs
+ * now EXPORTS. Before the split the builder was private to index.mjs, so any
+ * other file had to spell the prefix itself; after it, a file could import the
+ * builder and issue an UpdateItemCommand on the wallet row without the literal
+ * ever appearing. Counting the call keeps the guard covering exactly what it
+ * covered before.
+ *
+ * The fourth alternative closes the hole that same reasoning predicts one
+ * level up. Before the split, applyOnce — the transaction that actually moves
+ * the balance — was private to createHandlerCore, so a file that wanted to
+ * mint had to spell the write itself, in one of the forms above. Now
+ * wallet-store.mjs EXPORTS createWalletStore, and a file that imports it and
+ * calls `applyOnce({ deltaCredits: +N })` contains none of those spellings: no
+ * ADD, no push, no WALLET# key, no UpdateItemCommand. clawback.mjs and
+ * fulfillment.mjs are exactly such files — they decide the size of every delta
+ * and hand it to the store — and at the commit that split them out this guard
+ * reported both as non-writers, the wrong answer with total confidence again.
+ * So: naming the primitive counts as writing. The IDENTIFIER is matched, not
+ * the call, because a file cannot reach applyOnce without naming it somewhere
+ * (the createWalletStore import, or applyOnce / applyOnceRetrying in a
+ * destructuring or a property access), whereas a call can be aliased —
+ * `const { applyOnce: write } = store` — and vanish. applyOnceRetrying is in
+ * because it forwards its args unchanged, so a deltaCredits rides it.
  */
 const CREDIT_WRITE =
-  /ADD\s+credits\b|adds\.push\("credits |(?=[\s\S]*`WALLET#\$\{)[\s\S]*(?:update-item|UpdateItemCommand)/;
+  /ADD\s+credits\b|adds\.push\("credits |(?=[\s\S]*(?:`WALLET#\$\{|\bwalletKey\())[\s\S]*(?:update-item|UpdateItemCommand)|\bcreateWalletStore\b|\bapplyOnce(?:Retrying)?\b/;
 
 describe("credit-writer allowlist", () => {
   const offenders: string[] = [];
@@ -131,6 +174,33 @@ describe("credit-writer allowlist", () => {
     }
   });
 
+  it("the pattern sees a CALLER of the store primitive, not only the primitive", () => {
+    // The hole the fourth alternative closes, pinned so a later tidy-up of the
+    // regex cannot reopen it: each of the first three samples is the smallest
+    // file that would mint through the exported store while spelling none of
+    // the older alternatives. The last is a reader — it imports from the same
+    // module and touches the same table — and must NOT trip, which proves the
+    // pattern is keyed on the writer's name and not on the module path.
+    const imports = [
+      'import { createWalletStore } from "./wallet-store.mjs";',
+      "const { applyOnce } = createWalletStore({ ddb, tableName, eventTtlSeconds });",
+      "await applyOnce({ eventId, sub, deltaCredits: 1000 });",
+    ].join("\n");
+    const rides =
+      'export const grant = ({ store }) => store.applyOnceRetrying("x", { eventId, sub, deltaCredits: 1000 });';
+    const aliases =
+      "export function make({ store }) { const { applyOnce: write } = store; return write({ eventId, sub, deltaCredits: 1000 }); }";
+    const reader = [
+      'import { GetItemCommand } from "@aws-sdk/client-dynamodb";',
+      'import { CLAWBACK_RETRY, receiptKey } from "./wallet-store.mjs";',
+      "export const look = (ddb, tableName, pi) => ddb.send(new GetItemCommand({ TableName: tableName, Key: receiptKey(pi) }));",
+    ].join("\n");
+    expect(CREDIT_WRITE.test(imports)).toBe(true);
+    expect(CREDIT_WRITE.test(rides)).toBe(true);
+    expect(CREDIT_WRITE.test(aliases)).toBe(true);
+    expect(CREDIT_WRITE.test(reader)).toBe(false);
+  });
+
   it("the gift lives OUTSIDE the internet-facing billing Lambda", () => {
     // A design candidate proposed an admin path inside lambda/stripe gated on
     // the ABSENCE of a request context. That is a mint on a public function the
@@ -138,12 +208,21 @@ describe("credit-writer allowlist", () => {
     // already been burned by a gate that failed open (the `effectiveCap > 0`
     // guard exists because a cap of 0 alone was not sufficient). The gift is a
     // hand-run script instead, and the deployed Lambda must not know it exists.
-    const billing = readFileSync(join(REPO, "lambda/stripe/index.mjs"), "utf8");
-    const withoutComments = billing
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-    expect(withoutComments).not.toContain("FOUNDING#");
-    expect(withoutComments).not.toMatch(/founding[-_]?cohort/i);
+    //
+    // EVERY module of the function, not index.mjs alone: the credit writer
+    // (applyOnce) lives in wallet-store.mjs since 2026-09-02, and a mint could
+    // land in any file the handler imports.
+    const dir = join(REPO, "lambda/stripe");
+    const modules = readdirSync(dir).filter((f) => f.endsWith(".mjs") && !f.includes(".test."));
+    expect(modules).toEqual(expect.arrayContaining(["index.mjs", "wallet-store.mjs"]));
+    for (const file of modules) {
+      const billing = readFileSync(join(dir, file), "utf8");
+      const withoutComments = billing
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      expect(withoutComments).not.toContain("FOUNDING#");
+      expect(withoutComments).not.toMatch(/founding[-_]?cohort/i);
+    }
   });
 
   it("the founding gift never writes a subscription tier", () => {

@@ -5,10 +5,11 @@ Description: >
   v2 Lambda with three Cognito-authorized routes (POST /checkout, POST /portal,
   GET /wallet) and one PUBLIC, Stripe-signature-verified route (POST /webhook)
   that is the sole writer of credits and tier. One DynamoDB table holds pk-
-  prefixed rows (WALLET#<sub>, EVENT#<id> with TTL); money -> credits is exactly
-  once via a conditional TransactWriteItems. Stripe keys arrive from Secrets
-  Manager at deploy time (never in the template or on the CLI). Deploy in
-  us-east-2 (the Cognito pool's region).
+  prefixed rows (WALLET#<sub>, EVENT#<id> with TTL, RECEIPT#<pi> with none — a
+  refund can arrive long after the idempotency marker has aged out); money ->
+  credits is exactly once via a conditional TransactWriteItems. Stripe keys
+  arrive from Secrets Manager at deploy time (never in the template or on the
+  CLI). Deploy in us-east-2 (the Cognito pool's region).
 
 Parameters:
   NamePrefix:
@@ -16,7 +17,7 @@ Parameters:
     Default: quantum-stripe
     Description: >
       Prefix for every physical, account-unique name in this stack (the wallet
-      table, the function, the SNS topic, all seven alarms). It exists so the
+      table, the function, the SNS topic, every alarm). It exists so the
       SAME template can be deployed a second time as a sandbox stack in this
       account and region, which is where payment and credit-issuance changes get
       exercised before they touch real money.
@@ -89,8 +90,8 @@ Resources:
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
-      # EVENT#<id> idempotency rows self-expire; WALLET#<sub> rows carry no
-      # expiresAt and so are never reclaimed.
+      # EVENT#<id> idempotency rows self-expire; WALLET#<sub> and RECEIPT#<pi>
+      # rows carry no expiresAt and so are never reclaimed.
       TimeToLiveSpecification:
         AttributeName: expiresAt
         Enabled: true
@@ -101,9 +102,33 @@ Resources:
         - { Key: Feature, Value: billing }
         - { Key: CostCategory, Value: billing }
 
+  # The gateway's OWN log group. The Cognito authorizer runs BEFORE any
+  # invocation, so a JWT it refuses never reaches the function's log group at
+  # all: no log line, no Lambda metric, and the stack's only API-level alarm
+  # watches 5xx. A stale UserPoolClientId or an issuer that moved with the pool
+  # would take the whole storefront down with zero server-side evidence — the
+  # client sees a 401 and renders nothing. This group is where that evidence
+  # lives.
+  StripeApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/${NamePrefix}
+      RetentionInDays: !Ref LogRetentionInDays
+
   StripeApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      # JSON so a Logs Insights query and the metric filter below can both read
+      # fields rather than parse a line. authorizer.error is the one that names
+      # WHY a token was refused (audience, issuer, expiry); integrationErrorMessage
+      # covers the other side, where the route matched but the function did not
+      # answer.
+      AccessLogSettings:
+        DestinationArn: !GetAtt StripeApiLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","authorizerError":"$context.authorizer.error","errorMessage":"$context.error.message","integrationErrorMessage":"$context.integrationErrorMessage"}
       # Billing endpoints are low-volume (a human clicking Subscribe, Stripe
       # delivering a webhook). 10 rps steady / 20 burst never touches real use,
       # and caps a flood at the front door alongside ReservedConcurrentExecutions.
@@ -136,12 +161,26 @@ Resources:
       MemorySize: 256
       # Stripe API round trips (customer + session creation, subscription
       # retrieve) push past sync's 10s; 15s leaves headroom without inviting hangs.
+      #
+      # This number is HALF a contract: the Stripe client's own deadline
+      # (STRIPE_CLIENT_OPTIONS in index.mjs — 6s per request, 1 network retry,
+      # so ~14s worst case including the SDK's capped backoff) must stay under
+      # it. A runtime kill runs none of the handler's error paths, so the
+      # webhook-fault log line and its alarm never fire and a killed /checkout
+      # orphans a Stripe customer. template.test.mjs pins the two together.
       Timeout: 15
       ReservedConcurrentExecutions: !Ref MaxConcurrency
       Environment:
         Variables:
           TABLE_NAME: !Ref WalletTable
           SITE_ORIGIN: !Ref SiteOrigin
+          # The stack names itself so the function can refuse a key that does
+          # not belong to it. A prefix containing "sandbox" plus an sk_live_
+          # key fails the build outright (assertKeyMatchesStack), and the mode
+          # it derives also rejects any delivery whose evt.livemode disagrees.
+          # Signature verification proves Stripe sent the event; it does not
+          # prove the event came from the account this stack serves.
+          STACK_PREFIX: !Ref NamePrefix
           # Only the secret's NAME — never its value. The function fetches the
           # Stripe keys at runtime (see the GetSecretValue policy below), so the
           # plaintext is never an environment variable and never visible via
@@ -250,7 +289,13 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Ref StripeLogGroup
-      FilterPattern: '"no subscription id resolved on a subscription invoice"'
+      # The UMBRELLA phrase, not one branch's literal — the grant-side mirror of
+      # the shared clawback phrase below. Five branches end a settled purchase
+      # without moving the wallet (a session with no client_reference_id,
+      # a top-up with no usable metadata.credits, an invoice whose subscription
+      # id or userId will not resolve, and a subscription with no parseable
+      # credits); pinning one literal watched exactly one of them.
+      FilterPattern: '"credits NOT granted"'
       MetricTransformations:
         - MetricNamespace: !Ref MetricNamespace
           MetricName: UncreditedInvoice
@@ -262,11 +307,14 @@ Resources:
     Properties:
       AlarmName: !Sub "${NamePrefix}-uncredited-invoice"
       AlarmDescription: >-
-        A paid subscription invoice arrived with no resolvable subscription id,
-        so its credits were NOT granted — the buyer paid and their balance did
-        not move. The route answered 200, so Stripe treats the event as
-        delivered and will never retry: this needs a manual grant. This is the
-        exact failure that shipped once already (the id moved under
+        A settled purchase was NOT credited — the buyer paid and their balance
+        did not move. One of: a Checkout Session with no client_reference_id, a
+        top-up session with no usable metadata.credits, an invoice with no
+        resolvable subscription id, a subscription with no metadata.userId, or
+        one with no parseable metadata.credits. Every one of those routes
+        answers 200, so Stripe treats the event as delivered and will never
+        retry: each needs a manual grant. The subscription-id case is the exact
+        failure that shipped once already (the id moved under
         parent.subscription_details) and went unnoticed because nothing watched
         for it.
       Namespace: !Ref MetricNamespace
@@ -312,6 +360,42 @@ Resources:
         `update-function-configuration` to recycle the environment.
       Namespace: !Ref MetricNamespace
       MetricName: SignatureRejected
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  LivemodeMismatchMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"event livemode does not match the key this stack holds"'
+      MetricTransformations:
+        - MetricNamespace: !Ref MetricNamespace
+          MetricName: LivemodeMismatch
+          MetricValue: "1"
+          Unit: Count
+
+  LivemodeMismatchAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${NamePrefix}-livemode-mismatch"
+      AlarmDescription: >-
+        A correctly signed Stripe event arrived whose mode disagrees with the
+        key this stack holds — a live event at the sandbox stack, or a test
+        event at the live one. The two stacks own SEPARATE wallet tables, so
+        the wrong one granting a real purchase writes credits where nobody will
+        look for them while the right table never moves. The handler refuses
+        the delivery with a 400 (retrying cannot make a sandbox stack the right
+        home for a live event), which no other alarm here can see: the
+        invocation succeeds and the response is a 4xx. FIRST CHECK: which
+        Stripe account's secret is in this stack's Secrets Manager entry, and
+        which webhook endpoint points at this stack's URL.
+      Namespace: !Ref MetricNamespace
+      MetricName: LivemodeMismatch
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
@@ -416,6 +500,43 @@ Resources:
       Period: 300
       EvaluationPeriods: 1
       Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # The one failure in this stack the FUNCTION never sees. Everything else here
+  # watches a console.error the handler emitted; this watches the gateway
+  # refusing a token before the handler exists.
+  AuthRejectedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeApiLogGroup
+      FilterPattern: '{ $.status = "401" }'
+      MetricTransformations:
+        - MetricNamespace: !Ref MetricNamespace
+          MetricName: AuthRejected
+          MetricValue: "1"
+          Unit: Count
+
+  AuthRejectedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${NamePrefix}-auth-rejected"
+      AlarmDescription: >-
+        The API is refusing Cognito JWTs in bulk. A lone expired token is
+        normal — a learner left a tab open — which is why this threshold is not
+        zero like the money-path alarms. A sustained run means the authorizer's
+        configuration and the pool have diverged: a stale UserPoolClientId
+        (audience), or an issuer that moved when the pool did. The Lambda is
+        never invoked, so nothing lands in the function's log group and the 5xx
+        alarm is blind; the storefront is simply down. Read $.authorizerError
+        in /aws/apigateway/<prefix> for the reason.
+      Namespace: !Ref MetricNamespace
+      MetricName: AuthRejected
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]

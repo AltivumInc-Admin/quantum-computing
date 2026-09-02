@@ -1,40 +1,36 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
 import { isAuthConfigured } from "@/lib/auth-config";
 import {
+  CREDIT_USD,
   TIERS,
   type Tier,
   TUTOR_RATES,
   HARDWARE_RATES,
   SIMULATOR_RATES,
   TASK_FEE_CREDITS,
-  MIN_TOPUP_USD,
+  TOPUP_MIN_USD,
+  TOPUP_MAX_USD,
   PRICES_AS_OF,
   jobCredits,
   creditsToUsd,
-  formatCredits,
+  formatCreditNumber,
+  roundCredits,
   formatUsd,
+  formatUsdWhole,
 } from "@/lib/pricing";
 import { isBillingConfigured } from "@/lib/billing-client";
 import { CostEstimator } from "@/components/pricing/cost-estimator";
 import { CheckoutButton } from "@/components/pricing/checkout-button";
+import { CheckoutReturnNotice } from "@/components/pricing/checkout-return-notice";
+import { ManagePlan } from "@/components/pricing/manage-plan";
 import { WalletBadge } from "@/components/pricing/wallet-badge";
+import { useWallet } from "@/components/pricing/use-wallet";
 import { TopUp } from "@/components/pricing/top-up";
 import { useLocale, type TFunction } from "@/i18n";
 import { localeCode } from "@/i18n";
-
-const TECH_KEY: Record<string, string> = {
-  "Superconducting, 108 qubits": "pricingUi.techSuperconducting108",
-  Superconducting: "pricingUi.techSuperconducting",
-  "Neutral-atom analog": "pricingUi.techNeutralAtom",
-  "Trapped-ion": "pricingUi.techTrappedIon",
-};
-
-const SIM_DESC_KEY: Record<string, string> = {
-  "State-vector simulator, up to 34 qubits": "pricingUi.simSv1",
-  "Density-matrix (noise) simulator, up to 17 qubits": "pricingUi.simDm1",
-};
 
 /**
  * Resolve a tier's copy from the keys the tier itself carries. The keys used to be
@@ -42,12 +38,30 @@ const SIM_DESC_KEY: Record<string, string> = {
  * required every tier to have exactly five features and let lib/pricing.ts's own
  * feature strings drift out of sight. Reading Tier.featureKeys means the card renders
  * exactly what the data says, at whatever length the data says.
+ *
+ * Every bullet is resolved WITH the tier's figures, so a bullet that mentions the
+ * grant interpolates it instead of restating it. plusF1 and proF1 spelled the grant
+ * into i18n copy in both locales ("1,900 credits every month"), beside the grant line
+ * the card renders from TIERS — two sources for one number, on the point of sale,
+ * which is precisely the rule 13 failure this project has already shipped once.
+ *
+ * `bonus` is the grant's value over its own sticker price, both of which are
+ * published on this page; it discloses nothing about what anything costs to serve.
  */
-function tierCopy(t: TFunction, tier: Tier) {
+function tierCopy(t: TFunction, tier: Tier, credits: (n: number) => string) {
+  const values = {
+    credits: credits(tier.monthlyCredits),
+    bonus:
+      tier.priceUsdPerMonth > 0
+        ? Math.round(
+            ((tier.monthlyCredits * CREDIT_USD) / tier.priceUsdPerMonth - 1) * 100,
+          )
+        : 0,
+  };
   return {
     tagline: t(tier.taglineKey),
     footnote: t(tier.footnoteKey),
-    features: tier.featureKeys.map((key) => t(key)),
+    features: tier.featureKeys.map((key) => t(key, values)),
   };
 }
 
@@ -81,8 +95,17 @@ export function PricingPageContent() {
   const loc = localeCode(locale);
   const configured = isAuthConfigured();
   const billingLive = isBillingConfigured();
+  // One fetch for the page: the hero chip renders it, and the tier cards need it
+  // to tell a subscriber apart from a visitor. Null while it is in flight, and
+  // permanently null for a signed-out or unconfigured visitor.
+  const wallet = useWallet();
   const exampleShots = 1000;
-  const minTop = formatUsd(MIN_TOPUP_USD).replace(".00", "");
+  const tutorRatesHeadingId = useId();
+  const hardwareRatesHeadingId = useId();
+  const minTop = formatUsdWhole(TOPUP_MIN_USD);
+  /** A credit figure with its localized, plural-aware unit. */
+  const credits = (n: number) =>
+    t("pricingUi.creditsCount", { n: formatCreditNumber(n, loc) }, roundCredits(n));
 
   const principles = [
     {
@@ -109,7 +132,13 @@ export function PricingPageContent() {
       a: t("pricingUi.faqProviderA", { date: PRICES_AS_OF }),
     },
     billingLive
-      ? { q: t("pricingUi.faqBuyQ"), a: t("pricingUi.faqBuyA") }
+      ? {
+          q: t("pricingUi.faqBuyQ"),
+          // The bounds are interpolated, not spelled into the answer: prose copies
+          // of a published figure are exactly how the advertised floor and the
+          // enforced floor come apart.
+          a: t("pricingUi.faqBuyA", { min: TOPUP_MIN_USD, max: TOPUP_MAX_USD }),
+        }
       : { q: t("pricingUi.faqWhenQ"), a: t("pricingUi.faqWhenA") },
   ];
 
@@ -143,7 +172,7 @@ export function PricingPageContent() {
             <span className="inline-flex items-center rounded-chip border border-(--bd) bg-(--field) px-3 py-1.5 text-sm font-medium text-(--mut) tabular-nums">
               {t("pricingUi.topUpFrom", { amount: minTop })}
             </span>
-            <WalletBadge />
+            <WalletBadge wallet={wallet} />
           </div>
         </header>
 
@@ -157,6 +186,10 @@ export function PricingPageContent() {
         </div>
 
         <section aria-labelledby="tiers-heading" className="mt-24 reveal">
+          {/* The Lambda's cancel_url lands here. Without this, a learner who backed
+              out of Checkout returned to a page indistinguishable from a fresh
+              visit, with no acknowledgement that nothing was charged. */}
+          <CheckoutReturnNotice outcome="cancelled" />
           <div className="flex items-center gap-4 mb-4">
             <h2 id="tiers-heading" className="font-display text-display-xl text-(--ink)">
               {t("pricingUi.tiersHeading")}
@@ -190,7 +223,7 @@ export function PricingPageContent() {
           <div className="grid gap-5 lg:grid-cols-3 items-start">
             {TIERS.map((tier) => {
               const featured = tier.id === "plus";
-              const copy = tierCopy(t, tier);
+              const copy = tierCopy(t, tier, credits);
               const displayName =
                 tier.id === "free" ? t("pricingUi.free") : tier.name;
               return (
@@ -203,7 +236,16 @@ export function PricingPageContent() {
                   }`}
                 >
                   {featured && (
-                    <span className="absolute -top-3 left-7 inline-flex items-center rounded-chip bg-accent-dark px-2.5 py-1 text-xs font-semibold text-white">
+                    // chip-selected, not `bg-accent-dark text-white`. In the light
+                    // theme --accent-dark is #6f5636 and white computes 6.86:1, but
+                    // .dark remaps --accent-dark to #a38560 — the light theme's raw
+                    // --accent — where white is 3.45:1, under the 4.5:1 AA floor for
+                    // this 12px badge, with no dark: override to catch it. The
+                    // repo-wide contrast guard exempts bg-accent-dark on the
+                    // assumption it carries its own legible ink, so nothing saw it.
+                    // .chip-selected is the one sanctioned gold fill and is pinned in
+                    // BOTH themes by token-contrast.test.ts (8.30:1 / 5.73:1).
+                    <span className="absolute -top-3 left-7 inline-flex items-center rounded-chip chip-selected px-2.5 py-1 text-xs font-semibold">
                       {t("pricingUi.bestForRegulars")}
                     </span>
                   )}
@@ -213,9 +255,7 @@ export function PricingPageContent() {
                   <p className="mt-1 text-sm text-(--mut) min-h-10">{copy.tagline}</p>
                   <p className="mt-5 flex items-baseline gap-1.5 tabular-nums">
                     <span className="font-mono text-display-lg text-(--ink)">
-                      {tier.priceUsdPerMonth === 0
-                        ? "$0"
-                        : formatUsd(tier.priceUsdPerMonth).replace(".00", "")}
+                      {formatUsdWhole(tier.priceUsdPerMonth)}
                     </span>
                     <span className="text-sm text-caption">
                       {tier.priceUsdPerMonth === 0
@@ -226,7 +266,7 @@ export function PricingPageContent() {
                   {tier.monthlyCredits > 0 && (
                     <p className="mt-1 font-mono text-sm text-accent-dark dark:text-accent-light font-medium tabular-nums">
                       {t("pricingUi.creditsEveryMonth", {
-                        credits: formatCredits(tier.monthlyCredits),
+                        credits: credits(tier.monthlyCredits),
                       })}
                     </p>
                   )}
@@ -257,10 +297,16 @@ export function PricingPageContent() {
                     {tier.id === "free" ? (
                       <SignupCta size="sm" t={t} />
                     ) : billingLive && tier.checkoutLookupKey ? (
-                      <CheckoutButton
-                        lookupKey={tier.checkoutLookupKey}
-                        label={t("pricingUi.getTier", { name: tier.name })}
-                      />
+                      // A subscriber's own tier offers the portal, not a second
+                      // subscription to the plan they already hold.
+                      wallet?.tier === tier.id ? (
+                        <ManagePlan />
+                      ) : (
+                        <CheckoutButton
+                          lookupKey={tier.checkoutLookupKey}
+                          label={t("pricingUi.getTier", { name: tier.name })}
+                        />
+                      )
                     ) : (
                       <div className="flex flex-col gap-2">
                         <span className="inline-flex w-fit items-center rounded-control border border-(--bd) px-4 py-2 text-sm font-medium text-caption">
@@ -322,19 +368,26 @@ export function PricingPageContent() {
 
           <div className="grid gap-5 lg:grid-cols-5">
             <div className="lg:col-span-2 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
-              <h3 className="font-display text-display-md text-(--ink) px-6 pt-6">
+              <h3
+                id={tutorRatesHeadingId}
+                className="font-display text-display-md text-(--ink) px-6 pt-6"
+              >
                 {t("pricingUi.aiTutor")}
               </h3>
               <p className="px-6 pt-1 pb-4 text-sm text-(--mut)">
                 {t("pricingUi.tutorTypical")}
               </p>
-              <table className="w-full text-sm">
+              {/* Named from the h3 that visually names it. Without this the two
+                  rate tables are anonymous entries in a screen reader's table
+                  list, which is the one place a reader chooses between them. */}
+              <table className="w-full text-sm" aria-labelledby={tutorRatesHeadingId}>
                 <thead>
                   {/* No "Tier" column. It rendered a plus/pro chip beside Sonnet, Opus,
                       and Fable, which reads as "this tier unlocks this model" — an unlock
-                      nothing in the codebase performs (the tutor lambda binds one model
-                      id and takes no model parameter). The column returns with the
-                      feature, not before it. */}
+                      the deployed tutor refuses to perform: the roster gate exists in
+                      lambda/tutor, but with no wallet table and no rate card it turns
+                      every paid model away and answers free. The column returns with
+                      the configuration, not before it. */}
                   <tr className="border-t border-(--bd) text-left">
                     <th scope="col" className="px-6 py-2.5 font-medium text-caption">
                       {t("pricingUi.model")}
@@ -361,14 +414,29 @@ export function PricingPageContent() {
             </div>
 
             <div className="lg:col-span-3 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
-              <h3 className="font-display text-display-md text-(--ink) px-6 pt-6">
+              <h3
+                id={hardwareRatesHeadingId}
+                className="font-display text-display-md text-(--ink) px-6 pt-6"
+              >
                 {t("pricingUi.quantumHardware")}
               </h3>
               <p className="px-6 pt-1 pb-4 text-sm text-(--mut)">
                 {t("pricingUi.hardwarePerShotPlusFee", { fee: TASK_FEE_CREDITS })}
               </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[480px]">
+              {/* The table is wider than a phone, so this scroller is the only way
+                  to reach the per-shot and 1,000-shot columns. A bare overflow div
+                  cannot be focused, so in Safari a keyboard-only reader could not
+                  scroll it at all. Same treatment circuit-diagram.tsx uses. */}
+              <div
+                className="overflow-x-auto focus-ring"
+                tabIndex={0}
+                role="region"
+                aria-labelledby={hardwareRatesHeadingId}
+              >
+                <table
+                  className="w-full text-sm min-w-[480px]"
+                  aria-labelledby={hardwareRatesHeadingId}
+                >
                   <thead>
                     <tr className="border-t border-(--bd) text-left">
                       <th scope="col" className="px-6 py-2.5 font-medium text-caption">
@@ -393,20 +461,19 @@ export function PricingPageContent() {
                   <tbody>
                     {HARDWARE_RATES.map((r) => {
                       const total = jobCredits(r, exampleShots);
-                      const techKey = TECH_KEY[r.technology];
                       return (
                         <tr key={r.name} className="border-t border-(--bd)">
                           <td className="px-6 py-3">
                             <span className="font-medium text-(--ink)">{r.name}</span>
                             <span className="block text-xs text-caption">
-                              {techKey ? t(techKey) : r.technology}
+                              {t(r.technologyKey)}
                             </span>
                           </td>
                           <td className="px-3 py-3 text-right tabular-nums text-(--mut)">
                             {r.creditsPerShot}
                           </td>
                           <td className="px-6 py-3 text-right tabular-nums text-(--mut)">
-                            {formatCredits(total)}
+                            {credits(total)}
                             <span className="block text-xs text-caption">
                               {formatUsd(creditsToUsd(total))}
                             </span>
@@ -415,13 +482,12 @@ export function PricingPageContent() {
                       );
                     })}
                     {SIMULATOR_RATES.map((s) => {
-                      const descKey = SIM_DESC_KEY[s.description];
                       return (
                         <tr key={s.name} className="border-t border-(--bd)">
                           <td className="px-6 py-3">
                             <span className="font-medium text-(--ink)">{s.name}</span>
                             <span className="block text-xs text-caption">
-                              {descKey ? t(descKey) : s.description}
+                              {t(s.descriptionKey)}
                             </span>
                           </td>
                           <td

@@ -1,4 +1,4 @@
-.PHONY: setup git-filters lab test devices cost lint stripe-parity drift deploy-infra teardown-infra lock-container
+.PHONY: setup git-filters lab test devices cost lint stripe-parity drift design-sync deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -41,14 +41,32 @@ lint:
 
 KEYREF ?= op://Quantum Learner/Stripe/add more/Secret Key
 
+# The endpoint we expect to be receiving our events. Threaded into the webhook
+# check so an endpoint NOBODY put there — the one Dashboard change that
+# exfiltrates every event payload — is a failure instead of an OK line. This is
+# the QL-Prod billing webhook recorded in scripts/migration/README.md. Override
+# for a sandbox run, or pass ENDPOINT= (empty) to skip the URL identity check.
+ENDPOINT ?= https://00tlxl2jte.execute-api.us-east-2.amazonaws.com/webhook
+
 stripe-parity:
 	@# Does the Stripe Dashboard match the code? Two things no test in this repo
 	@# can see, because the Dashboard is not in the repo. Read-only; needs a key.
-	@#   make stripe-parity ACCOUNT=acct_1TuFow07hJdXv6GV      (live)
-	@#   make stripe-parity ACCOUNT=acct_1TuFpH0a2DloOdGu KEYREF="op://Quantum Learner/Stripe Sandbox/Secret Key"
+	@#   make stripe-parity ACCOUNT=live
+	@#   make stripe-parity ACCOUNT=sandbox KEYREF="op://Quantum Learner/Stripe Sandbox/Secret Key" ENDPOINT=https://axikm3lao9.execute-api.us-east-2.amazonaws.com/webhook
+	@# ACCOUNT takes an alias (live/sandbox) resolved through
+	@# scripts/stripe/lib/accounts.mjs, or an explicit acct_... An alias cannot go
+	@# stale the way the written-down sandbox id did.
+	@# Both ALWAYS run, and the exit codes accumulate — same shape as `drift`
+	@# below, for the same reason. These scripts exit 1 on ordinary drift, so a
+	@# recipe of two separate lines aborts after the first report in exactly the
+	@# case the target exists for: on 2026-08-17 the live endpoint was subscribed
+	@# to 4 of 9 events AND the product descriptions had drifted, and only the
+	@# first would have been shown. One shell also means one 1Password prompt.
 	@test -n "$(ACCOUNT)" || { echo "ACCOUNT=acct_... is required"; exit 2; }
-	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT)
-	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-catalog-parity.mjs --expect-account $(ACCOUNT)
+	@code=0; export STRIPE_API_KEY="$$(op read '$(KEYREF)')"; \
+	 node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT) $(if $(ENDPOINT),--expect-url $(ENDPOINT)) || code=$$?; \
+	 node scripts/stripe/check-catalog-parity.mjs --expect-account $(ACCOUNT) || code=$$?; \
+	 exit $$code
 
 drift:
 	@# Is what is RUNNING what is in git? Merging is not shipping, and a green CI plus a
@@ -58,9 +76,29 @@ drift:
 	@# second check compares them value-blind (no value, no digest — rule 6).
 	@# Both ALWAYS run — code drift is the normal state mid-cutover, and stopping there
 	@# would leave rate parity unchecked in exactly the window it matters most.
+	@# WHICH ACCOUNT: the default AWS profile on this machine is NOT the one serving
+	@# learners, and every function name checked here exists in both. Export
+	@# DRIFT_EXPECT_ACCOUNT (it is inherited from your shell — the number stays out of
+	@# this public repo) and both checks refuse a mismatch instead of reporting green
+	@# about the wrong account. Unset is allowed, and prints as "account unverified".
 	@code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
 	 node scripts/check-rate-parity.mjs || code=$$?; \
 	 exit $$code
+
+design-sync:
+	@# Before any design-sync driver run. Two claude.ai projects are named
+	@# "Quantum Learner Design System"; a run against the hand-authored one
+	@# replaces it with generated output and deletes what it cannot regenerate.
+	@# Preflight answers "which one does config.json point at", restage rebuilds
+	@# the gitignored .ds-sync/ state a fresh clone cannot inherit.
+	@# Order matters, and unlike `drift` a red preflight must STOP the run: make
+	@# aborts on the first failing recipe line, which is exactly right here —
+	@# there is nothing to gain from staging a build aimed at the wrong project.
+	@# Preflight red = the TARGET is wrong (stop and read .design-sync/NOTES.md).
+	@# Restage red = a PREREQUISITE is unstaged (npm ci in web/, or the skill's
+	@# `cp -r`); the message names which. Both are read-only about the remote.
+	node scripts/design-sync/preflight.mjs
+	node scripts/design-sync/restage.mjs
 
 deploy-infra:
 	bash infra/scripts/deploy-infra.sh

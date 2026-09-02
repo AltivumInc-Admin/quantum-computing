@@ -12,30 +12,57 @@
  * The only thing that surfaces this is downloading the artifact and reading it. That is
  * what this does, for every function, so the gap is visible the day it appears.
  *
+ * One control-plane call per function, then the package. If the download ever needs to
+ * cost less, the same response already carries Configuration.CodeSha256: recording it
+ * per function would let an unchanged package skip the fetch entirely. Not done, because
+ * a cache that is wrong is exactly the false green this file exists to catch — the sha
+ * would have to be stored somewhere as trustworthy as the artifact itself.
+ *
  * Compares hand-written source only — node_modules and build metadata legitimately
  * differ between a packaged artifact and a working tree, and comparing them would make
- * this cry wolf until someone turned it off.
+ * this cry wolf until someone turned it off. Within that set the comparison runs BOTH
+ * ways (a module shipped that git never had is drift too), and the deployed Handler is
+ * compared to the template's, because a repointed entry point changes what executes
+ * while leaving every compared byte identical.
  *
  * Usage:  node scripts/check-lambda-drift.mjs [--json]
  * Exit:   0 = every function matches git   1 = drift found   2 = could not check
  *
- * Needs AWS read access (lambda:GetFunction). GitHub Actions has no AWS credentials
- * today, so this runs locally or anywhere credentials exist — see `make drift`.
+ * Set DRIFT_EXPECT_ACCOUNT to the account this report is meant to describe — every
+ * function name below exists in more than one, and an unverified green says nothing
+ * about which one answered. Unset is allowed and prints as "account unverified".
+ *
+ * Needs AWS read access (lambda:GetFunction). It runs daily in GitHub Actions under
+ * the read-only quantum-ci-drift-check role (.github/workflows/drift.yml,
+ * infra/github-oidc-drift-role.yaml), and locally via `make drift` wherever credentials
+ * exist.
+ *
+ * This file is the I/O SHELL. Everything decidable without AWS — the source filter,
+ * the HELD matching, the stale-hold rule, the exit-code policy and the report text —
+ * lives in scripts/drift/rules.mjs, where scripts/drift/rules.test.mjs exercises it
+ * with no credentials and no network.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { accountCheck } from "./drift/account.mjs";
+import {
+  FUNCTIONS,
+  declaredFunctions,
+  failureReason,
+  handlerMismatch,
+  render,
+  sourceFiles as filterSources,
+  stampHolds,
+  verdict,
+} from "./drift/rules.mjs";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const REGION = process.env.AWS_REGION || "us-east-2";
 const JSON_OUT = process.argv.includes("--json");
 
-/**
- * Deployed function -> the source directory it is built from. One entry per function,
- * because several stacks ship more than one function from a single directory.
- */
 /**
  * Functions whose drift is DELIBERATE, with the reason and who to ask.
  *
@@ -62,114 +89,180 @@ const HELD = [
   },
 ];
 
-const heldFor = (fn) => HELD.find((h) => h.fn.test(fn));
+// stderr is CAPTURED, not inherited: it is the diagnostic the row reports, and
+// capturing it means nothing a child writes reaches a public log unredacted.
+const sh = (cmd, args, opts = {}) =>
+  execFileSync(cmd, args, {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["pipe", "pipe", "pipe"],
+    // A hung child would otherwise hang the whole daily job silently; the job
+    // itself carries a timeout too, but a per-call one names WHICH call hung.
+    timeout: 180_000,
+    ...opts,
+  }).trim();
 
-const FUNCTIONS = [
-  { fn: "quantum-stripe", dir: "lambda/stripe" },
-  // The sandbox stack runs the SAME source and is where payment changes are
-  // rehearsed. Unwatched, a green e2e run is a claim about deployed sandbox code
-  // that nothing ties to git — a false green, which is worse than no green.
-  // NOTE: red here has two meanings, unlike every other row: "deploy it" or
-  // "you are mid-rehearsal with an unmerged branch checked out".
-  { fn: "quantum-stripe-sandbox", dir: "lambda/stripe" },
-  { fn: "quantum-tutor", dir: "lambda/tutor" },
-  { fn: "quantum-qpu-submit", dir: "lambda/qpu" },
-  { fn: "quantum-qpu-reconcile", dir: "lambda/qpu" },
-  { fn: "quantum-qpu-killswitch", dir: "lambda/qpu" },
-  { fn: "quantum-workspace-sync", dir: "lambda/sync" },
-  { fn: "quantum-analytics", dir: "lambda/analytics" },
-  { fn: "quantum-review-email-prefs", dir: "lambda/review-email" },
-  { fn: "quantum-review-email-sender", dir: "lambda/review-email" },
-  { fn: "quantum-review-email-unsubscribe", dir: "lambda/review-email" },
-];
-
-const sh = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
-
-/** Hand-written source in a directory: .mjs/.js at the top level, minus tests. */
-const sourceFiles = (dir) => {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /\.(mjs|js)$/.test(f))
-    .filter((f) => !/\.test\.mjs$|^probe-|^verify-/.test(f))
-    .filter((f) => statSync(join(dir, f)).isFile());
+/**
+ * One retry for the control-plane calls. A throttle or a blip on one of the
+ * twenty-odd API calls this run makes should not read as "could not check" for
+ * the whole function — and the second failure still throws, with its stderr.
+ */
+const shRetry = (cmd, args, opts) => {
+  try {
+    return sh(cmd, args, opts);
+  } catch {
+    return sh(cmd, args, opts);
+  }
 };
 
+/** Hand-written source in a directory: the pure filter, applied to what is on disk. */
+const sourceFiles = (dir) => {
+  if (!existsSync(dir)) return [];
+  return filterSources(readdirSync(dir)).filter((f) => statSync(join(dir, f)).isFile());
+};
+
+/**
+ * Entry point each function's template declares, by function name.
+ *
+ * Read from the working tree, compared against the deployed Handler below.
+ * lambda/stripe names its function through a parameter, so it contributes
+ * nothing here and its rows carry no entry-point claim (see UNDERIVABLE).
+ */
+const DECLARED_HANDLERS = new Map(
+  [...new Set(FUNCTIONS.map((f) => f.dir))]
+    .map((dir) => join(REPO, dir, "template.yaml"))
+    .filter((path) => existsSync(path))
+    .flatMap((path) => declaredFunctions(readFileSync(path, "utf8")))
+    .map((d) => [d.fn, d.handler]),
+);
+
+// WHICH account is this report about? The names below exist in more than one,
+// and the answer comes from ambient credentials — so the expectation is stated
+// in the environment and checked before a single function is read. Value-blind:
+// the ids are compared, never printed (scripts/drift/account.mjs).
+const expectAccount = process.env.DRIFT_EXPECT_ACCOUNT;
+let callerAccount;
+if (expectAccount) {
+  try {
+    callerAccount = sh("aws", ["sts", "get-caller-identity", "--query", "Account", "--output", "text"]);
+  } catch {
+    console.error("  ERROR  could not resolve the caller's account (sts get-caller-identity failed).");
+    process.exit(2);
+  }
+}
+const identity = accountCheck(expectAccount, callerAccount);
+// stderr, so --json stays machine-readable.
+for (const line of identity.lines) console.error(line);
+if (identity.refuse) process.exit(2);
+
 const results = [];
-let exitCode = 0;
 
 for (const { fn, dir } of FUNCTIONS) {
   const srcDir = join(REPO, dir);
   let tmp;
+  // Which step failed, for the row's message when one does. The child's stderr
+  // is preferred over its message; this is the fallback (see failureReason).
+  let stage = "aws lambda get-function failed";
   try {
-    const url = sh("aws", ["lambda", "get-function", "--function-name", fn, "--region", REGION,
-      "--query", "Code.Location", "--output", "text"]);
+    // ONE control-plane call per function. get-function already returns the
+    // configuration, so asking for LastModified and Handler separately was a
+    // second round trip for fields the first response carried — eleven of them
+    // per run, every morning. --output text prints the three tab-separated.
+    const [url, lastModified, deployedHandler] = shRetry("aws", ["lambda", "get-function",
+      "--function-name", fn, "--region", REGION,
+      "--query", "[Code.Location,Configuration.LastModified,Configuration.Handler]",
+      "--output", "text"]).split(/\s+/);
     tmp = mkdtempSync(join(tmpdir(), `drift-${fn}-`));
-    sh("curl", ["-sS", "-o", join(tmp, "fn.zip"), url]);
+    // The presigned URL goes to curl on STDIN, never in argv: argv is what
+    // execFileSync echoes into its thrown message, and it is also what `ps`
+    // shows any other user on a shared host. `fail` turns an S3 error body into
+    // an honest failure instead of an HTML file that unzip then chokes on.
+    stage = "download failed";
+    sh("curl", ["--config", "-"], {
+      input: [
+        `url = "${url}"`,
+        `output = "${join(tmp, "fn.zip")}"`,
+        "silent",
+        "show-error",
+        "fail",
+        "retry = 3",
+        "retry-all-errors",
+        "max-time = 120",
+        "",
+      ].join("\n"),
+    });
+    stage = "unzip failed";
     sh("unzip", ["-oq", join(tmp, "fn.zip"), "-d", join(tmp, "fn")]);
 
+    const gitFiles = sourceFiles(srcDir);
     const drifted = [];
     const missing = [];
-    for (const file of sourceFiles(srcDir)) {
+    let compared = 0;
+    for (const file of gitFiles) {
       const deployedPath = join(tmp, "fn", file);
       if (!existsSync(deployedPath)) { missing.push(file); continue; }
       const a = readFileSync(join(srcDir, file), "utf8");
       const b = readFileSync(deployedPath, "utf8");
+      compared += 1;
       if (a !== b) drifted.push(file);
     }
 
-    const lastModified = sh("aws", ["lambda", "get-function-configuration", "--function-name", fn,
-      "--region", REGION, "--query", "LastModified", "--output", "text"]);
+    // The comparison runs BOTH ways. Walking only the working-tree side means a
+    // top-level module that ships in the package and exists nowhere in the
+    // repository — a leftover, a hand-edited file, a build artifact — is never
+    // looked at, and the run still reports the function as matching.
+    const extra = sourceFiles(join(tmp, "fn")).filter((f) => !gitFiles.includes(f));
+
+    const handlerDrift = handlerMismatch(deployedHandler, DECLARED_HANDLERS.get(fn));
 
     // Only a file present in BOTH and differing is drift. A file that exists in git but
     // not in the package is almost always an ops script that was never meant to ship
     // (deploy-check.mjs, cfn-slice.mjs, backfill-*.mjs), and failing on those would make
     // this cry wolf until someone disabled it — which is how guards die.
-    const ok = drifted.length === 0;
-    // A DECLARED hold does not fail the run — it prints as HELD with its reason.
-    // Undeclared drift still fails, which is the whole point of the check.
-    if (!ok && !heldFor(fn)) exitCode = 1;
-    results.push({ fn, dir, ok, drifted, missing, lastModified });
+    // A zero-file comparison is not a match: "nothing differed" is trivially true
+    // of nothing. `compared` is what makes the difference visible, here and on
+    // every printed row.
+    const ok = compared > 0 && drifted.length === 0 && extra.length === 0 && !handlerDrift;
+    results.push({ fn, dir, ok, compared, drifted, extra, missing, handlerDrift, lastModified });
   } catch (err) {
-    exitCode = Math.max(exitCode, 2);
-    results.push({ fn, dir, ok: false, error: String(err.message || err).split("\n")[0] });
+    results.push({ fn, dir, ok: false, error: failureReason(err, stage) });
   } finally {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
   }
 }
 
+// A DECLARED hold does not fail the run — it prints as HELD with its reason.
+// Undeclared drift still fails, which is the whole point of the check. Stamped
+// ONCE here, so the printer, both summary lists and the --json payload report
+// the same verdict instead of each re-deriving it.
+const stamped = stampHolds(results, HELD);
+const { exitCode, staleHolds } = verdict(stamped, HELD);
+
 if (JSON_OUT) {
-  console.log(JSON.stringify({ region: REGION, results }, null, 2));
-} else {
-  console.log(`\n  Deployed-vs-git drift  (region ${REGION})\n`);
-  for (const r of results) {
-    if (r.error) { console.log(`  ??  ${r.fn.padEnd(34)} could not check — ${r.error}`); continue; }
-    const held = !r.ok && heldFor(r.fn);
-    const mark = r.ok ? "OK " : held ? "HELD" : "DRIFT";
-    console.log(`  ${mark.padEnd(6)} ${r.fn.padEnd(34)} ${r.lastModified}`);
-    for (const f of r.drifted) console.log(`         DIFFERS from git: ${join(r.dir, f)}`);
-    if (r.missing.length) console.log(`         (not packaged, assumed ops-only: ${r.missing.join(", ")})`);
-    if (held) {
-      console.log(`         HELD ON PURPOSE — do not deploy to clear this.`);
-      console.log(`         why:   ${held.reason}`);
-      console.log(`         until: ${held.clearsWhen}`);
-    }
-  }
-  const bad = results.filter((r) => !r.ok && !heldFor(r.fn));
-  const held = results.filter((r) => !r.ok && heldFor(r.fn));
-  // A hold that no longer holds anything is stale, and a stale allowlist is how
-  // a real gap eventually hides behind an entry nobody re-read.
-  const staleHolds = HELD.filter((h) => !results.some((r) => !r.ok && h.fn.test(r.fn)));
+  // The JSON says everything the human report says: which rows are held and
+  // why, which holds have gone stale, and what the process is about to exit
+  // with. It used to carry only ok:false, which a reader could not tell from
+  // real drift.
   console.log(
-    bad.length === 0
-      ? `\n  All ${results.length - held.length} unheld functions match git.` +
-        (held.length ? ` ${held.length} held on purpose (see above).\n` : `\n`)
-      : `\n  ${bad.length} of ${results.length} functions do NOT match git. Deploy them, or explain why not.\n`,
+    JSON.stringify(
+      {
+        region: REGION,
+        accountVerified: identity.verified,
+        exitCode,
+        staleHolds: staleHolds.map((h) => ({
+          pattern: String(h.fn),
+          reason: h.reason,
+          clearsWhen: h.clearsWhen,
+        })),
+        results: stamped,
+      },
+      null,
+      2,
+    ),
   );
-  for (const h of staleHolds) {
-    console.log(
-      `  NOTE: the HELD entry matching ${h.fn} no longer matches any drifting function.\n` +
-        `        The hold has served its purpose — delete it from scripts/check-lambda-drift.mjs.\n`,
-    );
+} else {
+  for (const line of render(stamped, HELD, { region: REGION, accountVerified: identity.verified })) {
+    console.log(line);
   }
 }
 

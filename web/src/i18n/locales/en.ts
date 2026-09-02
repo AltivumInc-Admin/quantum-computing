@@ -771,8 +771,24 @@ export const en: TranslationDict = {
     bestForRegulars: "Best for regulars",
     forever: "forever",
     perMonth: "/ month",
+    // The credit UNIT, in one place. Every credit figure on the page composes this
+    // with lib/pricing.ts formatCreditNumber(): `n` is the already-grouped figure
+    // and the raw count picks the form. It must never move back into the formatter
+    // — the word was hardcoded English there, and it rendered inside the Spanish
+    // page beside Spanish copy on the tier cards, the rate table, the estimator,
+    // the wallet chip and the buy button.
+    creditsCount: {
+      one: "{{n}} credit",
+      other: "{{n}} credits",
+    },
     creditsEveryMonth: "{{credits}} every month",
     getTier: "Get {{name}}",
+    // Shown on the card for the tier the caller is actually on, in place of its
+    // buy button: /checkout would happily open a second subscription to the plan
+    // they already hold, and the portal is where a plan is changed or cancelled.
+    currentPlan: "Current plan",
+    managePlan: "Manage billing",
+    portalFailed: "Could not open the billing portal. Please try again.",
     startFreeWhileWait: "Start free while you wait",
     launchingSoon: "Launching soon",
     signUpFree: "Sign up free",
@@ -819,7 +835,7 @@ export const en: TranslationDict = {
       "Hardware rates track the providers' published price sheets (currently the {{date}} revision). Nothing on this page is fetched from a provider: these credit rates are compiled into the site, and the pre-flight check before a hardware run reads its own separate table of AWS dollar rates, also compiled in. A reprice reaches either table only through a new release — which is what the revision date on the rate table records.",
     faqBuyQ: "How do I buy credits?",
     faqBuyA:
-      "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire — and nothing draws them down yet, so a balance today is a balance waiting for metering to ship.",
+      "Right on this page: pick a plan, or top up any whole-dollar amount from ${{min}} to ${{max}} — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire — and nothing draws them down yet, so a balance today is a balance waiting for metering to ship.",
     faqWhenQ: "When can I buy credits?",
     faqWhenA:
       "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs are not currently available — create your free account now so you are ready the moment wallets go live.",
@@ -828,6 +844,12 @@ export const en: TranslationDict = {
       "Everything you need to learn quantum computing is already free — just a free account. Email or Google, no credit card.",
     free: "Free",
     plan: "plan",
+    // A refund or dispute that outran the balance leaves a debt, and while it is
+    // nonzero both metered backends refuse every spend no matter what the balance
+    // says. The chip carries the short label; the sentence is its description.
+    spendPaused: "Spending paused",
+    spendPausedDetail:
+      "A refund or dispute left {{owed}} owed on this wallet. Spending is paused until that is settled, whatever the balance shows.",
     buyCredits: "Buy credits",
     buyCreditsAmount: "Buy {{amount}}",
     starting: "Starting…",
@@ -837,10 +859,15 @@ export const en: TranslationDict = {
     tutorModel: "Tutor model to price",
     modelToPrice: "Model to price",
     // Renders directly above the model chips: the chips are a forecasting control,
-    // not an entitlement you can buy. The tutor takes no model parameter today.
+    // not an entitlement you can buy. The deployed tutor refuses every paid model
+    // (no wallet table, no rate card) and answers on the free-tier default.
     modelNotSelectableYet:
       "Not selectable yet — every question today is answered free by Claude Haiku. Price any model here to see what metering would cost.",
-    presets: "Presets",
+    // Two preset groups render on this page. They carried the same accessible
+    // name, so a screen reader announced two identical "Presets" groups and the
+    // only way to tell them apart was to walk into one.
+    shotPresets: "Shot presets",
+    questionPresets: "Question presets",
     priceHardware: "Price a hardware run",
     // A forecast, and only a forecast. This pane prices eight backends in credits;
     // only one of them (IQM Garnet) is wired to the submit path at all, and the
@@ -871,6 +898,17 @@ export const en: TranslationDict = {
     topUpFootnote:
       "Top-ups require an active plan. Purchased credits never expire, and you will see the exact amount on the Stripe checkout page before paying.",
     checkoutFailed: "Could not start checkout. Please try again.",
+    // The Checkout return legs. "On the way", never "added": the webhook grants
+    // the credits, so at the moment this renders the balance may not have moved.
+    checkoutSuccess:
+      "Payment received. Your credits are on the way — they land in your wallet once Stripe confirms the payment, which is usually a matter of seconds.",
+    checkoutCancelled: "Checkout cancelled — nothing was charged.",
+    dismissNotice: "Dismiss",
+    // The server's 403, said plainly. Top-ups are a subscriber convenience, so
+    // "try again" is advice that cannot work for a free account — this states the
+    // rule the footnote already carries, at the moment it actually bites.
+    topUpNeedsPlan:
+      "Top-ups need an active plan, and this account does not have one yet. Start a plan above, then come back to top up.",
     // Tier marketing (names Free/Plus/Pro stay English product names). Every bullet
     // here must be true of the deployed system TODAY — the tier cards are the point of
     // sale, so a roadmap item a buyer could read as included belongs nowhere in them.
@@ -887,15 +925,18 @@ export const en: TranslationDict = {
     plusTagline: "Monthly credits, included with your subscription.",
     plusFootnote: "Cancel anytime. Purchased credits never expire.",
     plusF0: "Everything in Free",
-    // No "bonus over pay-as-you-go" claim: under the 2026-08 pricing the monthly grant is
-    // deliberately worth less than the sticker price, so that framing is false. State the
-    // grant plainly and let the tier's model access carry the value.
-    plusF1: "1,900 credits every month",
+    // {{credits}} and {{bonus}} are interpolated from TIERS by tierCopy — never
+    // typed here. This key read "1,900 credits every month" as literal copy, in
+    // both locales, beside the grant line the card renders from the data; a
+    // reprice moved one and left the card showing two different grants. It also
+    // carried a comment claiming the grant is "worth less than the sticker
+    // price", which pricing.test.ts contradicts: parity is the asserted FLOOR.
+    plusF1: "{{credits}} every month",
     plusF2: "Credits roll over while you are subscribed",
     proTagline: "The largest monthly credit bundle.",
     proFootnote: "For the heaviest users. Cancel anytime; credits never expire.",
     proF0: "Everything in Plus",
-    proF1: "6,500 credits every month — a 10% bonus over pay-as-you-go",
+    proF1: "{{credits}} every month — a {{bonus}}% bonus over pay-as-you-go",
     // Hardware technology descriptors for rate table
     techSuperconducting108: "Superconducting, 108 qubits",
     techSuperconducting: "Superconducting",

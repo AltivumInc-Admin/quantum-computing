@@ -715,8 +715,17 @@ export const es: TranslationDict = {
     bestForRegulars: "Ideal para uso regular",
     forever: "para siempre",
     perMonth: "/ mes",
+    // Ver la nota en en.ts: la unidad de crédito vive aquí, no en el formateador.
+    creditsCount: {
+      one: "{{n}} crédito",
+      other: "{{n}} créditos",
+    },
     creditsEveryMonth: "{{credits}} cada mes",
     getTier: "Obtener {{name}}",
+    // Ver la nota en en.ts: la tarjeta del plan actual no ofrece comprarlo otra vez.
+    currentPlan: "Plan actual",
+    managePlan: "Gestionar la facturación",
+    portalFailed: "No se pudo abrir el portal de facturación. Inténtalo de nuevo.",
     startFreeWhileWait: "Empieza gratis mientras esperas",
     launchingSoon: "Próximamente",
     signUpFree: "Regístrate gratis",
@@ -763,7 +772,7 @@ export const es: TranslationDict = {
       "Las tarifas de hardware siguen las hojas de precios publicadas de los proveedores (actualmente la revisión de {{date}}). Nada en esta página se consulta al proveedor: estas tarifas en créditos están compiladas en el sitio, y la comprobación previa a una ejecución de hardware lee su propia tabla aparte de tarifas en dólares de AWS, también compilada. Un cambio de precio llega a cualquiera de las dos tablas solo con una nueva versión — que es lo que registra la fecha de revisión de la tabla de tarifas.",
     faqBuyQ: "¿Cómo compro créditos?",
     faqBuyA:
-      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de $5 a $500 — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran — y todavía nada los descuenta, así que un saldo de hoy es un saldo que espera a que se lance la medición.",
+      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de ${{min}} a ${{max}} — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran — y todavía nada los descuenta, así que un saldo de hoy es un saldo que espera a que se lance la medición.",
     faqWhenQ: "¿Cuándo puedo comprar créditos?",
     faqWhenA:
       "La facturación se lanza pronto; los precios de esta página son de lanzamiento. Hasta entonces, el tutor es gratis para probar y las ejecuciones de hardware no están disponibles por ahora — crea tu cuenta gratis ahora para estar listo en cuanto las billeteras se activen.",
@@ -772,6 +781,10 @@ export const es: TranslationDict = {
       "Todo lo que necesitas para aprender computación cuántica ya es gratis — solo una cuenta gratuita. Correo o Google, sin tarjeta de crédito.",
     free: "Gratis",
     plan: "plan",
+    // Ver la nota en en.ts: mientras haya deuda, ningún gasto se permite.
+    spendPaused: "Gasto en pausa",
+    spendPausedDetail:
+      "Un reembolso o una disputa dejó {{owed}} pendientes en esta billetera. El gasto está en pausa hasta que se salde, sin importar lo que muestre el saldo.",
     buyCredits: "Comprar créditos",
     buyCreditsAmount: "Comprar {{amount}}",
     starting: "Iniciando…",
@@ -782,7 +795,9 @@ export const es: TranslationDict = {
     modelToPrice: "Modelo a calcular",
     modelNotSelectableYet:
       "Todavía no se puede elegir — hoy cada pregunta la responde gratis Claude Haiku. Calcula aquí cualquier modelo para ver cuánto costaría con la medición.",
-    presets: "Preajustes",
+    // Ver la nota en en.ts: los dos grupos necesitan nombres distintos.
+    shotPresets: "Preajustes de disparos",
+    questionPresets: "Preajustes de preguntas",
     priceHardware: "Precio de una ejecución de hardware",
     priceHardwareBody:
       "Una proyección de la tarifa medida, no un cobro. Las ejecuciones de hardware no están disponibles por ahora; antes de que cualquier ejecución se lleve a cabo, la comprobación previa del espacio de trabajo la cotiza en dólares a la tarifa de lista de AWS — no la cifra en créditos que se muestra aquí — y nada se ejecuta hasta que apruebes ese número.",
@@ -808,6 +823,14 @@ export const es: TranslationDict = {
     topUpFootnote:
       "Las recargas requieren un plan activo. Los créditos comprados no expiran, y verás el monto exacto en la página de checkout de Stripe antes de pagar.",
     checkoutFailed: "No se pudo iniciar el checkout. Inténtalo de nuevo.",
+    // Ver la nota en en.ts: "en camino", nunca "ya están".
+    checkoutSuccess:
+      "Pago recibido. Tus créditos están en camino — llegan a tu billetera en cuanto Stripe confirma el pago, normalmente en cuestión de segundos.",
+    checkoutCancelled: "Checkout cancelado — no se cobró nada.",
+    dismissNotice: "Descartar",
+    // Ver la nota en en.ts: el 403 del servidor, dicho con claridad.
+    topUpNeedsPlan:
+      "Las recargas requieren un plan activo, y esta cuenta todavía no tiene uno. Elige un plan arriba y vuelve para recargar.",
     freeTagline: "Toda la plataforma de aprendizaje. Sin tarjeta, sin reloj.",
     freeFootnote: "Gratis para siempre. Aprender nunca pasa detrás de la billetera.",
     freeF0: "Currículo completo — cada sección, cada cuaderno",
@@ -818,13 +841,14 @@ export const es: TranslationDict = {
     plusTagline: "Créditos mensuales, incluidos en tu suscripción.",
     plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
     plusF0: "Todo lo de Gratis",
-    plusF1: "1,900 créditos cada mes",
+    // Ver la nota en en.ts: la cifra viene de TIERS, nunca del diccionario.
+    plusF1: "{{credits}} cada mes",
     plusF2: "Los créditos se acumulan mientras estés suscrito",
     proTagline: "El paquete mensual de créditos más grande.",
     proFootnote:
       "Para quienes más lo usan. Cancela cuando quieras; los créditos no expiran.",
     proF0: "Todo lo de Plus",
-    proF1: "6,500 créditos cada mes — un 10% de bonificación sobre pago por uso",
+    proF1: "{{credits}} cada mes — un {{bonus}}% de bonificación sobre pago por uso",
     techSuperconducting108: "Superconductor, 108 cúbits",
     techSuperconducting: "Superconductor",
     techNeutralAtom: "Analógico de átomos neutros",

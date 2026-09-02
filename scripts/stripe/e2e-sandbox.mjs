@@ -13,12 +13,14 @@
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe Sandbox/Secret Key") \
  *     node scripts/stripe/e2e-sandbox.mjs \
- *       --expect-account acct_1U5IQr0txWLZHlL3 \
+ *       --expect-account sandbox \
  *       --table quantum-stripe-sandbox-wallet \
  *       --sub e2e-$(date +%s)            # the Cognito sub these rows are keyed by
  *
  *   --only grant,refund      run a subset (default: all)
  *   --keep                   leave objects behind for inspection
+ *   --webhook-endpoint we_   which endpoint `replay` resends to (default: the
+ *                            account's only enabled one)
  *
  * WHAT EACH STEP PROVES, and why it is shaped the way it is:
  *
@@ -36,11 +38,13 @@
  *             NOTE: two advances are required. The renewal invoice is created in
  *             `draft` and sits ~1h of simulated time before it is paid.
  *
- *   refund    A PARTIAL refund then the remainder. reclaim()'s target is
- *             absolute (amount_refunded is cumulative), so the second refund must
- *             move refundedCredits 500 -> 1900 with a delta of 1400, not 1900.
- *             That two-step is the whole point; a single full refund would pass
- *             even with incremental arithmetic.
+ *   refund    A PARTIAL refund (a quarter of the charge) then the remainder.
+ *             reclaim()'s target is absolute (amount_refunded is cumulative), so
+ *             the second refund must move refundedCredits from the first
+ *             clawback to the whole grant with a DELTA of the remainder, not the
+ *             whole grant again. That two-step is the whole point; a single full
+ *             refund would pass even with incremental arithmetic. Every figure is
+ *             derived from CATALOG and from what Stripe actually charged.
  *
  *   dispute   A real chargeback via pm_card_createDispute, then WON via
  *             evidence[uncategorized_text]=winning_evidence. Proves #217 end to
@@ -58,21 +62,36 @@
  *   replay    stripe events resend against the deployed endpoint. The only way to
  *             get a genuine duplicate delivery on demand, and therefore the only
  *             real test of applyOnce's EVENT# idempotency leg.
+ *             Its assertion is a NEGATIVE (the wallet must not move), so it needs
+ *             positive controls or it passes vacuously: it resends the event THIS
+ *             run's grant produced, requires the handler's EVENT# row for it to
+ *             already exist, pins the endpoint, and waits for Stripe to report the
+ *             redelivery drained before reading the wallet. A redelivery that is
+ *             never observed is a FAILED step, not a pass.
  */
 import { spawnSync } from "node:child_process";
+import { CATALOG } from "../../lambda/stripe/catalog.mjs";
+import { resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
 
-const args = process.argv.slice(2);
-const flag = (n, d) => {
-  const i = args.indexOf(n);
-  return i === -1 ? d : args[i + 1];
-};
+const { flag, has } = parseArgs(process.argv.slice(2));
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `sandbox` resolves to the provisioned sandbox; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  die(2, err.message);
+}
 const table = flag("--table");
 const sub = flag("--sub");
 const region = flag("--region", "us-east-2");
 const only = (flag("--only") ?? "").split(",").filter(Boolean);
-const keep = args.includes("--keep");
+const keep = has("--keep");
+// Which endpoint the replay step resends to. Discovered when the account has
+// exactly one enabled endpoint; required when it has more.
+const webhookEndpoint = flag("--webhook-endpoint");
 
 const fail = (m) => {
   console.error(m);
@@ -92,18 +111,8 @@ if (!/sandbox/.test(table)) {
 }
 if (!sub) fail("--sub <cognito-sub> is required — the identity these wallet rows are keyed by.");
 
-const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
-async function api(method, path, params) {
-  const init = { method, headers: { Authorization: auth } };
-  if (params) {
-    init.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    init.body = params instanceof URLSearchParams ? params.toString() : new URLSearchParams(params).toString();
-  }
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, init);
-  const body = await res.json();
-  if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
-  return body;
-}
+const client = stripeClient(key);
+const api = (method, path, params) => client.request(method, path, params);
 
 /** Read the wallet row. Values, not shapes — this is the assertion surface. */
 function wallet() {
@@ -122,6 +131,23 @@ function wallet() {
     status: item?.subscriptionStatus?.S ?? null,
     exists: Boolean(item),
   };
+}
+
+/**
+ * The handler's idempotency marker for one Stripe event. Its presence is the
+ * positive control the replay step needs: it proves the deployed handler has
+ * actually processed THIS event id, so a redelivery of it must hit applyOnce's
+ * EVENT# leg rather than being an event the endpoint under test never saw.
+ */
+function eventRow(id) {
+  const r = spawnSync(
+    "aws",
+    ["dynamodb", "get-item", "--table-name", table, "--region", region,
+     "--key", JSON.stringify({ pk: { S: `EVENT#${id}` } }), "--output", "json"],
+    { encoding: "utf8" }
+  );
+  if (r.status !== 0) throw new Error(`ddb get-item failed: ${r.stderr}`);
+  return Boolean(JSON.parse(r.stdout || "{}").Item);
 }
 
 function receipt(pi) {
@@ -216,6 +242,46 @@ async function disputedCharge({ amountCents, purchasedCredits, amountPaidCents }
   return pi.id;
 }
 
+/**
+ * The endpoint a resend must be pinned to. `stripe events resend` with no
+ * --webhook-endpoint fans out to every subscribed endpoint, and a rotation
+ * deliberately leaves two coexisting, so an unpinned resend can prove something
+ * about an endpoint that is not the one under test.
+ */
+async function soleEnabledEndpoint() {
+  const enabled = (await client.listAll("webhook_endpoints")).filter((e) => e.status === "enabled");
+  assert(enabled.length > 0, "no enabled webhook endpoint in this account");
+  assert(
+    enabled.length === 1,
+    `${enabled.length} enabled endpoints; pass --webhook-endpoint we_... to name the one under test`
+  );
+  return enabled[0].id;
+}
+
+/**
+ * Watch a redelivery actually go out. `pending_webhooks` is Stripe's own count
+ * of deliveries still queued for an event: a resend pushes it above zero and it
+ * falls back to zero once the attempt has been made. That rise-and-fall is the
+ * only signal available here, because the handler is expected to write NOTHING
+ * — "the wallet did not move" is equally what a resend that never left the
+ * building looks like.
+ *
+ * Polled fast, because a sandbox delivery can complete in well under a second.
+ * If this ever races, widen the budget; do not go back to sleeping blind and
+ * calling the result a pass.
+ */
+async function untilRedelivered(eventId, timeoutMs = 60_000) {
+  const started = Date.now();
+  let queued = false;
+  while (Date.now() - started < timeoutMs) {
+    const e = await api("GET", `events/${eventId}`);
+    if (Number(e.pending_webhooks ?? 0) > 0) queued = true;
+    else if (queued) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
 /** Webhook delivery is asynchronous. Poll the row rather than sleeping blind. */
 async function until(desc, predicate, timeoutMs = 90_000) {
   const started = Date.now();
@@ -247,16 +313,31 @@ const assert = (cond, msg) => {
 };
 
 // ---- preflight -----------------------------------------------------------------
-const account = await api("GET", "account");
-if (account.id !== expectAccount) {
-  fail(`WRONG ACCOUNT: key is ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), expected ${expectAccount}.`);
-}
+const account = await assertAccount(client, expectAccount).catch((err) => fail(err.message));
 console.log(`\n  e2e against ${account.id} (${account.settings?.dashboard?.display_name ?? "?"})`);
 console.log(`  wallet rows keyed by ${sub} in ${table}\n`);
+
+// The grant under test, from the SAME table the deployed handler reads. Typed in
+// by hand, this harness was self-consistent with itself rather than with CATALOG:
+// change CATALOG.ql_plus_monthly.credits and every parity script would pass, this
+// driver would still pass, and it would be proving the pipeline with a number no
+// real /checkout would ever send.
+const PLUS_CREDITS = CATALOG.ql_plus_monthly.credits;
+// The debt the renewal step seeds so the grant has something to garnish.
+const SEEDED_DEBT = 800;
 
 const created = { clocks: [], customers: [], subs: [] };
 let subscriptionPi = null;
 let topupPi = null;
+// What the subscription actually charged, in CENTS. Credits and cents are
+// different units that happen to coincide for Plus at the $0.01 peg, which is
+// exactly why the two must not share a literal.
+let subscriptionCents = null;
+// The invoice.paid event THIS run produced. The replay step resends exactly
+// this one: an event picked by `events?limit=1` belongs to whatever ran last,
+// and a redelivery of a stranger's event cannot move this wallet no matter how
+// broken the idempotency leg is — a guaranteed pass.
+let grantEventId = null;
 
 // ---- grant ---------------------------------------------------------------------
 await step("grant", async () => {
@@ -278,11 +359,12 @@ await step("grant", async () => {
     "items[0][price]": price.id,
     "metadata[userId]": sub,
     "metadata[tier]": "plus",
-    "metadata[credits]": "1900",
+    "metadata[credits]": String(PLUS_CREDITS),
   });
   created.subs.push(subscription.id);
+  subscriptionCents = price.unit_amount;
 
-  const w = await until("invoice.paid to credit the wallet", (x) => x.credits >= 1900);
+  const w = await until("invoice.paid to credit the wallet", (x) => x.credits >= PLUS_CREDITS);
   assert(w.tier === "plus", `tier is ${w.tier}, expected plus`);
   assert(w.status === "active", `subscriptionStatus is ${w.status}, expected active`);
 
@@ -290,10 +372,19 @@ await step("grant", async () => {
   const full = await api("GET", `invoices/${inv.id}?expand[]=payments`);
   subscriptionPi = full.payments?.data?.find((p) => p.payment?.payment_intent)?.payment?.payment_intent;
   assert(subscriptionPi, "no PaymentIntent resolved on the invoice — the receipt cannot be written");
+  // The event that carried this invoice, kept for the replay step. Stripe has no
+  // "events for object" filter, so the type-filtered page is scanned for it.
+  const events = (await api("GET", "events?type=invoice.paid&limit=100")).data ?? [];
+  grantEventId = events.find((e) => e.data?.object?.id === inv.id)?.id ?? null;
+  assert(grantEventId, `no invoice.paid event found for invoice ${inv.id}`);
+
   const r = receipt(subscriptionPi);
   assert(r.exists, `no RECEIPT# row for ${subscriptionPi}`);
-  assert(r.purchased === 1900, `receipt purchased=${r.purchased}, expected 1900`);
-  assert(r.amountPaidCents === 1900, `receipt amountPaidCents=${r.amountPaidCents}, expected 1900`);
+  assert(r.purchased === PLUS_CREDITS, `receipt purchased=${r.purchased}, expected ${PLUS_CREDITS}`);
+  assert(
+    r.amountPaidCents === subscriptionCents,
+    `receipt amountPaidCents=${r.amountPaidCents}, expected ${subscriptionCents}`
+  );
   return `credits=${w.credits} tier=${w.tier} receipt=${subscriptionPi}`;
 });
 
@@ -315,7 +406,7 @@ await step("renewal", async () => {
     "items[0][price]": price.id,
     "metadata[userId]": sub,
     "metadata[tier]": "plus",
-    "metadata[credits]": "1900",
+    "metadata[credits]": String(PLUS_CREDITS),
   });
 
   await until("the first clock invoice", (x) => x.credits > 0, 120_000);
@@ -323,7 +414,7 @@ await step("renewal", async () => {
 
   // Seed a debt so the renewal has something to garnish. This is the #218 case:
   // before the fix, the grant landed in full and the debt never moved.
-  seedWallet({ clawbackOwedCredits: 800 });
+  seedWallet({ clawbackOwedCredits: SEEDED_DEBT });
 
   const advance = async (to) => {
     await api("POST", `test_helpers/test_clocks/${clock.id}/advance`, { frozen_time: String(to) });
@@ -342,31 +433,51 @@ await step("renewal", async () => {
 
   const w = await until("the renewal grant to garnish the debt", (x) => x.owed === 0 && x.credits > before.credits, 180_000);
   const gained = w.credits - before.credits;
-  assert(gained === 1100, `renewal added ${gained} spendable credits, expected 1100 (1900 grant − 800 debt)`);
-  return `credits +${gained}, debt 800 -> 0`;
+  const expected = PLUS_CREDITS - SEEDED_DEBT;
+  assert(
+    gained === expected,
+    `renewal added ${gained} spendable credits, expected ${expected} (${PLUS_CREDITS} grant − ${SEEDED_DEBT} debt)`
+  );
+  return `credits +${gained}, debt ${SEEDED_DEBT} -> 0`;
 });
 
 // ---- refund (partial then remainder) ---------------------------------------------
 await step("refund", async () => {
   assert(subscriptionPi, "no PaymentIntent from the grant step — run with grant enabled");
+  assert(subscriptionCents, "no charge amount from the grant step — run with grant enabled");
   const before = wallet();
 
-  // 500c of a 1900c charge that granted 1900 credits: floor(1900 * 500/1900) = 500.
-  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: "500" });
-  const partial = await until("the partial refund clawback", (x) => x.credits <= before.credits - 500);
-  const firstDelta = before.credits - partial.credits;
-  assert(firstDelta === 500, `partial refund reclaimed ${firstDelta}, expected 500`);
+  // A quarter of the charge, then the rest. Both are CENTS against the charge and
+  // are derived from what Stripe actually billed; the expected clawbacks are the
+  // handler's own arithmetic over the grant CATALOG stamped. The two units are
+  // only numerically equal because Plus happens to sit on the $0.01 peg.
+  const partialCents = Math.round(subscriptionCents / 4);
+  const remainderCents = subscriptionCents - partialCents;
+  const expectedFirst = Math.floor((PLUS_CREDITS * partialCents) / subscriptionCents);
+  const expectedSecond = PLUS_CREDITS - expectedFirst;
 
-  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: "1400" });
-  const full = await until("the remaining refund clawback", (x) => x.credits <= partial.credits - 1000);
+  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: String(partialCents) });
+  const partial = await until("the partial refund clawback", (x) => x.credits <= before.credits - expectedFirst);
+  const firstDelta = before.credits - partial.credits;
+  assert(firstDelta === expectedFirst, `partial refund reclaimed ${firstDelta}, expected ${expectedFirst}`);
+
+  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: String(remainderCents) });
+  const full = await until(
+    "the remaining refund clawback",
+    (x) => x.credits <= partial.credits - Math.ceil(expectedSecond / 2)
+  );
   const secondDelta = partial.credits - full.credits;
-  // The target is ABSOLUTE: amount_refunded is cumulative (1900 now), so the
-  // counter moves 500 -> 1900 and the DELTA is 1400. An incremental
-  // implementation would reclaim 1900 here and overdraw by 500.
-  assert(secondDelta === 1400, `second refund reclaimed ${secondDelta}, expected 1400 (delta, not a re-clawback)`);
+  // The target is ABSOLUTE: amount_refunded is cumulative (the whole charge now),
+  // so the counter moves expectedFirst -> the full grant and the DELTA is the
+  // remainder. An incremental implementation would reclaim the whole grant here
+  // and overdraw by expectedFirst.
+  assert(
+    secondDelta === expectedSecond,
+    `second refund reclaimed ${secondDelta}, expected ${expectedSecond} (delta, not a re-clawback)`
+  );
   const r = receipt(subscriptionPi);
-  assert(r.refunded === 1900, `receipt refundedCredits=${r.refunded}, expected 1900`);
-  return `deltas 500 then 1400 (absolute target), refundedCredits=1900`;
+  assert(r.refunded === PLUS_CREDITS, `receipt refundedCredits=${r.refunded}, expected ${PLUS_CREDITS}`);
+  return `deltas ${expectedFirst} then ${expectedSecond} (absolute target), refundedCredits=${PLUS_CREDITS}`;
 });
 
 // ---- dispute withdrawn then WON (#217) -------------------------------------------
@@ -413,19 +524,44 @@ await step("prorate", async () => {
 });
 
 // ---- replay (idempotency) ---------------------------------------------------------
+//
+// This is the one step whose assertion is a NEGATIVE — the wallet must not move
+// — so it needs a positive control or it passes for all the wrong reasons: a
+// redelivery that never landed, a CLI that is not installed, an event that
+// belongs to another run, a resend routed to a different endpoint. Each of those
+// also leaves the wallet unchanged.
 await step("replay", async () => {
-  const evt = (await api("GET", "events?type=invoice.paid&limit=1")).data[0];
-  assert(evt, "no invoice.paid event to replay");
+  assert(grantEventId, "no invoice.paid event from the grant step — run replay with grant enabled");
+  // Control 1: the handler has demonstrably processed THIS event id already, so
+  // a duplicate of it has to reach applyOnce's EVENT# leg.
+  assert(
+    eventRow(grantEventId),
+    `no EVENT# row for ${grantEventId} — the handler never recorded the original delivery, so a redelivery proves nothing`
+  );
+  const endpointId = webhookEndpoint ?? (await soleEnabledEndpoint());
   const before = wallet();
-  const r = spawnSync("stripe", ["events", "resend", evt.id, "--api-key", key], { encoding: "utf8" });
-  assert(r.status === 0, `stripe events resend failed: ${r.stderr?.slice(0, 200)}`);
-  await new Promise((res) => setTimeout(res, 15000));
+
+  const r = spawnSync(
+    "stripe",
+    ["events", "resend", grantEventId, "--api-key", key, "--webhook-endpoint", endpointId],
+    { encoding: "utf8" }
+  );
+  // A missing CLI lands in r.error, not r.stderr — which is why the old failure
+  // message read "failed: undefined".
+  assert(!r.error, `stripe events resend could not run: ${r.error.message}`);
+  assert(r.status === 0, `stripe events resend failed: ${(r.stderr || r.stdout || "").slice(0, 200)}`);
+
+  // Control 2: the redelivery is observed leaving Stripe before the negative is
+  // asserted. Timing out here is a FAILED step, not a pass.
+  assert(await untilRedelivered(grantEventId), `no redelivery of ${grantEventId} was ever observed leaving Stripe`);
+  await new Promise((res) => setTimeout(res, 2000)); // let the handler's writes settle
+
   const after = wallet();
   assert(
     after.credits === before.credits && after.owed === before.owed,
     `replay moved the wallet: ${JSON.stringify(before)} -> ${JSON.stringify(after)} — EVENT# idempotency leg failed`
   );
-  return `wallet unchanged across a genuine duplicate delivery`;
+  return `${grantEventId} redelivered to ${endpointId}; wallet unchanged`;
 });
 
 // ---- teardown ----------------------------------------------------------------------

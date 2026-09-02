@@ -23,84 +23,49 @@
  * READ-ONLY. Key by environment; --expect-account is required and verified first.
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
- *     node scripts/stripe/check-catalog-parity.mjs --expect-account acct_1TuFow07hJdXv6GV
+ *     node scripts/stripe/check-catalog-parity.mjs --expect-account live
+ *
+ * --expect-account takes `live` or `sandbox` (resolved through
+ * scripts/stripe/lib/accounts.mjs) or an explicit acct_.
  *
  * Exit 0 = parity, 1 = drift, 2 = usage error.
  */
 import { readFileSync } from "node:fs";
-import { CATALOG } from "../../lambda/stripe/index.mjs";
+import { CATALOG } from "../../lambda/stripe/catalog.mjs";
+import { resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
+import { auditDescription, tierPrices } from "./lib/parity-rules.mjs";
 
-const args = process.argv.slice(2);
-const flag = (n) => {
-  const i = args.indexOf(n);
-  return i === -1 ? undefined : args[i + 1];
-};
+const { flag, has } = parseArgs(process.argv.slice(2));
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
-const json = args.includes("--json");
-
-if (!key) {
-  console.error("STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
-  process.exit(2);
+// `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  die(2, err.message);
 }
-if (!expectAccount) {
-  console.error("--expect-account <acct_...> is required. Refusing to audit an unidentified account.");
-  process.exit(2);
-}
+const json = has("--json");
 
-/**
- * Published monthly prices, parsed out of pricing.ts rather than imported: it is
- * TypeScript with i18n key references, and this script must run under plain node
- * with no build step (it is called from CI and from the runbook).
- */
-function tierPrices() {
-  const src = readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8");
-  const body = src.match(/export const TIERS[^=]*=\s*\[([\s\S]*?)\n\];/)?.[1];
-  if (!body) throw new Error("could not locate the TIERS array in pricing.ts");
-  const out = {};
-  // Split on tier-object boundaries. A single spanning regex silently pairs the
-  // FREE tier's values (0 / 0, and no checkoutLookupKey) with the NEXT tier's
-  // lookup key, which reads as a $0 price on a paid tier — a false drift report
-  // on exactly the surface this script exists to police.
-  for (const block of body.split(/\n  \},?\n?/)) {
-    const lookup = block.match(/checkoutLookupKey:\s*"([a-z0-9_]+)"/)?.[1];
-    if (!lookup) continue; // free tier: nothing to sell
-    const usd = block.match(/priceUsdPerMonth:\s*(\d+)/)?.[1];
-    const credits = block.match(/monthlyCredits:\s*(\d+)/)?.[1];
-    if (usd === undefined || credits === undefined) continue;
-    out[lookup] = { usd: Number(usd), credits: Number(credits) };
-  }
-  return out;
-}
+if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
+if (!expectAccount) die(2, "--expect-account <acct_...> is required. Refusing to audit an unidentified account.");
 
-async function stripeGet(path) {
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, {
-    headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` },
-  });
-  const body = await res.json();
-  if (body?.error) throw new Error(`${path}: ${body.error.message}`);
-  return body;
-}
-
+const client = stripeClient(key);
 const problems = [];
 
-const account = await stripeGet("account");
-if (account.id !== expectAccount) {
-  console.error(
-    `WRONG ACCOUNT: key belongs to ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), ` +
-      `expected ${expectAccount}. Refusing to continue.`
-  );
-  process.exit(1);
-}
+const account = await assertAccount(client, expectAccount).catch((err) => die(1, err.message));
 
-const tiers = tierPrices();
-const { data: prices = [] } = await stripeGet("prices?limit=100&active=true&expand[]=data.product");
+// The published prices are parsed out of pricing.ts rather than imported: it is
+// TypeScript with i18n key references, and this script must run under plain node
+// with no build step (it is called from CI and from the runbook). The parser is
+// shared with provision-sandbox and unit-tested in parity-rules.test.mjs — a
+// second copy had already diverged into one that read a parse failure as drift.
+const tiers = tierPrices(readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8"));
+// Every page: a lookup key that fell off the first one used to be reported as
+// "no ACTIVE price with this lookup_key — checkout for it will 500".
+const prices = await client.listAll("prices?active=true&expand[]=data.product");
 const byLookup = new Map(prices.filter((p) => p.lookup_key).map((p) => [p.lookup_key, p]));
-
-// Retired commercial framing. These are claims about the SPREAD, which rules 5/9
-// settled and rule 6 keeps out of the repo — they must not survive on a customer-
-// facing Stripe product either.
-const RETIRED_CLAIMS = [/\bno markup\b/i, /\bat cost\b/i, /\badd(?:s|ing)? nothing on top\b/i];
 
 const rows = [];
 for (const [lookup, spec] of Object.entries(CATALOG)) {
@@ -137,17 +102,7 @@ for (const [lookup, spec] of Object.entries(CATALOG)) {
     }
   }
 
-  const desc = price.product?.description ?? "";
-  for (const n of desc.matchAll(/([\d,]{3,})\s+credits/gi)) {
-    const stated = Number(n[1].replace(/,/g, ""));
-    if (stated !== spec.credits) {
-      issues.push(`product description advertises ${n[1]} credits; CATALOG grants ${spec.credits}`);
-    }
-  }
-  for (const re of RETIRED_CLAIMS) {
-    const hit = desc.match(re);
-    if (hit) issues.push(`product description still makes the retired claim "${hit[0]}" (rules 5/9)`);
-  }
+  issues.push(...auditDescription(price.product?.description, spec.credits));
 
   if (issues.length) problems.push(`${lookup} (${price.id}, product ${price.product?.id}):\n    ` + issues.join("\n    "));
   rows.push({ lookup, priceId: price.id, product: price.product?.id, amount: price.unit_amount, issues });

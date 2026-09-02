@@ -34,6 +34,14 @@ Parameters:
       Where new-signup alerts are sent. AWS emails a confirmation link to this
       address on first deploy; the subscription stays PendingConfirmation (and
       delivers nothing) until it is clicked.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    Description: >
+      Retention for the alerter's log group. The group is declared here rather
+      than left to Lambda, which would create it outside the stack at
+      never-expire retention, untagged for cost allocation and orphaned on
+      stack deletion — and with nothing for a metric filter to attach to.
 
 Resources:
   # ── New-signup alerting ────────────────────────────────────────────────────
@@ -42,6 +50,11 @@ Resources:
   # lands minutes later. PostConfirmation_ConfirmSignUp is invoked on a
   # federated user's FIRST sign-in as well as on native confirmation, so one
   # trigger covers both email/password and Google.
+  #
+  # The SAME hook also fires as PostConfirmation_ConfirmForgotPassword when an
+  # EXISTING learner completes a password reset — the pool enables
+  # verified_email recovery, and the README's release gate walks that flow. The
+  # handler filters on triggerSource so a reset is never reported as a signup.
   SignupAlertTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -52,6 +65,8 @@ Resources:
           Value: quantum
         - Key: Feature
           Value: workspace-auth
+        - Key: CostCategory
+          Value: auth
 
   SignupAlertSubscription:
     Type: AWS::SNS::Subscription
@@ -101,6 +116,8 @@ Resources:
           Value: quantum
         - Key: Feature
           Value: workspace-auth
+        - Key: CostCategory
+          Value: auth
       Code:
         ZipFile: |
           // THIS HANDLER MUST NEVER THROW.
@@ -110,25 +127,87 @@ Resources:
           // notifier becomes a broken sign-up for real people. Every path
           // below is wrapped and every path returns the event unchanged. An
           // alert is worth strictly less than a working front door.
-          import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+          //
+          // CommonJS, deliberately. Code.ZipFile writes this source to
+          // index.js with no package.json beside it, so there is no
+          // `"type": "module"` to declare and the runtime loads it as
+          // CommonJS; an `import` statement would be a SyntaxError raised at
+          // module load, BEFORE the try below exists — the one failure this
+          // banner cannot defend against, and it would fail every sign-up.
+          // The repo's other inline handlers (infra/redirect/*.yaml) are
+          // CommonJS for the same reason; only the lambda/ directories may
+          // use ESM, and they earn it with a package.json a ZipFile has no
+          // way to carry. Every supported Node.js runtime bundles the AWS SDK
+          // for JavaScript v3, so this require resolves with no deployment
+          // package.
+          const { SNSClient, PublishCommand } = require("@aws-sdk/client-sns");
 
-          const sns = new SNSClient({});
+          // Bounded on purpose. The SDK defaults are standard retry mode (up
+          // to 3 attempts, with backoff) and NO request timeout, so a
+          // throttled or stalled SNS endpoint leaves this awaiting send when
+          // the 5s function timeout fires — and a Lambda timeout is not an
+          // exception: the catch never runs, `return event` never happens,
+          // and Cognito gets exactly the trigger failure the banner above
+          // promises cannot occur. Two attempts of at most 1.5s each reject
+          // INTO the catch with seconds of the ceiling still unspent, even
+          // after a cold start at 128 MB.
+          const sns = new SNSClient({
+            maxAttempts: 2,
+            requestHandler: { connectionTimeout: 800, requestTimeout: 1500 },
+          });
+
+          // ONE token for a field the event did not carry. Three different
+          // ones in one mail ("unknown", "(unknown)", "(no email attribute)")
+          // read as three different conditions when they are the same one.
+          // The angle-bracket placeholders in the runbook below are the
+          // exception on purpose: inside a shell command, <pool> says "fill
+          // this in" where (unknown) would read as a value.
+          const MISSING = "(unknown)";
 
           // SNS rejects a Subject over 100 chars or containing control
           // characters, and that rejection would be an exception on the
           // sign-up path. Clamp rather than trust the address.
           function safeSubject(email) {
-            const clean = String(email || "unknown").replace(/[^\x20-\x7E]/g, "");
+            const clean = String(email || MISSING).replace(/[^\x20-\x7E]/g, "");
             const s = `New Quantum Learner signup: ${clean}`;
             return s.length > 99 ? s.slice(0, 96) + "..." : s;
           }
 
-          export const handler = async (event) => {
+          // One person can hold a native AND a Google account under different
+          // subs, so an alert is not proof of a new human. This is the check
+          // that settles it, kept out of the body-building code below because
+          // a four-line CLI command with escaped backticks is the least
+          // readable thing in this file.
+          function rosterCheckHint(poolId, region) {
+            return [
+              "One person can hold TWO accounts (native + Google) with different subs.",
+              "Before treating this as a new human, check the roster by email:",
+              "",
+              `  aws cognito-idp list-users --user-pool-id ${poolId} \\`,
+              `    --region ${region} \\`,
+              `    --query 'Users[].{email:Attributes[?Name==\`email\`].Value|[0],created:UserCreateDate}' --output table`,
+            ];
+          }
+
+          exports.handler = async (event) => {
             try {
+              // PostConfirmation is invoked for ConfirmSignUp,
+              // AdminConfirmSignUp AND ConfirmForgotPassword. Only a sign-up
+              // is news: a password reset by a learner who joined months ago
+              // reports PostConfirmation_ConfirmForgotPassword and would
+              // otherwise send a mail headed "New Quantum Learner signup",
+              // inflating the founding-cohort count this alert exists to
+              // feed. Log the skip so a reset still leaves a trace.
+              const trigger = event?.triggerSource ?? MISSING;
+              if (trigger !== "PostConfirmation_ConfirmSignUp") {
+                console.log("signup alert skipped, not a sign-up:", trigger);
+                return event;
+              }
+
               const attrs = event?.request?.userAttributes ?? {};
-              const email = attrs.email ?? "(no email attribute)";
-              const sub = attrs.sub ?? "(unknown)";
-              const userName = event?.userName ?? "(unknown)";
+              const email = attrs.email ?? MISSING;
+              const sub = attrs.sub ?? MISSING;
+              const userName = event?.userName ?? MISSING;
               // Federated users arrive with a provider-prefixed userName
               // ("Google_1234..."); native sign-ups do not.
               const viaGoogle = /^google_/i.test(userName);
@@ -140,21 +219,21 @@ Resources:
               const lines = [
                 `Email:     ${email}`,
                 `Sign-in:   ${viaGoogle ? "Google" : "email + password"}`,
-                `Cognito sub: ${sub}`,
+                `User sub:  ${sub}`,
                 `Username:  ${userName}`,
-                `Trigger:   ${event?.triggerSource ?? "(unknown)"}`,
+                `Trigger:   ${trigger}`,
                 `When:      ${new Date().toISOString()}`,
                 "",
                 isInternal
                   ? `NOTE: internal @${internalDomain} account — does not occupy a founding-cohort slot.`
                   : "This is an external signup.",
                 "",
-                "One person can hold TWO accounts (native + Google) with different subs.",
-                "Before treating this as a new human, check the roster by email:",
-                "",
-                `  aws cognito-idp list-users --user-pool-id ${event?.userPoolId ?? "<pool>"} \\`,
-                `    --region ${process.env.AWS_REGION} \\`,
-                `    --query 'Users[].{email:Attributes[?Name==\`email\`].Value|[0],created:UserCreateDate}' --output table`,
+                // AWS_REGION is runtime-reserved and always set in Lambda; the
+                // fallback is for anything that runs this module elsewhere.
+                ...rosterCheckHint(
+                  event?.userPoolId ?? "<pool>",
+                  process.env.AWS_REGION || "<region>"
+                ),
               ];
 
               await sns.send(
@@ -170,6 +249,108 @@ Resources:
             }
             return event;
           };
+
+  # The handler's catch swallows every publish failure into one log line,
+  # which is the right call on the sign-up path and is exactly why a
+  # permanently dark alerter — wrong TOPIC_ARN, revoked publish, deleted
+  # topic, SNS throttle — is indistinguishable from a quiet week: no
+  # exception, no metric, no mail. These three make that log line page.
+  # (The stack has never deployed, so there is no pre-existing implicit log
+  # group to import; the group is free to declare now and will not be later.)
+  SignupAlertLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SignupAlertFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+  SignupAlertFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SignupAlertLogGroup
+      # The literal string the handler logs when it swallows a failure.
+      FilterPattern: '"signup alert failed"'
+      MetricTransformations:
+        - MetricNamespace: QuantumSignupAlert
+          MetricName: PublishFailed
+          MetricValue: "1"
+          Unit: Count
+
+  SignupAlertFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-signup-alert-publish-failed
+      AlarmDescription: >-
+        A learner signed up, the sign-up succeeded, and the alert never left:
+        SNS refused the publish and the handler swallowed it, because failing
+        the front door would be worse. Nothing else reports this — zero alerts
+        reads as zero signups. Check /aws/lambda/quantum-signup-alert for the
+        "signup alert failed" line, then the topic, its policy, and the
+        function's sns:Publish grant. Honest limit: this alarm routes to the
+        same topic, so a failure of the TOPIC silences the alarm too. Its own
+        state in `aws cloudwatch describe-alarms` is the backstop, as in
+        review-email.
+      Namespace: QuantumSignupAlert
+      MetricName: PublishFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SignupAlertTopic
+
+  # The alarm above watches the failure the handler CATCHES. These two watch
+  # the failures it cannot: a module-load error, a 5s timeout, a
+  # concurrency throttle. Because the handler swallows everything inside the
+  # try, AWS/Lambda Errors can only ever fire for a failure outside it — and
+  # every one of those is a failed PostConfirmation trigger, which Cognito
+  # surfaces to the person signing up. This is the only function in the repo
+  # sitting on a user-blocking path; it was the only one without these.
+  SignupAlertErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-signup-alert-errors
+      AlarmDescription: >-
+        The signup alerter failed in a way its own catch could not swallow —
+        an init error, a timeout, an out-of-memory. Cognito surfaces a failed
+        PostConfirmation trigger to the caller, so the sign-up form is broken
+        for real people right now. Check /aws/lambda/quantum-signup-alert.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SignupAlertFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SignupAlertTopic
+
+  SignupAlertThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-signup-alert-throttles
+      AlarmDescription: >-
+        The signup alerter was throttled at the account concurrency limit, so
+        Cognito's invocation failed and the sign-up with it. Look for whatever
+        else in the account is consuming concurrency.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SignupAlertFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SignupAlertTopic
 
   # SourceAccount rather than SourceArn deliberately. SourceArn would need the
   # pool's ARN, and the pool already references this function's ARN in its
