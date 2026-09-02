@@ -37,7 +37,9 @@ import {
  */
 
 // The Bell amplitudes qcsim prints for the fence's circuit: numpy renders
-// 1/sqrt(2) as 0.70710678 on |00> and |11>, zero elsewhere.
+// 1/sqrt(2) as 0.70710678 on |00> and |11>, zero elsewhere. The fixture page
+// renders the SHIPPED 01-foundations fence (getRunnableFences), so this and the
+// Reset assertion below are pinned to what a learner sees, not to a copy.
 const BELL_AMPLITUDE = "0.70710678";
 
 test("runnable fence: self-hosted Monaco boots, edits reach real Pyodide, fully same-origin", async ({
