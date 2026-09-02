@@ -253,3 +253,25 @@ one's real fix is still open upstream.
   before accepting the empty extension. This was NOT new breakage — `@/i18n`
   entered the components on 2026-07-24, six days after the last successful
   sync, so the first regen since then hit it.
+
+## Guard refinements (2026-09-02)
+
+Repo-side only — no driver run, and the uploaded project is untouched.
+
+- `conventions.md`'s product line now names **learner.quantumenv.dev**, the
+  canonical domain since the platform-subdomain migration; it still said
+  `quantum.altivum.ai`, which only 301s onward. `conventions.md` is the
+  `readmeHeader`, so the generated README picks this up on the next driver run —
+  expect exactly that one line to differ, and do not read it as unexplained
+  header drift.
+- The project pin moved out of `preflight.mjs` into `scripts/design-sync/
+  targets.mjs`, with `preflight.test.mjs` asserting it still matches
+  `config.json`'s `projectId`. CI runs it, so a one-sided edit — including one
+  the sync skill writes back into the config after an aborted run — now fails
+  the merge instead of waiting for someone to remember the preflight command.
+  A retarget means editing `SYNC_TARGET` in `targets.mjs` and the config in the
+  same commit.
+- `restage.mjs` took over `pkg/package.json` and `pkg/entry.jsx`, both of which
+  had been hand copies of `config.json` (the barrel's header claimed 18
+  components while exporting 17), and now verifies the three `next/*` shims
+  before writing the tsconfig that maps at them.
