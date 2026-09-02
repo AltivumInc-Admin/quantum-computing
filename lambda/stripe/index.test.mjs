@@ -266,6 +266,38 @@ test("POST /checkout accepts a custom whole-dollar top-up and prices it ad hoc",
   assert.equal(stripe.calls.pricesList.length, 0);
 });
 
+test("POST /checkout sends every buyer back to the SAME pair of return URLs", async () => {
+  // The catalog branch and the custom-top-up branch used to build these
+  // separately, which is how one of them keeps pointing at a route the other
+  // has moved off. Both read from one hoisted object now; this pins it.
+  const catalogStripe = stubStripe();
+  const catalogCore = createHandlerCore({
+    stripe: catalogStripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await catalogCore(makeEvent({ method: "POST", path: "/checkout", body: { lookupKey: "ql_credits_2000" } }));
+
+  const customStripe = stubStripe();
+  const customCore = createHandlerCore({
+    stripe: customStripe,
+    ddb: paidWallet(),
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+  });
+  await customCore(makeEvent({ method: "POST", path: "/checkout", body: { amountUsd: 20 } }));
+
+  const catalog = catalogStripe.calls.sessionsCreate[0];
+  const custom = customStripe.calls.sessionsCreate[0];
+  assert.equal(catalog.success_url, `${ORIGIN}/workspace?checkout=success`);
+  assert.equal(catalog.cancel_url, `${ORIGIN}/pricing?checkout=cancelled`);
+  assert.equal(custom.success_url, catalog.success_url);
+  assert.equal(custom.cancel_url, catalog.cancel_url);
+});
+
 test("POST /checkout rejects out-of-bounds or fractional custom amounts", async () => {
   const core = createHandlerCore({ stripe: stubStripe(), ddb: paidWallet(), tableName: TABLE, webhookSecret: SECRET, siteOrigin: ORIGIN });
   for (const amountUsd of [4, 501, 12.5, -5, "20", 0]) {

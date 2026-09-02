@@ -342,27 +342,6 @@ export function createHandlerCore({
     }
   }
 
-  // Where the subscription id lives on an Invoice, across API versions.
-  //
-  // The shape of evt.data.object is decided by the API version pinned on the
-  // WEBHOOK ENDPOINT in the Stripe Dashboard, NOT by the SDK's apiVersion at the
-  // bottom of this file: that pin only shapes our outbound REST calls, while the
-  // event object is parsed verbatim out of the raw request body. So this handler
-  // can be handed either shape at any time and must read both.
-  //
-  // Modern (the vendored stripe 18.5.0 Invoice type in
-  // node_modules/stripe/types/Invoices.d.ts): there is NO top-level
-  // `subscription` property at all; the id moved to
-  // parent.subscription_details.subscription. Reading only the retired
-  // top-level field is exactly what made every subscription credit grant fail
-  // silently: the id came back undefined, the handler returned early, and the
-  // route still answered 200.
-  //
-  // Legacy (an endpoint still pinned to an API version from before the move):
-  // obj.subscription.
-  //
-  // Either form may be an expanded Subscription object instead of a bare id
-  // string (the type is `string | Stripe.Subscription`), so normalize to the id.
   /** Normalize `string | Object | null` to an id — every Stripe reference may
    *  arrive expanded depending on the endpoint's configuration. */
   function idOf(ref) {
@@ -416,10 +395,29 @@ export function createHandlerCore({
     return { Put: { TableName: tableName, Item: item } };
   }
 
+  // Where the subscription id lives on an Invoice, across API versions.
+  //
+  // The shape of evt.data.object is decided by the API version pinned on the
+  // WEBHOOK ENDPOINT in the Stripe Dashboard, NOT by the SDK's apiVersion at the
+  // bottom of this file: that pin only shapes our outbound REST calls, while the
+  // event object is parsed verbatim out of the raw request body. So this handler
+  // can be handed either shape at any time and must read both.
+  //
+  // Modern (the vendored stripe 18.5.0 Invoice type in
+  // node_modules/stripe/types/Invoices.d.ts): there is NO top-level
+  // `subscription` property at all; the id moved to
+  // parent.subscription_details.subscription. Reading only the retired
+  // top-level field is exactly what made every subscription credit grant fail
+  // silently: the id came back undefined, the handler returned early, and the
+  // route still answered 200.
+  //
+  // Legacy (an endpoint still pinned to an API version from before the move):
+  // obj.subscription.
+  //
+  // Either form may be an expanded Subscription object instead of a bare id
+  // string (the type is `string | Stripe.Subscription`), so normalize to the id.
   function invoiceSubscriptionId(invoice) {
-    const raw = invoice.parent?.subscription_details?.subscription ?? invoice.subscription;
-    if (typeof raw === "string") return raw;
-    return typeof raw?.id === "string" ? raw.id : undefined;
+    return idOf(invoice.parent?.subscription_details?.subscription ?? invoice.subscription);
   }
 
   // Does this invoice claim to have come from a subscription? Used ONLY to
@@ -442,19 +440,6 @@ export function createHandlerCore({
   }
 
   /**
-   * Fulfill a Checkout Session: credits for a top-up, tier light-up for a
-   * subscription. Shared by checkout.session.completed and
-   * checkout.session.async_payment_succeeded — for delayed-notification
-   * methods (Klarna, Cash App, Amazon Pay, ACH) the session "completes" with
-   * payment_status "unpaid" BEFORE any money moves, and the money outcome
-   * arrives later as async_payment_succeeded/failed. Stripe's fulfillment
-   * contract: fulfill when payment_status != "unpaid" ("no_payment_required",
-   * e.g. a 100%-off promotion, still fulfills); an unpaid session fulfills
-   * nothing and waits. Idempotency is per EVENT id, and the unpaid completion
-   * writes nothing, so the eventual async_payment_succeeded is the one and
-   * only grant for the purchase — no double-credit window.
-   */
-  /**
    * Split a purchase between clearing debt and adding spendable credits.
    *
    * Product rule: an owing learner must CLEAR the debt — so money pays down
@@ -464,10 +449,8 @@ export function createHandlerCore({
    * so rather than quietly crediting a balance they cannot use.
    */
   async function splitAgainstDebt(sub, credits) {
-    const res = await ddb.send(
-      new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
-    );
-    const owed = Number(res.Item?.clawbackOwedCredits?.N ?? 0);
+    const item = await readWallet(sub);
+    const owed = Number(item?.clawbackOwedCredits?.N ?? 0);
     // expectedOwed is the OCC token for the paydown: applyOnce pins the wallet
     // leg to the value read here, so a concurrent paydown cancels the
     // transaction instead of compounding into a negative, gate-wedging debt.
@@ -491,6 +474,19 @@ export function createHandlerCore({
     throw new Error(`${evt.type}: debt paydown contended past retry budget for ${sub}`);
   }
 
+  /**
+   * Fulfill a Checkout Session: credits for a top-up, tier light-up for a
+   * subscription. Shared by checkout.session.completed and
+   * checkout.session.async_payment_succeeded — for delayed-notification
+   * methods (Klarna, Cash App, Amazon Pay, ACH) the session "completes" with
+   * payment_status "unpaid" BEFORE any money moves, and the money outcome
+   * arrives later as async_payment_succeeded/failed. Stripe's fulfillment
+   * contract: fulfill when payment_status != "unpaid" ("no_payment_required",
+   * e.g. a 100%-off promotion, still fulfills); an unpaid session fulfills
+   * nothing and waits. Idempotency is per EVENT id, and the unpaid completion
+   * writes nothing, so the eventual async_payment_succeeded is the one and
+   * only grant for the purchase — no double-credit window.
+   */
   async function fulfillCheckoutSession(evt, obj) {
     // Settlement first, identity second — deliberately in that order. An
     // unpaid session is a non-event and must stay quiet; a SETTLED one with
@@ -647,11 +643,9 @@ export function createHandlerCore({
       // negative `credits` would read as "metering unconfigured" to the
       // client's counter() and hide the top-up path exactly when the learner
       // needs it; debt belongs in its own field, as an explicit decision.
-      const walletRes = await ddb.send(
-        new GetItemCommand({ TableName: tableName, Key: walletKey(sub) })
-      );
-      const balance = Number(walletRes.Item?.credits?.N ?? 0);
-      const owedNow = Number(walletRes.Item?.clawbackOwedCredits?.N ?? 0);
+      const wallet = await readWallet(sub);
+      const balance = Number(wallet?.credits?.N ?? 0);
+      const owedNow = Number(wallet?.clawbackOwedCredits?.N ?? 0);
       // How much of this counter's clawback landed in DEBT rather than coming out
       // of credits. Tracked per counter on the receipt because a restore has to
       // undo BOTH halves, and `move` alone cannot say how the original clawback
@@ -858,15 +852,14 @@ export function createHandlerCore({
 
       // Money going back to the customer takes its credits with it.
       case "charge.refunded": {
-        const c = evt.data.object;
-        const amount = Number(c.amount ?? 0);
-        const refunded = Number(c.amount_refunded ?? 0);
+        const amount = Number(obj.amount ?? 0);
+        const refunded = Number(obj.amount_refunded ?? 0);
         if (!(amount > 0)) return;
         // amount_refunded is CUMULATIVE, so this fraction is absolute: the
         // target it produces is "what this grant should total", not a delta.
         await reclaim({
           eventId: evt.id,
-          paymentIntent: idOf(c.payment_intent),
+          paymentIntent: idOf(obj.payment_intent),
           field: "refundedCredits",
           fraction: refunded / amount,
           label: "charge.refunded",
@@ -878,26 +871,24 @@ export function createHandlerCore({
       // — that also fires for inquiries where Stripe withdraws nothing, and
       // clawing back there would zero a paying customer's wallet for free.
       case "charge.dispute.funds_withdrawn": {
-        const d = evt.data.object;
         await reclaim({
           eventId: evt.id,
-          paymentIntent: idOf(d.payment_intent),
+          paymentIntent: idOf(obj.payment_intent),
           field: "disputedCredits",
           // Pro-rated by reclaim() against the receipt's amountPaidCents — a
           // dispute's amount is NOT guaranteed to be the whole charge (#230).
           // Tracked on its own counter, so a later partial refund's arithmetic
           // cannot read this as a reduction and re-grant.
-          disputedAmountCents: Number(d.amount),
+          disputedAmountCents: Number(obj.amount),
           label: "charge.dispute.funds_withdrawn",
         });
         return;
       }
 
       case "charge.dispute.funds_reinstated": {
-        const d = evt.data.object;
         await reclaim({
           eventId: evt.id,
-          paymentIntent: idOf(d.payment_intent),
+          paymentIntent: idOf(obj.payment_intent),
           field: "disputedCredits",
           fraction: 0,
           restore: true,
@@ -981,6 +972,14 @@ export function createHandlerCore({
         return json(400, { error: "invalid JSON body" });
       }
 
+      // Where Stripe sends the buyer back, either way. Built once: both
+      // branches below hand Checkout the same pair, and two copies is how one
+      // of them quietly keeps pointing at a route the other has moved off.
+      const returnUrls = {
+        success_url: `${siteOrigin}/workspace?checkout=success`,
+        cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+      };
+
       // ---- Custom top-up: { amountUsd } — whole dollars, bounded, 1:1 credits ----
       if (body?.amountUsd !== undefined) {
         if (!(await hasPaidTier(sub))) return json(403, { error: "subscription required" });
@@ -1011,8 +1010,7 @@ export function createHandlerCore({
             },
           ],
           metadata: { userId: sub, credits: String(credits), kind: "topup" },
-          success_url: `${siteOrigin}/workspace?checkout=success`,
-          cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+          ...returnUrls,
         });
         return json(200, { url: session.url });
       }
@@ -1036,8 +1034,7 @@ export function createHandlerCore({
         customer,
         client_reference_id: sub,
         line_items: [{ price: price.id, quantity: 1 }],
-        success_url: `${siteOrigin}/workspace?checkout=success`,
-        cancel_url: `${siteOrigin}/pricing?checkout=cancelled`,
+        ...returnUrls,
       };
       const params =
         spec.mode === "subscription"
