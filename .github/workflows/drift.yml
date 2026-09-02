@@ -54,6 +54,19 @@ jobs:
           if [ -z "$ROLE_ARN" ]; then
             echo "AWS_DRIFT_ROLE_ARN is not set — deploy infra/github-oidc-drift-role.yaml"
             echo "and add the role ARN as a repository variable. Skipping."
+            # LOUD, not silent. Without the annotation this job succeeds every
+            # morning having downloaded no artifact and compared no source, and
+            # the green badge is indistinguishable from a working check. The
+            # documented skip-cleanly behaviour is kept — the job still passes,
+            # this file still merges before the role exists — but it stops
+            # looking like a check that ran.
+            echo "::warning::AWS_DRIFT_ROLE_ARN is unset — the deployed-vs-git check inspected nothing today"
+            {
+              echo "### Deployed-vs-git drift"
+              echo ""
+              echo "**SKIPPED — nothing was inspected.** \`AWS_DRIFT_ROLE_ARN\` is unset, so no"
+              echo "credentials were minted, no artifact was downloaded and no source was compared."
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -135,3 +148,25 @@ jobs:
           elif [ "$PARITY_CODE" = "2" ]; then
             echo "::error::Rate parity could not be checked."
           fi
+
+      # The counterpart to the skip warning above: an executed run says so on
+      # the run page, so "it ran and was clean" and "it never ran" are told
+      # apart without opening a log. Value-blind, like the scripts themselves.
+      - name: Record what this run inspected
+        if: always() && steps.cfg.outputs.ready == 'true'
+        shell: bash
+        env:
+          DRIFT_CODE: ${{ steps.lambda.outputs.code }}
+          PARITY_CODE: ${{ steps.parity.outputs.code }}
+        run: |
+          count=$(node -e 'import("./scripts/drift/rules.mjs").then((m) => console.log(m.FUNCTIONS.length))')
+          {
+            echo "### Deployed-vs-git drift"
+            echo ""
+            echo "Compared **$count** deployed functions against this commit."
+            echo ""
+            echo "| check | exit |"
+            echo "| --- | --- |"
+            echo "| deployed-vs-git (0 clean, 1 drift, 2 could not check) | ${DRIFT_CODE:-did not run} |"
+            echo "| rate-card parity (0 consistent, 1 divergent, 2 could not check) | ${PARITY_CODE:-did not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"
