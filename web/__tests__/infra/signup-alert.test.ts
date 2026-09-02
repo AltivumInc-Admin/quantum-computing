@@ -163,6 +163,34 @@ describe("Cognito new-signup alerter", () => {
     expect(fn).toMatch(/INTERNAL_DOMAIN:\s*\S+/);
   });
 
+  it("owns its log group, so retention is stated and the group is not orphaned", () => {
+    // Left implicit, Lambda creates the group outside the stack at
+    // never-expire retention, untagged for cost allocation and orphaned on
+    // delete — and a metric filter has nothing to attach to.
+    const lg = YAML.slice(YAML.indexOf("SignupAlertLogGroup:"));
+    expect(lg).toMatch(/Type: AWS::Logs::LogGroup/);
+    expect(lg).toMatch(/LogGroupName: !Sub \/aws\/lambda\/\$\{SignupAlertFunction\}/);
+    expect(lg).toMatch(/RetentionInDays: !Ref LogRetentionInDays/);
+    expect(YAML).toMatch(/LogRetentionInDays:\s*\n\s*Type: Number/);
+  });
+
+  it("alarms on the publish failure the handler deliberately swallows", () => {
+    // The catch is right — failing the front door would be worse — but it
+    // means a permanently dark alerter looks exactly like a quiet week.
+    // The metric filter and the string the handler logs must not drift
+    // apart, so read the pattern out of the template and look for it in the
+    // source rather than repeating the literal here.
+    const pattern = /FilterPattern: '"([^"]+)"'/.exec(YAML);
+    expect(pattern).not.toBeNull();
+    expect(zipFileSource()).toContain(pattern![1]);
+
+    const alarm = YAML.slice(YAML.indexOf("SignupAlertFailureAlarm:"));
+    expect(alarm).toMatch(/Namespace: QuantumSignupAlert/);
+    expect(alarm).toMatch(/MetricName: PublishFailed/);
+    expect(alarm).toMatch(/TreatMissingData: notBreaching/);
+    expect(alarm).toMatch(/AlarmActions:\s*\n\s*- !Ref SignupAlertTopic/);
+  });
+
   describe("the deployed module shape", () => {
     let src: string;
     beforeAll(() => {

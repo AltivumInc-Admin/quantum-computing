@@ -34,6 +34,14 @@ Parameters:
       Where new-signup alerts are sent. AWS emails a confirmation link to this
       address on first deploy; the subscription stays PendingConfirmation (and
       delivers nothing) until it is clicked.
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    Description: >
+      Retention for the alerter's log group. The group is declared here rather
+      than left to Lambda, which would create it outside the stack at
+      never-expire retention, untagged for cost allocation and orphaned on
+      stack deletion — and with nothing for a metric filter to attach to.
 
 Resources:
   # ── New-signup alerting ────────────────────────────────────────────────────
@@ -201,6 +209,56 @@ Resources:
             }
             return event;
           };
+
+  # The handler's catch swallows every publish failure into one log line,
+  # which is the right call on the sign-up path and is exactly why a
+  # permanently dark alerter — wrong TOPIC_ARN, revoked publish, deleted
+  # topic, SNS throttle — is indistinguishable from a quiet week: no
+  # exception, no metric, no mail. These three make that log line page.
+  # (The stack has never deployed, so there is no pre-existing implicit log
+  # group to import; the group is free to declare now and will not be later.)
+  SignupAlertLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SignupAlertFunction}
+      RetentionInDays: !Ref LogRetentionInDays
+
+  SignupAlertFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref SignupAlertLogGroup
+      # The literal string the handler logs when it swallows a failure.
+      FilterPattern: '"signup alert failed"'
+      MetricTransformations:
+        - MetricNamespace: QuantumSignupAlert
+          MetricName: PublishFailed
+          MetricValue: "1"
+          Unit: Count
+
+  SignupAlertFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-signup-alert-publish-failed
+      AlarmDescription: >-
+        A learner signed up, the sign-up succeeded, and the alert never left:
+        SNS refused the publish and the handler swallowed it, because failing
+        the front door would be worse. Nothing else reports this — zero alerts
+        reads as zero signups. Check /aws/lambda/quantum-signup-alert for the
+        "signup alert failed" line, then the topic, its policy, and the
+        function's sns:Publish grant. Honest limit: this alarm routes to the
+        same topic, so a failure of the TOPIC silences the alarm too. Its own
+        state in `aws cloudwatch describe-alarms` is the backstop, as in
+        review-email.
+      Namespace: QuantumSignupAlert
+      MetricName: PublishFailed
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SignupAlertTopic
 
   # SourceAccount rather than SourceArn deliberately. SourceArn would need the
   # pool's ARN, and the pool already references this function's ARN in its
