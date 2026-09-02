@@ -12,6 +12,12 @@
  * The only thing that surfaces this is downloading the artifact and reading it. That is
  * what this does, for every function, so the gap is visible the day it appears.
  *
+ * One control-plane call per function, then the package. If the download ever needs to
+ * cost less, the same response already carries Configuration.CodeSha256: recording it
+ * per function would let an unchanged package skip the fetch entirely. Not done, because
+ * a cache that is wrong is exactly the false green this file exists to catch — the sha
+ * would have to be stored somewhere as trustworthy as the artifact itself.
+ *
  * Compares hand-written source only — node_modules and build metadata legitimately
  * differ between a packaged artifact and a working tree, and comparing them would make
  * this cry wolf until someone turned it off. Within that set the comparison runs BOTH
@@ -158,8 +164,14 @@ for (const { fn, dir } of FUNCTIONS) {
   // is preferred over its message; this is the fallback (see failureReason).
   let stage = "aws lambda get-function failed";
   try {
-    const url = shRetry("aws", ["lambda", "get-function", "--function-name", fn, "--region", REGION,
-      "--query", "Code.Location", "--output", "text"]);
+    // ONE control-plane call per function. get-function already returns the
+    // configuration, so asking for LastModified and Handler separately was a
+    // second round trip for fields the first response carried — eleven of them
+    // per run, every morning. --output text prints the three tab-separated.
+    const [url, lastModified, deployedHandler] = shRetry("aws", ["lambda", "get-function",
+      "--function-name", fn, "--region", REGION,
+      "--query", "[Code.Location,Configuration.LastModified,Configuration.Handler]",
+      "--output", "text"]).split(/\s+/);
     tmp = mkdtempSync(join(tmpdir(), `drift-${fn}-`));
     // The presigned URL goes to curl on STDIN, never in argv: argv is what
     // execFileSync echoes into its thrown message, and it is also what `ps`
@@ -201,10 +213,6 @@ for (const { fn, dir } of FUNCTIONS) {
     // looked at, and the run still reports the function as matching.
     const extra = sourceFiles(join(tmp, "fn")).filter((f) => !gitFiles.includes(f));
 
-    stage = "aws lambda get-function-configuration failed";
-    const [lastModified, deployedHandler] = shRetry("aws", ["lambda", "get-function-configuration",
-      "--function-name", fn, "--region", REGION, "--query", "[LastModified,Handler]",
-      "--output", "text"]).split(/\s+/);
     const handlerDrift = handlerMismatch(deployedHandler, DECLARED_HANDLERS.get(fn));
 
     // Only a file present in BOTH and differing is drift. A file that exists in git but
