@@ -79,17 +79,31 @@ async function authHeader(): Promise<string> {
  */
 export { TOPUP_MIN_USD, TOPUP_MAX_USD };
 
-async function createSession(body: Record<string, unknown>): Promise<string> {
+/**
+ * Every round trip to the billing backend: base-URL guard, bearer header, the
+ * BillingHttpError throw that preserves the status, and the parse. The three
+ * routes below each carried their own copy of this sequence, which is how one of
+ * them could quietly stop preserving the status the 403 branch depends on.
+ * Modeled on qpu-client's private `req`.
+ */
+async function billingFetch<T>(op: string, path: string, init?: RequestInit): Promise<T> {
   const base = billingUrl();
   if (!base) throw new Error("billing not configured");
   const auth = await authHeader();
-  const res = await fetch(`${base}/checkout`, {
+  const res = await fetch(`${base}${path}`, {
+    ...init,
+    headers: { authorization: auth, ...init?.headers },
+  });
+  if (!res.ok) throw new BillingHttpError(op, res.status);
+  return (await res.json()) as T;
+}
+
+async function createSession(body: Record<string, unknown>): Promise<string> {
+  const { url } = await billingFetch<{ url: string }>("checkout", "/checkout", {
     method: "POST",
-    headers: { authorization: auth, "content-type": "application/json" },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new BillingHttpError("checkout", res.status);
-  const { url } = (await res.json()) as { url: string };
   return url;
 }
 
@@ -114,24 +128,13 @@ export async function startTopUp(amountUsd: number): Promise<string> {
 
 /** Open the Stripe Billing Portal for the signed-in customer; returns its URL. */
 export async function openPortal(): Promise<string> {
-  const base = billingUrl();
-  if (!base) throw new Error("billing not configured");
-  const auth = await authHeader();
-  const res = await fetch(`${base}/portal`, {
+  const { url } = await billingFetch<{ url: string }>("portal", "/portal", {
     method: "POST",
-    headers: { authorization: auth },
   });
-  if (!res.ok) throw new BillingHttpError("portal", res.status);
-  const { url } = (await res.json()) as { url: string };
   return url;
 }
 
 /** The caller's wallet — tier, credit balance, and subscription status. */
 export async function getWallet(): Promise<Wallet> {
-  const base = billingUrl();
-  if (!base) throw new Error("billing not configured");
-  const auth = await authHeader();
-  const res = await fetch(`${base}/wallet`, { headers: { authorization: auth } });
-  if (!res.ok) throw new BillingHttpError("wallet", res.status);
-  return (await res.json()) as Wallet;
+  return billingFetch<Wallet>("wallet", "/wallet");
 }

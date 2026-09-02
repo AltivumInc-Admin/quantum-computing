@@ -2,11 +2,8 @@
 
 import { useState } from "react";
 import { useLocale } from "@/i18n";
-import { startCheckout, BillingAuthError, type CheckoutLookupKey } from "@/lib/billing-client";
-
-function defaultNavigate(url: string) {
-  window.location.assign(url);
-}
+import { startCheckout, type CheckoutLookupKey } from "@/lib/billing-client";
+import { defaultNavigate, routeIfSignedOut } from "@/components/pricing/navigate";
 
 /**
  * Starts a Stripe Checkout for a tier or top-up and sends the browser to the
@@ -43,10 +40,7 @@ export function CheckoutButton({
       const url = await startCheckout(lookupKey);
       navigate(url); // leaves the page; no need to reset busy
     } catch (e) {
-      if (e instanceof BillingAuthError) {
-        navigate("/login?mode=signup");
-        return;
-      }
+      if (routeIfSignedOut(e, navigate)) return;
       setError(true);
       setBusy(false);
     }

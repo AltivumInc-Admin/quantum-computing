@@ -3,19 +3,15 @@
 import { useId, useState } from "react";
 import {
   startTopUp,
-  BillingAuthError,
   BillingHttpError,
   TOPUP_MIN_USD,
   TOPUP_MAX_USD,
 } from "@/lib/billing-client";
+import { defaultNavigate, routeIfSignedOut } from "@/components/pricing/navigate";
 import { formatCreditNumber, roundCredits } from "@/lib/pricing";
 import { useLocale, localeCode } from "@/i18n";
 
 const PRESETS = [5, 20, 50, 100];
-
-function defaultNavigate(url: string) {
-  window.location.assign(url);
-}
 
 /**
  * Buy credits for any whole-dollar amount from TOPUP_MIN_USD to TOPUP_MAX_USD —
@@ -66,10 +62,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
       const url = await startTopUp(parsed);
       navigate(url); // leaves the page
     } catch (e) {
-      if (e instanceof BillingAuthError) {
-        navigate("/login?mode=signup");
-        return;
-      }
+      if (routeIfSignedOut(e, navigate)) return;
       const needsPlan = e instanceof BillingHttpError && e.status === 403;
       setError(needsPlan ? "needsPlan" : "failed");
       setBusy(false);
