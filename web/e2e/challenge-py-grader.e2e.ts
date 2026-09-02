@@ -1,4 +1,13 @@
 import { test, expect } from "@playwright/test";
+import {
+  assertBoots,
+  assertSameOrigin,
+  BELL_SOLUTION,
+  FIXTURE_PY_CHALLENGE,
+  instrument,
+  PY_TIER_CAPTION,
+  SOLVED,
+} from "./_support/instrument";
 
 /**
  * End-to-end proof of the Tier-B (Pyodide) grader — the verification
@@ -20,16 +29,13 @@ import { test, expect } from "@playwright/test";
  * Also asserts the whole flow is fully same-origin (zero third-party requests):
  * the grader must boot from the self-hosted /pyodide/, never the CDN fallback.
  *
- * The fixture page (src/app/e2e-fixtures/py-challenge/page.tsx) is the only
- * mount of a tier:"py" challenge; its spec and this test move in lockstep.
+ * Division of labour: this spec owns VERDICT and NAMESPACE semantics on a
+ * synthetic spec no lesson ships — its fixture page
+ * (src/app/e2e-fixtures/py-challenge/page.tsx) and this test move in lockstep.
+ * Coverage of the tier:"py" Reps that actually reach learners belongs to
+ * py-reps.e2e.ts, which drives every id in src/lib/py-reps.ts.
  */
 
-// Static export + serve.json cleanUrls:false → the page is served at its literal
-// exported filename, not the clean URL (same gotcha as /lab/lab/index.html).
-const FIXTURE = "/e2e-fixtures/py-challenge.html";
-
-const SOLUTION =
-  "from braket.circuits import Circuit\ncircuit = Circuit().h(0).cnot(0, 1)";
 const WRONG_BUT_VALID = "from braket.circuits import Circuit\ncircuit = Circuit().x(0)";
 const NO_CIRCUIT_BOUND = "answer = 42";
 
@@ -37,38 +43,25 @@ test("tier:py challenge: real Pyodide grades solve/wrong/error, fully same-origi
   page,
   baseURL,
 }) => {
-  // Exact-origin compare, NOT a loopback-prefix regex: "same-origin" means the
-  // served site's origin (http://127.0.0.1:4173) — a prefix pattern would
-  // exempt localhost-on-any-port (a stray dev server) and hosts merely
-  // prefixed with "localhost"/"127.0.0.1", green-lighting a build that in
-  // production falls back to the CDN.
-  const origin = new URL(baseURL!).origin;
-  const external: string[] = [];
-  // Every fetch of the Pyodide wasm marks an interpreter BOOT; the runtime
-  // must boot exactly once across all three checks or step 3's fresh-namespace
-  // proof goes vacuous (a virgin interpreter raises NameError with or without
-  // the namespace guard).
-  const bootFetches: string[] = [];
-  page.on("request", (req) => {
-    const u = req.url();
-    if (/^https?:/.test(u) && new URL(u).origin !== origin) {
-      external.push(`${req.method()} ${u}`);
-    }
-    if (u.includes("pyodide.asm.wasm")) bootFetches.push(u);
-  });
-  page.on("console", (m) => {
-    if (m.type() === "error") console.log("[fixture console error]", m.text());
-  });
-  page.on("pageerror", (e) => console.log("[fixture page error]", e.message));
+  // Three sequential grades on one boot declare more waiting (15 + 150 + 60 +
+  // 60) than the config's per-test cap allows, so a late failure would surface
+  // as "Test timeout exceeded" rather than as the expectation that broke.
+  test.setTimeout(300_000);
 
-  await page.goto(FIXTURE);
+  // Every fetch of the Pyodide wasm marks an interpreter BOOT; the runtime must
+  // boot exactly once across all three checks or step 3's fresh-namespace proof
+  // goes vacuous (a virgin interpreter raises NameError with or without the
+  // namespace guard).
+  const { external, bootFetches } = instrument(page, baseURL, "fixture");
+
+  await page.goto(FIXTURE_PY_CHALLENGE);
 
   // The py-tier caption proves the spec parsed as tier:"py" BEFORE we click —
   // otherwise a schema regression could silently reroute this test to gradeTs
   // and it would "pass" without ever booting Pyodide.
-  await expect(
-    page.getByText("graded with real qcsim in your browser")
-  ).toBeVisible();
+  // Explicit, because this is a post-hydrate assertion: the small expect default
+  // is sized for the negative guards, not for a cold runner's first paint.
+  await expect(page.getByText(PY_TIER_CAPTION)).toBeVisible({ timeout: 30_000 });
 
   const editor = page.getByLabel("Your circuit");
   const check = page.getByRole("button", { name: "Check" });
@@ -78,17 +71,14 @@ test("tier:py challenge: real Pyodide grades solve/wrong/error, fully same-origi
   const verdict = page.getByRole("status").first();
 
   // 1) Correct free-form Braket Python → the grader's exact solved literal.
-  await editor.fill(SOLUTION);
+  await editor.fill(BELL_SOLUTION);
   await check.click();
   // The interim notice renders synchronously on click; the WASM boot that
   // follows takes seconds at minimum, so this cannot race past us. It is driven
   // by the `busy` flag in a NEUTRAL tone — never published as a verdict, which
   // is why nothing here asserts a wrong-answer skin around it.
   await expect(verdict).toContainText("Booting Python", { timeout: 15_000 });
-  await expect(verdict).toContainText(
-    "Correct — verified against the reference state vector.",
-    { timeout: 150_000 }
-  );
+  await expect(verdict).toContainText(SOLVED, { timeout: 150_000 });
 
   // 2) Wrong-but-valid Python → the spec's hint (a "wrong" verdict, not an
   // "error"). Reuses the already-booted runtime (enforced by the single-boot
@@ -110,15 +100,9 @@ test("tier:py challenge: real Pyodide grades solve/wrong/error, fully same-origi
 
   // Exactly ONE interpreter boot across all three checks — the premise that
   // makes step 3 a real fresh-namespace proof rather than a virgin-boot alias.
-  expect(
-    bootFetches,
-    `Pyodide booted ${bootFetches.length}x — the interpreter must be cached across all three checks:\n${bootFetches.join("\n")}`
-  ).toHaveLength(1);
+  assertBoots(bootFetches, 1, "the interpreter must be cached across all three checks");
 
   // The entire boot + three grades made zero third-party requests: Pyodide came
   // from the self-hosted /pyodide/, the qcsim wheel from /lab/files/wheels/.
-  expect(
-    external,
-    `grader made third-party requests:\n${external.join("\n")}`
-  ).toEqual([]);
+  assertSameOrigin(external, "grader");
 });
