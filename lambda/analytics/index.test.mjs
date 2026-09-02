@@ -84,6 +84,40 @@ test("every module the handler imports is packaged for deployment", () => {
   }
 });
 
+/**
+ * The privacy promise, as an assertion — every branch that writes a row.
+ *
+ * README states the pin without qualification, but it only ever ran against the
+ * healthy-ranges branch, and the degraded branch writes a TWELFTH attribute
+ * (botFilterNote) that the allowlist had therefore never seen. A promise pinned
+ * on one of two branches is not pinned.
+ */
+function assertCountsOnly(item) {
+  const allowed = new Set([
+    // offSiteRequests is a COUNT of rows whose host header was not ours
+    // (rows.length - mine.length) — no address, agent or path, so it keeps the
+    // promise. It is stored because `requests: 0` alone cannot distinguish a
+    // quiet day from a host filter matching nothing, which is how this stack
+    // recorded weeks of zeroes while every alarm stayed green.
+    "day", "requests", "offSiteRequests", "uniqueIps", "humans", "humanPageViews",
+    "googleSignIns", "malformed", "buckets", "botFilterComplete", "computedAt",
+    // botFilterNote is why the ip-ranges fetch failed — an error message from
+    // our own fetch of a PUBLIC AWS document, truncated to 200 characters. It
+    // describes the collector's network, never a visitor. Written only on the
+    // degraded branch, which is exactly why it has to be listed here.
+    "botFilterNote",
+  ]);
+  for (const key of Object.keys(item)) {
+    assert.ok(allowed.has(key), `unexpected attribute written: ${key}`);
+  }
+
+  const written = JSON.stringify(item);
+  assert.equal(written.includes("198.51.100.4"), false, "no visitor address");
+  assert.equal(written.includes("10.0.0.9"), false, "no visitor address");
+  assert.equal(written.includes("Googlebot"), false, "no user agent");
+  assert.equal(written.includes("_next"), false, "no request path");
+}
+
 test("previousDay steps back one UTC day, across a month boundary", () => {
   assert.equal(previousDay("2026-08-20"), "2026-08-19");
   assert.equal(previousDay("2026-08-01"), "2026-07-31");
@@ -184,25 +218,7 @@ test("STORES NO IDENTIFIERS — the written item is counts only", async () => {
   // that copy needs rewriting first, in both locales.
   const { core, ddb } = makeCore();
   await core({ today: "2026-08-20" });
-
-  const written = JSON.stringify(ddb.calls[0].input.Item);
-  assert.equal(written.includes("198.51.100.4"), false, "no visitor address");
-  assert.equal(written.includes("10.0.0.9"), false, "no visitor address");
-  assert.equal(written.includes("Googlebot"), false, "no user agent");
-  assert.equal(written.includes("_next"), false, "no request path");
-
-  const allowed = new Set([
-    // offSiteRequests is a COUNT of rows whose host header was not ours
-    // (rows.length - mine.length) — no address, agent or path, so it keeps the
-    // promise. It is stored because `requests: 0` alone cannot distinguish a
-    // quiet day from a host filter matching nothing, which is how this stack
-    // recorded weeks of zeroes while every alarm stayed green.
-    "day", "requests", "offSiteRequests", "uniqueIps", "humans", "humanPageViews",
-    "googleSignIns", "malformed", "buckets", "botFilterComplete", "computedAt",
-  ]);
-  for (const key of Object.keys(ddb.calls[0].input.Item)) {
-    assert.ok(allowed.has(key), `unexpected attribute written: ${key}`);
-  }
+  assertCountsOnly(ddb.calls[0].input.Item);
 });
 
 test("a log whose rows ALL miss the host filter is flagged, not recorded as a quiet day", async () => {
@@ -268,6 +284,9 @@ test("marks the row when the bot filter could not run, rather than inflating qui
     assert.equal(out.botFilterComplete, false);
     assert.equal(ddb.calls[0].input.Item.botFilterComplete.BOOL, false);
     assert.match(ddb.calls[0].input.Item.botFilterNote.S, /network down/);
+    // The branch that writes a twelfth attribute is a branch the privacy pin
+    // has to see, not one it can take on trust.
+    assertCountsOnly(ddb.calls[0].input.Item);
 
     // The row alone is not enough: this run SUCCEEDS, so every other alarm in
     // the stack stays green while humans is an overcount. The line is what a

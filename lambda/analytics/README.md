@@ -13,8 +13,8 @@ only. Nothing is added to the browser: no script, no cookie, no beacon. The
 privacy policy states in both locales that no analytics or tracking scripts exist
 anywhere on the site, and that remains true as written. The logs being read here
 already exist and are already disclosed as operational service logs. `index.test.mjs`
-pins the written attribute set, so widening it fails the build rather than
-quietly breaking that promise.
+pins the written attribute set on every branch that writes a row, so widening it
+fails the build rather than quietly breaking that promise.
 
 ## Why it exists
 
