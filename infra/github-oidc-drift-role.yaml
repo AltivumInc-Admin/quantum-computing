@@ -7,7 +7,12 @@ Description: >
   The account already has the GitHub OIDC provider
   (token.actions.githubusercontent.com, audience sts.amazonaws.com), so this template
   only adds the role. It does NOT create the provider — creating a second one for the
-  same URL fails, and the existing one is shared with other Altivum repos.
+  same URL fails, and the existing one is shared with the account's other repositories.
+
+  The grant is EXACTLY the functions the drift check reads, in one region. Both Lambda
+  reads return Environment.Variables in full, so a name-prefix grant would hand a public
+  repository's workflow every value any current or future quantum-* function keeps in
+  its environment.
 
 Parameters:
   GitHubRepo:
@@ -22,10 +27,13 @@ Parameters:
       the default branch, so main alone is sufficient — and it is the tightest possible
       scope. Widening this to a wildcard would let any workflow added by any branch
       assume the role.
-  FunctionNamePrefix:
+  FunctionRegion:
     Type: String
-    Default: quantum
-    Description: Only functions with this name prefix are readable.
+    Default: us-east-2
+    Description: >
+      The one region whose functions are readable. Wildcarding the region segment would
+      extend the grant to same-named functions in every other region — and the same names
+      exist in more than one place.
 
 Resources:
   DriftCheckRole:
@@ -33,6 +41,9 @@ Resources:
     Properties:
       RoleName: quantum-ci-drift-check
       Description: Read-only Lambda inspection for the CI drift check. No mutating actions.
+      # 3600 is the IAM MINIMUM and cannot be lowered here. The job runs for about a
+      # minute, so the credential is capped on the REQUEST side instead, by
+      # role-duration-seconds in .github/workflows/drift.yml.
       MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -54,18 +65,37 @@ Resources:
             Version: "2012-10-17"
             Statement:
               # GetFunction returns a presigned URL to the deployment package — which is
-              # the whole point, since only the artifact reveals drift. Scoped by name
-              # prefix so this cannot read unrelated functions in a shared account.
+              # the whole point, since only the artifact reveals drift. Both calls also
+              # return the function's ENVIRONMENT in full, and deployed configuration is
+              # exactly what does not live in this public repo: the rate factor once
+              # metering turns on, and a shared edge secret today. So the grant names the
+              # functions the check actually reads and nothing else — a future quantum-*
+              # function is out of scope until someone widens this, in a diff.
+              #
+              # The list is kept in lockstep with FUNCTIONS in scripts/drift/rules.mjs by
+              # scripts/drift/registry.test.mjs. Adding a function there without adding it
+              # here fails loudly with AccessDenied, which the report now reads correctly
+              # as "could not check" rather than as drift.
               - Effect: Allow
                 Action:
                   - lambda:GetFunction
                   - lambda:GetFunctionConfiguration
-                Resource: !Sub arn:aws:lambda:*:${AWS::AccountId}:function:${FunctionNamePrefix}-*
-              # ListFunctions cannot be resource-scoped; it is read-only and returns
-              # metadata only (no code, no environment secrets).
-              - Effect: Allow
-                Action: lambda:ListFunctions
-                Resource: "*"
+                Resource:
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-stripe
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-stripe-sandbox
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-tutor
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-qpu-submit
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-qpu-reconcile
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-qpu-killswitch
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-workspace-sync
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-analytics
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-prefs
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-sender
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-unsubscribe
+              # No lambda:ListFunctions. It was this template's only Resource: "*", and
+              # nothing in the repo has ever called it — the drift check works from a list
+              # it already has. sts:GetCallerIdentity, which the check now calls to prove
+              # WHICH account it is reading, requires no grant at all.
 
 Outputs:
   RoleArn:

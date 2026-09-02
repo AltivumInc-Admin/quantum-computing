@@ -58,6 +58,11 @@ drift:
 	@# second check compares them value-blind (no value, no digest — rule 6).
 	@# Both ALWAYS run — code drift is the normal state mid-cutover, and stopping there
 	@# would leave rate parity unchecked in exactly the window it matters most.
+	@# WHICH ACCOUNT: the default AWS profile on this machine is NOT the one serving
+	@# learners, and every function name checked here exists in both. Export
+	@# DRIFT_EXPECT_ACCOUNT (it is inherited from your shell — the number stays out of
+	@# this public repo) and both checks refuse a mismatch instead of reporting green
+	@# about the wrong account. Unset is allowed, and prints as "account unverified".
 	@code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
 	 node scripts/check-rate-parity.mjs || code=$$?; \
 	 exit $$code

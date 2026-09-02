@@ -151,11 +151,16 @@ sam deploy --stack-name quantum-analytics --region us-east-2 \
 Confirm the SNS email subscription from the inbox once, or no alarm will ever
 reach a human.
 
-Register a new Lambda directory in **four** hand-maintained lists — nothing
+Register a new Lambda directory in **three** hand-maintained lists — nothing
 derives them, and `lambda/stripe` was missed in two of them for three weeks:
 `.github/workflows/ci.yml` (matrix), `infra/ci-standby/template.yaml` (buildspec
-loop), `scripts/check-lambda-drift.mjs` (`FUNCTIONS`), and
-`web/__tests__/infra/wallet-ttl.test.ts` (`LAMBDA_DIRS`).
+loop), and `web/__tests__/infra/wallet-ttl.test.ts` (`LAMBDA_DIRS`).
+
+The fourth, the drift check's `FUNCTIONS` (now `scripts/drift/rules.mjs`), is
+still written by hand but no longer unguarded: `scripts/drift/registry.test.mjs`
+derives the expected set from every `lambda/*/template.yaml` and fails in both
+directions, so a function declared in a template and missing from the registry
+fails CI instead of quietly dropping out of the daily drift report.
 
 ## Observability
 
