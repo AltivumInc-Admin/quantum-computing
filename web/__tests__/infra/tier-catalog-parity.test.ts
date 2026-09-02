@@ -1,6 +1,6 @@
 /**
  * Rule 8, made checkable OFFLINE: `TIERS` in web/src/lib/pricing.ts and `CATALOG`
- * in lambda/stripe/index.mjs must stay in lockstep, and so must the top-up bounds
+ * in lambda/stripe/catalog.mjs (the constants module index.mjs re-exports) must stay in lockstep, and so must the top-up bounds
  * the two sides enforce.
  *
  * That lockstep used to be asserted as two independent copies of the same
@@ -26,7 +26,7 @@ import { TIERS, TOPUP_MIN_USD, TOPUP_MAX_USD, type Tier } from "@/lib/pricing";
 import type { CheckoutLookupKey, TopUpLookupKey } from "@/lib/billing-client";
 
 const REPO = join(__dirname, "..", "..", "..");
-const stripeIndex = readFileSync(join(REPO, "lambda/stripe/index.mjs"), "utf8");
+const stripeIndex = readFileSync(join(REPO, "lambda/stripe/catalog.mjs"), "utf8");
 
 interface CatalogEntry {
   mode: string;
@@ -41,7 +41,7 @@ interface CatalogEntry {
  */
 function parseCatalog(source: string): Record<string, CatalogEntry> {
   const block = source.match(/export const CATALOG = \{([\s\S]*?)\n\};/);
-  if (!block) throw new Error("CATALOG literal not found in lambda/stripe/index.mjs");
+  if (!block) throw new Error("CATALOG literal not found in lambda/stripe/catalog.mjs");
   const entry =
     /(\w+):\s*\{\s*mode:\s*"(\w+)",\s*tier:\s*(?:"(\w+)"|null),\s*credits:\s*(\d+)\s*\}/g;
   const out: Record<string, CatalogEntry> = {};
@@ -53,7 +53,7 @@ function parseCatalog(source: string): Record<string, CatalogEntry> {
 
 function parseConst(source: string, name: string): number {
   const m = source.match(new RegExp(`export const ${name} = (\\d+);`));
-  if (!m) throw new Error(`${name} not found in lambda/stripe/index.mjs`);
+  if (!m) throw new Error(`${name} not found in lambda/stripe/catalog.mjs`);
   return Number(m[1]);
 }
 
