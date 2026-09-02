@@ -26,7 +26,11 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   const { t, locale } = useLocale();
   const [amount, setAmount] = useState("20");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A flag, not a message. The message used to be an English literal set here,
+  // the only setError("…") string in web/src, rendered inside role="alert" under
+  // Spanish copy — while the sibling CheckoutButton took the byte-identical
+  // sentence from pricingUi.checkoutFailed, which both dictionaries carry.
+  const [error, setError] = useState(false);
   const inputId = useId();
 
   /** A credit figure with its localized, plural-aware unit. */
@@ -40,7 +44,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   async function go() {
     if (!valid) return;
     setBusy(true);
-    setError(null);
+    setError(false);
     try {
       const url = await startTopUp(parsed);
       navigate(url); // leaves the page
@@ -49,7 +53,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
         navigate("/login?mode=signup");
         return;
       }
-      setError("Could not start checkout. Please try again.");
+      setError(true);
       setBusy(false);
     }
   }
@@ -134,7 +138,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
       )}
       {error && (
         <p role="alert" className="mt-3 text-xs text-danger-dark dark:text-danger-light">
-          {error}
+          {t("pricingUi.checkoutFailed")}
         </p>
       )}
       <p className="mt-4 text-xs text-caption">

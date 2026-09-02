@@ -54,7 +54,10 @@ export function CheckoutButton({
         disabled={busy}
         className={
           className ??
-          "surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-70"
+          // opacity-60 is the repo-wide disabled treatment (auth-form and eleven
+          // other controls); this was the only opacity-70 in web/src, and the two
+          // pricing CTAs sit inches apart.
+          "surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-60"
         }
       >
         {busy ? t("pricingUi.starting") : label}
