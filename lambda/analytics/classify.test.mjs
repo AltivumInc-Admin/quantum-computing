@@ -7,12 +7,13 @@
  * investigation; each is pinned here so the mistake cannot come back.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
   CALLBACK_PATH,
+  SITE_HOST,
   buildRangeIndex,
   classifyVisitor,
   googleSignIns,
@@ -23,6 +24,7 @@ import {
   isPageView,
   parseLog,
   summarizeDay,
+  verifiedGoogleSignIns,
 } from "./classify.mjs";
 
 /** The real CloudFront CSV header, verbatim — note the escaped parentheses. */
@@ -363,17 +365,87 @@ test("traffic to another host header is excluded and reported separately", () =>
   assert.equal(s.offSiteRequests, 1);
 });
 
+test("the host filter is an argument, so one caller can replay two hostnames", () => {
+  // The value whose staleness zeroed this report for weeks must be varyable per
+  // call: the daily run passes the deployed SiteHost, and backfill.mjs passes
+  // whatever hostname the site served on the day it is replaying.
+  const rows = parse(
+    row({ ip: "198.51.100.4", path: "/", host: "quantum.altivum.ai" }),
+    row({ ip: "198.51.100.5", path: "/" }),
+  );
+
+  const now = summarizeDay(rows, buildRangeIndex([]));
+  assert.equal(now.requests, 1, "the default is the canonical host");
+  assert.equal(now.offSiteRequests, 1);
+
+  const then = summarizeDay(rows, buildRangeIndex([]), { siteHost: "quantum.altivum.ai" });
+  assert.equal(then.requests, 1, "the pre-cutover host selects the pre-cutover rows");
+  assert.equal(then.offSiteRequests, 1);
+});
+
+test("SITE_HOST is a plain constant — classify.mjs reads no environment", () => {
+  // The header promises (data in) -> (data out). A module-scope process.env read
+  // makes the one value that matters most impossible for a caller to vary, and
+  // is why index.test.mjs used to rewrite its own fixture to test a wrong host.
+  const src = readFileSync(new URL("./classify.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /process\.env/, "env reads belong at the composition root");
+  assert.equal(typeof SITE_HOST, "string");
+});
+
 test("a visitor who completed a Google sign-in is human, whatever the heuristics say", () => {
   // A day cannot honestly report three Google sign-ins and fewer humans than
   // signers. Proof of a person outranks behavioural inference.
   const rows = parse(
     row({ ip: "203.0.113.40", path: CALLBACK_PATH, referer: "https://accounts.google.com/", time: "17:02:48" }),
+    // The corroboration a forged Referer cannot supply: the hosted-UI redirect
+    // lands in a browser, which boots the app from the same address.
+    row({ ip: "203.0.113.40", path: "/_next/static/x.js", time: "17:02:48", contentType: "text/javascript" }),
     ...Array.from({ length: 60 }, (_, i) =>
       row({ ip: "203.0.113.40", path: `/glossary/t${i}`, time: "17:02:49" }),
     ),
   );
-  // Fast enough to be caught by the rate rule, and it loads no static assets.
+  // Fast enough to be caught by the rate rule, and read far too fast for a
+  // person — the sign-in still outranks both.
   assert.equal(classifyVisitor(rows, buildRangeIndex([])), "human");
+});
+
+test("a Referer alone does not buy a verdict — the header is written by the client", () => {
+  // /auth/callback is a real prerendered page in the static export, so a bare
+  // GET carrying `Referer: https://accounts.google.com/` returns 200 with no
+  // auth involved. When that header outranked everything, one forged row bought
+  // a datacenter crawler a human verdict AND inflated the only Google sign-in
+  // figure this account has.
+  const forged = parse(
+    row({ ip: "198.51.100.77", path: CALLBACK_PATH, referer: "https://accounts.google.com/", time: "17:02:48" }),
+    ...Array.from({ length: 60 }, (_, i) =>
+      row({ ip: "198.51.100.77", path: `/glossary/t${i}`, time: "17:02:49" }),
+    ),
+  );
+  assert.equal(classifyVisitor(forged, buildRangeIndex([])), "no-assets", "nothing corroborates the header");
+  assert.equal(verifiedGoogleSignIns(forged, buildRangeIndex([])).length, 0, "and it is not a sign-in either");
+
+  // Same forgery from a published cloud range, this time with the asset fetch:
+  // the strongest signal in the file must not be outranked by a header.
+  const fromCloud = parse(
+    row({ ip: "10.0.0.9", path: CALLBACK_PATH, referer: "https://accounts.google.com/" }),
+    row({ ip: "10.0.0.9", path: "/_next/static/x.js", contentType: "text/javascript" }),
+  );
+  const index = buildRangeIndex(["10.0.0.0/8"]);
+  assert.equal(classifyVisitor(fromCloud, index), "datacenter");
+  assert.equal(verifiedGoogleSignIns(fromCloud, index).length, 0);
+});
+
+test("the day's sign-in count is corroborated too, not just the verdict", () => {
+  const rows = parse(
+    // Real: signed in, and the browser booted the app.
+    row({ ip: "203.0.113.40", path: CALLBACK_PATH, referer: "https://accounts.google.com/" }),
+    row({ ip: "203.0.113.40", path: "/_next/static/x.js", contentType: "text/javascript" }),
+    // Forged: the header, and nothing else.
+    row({ ip: "198.51.100.77", path: CALLBACK_PATH, referer: "https://accounts.google.com/" }),
+  );
+  const s = summarizeDay(rows, buildRangeIndex([]), { day: "2026-08-19" });
+  assert.equal(s.googleSignIns, 1, "one corroborated sign-in, not two");
+  assert.ok(s.googleSignIns <= s.humans, "a day may never report more signers than humans");
 });
 
 test("signing in does not launder a visitor that also probed hostile paths", () => {

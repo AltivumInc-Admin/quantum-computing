@@ -63,6 +63,40 @@ const withoutComments = (text) =>
     .filter((l) => !/^\s*#/.test(l))
     .join("\n");
 
+const handlerSrc = readFileSync(new URL("./index.mjs", import.meta.url), "utf8");
+
+/**
+ * Pin one log-line -> metric filter -> alarm chain end to end.
+ *
+ * These alarms work by string coincidence: the handler console.warns a phrase,
+ * a MetricFilter turns that literal into a metric, and an alarm reads it. Three
+ * hand-synced copies, of which the repo's suites historically pinned one. Reword
+ * any of them and both halves stay green while the alarm goes permanently dark
+ * — and the matched-nothing alarm's own description says NOTHING else would say
+ * so. lambda/qpu pins the identical mechanism (template.test.mjs "the orphaned-
+ * money metric filter ... matches reconcile.mjs's exact log line"); this is the
+ * same assertion, reusable because this stack has more than one such chain.
+ */
+function assertWarnAlarmChain(metricName, alarmId) {
+  const filterId = ofType("AWS::Logs::MetricFilter").find((id) => body(id).includes(`MetricName: ${metricName}`));
+  assert.ok(filterId, `no metric filter producing ${metricName}`);
+  const filter = body(filterId);
+
+  // Attached to the explicitly declared log group, not an implicit one.
+  assert.match(filter, /LogGroupName: !Ref AnalyticsLogGroup/, `${filterId}: wrong log group`);
+  assert.match(filter, /MetricNamespace: QuantumAnalytics/, `${filterId}: wrong namespace`);
+
+  const phrase = filter.match(/FilterPattern: '"([^"]+)"'/)?.[1];
+  assert.ok(phrase, `${filterId}: FilterPattern must be a quoted literal phrase`);
+  assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs the phrase "${phrase}"`);
+
+  const alarm = body(alarmId);
+  assert.ok(alarm, `${alarmId} missing`);
+  assert.match(alarm, /Namespace: QuantumAnalytics/, `${alarmId}: namespace must match the filter`);
+  assert.match(alarm, new RegExp(`MetricName: ${metricName}\\b`), `${alarmId}: reads a different metric`);
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/, `${alarmId}: must notify the alerts topic`);
+}
+
 test("the history table carries NO TimeToLive specification", () => {
   // See the header. A TTL here would let DynamoDB delete days of history
   // silently, and the raw logs behind them cannot be re-fetched.
@@ -118,13 +152,41 @@ test("the run cannot be silent: absent invocations breach, and only that alarm d
   }
 });
 
+test("the matched-nothing alarm is wired to index.mjs's exact log line", () => {
+  assertWarnAlarmChain("MatchedNothing", "AnalyticsMatchedNothingAlarm");
+});
+
+test("the bot-filter-incomplete alarm is wired to index.mjs's exact log line", () => {
+  assertWarnAlarmChain("BotFilterIncomplete", "AnalyticsBotFilterAlarm");
+});
+
+test("the parse-degraded alarm is wired to index.mjs's exact log line", () => {
+  assertWarnAlarmChain("ParseDegraded", "AnalyticsParseDegradedAlarm");
+});
+
 test("the alerts topic reaches a human by email, and every alarm notifies it", () => {
   assert.equal(typeOf("AlertsTopic"), "AWS::SNS::Topic");
   assert.match(body("AlertsTopic"), /Protocol: email/);
   assert.match(body("AlertsTopic"), /Endpoint: !Ref AlertEmail/);
 
+  // Named, not counted with >=. A bound that only grows lets an alarm be
+  // DELETED with the suite green, and lets README's Observability table fall
+  // behind a newly added one — which is how the matched-nothing alarm shipped
+  // undocumented. Add an alarm here and the README table has to be revisited.
   const alarms = ofType("AWS::CloudWatch::Alarm");
-  assert.ok(alarms.length >= 4, `expected at least 4 alarms, found: ${alarms}`);
+  assert.deepEqual(
+    [...alarms].sort(),
+    [
+      "AnalyticsBotFilterAlarm",
+      "AnalyticsDurationAlarm",
+      "AnalyticsErrorsAlarm",
+      "AnalyticsMatchedNothingAlarm",
+      "AnalyticsParseDegradedAlarm",
+      "AnalyticsSilentAlarm",
+      "AnalyticsThrottlesAlarm",
+    ],
+    "the alarm set changed — update README.md's Observability table too",
+  );
   for (const alarm of alarms) {
     assert.match(body(alarm), /AlarmActions: \[!Ref AlertsTopic\]/, `${alarm}: must notify the alerts topic`);
     assert.match(body(alarm), /AlarmDescription:/, `${alarm}: must say what broke and where to look`);
@@ -139,14 +201,57 @@ test("the Amplify domain parameter is the apex, which is the one that works", ()
   assert.match(params.AmplifyDomain.join("\n"), /Default: quantumenv\.dev\s*$/m);
 });
 
+test("the ops script reads this stack's identity rather than restating it", () => {
+  // The QL-Prod cutover moved the Lambda and left scripts/analytics/backfill.mjs
+  // pointing at the retired Altivum app: it fetched the wrong logs, matched none
+  // of them, printed zeroes and exited 0. The script now slices AmplifyAppId,
+  // AmplifyDomain and SiteHost out of this file, so it cannot lag a deploy —
+  // and this test fails if anyone copies a value back into it.
+  const backfill = readFileSync(new URL("../../scripts/analytics/backfill.mjs", import.meta.url), "utf8");
+  for (const name of ["AmplifyAppId", "AmplifyDomain", "SiteHost"]) {
+    assert.ok(
+      backfill.includes(`paramDefault("${name}")`),
+      `backfill.mjs must take ${name} from template.yaml, not from a constant`,
+    );
+  }
+  const params = blocks(section(template, "Parameters"));
+  for (const name of ["AmplifyAppId", "AmplifyDomain", "SiteHost"]) {
+    const value = params[name].join("\n").match(/^\s+Default: (.+)$/m)?.[1]?.trim();
+    assert.ok(value, `${name} must carry a Default for backfill.mjs to read`);
+    assert.equal(
+      backfill.includes(value),
+      false,
+      `backfill.mjs hardcodes ${name}'s value (${value}); it must read it from the template`,
+    );
+  }
+});
+
 test("the host filter is a parameter, and it names the canonical site host", () => {
   // A stale host filter does not skew this report, it ZEROES it — every row is
   // dropped, `humans` records 0, the job still succeeds and no alarm fires.
   // That silently held from the QL-Prod cutover until 2026-08-31, so the value
   // is a parameter wired to an env var (never a source constant) and it must
   // name the same host the site actually serves.
+  //
+  // DERIVED, not restated. web/src/lib/site.ts is the declared single source
+  // for the deployed origin; the classifier's fallback and this parameter's
+  // Default are copies of its hostname, and a third hardcoded copy in this file
+  // would let all of them drift together with the suite green. The
+  // matched-nothing alarm's own description tells the operator to compare the
+  // two by hand — this is that comparison, made automatic.
   const params = blocks(section(template, "Parameters"));
   assert.ok(params.SiteHost, "SiteHost must be a template parameter");
-  assert.match(params.SiteHost.join("\n"), /Default: learner\.quantumenv\.dev\s*$/m);
   assert.match(template, /SITE_HOST: !Ref SiteHost/, "SiteHost must reach the function as SITE_HOST");
+
+  const siteTs = readFileSync(new URL("../../web/src/lib/site.ts", import.meta.url), "utf8");
+  const siteUrl = siteTs.match(/^export const SITE_URL = "([^"]+)"/m)?.[1];
+  assert.ok(siteUrl, "web/src/lib/site.ts must export a string SITE_URL");
+  const canonical = new URL(siteUrl).hostname;
+
+  const paramDefault = params.SiteHost.join("\n").match(/^\s+Default: (.+)$/m)?.[1]?.trim();
+  assert.equal(paramDefault, canonical, "SiteHost's Default disagrees with SITE_URL in web/src/lib/site.ts");
+
+  const classifySrc = readFileSync(new URL("./classify.mjs", import.meta.url), "utf8");
+  const fallback = classifySrc.match(/^export const SITE_HOST = "([^"]+)";/m)?.[1];
+  assert.equal(fallback, canonical, "classify.mjs's SITE_HOST fallback disagrees with web/src/lib/site.ts");
 });

@@ -14,17 +14,46 @@
  * and are already disclosed as operational service logs. Keep it that way: the
  * moment this writes an IP, that promise needs rewriting.
  *
- * All classification lives in classify.mjs, which the ops script
- * scripts/analytics/backfill.mjs imports from here — the same code answers the
- * historical question and the daily one, so the two can never disagree.
+ * All classification lives in classify.mjs and all retrieval in retrieve.mjs,
+ * both of which the ops script scripts/analytics/backfill.mjs imports from here
+ * — the same code answers the historical question and the daily one, so the two
+ * can never disagree.
  */
 
 import { AmplifyClient, GenerateAccessLogsCommand } from "@aws-sdk/client-amplify";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 
 import { SITE_HOST, buildRangeIndex, parseLog, summarizeDay } from "./classify.mjs";
+import { fetchDayCsv } from "./retrieve.mjs";
 
 export const AWS_RANGES_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
+
+/**
+ * Both network waits are bounded, because the function's 120s Timeout was the
+ * ONLY bound on either. A stalled connection is not a rejection the degrade
+ * path can absorb — it burns the whole budget and ends as an anonymous Lambda
+ * timeout, taking a day the raw logs cannot give back. The prefix list is
+ * optional, so it gets a short leash; the log download is the run's whole
+ * purpose, so it gets most of the budget and fails by name.
+ */
+export const RANGES_TIMEOUT_MS = 10_000;
+export const LOG_DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/**
+ * Above this share of unparseable lines, the parse is broken rather than lossy.
+ *
+ * parseLog drops a line it cannot trust and counts it, because one bad line
+ * must never cost the other 3,000. But a format change that makes EVERY data
+ * line unparseable produces rows: [], which reads as a quiet day — no error, no
+ * matched-nothing (that needs offSiteRequests > 0), and a row of zeroes. A
+ * partial break is worse: dropping 40% of a day's lines under-reports by 40%
+ * with every alarm green. Set well above incidental damage so a handful of bad
+ * lines never pages, per the cry-wolf reasoning in template.yaml.
+ */
+export const MAX_MALFORMED_SHARE = 0.2;
+
+/** Oldest day with retrievable logs, verified. Nothing before it can exist. */
+export const LAUNCH_DAY = "2026-06-28";
 
 /** The day before `today`, in UTC. */
 export function previousDay(today) {
@@ -33,7 +62,28 @@ export function previousDay(today) {
   return d.toISOString().slice(0, 10);
 }
 
-export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId, domain }) {
+/**
+ * Refuse a date that is not one, before it reaches an AWS call or a key.
+ *
+ * `event.day` is caller-supplied and lands in two places that both fail
+ * quietly. As the Amplify window it becomes `new Date("2026-8-19T00:00:00Z")`,
+ * an Invalid Date the SDK serializes to `startTime: null` — so a malformed day
+ * degrades to a DEFAULT window rather than erroring, and the row it produces is
+ * not the day it claims to be. As the partition key it becomes a SECOND,
+ * differently-spelled row for a day that already has one. The sibling ops
+ * script validates its own date flags; the Lambda, which an IAM principal can
+ * invoke directly, did not.
+ */
+export function assertDay(label, value) {
+  const bad = (why) => new Error(`${label} ${why}: ${JSON.stringify(value)}`);
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw bad("must be YYYY-MM-DD");
+  const d = new Date(`${value}T00:00:00Z`);
+  // Round-trip, so 2026-02-30 and 2026-13-01 are rejected rather than rolled.
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) throw bad("is not a real date");
+  return value;
+}
+
+export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId, domain, siteHost = SITE_HOST }) {
   let cachedRanges = null;
 
   /**
@@ -42,39 +92,101 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
    * If this cannot be fetched the run still proceeds, but the result is stamped
    * so nobody reads an inflated human count as a real one. Silently degrading
    * to "everything is human" would be worse than a gap.
+   *
+   * ONLY A SUCCESS IS MEMOIZED. Caching the failure alongside the success made
+   * a warm container re-stamp botFilterComplete: false on every later run even
+   * after the network recovered — and the documented recovery for a failed
+   * scheduled run is a manual re-invoke, which lands on exactly that container.
+   * A degraded result is cheap to retry and expensive to keep.
    */
   async function ranges() {
     if (cachedRanges) return cachedRanges;
     try {
-      const res = await fetchImpl(AWS_RANGES_URL);
+      const res = await fetchImpl(AWS_RANGES_URL, { signal: AbortSignal.timeout(RANGES_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       cachedRanges = { index: buildRangeIndex(await res.json()), complete: true };
+      return cachedRanges;
     } catch (err) {
-      cachedRanges = { index: buildRangeIndex([]), complete: false, why: err.message };
+      return { index: buildRangeIndex([]), complete: false, why: err.message };
     }
-    return cachedRanges;
   }
 
   return async function core(event = {}) {
-    const today = event.today ?? new Date().toISOString().slice(0, 10);
-    const day = event.day ?? previousDay(today);
+    const today = assertDay("today", event.today ?? new Date().toISOString().slice(0, 10));
+    const day = assertDay("day", event.day ?? previousDay(today));
+    if (day > today) throw new Error(`day is in the future: ${day} (today is ${today})`);
+    if (day < LAUNCH_DAY) throw new Error(`day precedes launch (${LAUNCH_DAY}): ${day}`);
 
-    const { logUrl } = await amplify.send(
-      new GenerateAccessLogsCommand({
-        appId,
-        domainName: domain,
-        startTime: new Date(`${day}T00:00:00Z`),
-        endTime: new Date(`${day}T23:59:59Z`),
-      }),
-    );
-    if (!logUrl) throw new Error(`no logUrl returned for ${day}`);
+    // A day the CALLER named is a re-run, and the documented recovery for a
+    // missed day is exactly that. The scheduled path may keep overwriting its
+    // own row freely; a re-run may not silently replace a good row with the
+    // zeroes an aged-out log produces, on the only copy of the history.
+    const requested = event.day !== undefined;
 
-    const res = await fetchImpl(logUrl);
-    if (!res.ok) throw new Error(`log download for ${day} failed: HTTP ${res.status}`);
-    const { rows, malformed } = parseLog(await res.text());
+    // Started here, awaited after the log is parsed. The prefix list needs
+    // nothing from Amplify, and this function runs once a day on a cron — so
+    // every invocation is a cold container and the memo above never helps:
+    // each run pays the full multi-megabyte fetch, JSON parse and BigInt index
+    // build. Serializing it behind the download simply added the two.
+    // ranges() swallows its own failures and always resolves, so starting it
+    // early cannot produce an unhandled rejection when retrieval throws first.
+    const rangesPromise = ranges();
 
-    const { index, complete, why } = await ranges();
-    const summary = summarizeDay(rows, index, { day });
+    // One window, unless Amplify refuses its size — then retrieve.mjs halves it
+    // and stitches the pieces. A day lost to a size refusal is lost for good:
+    // the raw logs age out and nothing can re-fetch them.
+    const csv = await fetchDayCsv(day, async (startIso, endIso) => {
+      const { logUrl } = await amplify.send(
+        new GenerateAccessLogsCommand({
+          appId,
+          domainName: domain,
+          startTime: new Date(startIso),
+          endTime: new Date(endIso),
+        }),
+      );
+      if (!logUrl) throw new Error(`no logUrl returned for ${day}`);
+
+      // The presigned URL is a bearer credential with an hour of life; the body
+      // is a few megabytes. Named on timeout so the log group says which half
+      // of the retrieval stalled, rather than the invocation simply ending.
+      try {
+        const res = await fetchImpl(logUrl, { signal: AbortSignal.timeout(LOG_DOWNLOAD_TIMEOUT_MS) });
+        if (!res.ok) throw new Error(`log download for ${day} failed: HTTP ${res.status}`);
+        return await res.text();
+      } catch (err) {
+        if (err?.name !== "TimeoutError" && err?.name !== "AbortError") throw err;
+        throw new Error(`log download for ${day} timed out after ${LOG_DOWNLOAD_TIMEOUT_MS}ms`);
+      }
+    });
+    const { rows, malformed } = parseLog(csv);
+
+    // Emitted as a distinctive line so a metric filter can alarm on it
+    // (quantum-analytics-parse-degraded). Until now `malformed` was written to
+    // the row and returned to the invoker, and read by nothing.
+    if (malformed > 0 && malformed / (malformed + rows.length) > MAX_MALFORMED_SHARE) {
+      console.warn(
+        `analytics-parse-degraded day=${day} malformed=${malformed} parsed=${rows.length} — the ` +
+          `access log format has probably changed; this day's counts are an UNDERCOUNT`,
+      );
+    }
+
+    const { index, complete, why } = await rangesPromise;
+    const summary = summarizeDay(rows, index, { day, siteHost });
+
+    // The published-range fetch is allowed to fail — but a run that degrades
+    // this way SUCCEEDS, so errors, throttles, did-not-run, slow and
+    // matched-nothing all stay green while every cloud-hosted crawler that
+    // survived the other signals is counted as a person. Recording it on the
+    // row alone means the only way to notice is to hand-read a boolean, which
+    // is the "plausible numbers, every alarm green" mode this stack exists to
+    // close. Emitted as a distinctive line so a metric filter can alarm on it
+    // (quantum-analytics-bot-filter-incomplete).
+    if (!complete) {
+      console.warn(
+        `analytics-bot-filter-incomplete day=${day} why=${why} — the datacenter filter did not ` +
+          `run, so humans is an OVERCOUNT for this day`,
+      );
+    }
 
     // A run that fetched rows but matched NONE of them is a broken host filter,
     // not a quiet day — and the two are indistinguishable from `requests: 0`
@@ -85,7 +197,7 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     if (summary.requests === 0 && summary.offSiteRequests > 0) {
       console.warn(
         `analytics-matched-nothing day=${day} offSiteRequests=${summary.offSiteRequests} ` +
-          `siteHost=${SITE_HOST} — the log had rows and none matched the host filter`
+          `siteHost=${siteHost} — the log had rows and none matched the host filter`
       );
     }
 
@@ -106,9 +218,30 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     };
     if (!complete) item.botFilterNote = { S: String(why).slice(0, 200) };
 
-    await ddb.send(new PutItemCommand({ TableName: tableName, Item: item }));
+    const put = { TableName: tableName, Item: item };
+    if (requested && event.overwrite !== true) {
+      // Absent, or already zero, is safe to write. A non-zero row is a real
+      // measurement and outranks anything a re-run can produce today.
+      put.ConditionExpression = "attribute_not_exists(#d) OR requests = :zero";
+      put.ExpressionAttributeNames = { "#d": "day" };
+      put.ExpressionAttributeValues = { ":zero": { N: "0" } };
+    }
 
-    return { day, ...summary, malformed, botFilterComplete: Boolean(complete) };
+    try {
+      await ddb.send(new PutItemCommand(put));
+    } catch (err) {
+      if (err?.name !== "ConditionalCheckFailedException") throw err;
+      // Not an error: the guard did its job. Deliberately NOT alarmed — the
+      // operator asked for this day and is reading the response.
+      console.warn(
+        `analytics-kept-existing-row day=${day} — a non-zero row already exists and was NOT ` +
+          `replaced. Amplify's retention is finite, so a re-run this late usually re-reads a ` +
+          `shorter log. Pass {"day":"${day}","overwrite":true} if the new counts are the better ones.`,
+      );
+      return { day, ...summary, malformed, botFilterComplete: Boolean(complete), written: false };
+    }
+
+    return { day, ...summary, malformed, botFilterComplete: Boolean(complete), written: true };
   };
 }
 
@@ -119,6 +252,10 @@ const core = createAnalyticsCore({
   tableName: process.env.TABLE_NAME,
   appId: process.env.AMPLIFY_APP_ID,
   domain: process.env.AMPLIFY_DOMAIN,
+  // Every environment read lives here, at the composition root, the way
+  // lambda/qpu and lambda/review-email do it — classify.mjs stays (data in) ->
+  // (data out) and SITE_HOST is its default, not its source of truth.
+  siteHost: process.env.SITE_HOST || SITE_HOST,
 });
 
 export const handler = (event) => core(event);
