@@ -170,8 +170,26 @@ test("the host filter is a parameter, and it names the canonical site host", () 
   // That silently held from the QL-Prod cutover until 2026-08-31, so the value
   // is a parameter wired to an env var (never a source constant) and it must
   // name the same host the site actually serves.
+  //
+  // DERIVED, not restated. web/src/lib/site.ts is the declared single source
+  // for the deployed origin; the classifier's fallback and this parameter's
+  // Default are copies of its hostname, and a third hardcoded copy in this file
+  // would let all of them drift together with the suite green. The
+  // matched-nothing alarm's own description tells the operator to compare the
+  // two by hand — this is that comparison, made automatic.
   const params = blocks(section(template, "Parameters"));
   assert.ok(params.SiteHost, "SiteHost must be a template parameter");
-  assert.match(params.SiteHost.join("\n"), /Default: learner\.quantumenv\.dev\s*$/m);
   assert.match(template, /SITE_HOST: !Ref SiteHost/, "SiteHost must reach the function as SITE_HOST");
+
+  const siteTs = readFileSync(new URL("../../web/src/lib/site.ts", import.meta.url), "utf8");
+  const siteUrl = siteTs.match(/^export const SITE_URL = "([^"]+)"/m)?.[1];
+  assert.ok(siteUrl, "web/src/lib/site.ts must export a string SITE_URL");
+  const canonical = new URL(siteUrl).hostname;
+
+  const paramDefault = params.SiteHost.join("\n").match(/^\s+Default: (.+)$/m)?.[1]?.trim();
+  assert.equal(paramDefault, canonical, "SiteHost's Default disagrees with SITE_URL in web/src/lib/site.ts");
+
+  const classifySrc = readFileSync(new URL("./classify.mjs", import.meta.url), "utf8");
+  const fallback = classifySrc.match(/^export const SITE_HOST = "([^"]+)";/m)?.[1];
+  assert.equal(fallback, canonical, "classify.mjs's SITE_HOST fallback disagrees with web/src/lib/site.ts");
 });
