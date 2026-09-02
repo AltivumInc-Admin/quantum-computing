@@ -152,6 +152,15 @@ jobs:
         working-directory: .
         run: node --test scripts/drift/*.test.mjs
 
+      # The Stripe guards' decision logic: the pricing.ts parser, the event-set
+      # diff, the product-copy audit, and the account ids the usage examples name.
+      # A parse failure inside those does not look like a parse failure — it looks
+      # like DRIFT reported against Stripe. Zero dependencies, no network, no
+      # Stripe key: pure functions plus a scan of source text.
+      - name: Stripe guard rule tests
+        working-directory: .
+        run: node --test scripts/stripe/*.test.mjs
+
       # A learner-visible pull request must say what changed, or record in
       # SILENT why it needs no announcement. The diff is computed HERE rather
       # than inside the script: no script under scripts/ shells out to git, the

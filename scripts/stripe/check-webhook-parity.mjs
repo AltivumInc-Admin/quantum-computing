@@ -12,6 +12,13 @@
  * That class of failure is invisible to every test in this repo, because the
  * Dashboard is not in the repo. This script is the missing half.
  *
+ * It also checks WHICH endpoints are enabled. Subscription and pin say nothing
+ * about whether an endpoint is one we own, and an endpoint added in the Dashboard
+ * — by a compromised login, a mis-scoped collaborator, or a pasted wrong URL —
+ * receives every event payload: customer emails, PaymentIntent ids, subscription
+ * metadata carrying Cognito subs. Give `--expect-url` (repeatable) and any other
+ * enabled endpoint is reported as a problem rather than printed as OK.
+ *
  * It also checks the endpoint's pinned `api_version`. A null version means the
  * endpoint renders events at whatever the ACCOUNT DEFAULT happens to be, which
  * is what moved `invoice.subscription` under `parent.subscription_details` and
@@ -23,71 +30,77 @@
  * secret reaches argv or shell history:
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
- *     node scripts/stripe/check-webhook-parity.mjs --expect-account acct_1TuFow07hJdXv6GV
+ *     node scripts/stripe/check-webhook-parity.mjs --expect-account live
  *
- * --expect-account is REQUIRED and verified before anything else: this owner's
+ * --expect-account takes `live` or `sandbox` (resolved through
+ * scripts/stripe/lib/accounts.mjs) or an explicit acct_. It is REQUIRED and
+ * verified before anything else: this owner's
  * Stripe login also controls Altivum Logic and Tj-Scents, and every `stripe` CLI
  * profile on this machine currently points at the WRONG one. Never infer the
  * account from a profile, a session, or a previous run.
  *
  * Exit 0 = parity. Exit 1 = drift (or a wrong account). Exit 2 = usage error.
  */
-import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/catalog.mjs";
+import { resolveAccount } from "./lib/accounts.mjs";
+import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
+import { diffEvents } from "./lib/parity-rules.mjs";
 
-const args = process.argv.slice(2);
-const flag = (name) => {
-  const i = args.indexOf(name);
-  return i === -1 ? undefined : args[i + 1];
-};
+const { all, flag, has } = parseArgs(process.argv.slice(2));
 
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
-const expectUrl = flag("--expect-url"); // optional: pin which endpoint we audit
-const json = args.includes("--json");
-
-if (!key) {
-  console.error("STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
-  process.exit(2);
+// `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  die(2, err.message);
 }
-if (!expectAccount) {
-  console.error("--expect-account <acct_...> is required. Refusing to audit an unidentified account.");
-  process.exit(2);
-}
+// Repeatable. Every URL we expect to be receiving our events; anything else
+// enabled on this account is a problem, not a note.
+const expectUrls = all("--expect-url");
+const json = has("--json");
 
-async function stripeGet(path) {
-  const res = await fetch(`https://api.stripe.com/v1/${path}`, {
-    headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}` },
-  });
-  const body = await res.json();
-  if (body?.error) throw new Error(`${path}: ${body.error.message}`);
-  return body;
-}
+if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
+if (!expectAccount) die(2, "--expect-account <acct_...> is required. Refusing to audit an unidentified account.");
 
+const client = stripeClient(key);
 const problems = [];
 const notes = [];
 
 // 1. Identity, before anything else.
-const account = await stripeGet("account");
-if (account.id !== expectAccount) {
-  console.error(
-    `WRONG ACCOUNT: key belongs to ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), ` +
-      `expected ${expectAccount}. Refusing to continue.`
-  );
-  process.exit(1);
-}
-const mode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test/sandbox";
-notes.push(`account ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), key mode ${mode}`);
+const account = await assertAccount(client, expectAccount).catch((err) => die(1, err.message));
+notes.push(`account ${account.id} (${account.settings?.dashboard?.display_name ?? "?"}), key mode ${client.mode}`);
 
 // 2. The endpoints.
-const { data: endpoints = [] } = await stripeGet("webhook_endpoints?limit=100");
+const endpoints = await client.listAll("webhook_endpoints");
 const enabled = endpoints.filter((e) => e.status === "enabled");
-const targets = expectUrl ? enabled.filter((e) => e.url === expectUrl) : enabled;
+const targets = expectUrls.length ? enabled.filter((e) => expectUrls.includes(e.url)) : enabled;
 
 if (targets.length === 0) {
-  problems.push(expectUrl ? `no enabled endpoint with url ${expectUrl}` : "no enabled webhook endpoint at all");
+  problems.push(
+    expectUrls.length ? `no enabled endpoint with url ${expectUrls.join(" or ")}` : "no enabled webhook endpoint at all"
+  );
 }
-if (!expectUrl && targets.length > 1) {
-  notes.push(`${targets.length} enabled endpoints; each is audited separately`);
+
+// An endpoint we did not put there is the one Dashboard change that exfiltrates
+// data, and it is invisible to every other check here: subscribe it to the nine
+// events with a pinned version and it printed OK. Full event payloads carry
+// customer emails, PaymentIntent ids and subscription metadata carrying Cognito
+// subs. So with --expect-url given, a stranger's endpoint is a PROBLEM.
+if (expectUrls.length) {
+  for (const ep of enabled.filter((e) => !expectUrls.includes(e.url))) {
+    problems.push(
+      `UNEXPECTED ENDPOINT ${ep.id} -> ${ep.url} is enabled and receiving our events, and is not one of the ` +
+        `--expect-url values. Every event payload reaches it. Disable it unless you put it there.`
+    );
+  }
+} else if (enabled.length > 1) {
+  notes.push(
+    `${enabled.length} enabled endpoints; each is audited separately. URL identity is NOT checked — ` +
+      `pass --expect-url (repeatable) to make an endpoint nobody expects a failure.`
+  );
 }
 
 const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
@@ -95,9 +108,7 @@ const report = [];
 
 for (const ep of targets) {
   const subscribed = new Set(ep.enabled_events);
-  const wildcard = subscribed.has("*");
-  const missing = wildcard ? [] : required.filter((e) => !subscribed.has(e));
-  const extra = wildcard ? [] : [...subscribed].filter((e) => !required.includes(e)).sort();
+  const { wildcard, missing, extra } = diffEvents(subscribed, required);
 
   if (missing.length) {
     problems.push(
@@ -111,12 +122,20 @@ for (const ep of targets) {
     notes.push(`${ep.url}: subscribed to ${extra.length} event(s) the handler ignores: ${extra.join(", ")}`);
   }
   if (wildcard) {
-    notes.push(`${ep.url}: subscribed to "*" — every required event arrives, but so does everything else`);
+    // A problem, not a note: a `*` subscription satisfies `missing` for free, so
+    // it hides the very drift this script exists to find, and it ships event
+    // families the handler never asked for to a destination we chose for nine.
+    problems.push(
+      `${ep.url}: subscribed to "*" — every required event arrives, but so does every other event Stripe ` +
+        `emits, and the missing-event check can never fail. Subscribe to the ${required.length} explicitly.`
+    );
   }
   if (!ep.api_version) {
     problems.push(
       `${ep.url}: api_version is NULL, so payload shape follows the ACCOUNT DEFAULT and can change under a ` +
-        `deployed handler. Endpoint API version is creation-only — recreate the endpoint pinned (runbook §1.1c).`
+        `deployed handler. Endpoint API version is creation-only — recreate the endpoint pinned with ` +
+        `scripts/stripe/rotate-webhook-endpoint.mjs (it rotates the signing secret, recycles the function ` +
+        `and proves the new secret before retiring the old endpoint).`
     );
   }
   report.push({
@@ -126,15 +145,19 @@ for (const ep of targets) {
     subscribed: [...subscribed].sort(),
     missing,
     extra,
+    wildcard,
   });
 }
 
 if (json) {
-  console.log(JSON.stringify({ account: account.id, mode, required, endpoints: report, problems, notes }, null, 2));
+  console.log(
+    JSON.stringify({ account: account.id, mode: client.mode, required, endpoints: report, problems, notes }, null, 2)
+  );
 } else {
   console.log(`\n  Stripe webhook parity  (${notes[0]})\n`);
   for (const r of report) {
-    const ok = r.missing.length === 0 && r.apiVersion;
+    // A wildcard is not OK: it makes the missing-event check unfailable.
+    const ok = r.missing.length === 0 && r.apiVersion && !r.wildcard;
     console.log(`  ${ok ? "OK   " : "DRIFT"}  ${r.url}`);
     console.log(`         api_version: ${r.apiVersion ?? "NULL (account default)"}`);
     console.log(`         subscribed: ${r.subscribed.length}/${required.length} required`);

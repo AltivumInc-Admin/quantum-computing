@@ -141,22 +141,39 @@ credit granting in the first place. Pinning it stops the payload shape being a
 moving target under a deployed handler.
 
 Zero live traffic (0 charges, 0 invoices, 0 subscriptions as of 2026-07-27), so
-there is no missed-event window — but do it in this order anyway:
+there is no missed-event window.
 
-1. Create the replacement endpoint (Dashboard → Developers → Webhooks → Add
-   endpoint), URL `https://bfiloz43aa.execute-api.us-east-2.amazonaws.com/webhook`,
-   **pin the API version**, and subscribe to **all nine** events. Do not retype
-   them — print the list from the code so the Dashboard cannot drift:
+**Run the script; do not do this by hand.** `scripts/stripe/rotate-webhook-endpoint.mjs`
+is the proven procedure — it performed both the sandbox and the live rotation on
+2026-08-17 (see `scripts/migration/README.md`). It creates the replacement
+endpoint through the API with the pin and all nine events, pipes the new signing
+secret straight into Secrets Manager on stdin (never printed, never in argv,
+never on disk), forces the container recycle, sends a genuinely signed probe, and
+refuses to retire the old endpoint until that probe returns 2xx:
 
-   ```bash
-   node -e "import('./lambda/stripe/index.mjs').then(m=>console.log(m.REQUIRED_WEBHOOK_EVENTS.join('\n')))"
-   ```
+```bash
+STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
+  node scripts/stripe/rotate-webhook-endpoint.mjs \
+    --expect-account live \
+    --url https://bfiloz43aa.execute-api.us-east-2.amazonaws.com/webhook \
+    --secret-id quantum-stripe \
+    --function quantum-stripe \
+    --confirm-live
+```
 
-   `index.test.mjs` asserts that list matches the handler's `switch` cases
-   exactly, so a type handled but never delivered (dead code) or delivered but
-   ignored (silent loss) reddens instead of shipping.
+The Dashboard cannot do this: it can only pin *your account version* or *latest*,
+and `api_version` is creation-only. Nor can a hand-run `put-secret-value` — the
+one this section used to print put the signing secret in argv, and the recycle
+step was missing entirely. A warm Lambda caches the signing secret at cold start,
+so rotating the secret does nothing to a running container: it keeps verifying
+against the OLD secret and rejecting every delivery with a 400. Verified in the
+sandbox on 2026-08-17: 24 invocations, 2-38ms each, wallet untouched, not one log
+line. That is the step everyone misses, and it is why this is a script.
 
-   Two groups are load-bearing and easy to skip:
+The script prints the follow-up `make stripe-parity ACCOUNT=live` line itself.
+
+Two of the nine event groups are load-bearing and easy to skip if anyone is ever
+tempted to build the event list by hand:
    - **`async_payment_succeeded` / `async_payment_failed`** — Klarna / Cash App /
      Amazon Pay / ACH are all active on this account and complete the session
      with `payment_status: "unpaid"` before any money settles; nothing is
@@ -166,22 +183,16 @@ there is no missed-event window — but do it in this order anyway:
      `charge.dispute.created`: that also fires for inquiries where Stripe
      withdraws no funds, so clawing back there would zero a paying customer's
      wallet for free.
-2. Copy the new signing secret and rotate it into Secrets Manager. Re-read the
-   key from 1Password in the same command so no plaintext reaches shell history:
 
-   ```bash
-   aws secretsmanager put-secret-value --secret-id quantum-stripe --region us-east-2 \
-     --secret-string "$(jq -nc \
-       --arg sk "$(op read 'op://Quantum Learner/Stripe/add more/Secret Key')" \
-       --arg wh 'whsec_NEW_SIGNING_SECRET' \
-       '{secretKey:$sk, webhookSecret:$wh}')"
-   ```
+The list itself is `REQUIRED_WEBHOOK_EVENTS` in `lambda/stripe/catalog.mjs`, which
+the script reads directly; `index.test.mjs` asserts it matches the handler's
+`switch` cases exactly, so a type handled but never delivered (dead code) or
+delivered but ignored (silent loss) reddens instead of shipping.
 
-   The running function reads the secret at cold start. `lazyCore` no longer
-   memoizes a failed read, so a container that raced the rotation recovers on
-   its next invocation instead of serving a permanent 500.
-3. Only then disable (do not delete) the old endpoint, so a rollback is a
-   single toggle.
+The running function reads the secret at cold start. `lazyCore` no longer
+memoizes a failed read, so a container that raced the rotation recovers on its
+next invocation instead of serving a permanent 500. The old endpoint is left
+**disabled, not deleted**, so a rollback is a single toggle.
 
 ### 1.1d Verify the tutor metering rate table
 
@@ -191,10 +202,10 @@ partner-priced and the AWS Price List API returns no entries for these model
 names, so they could not be read programmatically. The tests assert presence
 and ordering only — they cannot know the numbers are right.
 
-Confirm each against <https://aws.amazon.com/bedrock/pricing/> and correct the
-table before any real money meters through it. Charging at cost is deliberate
-(margin is the subscription, not a markup on inference), which is exactly what
-makes the basis load-bearing.
+Confirm each against the provider's published rates and correct the table before
+any real money meters through it. The cost basis is load-bearing whatever sits on
+top of it: every metered surface debits at the same markup (rule 5), so an error
+here moves the whole wallet.
 
 ### 1.2 Re-open the storefront
 
