@@ -225,7 +225,16 @@ export function PricingPageContent() {
                   }`}
                 >
                   {featured && (
-                    <span className="absolute -top-3 left-7 inline-flex items-center rounded-chip bg-accent-dark px-2.5 py-1 text-xs font-semibold text-white">
+                    // chip-selected, not `bg-accent-dark text-white`. In the light
+                    // theme --accent-dark is #6f5636 and white computes 6.86:1, but
+                    // .dark remaps --accent-dark to #a38560 — the light theme's raw
+                    // --accent — where white is 3.45:1, under the 4.5:1 AA floor for
+                    // this 12px badge, with no dark: override to catch it. The
+                    // repo-wide contrast guard exempts bg-accent-dark on the
+                    // assumption it carries its own legible ink, so nothing saw it.
+                    // .chip-selected is the one sanctioned gold fill and is pinned in
+                    // BOTH themes by token-contrast.test.ts (8.30:1 / 5.73:1).
+                    <span className="absolute -top-3 left-7 inline-flex items-center rounded-chip chip-selected px-2.5 py-1 text-xs font-semibold">
                       {t("pricingUi.bestForRegulars")}
                     </span>
                   )}

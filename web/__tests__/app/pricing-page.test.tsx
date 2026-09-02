@@ -86,7 +86,16 @@ describe("PricingPage", () => {
     for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
       expect(screen.getByText(`$${tier.priceUsdPerMonth}`)).toBeInTheDocument();
     }
-    expect(screen.getByText("Best for regulars")).toBeInTheDocument();
+    const badge = screen.getByText("Best for regulars");
+    expect(badge).toBeInTheDocument();
+    // The featured badge was bg-accent-dark + text-white with no dark: override.
+    // .dark remaps --accent-dark to the light theme's raw --accent (#a38560),
+    // where white computes 3.45:1 — under the AA floor for 12px text — and the
+    // repo-wide contrast guard exempts bg-accent-dark, so nothing caught it.
+    // chip-selected is the one sanctioned gold fill, pinned in both themes.
+    expect(badge.className).toContain("chip-selected");
+    expect(badge.className).not.toContain("text-white");
+    expect(badge.className).not.toContain("bg-accent-dark");
     // Paid tiers are not purchasable yet — both must say so.
     expect(screen.getAllByText("Launching soon")).toHaveLength(2);
   });
