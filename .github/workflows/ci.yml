@@ -131,6 +131,15 @@ jobs:
         working-directory: .
         run: node --test scripts/changelog/*.test.mjs
 
+      # The deployed-vs-git guard's own rules: what counts as source, which
+      # drift is HELD, when a hold has gone stale, and what a run exits with
+      # when several of those are true at once. The scripts themselves need AWS
+      # and cannot run here — the rules do not, which is why they were split
+      # out. Zero dependencies, same as the three steps above.
+      - name: Drift guard tests
+        working-directory: .
+        run: node --test scripts/drift/*.test.mjs
+
       # A learner-visible pull request must say what changed, or record in
       # SILENT why it needs no announcement. The diff is computed HERE rather
       # than inside the script: no script under scripts/ shells out to git, the

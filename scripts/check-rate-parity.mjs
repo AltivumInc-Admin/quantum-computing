@@ -28,6 +28,7 @@
  *         1 = divergent or unusable   2 = could not check
  */
 import { execFileSync } from "node:child_process";
+import { classify, normalizeRateCard, verdict } from "./drift/rate-rules.mjs";
 
 const REGION = process.env.AWS_REGION ?? "us-east-2";
 const FUNCTIONS = ["quantum-tutor", "quantum-qpu-submit"];
@@ -48,10 +49,8 @@ function readRateCard(fn) {
       "text",
     ],
     { encoding: "utf8" },
-  ).trim();
-  // `--output text` prints "None" for a missing key — and "None" is also not a
-  // usable factor, so collapsing the two is safe as well as convenient.
-  return out === "None" || out === "" ? undefined : out;
+  );
+  return normalizeRateCard(out);
 }
 
 const rows = [];
@@ -65,10 +64,7 @@ for (const fn of FUNCTIONS) {
     console.error(`  ERROR  ${fn}: ${e.message?.split("\n")[0] ?? e}`);
     process.exit(2);
   }
-  const n = Number(value);
-  const state =
-    value === undefined ? "ABSENT" : Number.isFinite(n) && n > 0 ? "PRESENT" : "PRESENT-UNUSABLE";
-  rows.push({ fn, state, value });
+  rows.push({ fn, state: classify(value), value });
 }
 
 // Values compared HERE, in memory, and never referenced again.
@@ -80,26 +76,6 @@ for (const r of rows) {
   console.log(`  ${r.state.padEnd(17)} ${r.fn}`);
 }
 
-const states = new Set(rows.map((r) => r.state));
-
-if (states.has("PRESENT-UNUSABLE")) {
-  console.log("\n  FAIL: a deployed RATE_CARD would be refused by the handler's gate.");
-  console.log("  Paid surfaces are refusing right now while looking configured.\n");
-  process.exit(1);
-}
-if (states.size > 1) {
-  console.log("\n  FAIL: one surface is configured and the other is not (rule 5).");
-  console.log("  Both must flip in the same cutover — see the billing runbook.\n");
-  process.exit(1);
-}
-if (distinctValues > 1) {
-  console.log("\n  FAIL: the two surfaces carry DIFFERENT values (rule 5).");
-  console.log("  One wallet + two conversion rates = every rational learner spends");
-  console.log("  through the cheaper surface. Redeploy both from the same secret.\n");
-  process.exit(1);
-}
-console.log(
-  states.has("ABSENT")
-    ? "\n  OK: metering is off on both surfaces — consistent.\n"
-    : "\n  OK: both surfaces carry the identical rate configuration (MATCH).\n",
-);
+const { exitCode, lines } = verdict(rows, distinctValues);
+for (const line of lines) console.log(line);
+process.exit(exitCode);

@@ -21,12 +21,18 @@
  *
  * Needs AWS read access (lambda:GetFunction). GitHub Actions has no AWS credentials
  * today, so this runs locally or anywhere credentials exist — see `make drift`.
+ *
+ * This file is the I/O SHELL. Everything decidable without AWS — the source filter,
+ * the HELD matching, the stale-hold rule, the exit-code policy and the report text —
+ * lives in scripts/drift/rules.mjs, where scripts/drift/rules.test.mjs exercises it
+ * with no credentials and no network.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const REGION = process.env.AWS_REGION || "us-east-2";
@@ -62,8 +68,6 @@ const HELD = [
   },
 ];
 
-const heldFor = (fn) => HELD.find((h) => h.fn.test(fn));
-
 const FUNCTIONS = [
   { fn: "quantum-stripe", dir: "lambda/stripe" },
   // The sandbox stack runs the SAME source and is where payment changes are
@@ -85,17 +89,13 @@ const FUNCTIONS = [
 
 const sh = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 
-/** Hand-written source in a directory: .mjs/.js at the top level, minus tests. */
+/** Hand-written source in a directory: the pure filter, applied to what is on disk. */
 const sourceFiles = (dir) => {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /\.(mjs|js)$/.test(f))
-    .filter((f) => !/\.test\.mjs$|^probe-|^verify-/.test(f))
-    .filter((f) => statSync(join(dir, f)).isFile());
+  return filterSources(readdirSync(dir)).filter((f) => statSync(join(dir, f)).isFile());
 };
 
 const results = [];
-let exitCode = 0;
 
 for (const { fn, dir } of FUNCTIONS) {
   const srcDir = join(REPO, dir);
@@ -125,52 +125,22 @@ for (const { fn, dir } of FUNCTIONS) {
     // (deploy-check.mjs, cfn-slice.mjs, backfill-*.mjs), and failing on those would make
     // this cry wolf until someone disabled it — which is how guards die.
     const ok = drifted.length === 0;
-    // A DECLARED hold does not fail the run — it prints as HELD with its reason.
-    // Undeclared drift still fails, which is the whole point of the check.
-    if (!ok && !heldFor(fn)) exitCode = 1;
     results.push({ fn, dir, ok, drifted, missing, lastModified });
   } catch (err) {
-    exitCode = Math.max(exitCode, 2);
     results.push({ fn, dir, ok: false, error: String(err.message || err).split("\n")[0] });
   } finally {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
   }
 }
 
+// A DECLARED hold does not fail the run — it prints as HELD with its reason.
+// Undeclared drift still fails, which is the whole point of the check.
+const { exitCode } = verdict(results, HELD);
+
 if (JSON_OUT) {
   console.log(JSON.stringify({ region: REGION, results }, null, 2));
 } else {
-  console.log(`\n  Deployed-vs-git drift  (region ${REGION})\n`);
-  for (const r of results) {
-    if (r.error) { console.log(`  ??  ${r.fn.padEnd(34)} could not check — ${r.error}`); continue; }
-    const held = !r.ok && heldFor(r.fn);
-    const mark = r.ok ? "OK " : held ? "HELD" : "DRIFT";
-    console.log(`  ${mark.padEnd(6)} ${r.fn.padEnd(34)} ${r.lastModified}`);
-    for (const f of r.drifted) console.log(`         DIFFERS from git: ${join(r.dir, f)}`);
-    if (r.missing.length) console.log(`         (not packaged, assumed ops-only: ${r.missing.join(", ")})`);
-    if (held) {
-      console.log(`         HELD ON PURPOSE — do not deploy to clear this.`);
-      console.log(`         why:   ${held.reason}`);
-      console.log(`         until: ${held.clearsWhen}`);
-    }
-  }
-  const bad = results.filter((r) => !r.ok && !heldFor(r.fn));
-  const held = results.filter((r) => !r.ok && heldFor(r.fn));
-  // A hold that no longer holds anything is stale, and a stale allowlist is how
-  // a real gap eventually hides behind an entry nobody re-read.
-  const staleHolds = HELD.filter((h) => !results.some((r) => !r.ok && h.fn.test(r.fn)));
-  console.log(
-    bad.length === 0
-      ? `\n  All ${results.length - held.length} unheld functions match git.` +
-        (held.length ? ` ${held.length} held on purpose (see above).\n` : `\n`)
-      : `\n  ${bad.length} of ${results.length} functions do NOT match git. Deploy them, or explain why not.\n`,
-  );
-  for (const h of staleHolds) {
-    console.log(
-      `  NOTE: the HELD entry matching ${h.fn} no longer matches any drifting function.\n` +
-        `        The hold has served its purpose — delete it from scripts/check-lambda-drift.mjs.\n`,
-    );
-  }
+  for (const line of render(results, HELD, REGION)) console.log(line);
 }
 
 process.exit(exitCode);
