@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { MONACO_VERSION } from "../src/lib/monaco-path";
+import {
+  assertNoFailedResponses,
+  assertSameOrigin,
+  FIXTURE_RUNNABLE_EDITOR,
+  instrument,
+} from "./_support/instrument";
 
 /**
  * End-to-end proof of the ```runnable fence — the inline Python sandbox on
@@ -30,10 +36,6 @@ import { MONACO_VERSION } from "../src/lib/monaco-path";
  *     surface here as a 404 rather than as a silent feature loss.
  */
 
-// Static export + serve.json cleanUrls:false → the page is served at its literal
-// exported filename, not the clean URL (same gotcha as /lab/lab/index.html).
-const FIXTURE = "/e2e-fixtures/runnable-editor.html";
-
 // The Bell amplitudes qcsim prints for the fence's circuit: numpy renders
 // 1/sqrt(2) as 0.70710678 on |00> and |11>, zero elsewhere.
 const BELL_AMPLITUDE = "0.70710678";
@@ -42,24 +44,9 @@ test("runnable fence: self-hosted Monaco boots, edits reach real Pyodide, fully 
   page,
   baseURL,
 }) => {
-  const origin = new URL(baseURL!).origin;
-  const external: string[] = [];
-  const failed: string[] = [];
-  page.on("request", (req) => {
-    const u = req.url();
-    if (/^https?:/.test(u) && new URL(u).origin !== origin) {
-      external.push(`${req.method()} ${u}`);
-    }
-  });
-  page.on("response", (res) => {
-    if (res.status() >= 400) failed.push(`${res.status()} ${res.url()}`);
-  });
-  page.on("console", (m) => {
-    if (m.type() === "error") console.log("[fixture console error]", m.text());
-  });
-  page.on("pageerror", (e) => console.log("[fixture page error]", e.message));
+  const { external, failed } = instrument(page, baseURL, "fixture");
 
-  await page.goto(FIXTURE);
+  await page.goto(FIXTURE_RUNNABLE_EDITOR);
 
   // 1) Monaco actually mounted. `.monaco-editor` only exists once the AMD graph
   // (loader.js → editor.main.js → the hashed editor.api/workers chunks)
@@ -117,15 +104,9 @@ test("runnable fence: self-hosted Monaco boots, edits reach real Pyodide, fully 
   // Monaco's boot + two real Python runs made zero third-party requests: the
   // editor came from /monaco/<version>/vs, Pyodide from /pyodide/, the wheel
   // from /lab/files/wheels/.
-  expect(
-    external,
-    `the runnable editor made third-party requests:\n${external.join("\n")}`
-  ).toEqual([]);
+  assertSameOrigin(external, "the runnable editor");
 
   // Nothing the editor or the runtime asked for is missing from the staged
   // trees — the guard on stage-monaco.mjs's filtered copy.
-  expect(
-    failed,
-    `same-origin requests failed:\n${failed.join("\n")}`
-  ).toEqual([]);
+  assertNoFailedResponses(failed);
 });

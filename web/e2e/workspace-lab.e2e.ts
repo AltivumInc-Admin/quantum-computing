@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import manifest from "../src/lib/content-manifest.json";
+import { logPageDiagnostics } from "./_support/instrument";
 
 /**
  * The /workspace Lab launcher, end-to-end against the static export. In a build with no
@@ -27,6 +28,12 @@ const validHrefs = new Set(
 test("a Lab launcher href resolves to a real runnable notebook path from the manifest", async ({
   page,
 }) => {
+  // Diagnostics only. This spec makes no network claim of its own — the Lab is a
+  // build-time manifest render, and the same-origin guarantee is asserted by the
+  // specs that actually load the runtime — but a hydration error here should
+  // still land in the test output rather than only as a locator timeout.
+  logPageDiagnostics(page, "workspace");
+
   // The static export emits /workspace.html (serve.json has cleanUrls:false, no SPA
   // fallback), the same verbatim-path convention the lab smokes use. The cockpit and
   // Lab hydrate from localStorage + the manifest after load.

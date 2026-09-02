@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { assertSameOrigin, instrument } from "./_support/instrument";
 
 /**
  * Real in-browser Pyodide smokes. Each test loads the JupyterLite lab from the
@@ -20,27 +21,12 @@ const nbUrl = (path: string) =>
   "/lab/lab/index.html?path=" + encodeURIComponent(path);
 
 /**
- * Open a notebook, Run All Cells, and record every cross-origin request. Returns the
- * external-request log so the caller can assert the run is fully same-origin (it must
- * stay empty — Pyodide, its wheels, and comm are all self-hosted). chrome-extension://
- * and data: URLs are ignored; only http(s) outside the served origin counts — an
- * EXACT-origin compare, not a loopback prefix, so a stray dev server on another
- * port (or a "localhost.evil.example" host) can never be silently exempted.
+ * Open a notebook and Run All Cells. Does only that — the caller installs the
+ * request watcher first (e2e/_support/instrument.ts) and holds the logs, so the
+ * name says exactly what the function does and the same-origin rationale lives
+ * in one place for the whole suite.
  */
-async function runAllCells(page: Page, origin: string, notebookPath: string): Promise<string[]> {
-  const external: string[] = [];
-  page.on("request", (req) => {
-    const u = req.url();
-    if (/^https?:/.test(u) && new URL(u).origin !== origin) {
-      external.push(`${req.method()} ${u}`);
-    }
-  });
-  // Surface lab console/page errors to the test output for debugging.
-  page.on("console", (m) => {
-    if (m.type() === "error") console.log("[lab console error]", m.text());
-  });
-  page.on("pageerror", (e) => console.log("[lab page error]", e.message));
-
+async function runAllCells(page: Page, notebookPath: string): Promise<void> {
   await page.goto(nbUrl(notebookPath));
   await page.locator(".jp-Notebook").first().waitFor({ state: "visible", timeout: 120_000 });
   // Running cells auto-starts the single Pyodide kernel (no kernel-select dialog); the
@@ -49,23 +35,16 @@ async function runAllCells(page: Page, origin: string, notebookPath: string): Pr
   // hover; "^Run All Cells$" so it doesn't match "Restart Kernel and Run All Cells…".
   await page.locator(".lm-MenuBar-itemLabel", { hasText: /^Run$/ }).click();
   await page.locator(".lm-Menu-itemLabel", { hasText: /^Run All Cells$/ }).click();
-  return external;
 }
 
 const outputs = (page: Page) => page.locator(".jp-OutputArea-output");
-
-const assertSameOrigin = (external: string[]) =>
-  expect(external, `lab made third-party requests:\n${external.join("\n")}`).toEqual([]);
 
 test("01-first-circuit: real Pyodide, deterministic stdout, fully same-origin", async ({
   page,
   baseURL,
 }) => {
-  const external = await runAllCells(
-    page,
-    new URL(baseURL!).origin,
-    "01-foundations/notebooks/01-first-circuit.ipynb"
-  );
+  const { external } = instrument(page, baseURL, "lab");
+  await runAllCells(page, "01-foundations/notebooks/01-first-circuit.ipynb");
 
   // Deterministic output of the H-circuit cell (output TEXT, not a cell index, not
   // shot-dependent counts) — proves Pyodide booted and the qcsim wheel installed.
@@ -83,7 +62,7 @@ test("01-first-circuit: real Pyodide, deterministic stdout, fully same-origin", 
   ).toBeVisible({ timeout: 90_000 });
   await expect(outputs(page).filter({ hasText: "Traceback" })).toHaveCount(0);
 
-  assertSameOrigin(external);
+  assertSameOrigin(external, "lab");
 });
 
 test("06-bloch-playground: matplotlib renders + ipywidgets degrades gracefully, fully same-origin", async ({
@@ -92,11 +71,8 @@ test("06-bloch-playground: matplotlib renders + ipywidgets degrades gracefully, 
 }) => {
   // The heaviest browser path: loads numpy + the full matplotlib wheel closure
   // (pillow/fonttools/kiwisolver/contourpy/…) same-origin and renders inline plots.
-  const external = await runAllCells(
-    page,
-    new URL(baseURL!).origin,
-    "00-prereqs/notebooks/06-bloch-sphere-playground.ipynb"
-  );
+  const { external } = instrument(page, baseURL, "lab");
+  await runAllCells(page, "00-prereqs/notebooks/06-bloch-sphere-playground.ipynb");
 
   // Deterministic stdout from the famous-states table (f-string formatting, so it is
   // robust to numpy print options). Confirms numpy loaded and the notebook executed.
@@ -115,5 +91,5 @@ test("06-bloch-playground: matplotlib renders + ipywidgets degrades gracefully, 
   ).toBeVisible({ timeout: 30_000 });
   await expect(outputs(page).filter({ hasText: "Traceback" })).toHaveCount(0);
 
-  assertSameOrigin(external);
+  assertSameOrigin(external, "lab");
 });
