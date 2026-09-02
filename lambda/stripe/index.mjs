@@ -121,6 +121,36 @@ export const GRANT_WITHHELD = "credits NOT granted";
 export const SIGNATURE_REJECTED = "stripe-webhook: signature verification failed";
 
 /**
+ * Pinned phrase for a delivery whose mode does not match the key this stack
+ * holds. Signature verification proves the payload came from Stripe; it does
+ * NOT prove it came from the account this stack is supposed to serve, and the
+ * same template deploys twice by design (NamePrefix quantum-stripe-sandbox).
+ * A live event landing on the sandbox function would grant a real purchase
+ * into the sandbox wallet table while the live table never moves — money taken
+ * and credits written where nobody will look for them.
+ */
+export const LIVEMODE_MISMATCH = "stripe-webhook: event livemode does not match the key this stack holds";
+
+/**
+ * Refuse a live Stripe key in a stack named as a sandbox. The mirror of
+ * scripts/stripe/e2e-sandbox.mjs's `if (!/sandbox/.test(table))` refusal,
+ * moved to where it actually matters: the scripts hold a key for one run, the
+ * deployed function holds it for the life of the container. Thrown from the
+ * lazy build so the function never serves a request with the wrong key, and
+ * lazyCore un-memoizes the failure so a corrected secret recovers on the next
+ * invocation without a redeploy.
+ */
+export function assertKeyMatchesStack(secretKey, stackPrefix) {
+  const live = /^(sk|rk)_live_/.test(secretKey ?? "");
+  if (live && /sandbox/.test(stackPrefix ?? "")) {
+    throw new Error(
+      `refusing to start: a LIVE Stripe key in stack "${stackPrefix}" — a sandbox stack must never hold one`
+    );
+  }
+  return live;
+}
+
+/**
  * Exactly the event types this handler acts on. Exported so a test can assert
  * it matches the switch's cases, and so the Dashboard subscription in the
  * runbook has a single source of truth to be checked against. A type we handle
@@ -171,6 +201,12 @@ export function createHandlerCore({
   // Idempotency rows self-expire — 30 days comfortably outstrips Stripe's
   // ~3-day event-retry window, then TTL reclaims them.
   eventTtlSeconds = 60 * 60 * 24 * 30,
+  // Which Stripe mode this deployment's key belongs to, or undefined to make
+  // no claim (every offline test). When it IS a boolean, a delivery whose
+  // evt.livemode disagrees is refused: the wallet table is per-stack, so a
+  // live event reaching the sandbox function grants a real purchase into the
+  // sandbox table while the live table never moves.
+  expectLivemode,
 }) {
   async function readWallet(sub) {
     const res = await ddb.send(
@@ -935,6 +971,18 @@ export function createHandlerCore({
         console.error(SIGNATURE_REJECTED, err?.message ?? "unknown");
         return json(400, { error: "signature verification failed" });
       }
+      // A verified signature says "Stripe sent this", not "the account this
+      // stack serves sent this". 400 rather than 5xx for the same reason as
+      // above: retrying cannot make a sandbox stack the right home for a live
+      // event. The pinned phrase is what turns it into a page.
+      if (
+        typeof expectLivemode === "boolean" &&
+        typeof evt.livemode === "boolean" &&
+        evt.livemode !== expectLivemode
+      ) {
+        console.error(LIVEMODE_MISMATCH, evt.id, evt.type, `livemode=${evt.livemode}`);
+        return json(400, { error: "livemode mismatch" });
+      }
       try {
         await handleEvent(evt);
       } catch (err) {
@@ -1140,11 +1188,17 @@ export function lazyCore(build) {
 
 export const handler = lazyCore(async () => {
   const { secretKey, webhookSecret } = await loadSecret(process.env.SECRET_ID);
+  // Before the client exists, not after: a sandbox stack holding the live key
+  // would mint real Checkout Sessions and grant real purchases into the
+  // sandbox wallet table. STACK_PREFIX is the template's NamePrefix, so the
+  // stack names itself and the function believes the name.
+  const live = assertKeyMatchesStack(secretKey, process.env.STACK_PREFIX);
   return createHandlerCore({
     stripe: new Stripe(secretKey, STRIPE_CLIENT_OPTIONS),
     ddb: new DynamoDBClient({}),
     tableName: process.env.TABLE_NAME,
     webhookSecret,
     siteOrigin: process.env.SITE_ORIGIN,
+    expectLivemode: live,
   });
 });

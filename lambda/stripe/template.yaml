@@ -149,6 +149,13 @@ Resources:
         Variables:
           TABLE_NAME: !Ref WalletTable
           SITE_ORIGIN: !Ref SiteOrigin
+          # The stack names itself so the function can refuse a key that does
+          # not belong to it. A prefix containing "sandbox" plus an sk_live_
+          # key fails the build outright (assertKeyMatchesStack), and the mode
+          # it derives also rejects any delivery whose evt.livemode disagrees.
+          # Signature verification proves Stripe sent the event; it does not
+          # prove the event came from the account this stack serves.
+          STACK_PREFIX: !Ref NamePrefix
           # Only the secret's NAME — never its value. The function fetches the
           # Stripe keys at runtime (see the GetSecretValue policy below), so the
           # plaintext is never an environment variable and never visible via
@@ -328,6 +335,42 @@ Resources:
         `update-function-configuration` to recycle the environment.
       Namespace: !Ref MetricNamespace
       MetricName: SignatureRejected
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  LivemodeMismatchMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeLogGroup
+      FilterPattern: '"event livemode does not match the key this stack holds"'
+      MetricTransformations:
+        - MetricNamespace: !Ref MetricNamespace
+          MetricName: LivemodeMismatch
+          MetricValue: "1"
+          Unit: Count
+
+  LivemodeMismatchAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${NamePrefix}-livemode-mismatch"
+      AlarmDescription: >-
+        A correctly signed Stripe event arrived whose mode disagrees with the
+        key this stack holds — a live event at the sandbox stack, or a test
+        event at the live one. The two stacks own SEPARATE wallet tables, so
+        the wrong one granting a real purchase writes credits where nobody will
+        look for them while the right table never moves. The handler refuses
+        the delivery with a 400 (retrying cannot make a sandbox stack the right
+        home for a live event), which no other alarm here can see: the
+        invocation succeeds and the response is a 4xx. FIRST CHECK: which
+        Stripe account's secret is in this stack's Secrets Manager entry, and
+        which webhook endpoint points at this stack's URL.
+      Namespace: !Ref MetricNamespace
+      MetricName: LivemodeMismatch
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1

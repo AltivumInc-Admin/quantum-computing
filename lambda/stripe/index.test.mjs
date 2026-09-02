@@ -2,7 +2,14 @@
 // both stubbed and injected into createHandlerCore, mirroring lambda/sync.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHandlerCore, lazyCore, CATALOG, SIGNATURE_REJECTED } from "./index.mjs";
+import {
+  createHandlerCore,
+  lazyCore,
+  assertKeyMatchesStack,
+  CATALOG,
+  SIGNATURE_REJECTED,
+  LIVEMODE_MISMATCH,
+} from "./index.mjs";
 
 const TABLE = "quantum-stripe-wallet";
 const ORIGIN = "https://quantum.altivum.ai";
@@ -416,6 +423,91 @@ test("a rejected signature is ALERTABLE, not silent", async () => {
     lines[0].join(" ").includes(SIGNATURE_REJECTED),
     `must carry the pinned phrase ${JSON.stringify(SIGNATURE_REJECTED)} so the metric filter can see it`
   );
+});
+
+// ---- a stack must only serve its own Stripe account ------------------------
+// template.yaml deploys twice by design (NamePrefix quantum-stripe-sandbox),
+// each stack with its own secret and its own wallet table. Nothing used to
+// check that the key in the secret and the events arriving actually belong to
+// the account the stack is meant to serve.
+
+test("a LIVE key in a sandbox stack is refused before the client is built", () => {
+  assert.throws(
+    () => assertKeyMatchesStack("sk_live_abc123", "quantum-stripe-sandbox"),
+    /LIVE Stripe key/,
+    "a sandbox stack holding the live key would grant real purchases into the sandbox table"
+  );
+  // Restricted keys carry the same authority for this purpose.
+  assert.throws(() => assertKeyMatchesStack("rk_live_abc123", "quantum-stripe-sandbox"), /LIVE Stripe key/);
+  // The legitimate pairings, and the mode each one reports.
+  assert.equal(assertKeyMatchesStack("sk_live_abc123", "quantum-stripe"), true);
+  assert.equal(assertKeyMatchesStack("sk_test_abc123", "quantum-stripe-sandbox"), false);
+  assert.equal(assertKeyMatchesStack("sk_test_abc123", undefined), false);
+});
+
+test("a correctly signed event from the WRONG mode is refused, alertably", async () => {
+  // Signature verification proves Stripe sent it, not that the account this
+  // stack serves sent it. A live event granting into the sandbox wallet table
+  // writes credits where nobody will look for them.
+  const ddb = stubDdb();
+  const core = createHandlerCore({
+    stripe: stubStripe({
+      event: {
+        id: "evt_live_at_sandbox",
+        type: "checkout.session.completed",
+        livemode: true,
+        data: { object: { id: "cs_x", mode: "payment", payment_status: "paid", client_reference_id: "user-1", metadata: { credits: "2000" } } },
+      },
+    }),
+    ddb,
+    tableName: TABLE,
+    webhookSecret: SECRET,
+    siteOrigin: ORIGIN,
+    expectLivemode: false, // this stack holds a test-mode key
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await core(
+      makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
+    );
+  });
+  assert.equal(res.statusCode, 400, "retrying cannot make this stack the right home for the event");
+  assert.equal(ddb.calls.length, 0, "nothing may be written");
+  assert.equal(lines.length, 1);
+  assert.ok(
+    lines[0].join(" ").includes(LIVEMODE_MISMATCH),
+    `must carry the pinned phrase ${JSON.stringify(LIVEMODE_MISMATCH)} so the metric filter can see it`
+  );
+});
+
+test("a matching livemode passes through, and an unset expectation checks nothing", async () => {
+  for (const [expectLivemode, livemode] of [
+    [true, true],
+    [false, false],
+    [undefined, true], // every offline test: the core makes no claim
+  ]) {
+    const ddb = stubDdb();
+    const core = createHandlerCore({
+      stripe: stubStripe({
+        event: {
+          id: `evt_ok_${String(expectLivemode)}_${livemode}`,
+          type: "customer.subscription.deleted",
+          livemode,
+          data: { object: { metadata: { userId: "user-1" } } },
+        },
+      }),
+      ddb,
+      tableName: TABLE,
+      webhookSecret: SECRET,
+      siteOrigin: ORIGIN,
+      expectLivemode,
+    });
+    const res = await core(
+      makeEvent({ method: "POST", path: "/webhook", sub: null, rawBody: "{}", headers: { "stripe-signature": "sig" } })
+    );
+    assert.equal(res.statusCode, 200, `expectLivemode=${expectLivemode} livemode=${livemode}`);
+    assert.equal(ddb.calls.length, 1, "the delivery was handled");
+  }
 });
 
 test("webhook checkout.session.completed (top-up) grants credits atomically, once", async () => {
