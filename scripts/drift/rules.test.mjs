@@ -9,7 +9,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { heldFor, isVacuous, render, sourceFiles, staleHolds, verdict } from "./rules.mjs";
+import { failureReason, heldFor, isVacuous, redact, render, sourceFiles, staleHolds, verdict } from "./rules.mjs";
 
 const TARGET = { region: "us-east-2", accountVerified: true };
 
@@ -144,4 +144,37 @@ test("a vacuous held row does not make a stale hold look live", () => {
 test("the compared count prints on every row, so a shrinking one is visible", () => {
   const out = render([clean("quantum-tutor")], [], TARGET).join("\n");
   assert.match(out, /3 compared/);
+});
+
+test("a presigned URL never reaches the report", () => {
+  // execFileSync's message is the whole argv, and the download step's argv used
+  // to carry the presigned package URL — signature and session token included —
+  // straight into a public Actions log.
+  const message =
+    "Command failed: curl -sS -o /tmp/fn.zip https://prod-iad-c1-lambda.s3.amazonaws.com/pkg.zip?X-Amz-Signature=deadbeef&X-Amz-Security-Token=AAA";
+  assert.doesNotMatch(redact(message), /X-Amz-Signature|https?:\/\//);
+  assert.match(redact(message), /<url redacted>/);
+  assert.equal(redact(undefined), "");
+});
+
+test("the row reports the child's stderr, so a deleted function reads as one", () => {
+  const err = {
+    message: "Command failed: aws lambda get-function --function-name quantum-tutor",
+    stderr:
+      "\nAn error occurred (ResourceNotFoundException) when calling the GetFunction operation: Function not found\n",
+  };
+  assert.equal(
+    failureReason(err, "aws lambda get-function failed"),
+    "An error occurred (ResourceNotFoundException) when calling the GetFunction operation: Function not found",
+  );
+});
+
+test("a child that said nothing falls back to the stage, never to the argv", () => {
+  assert.equal(failureReason({ message: "Command failed: curl --config -" }, "download failed"), "download failed");
+  assert.equal(failureReason({ stderr: "   \n\n" }, "unzip failed"), "unzip failed");
+});
+
+test("even a URL on stderr is redacted before it is reported", () => {
+  const reason = failureReason({ stderr: "curl: (22) https://example.com/pkg.zip?X-Amz-Signature=x returned 403" }, "download failed");
+  assert.doesNotMatch(reason, /https?:\/\//);
 });

@@ -37,7 +37,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountCheck } from "./drift/account.mjs";
-import { FUNCTIONS, render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
+import { FUNCTIONS, failureReason, render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const REGION = process.env.AWS_REGION || "us-east-2";
@@ -69,7 +69,15 @@ const HELD = [
   },
 ];
 
-const sh = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+// stderr is CAPTURED, not inherited: it is the diagnostic the row reports, and
+// capturing it means nothing a child writes reaches a public log unredacted.
+const sh = (cmd, args, opts = {}) =>
+  execFileSync(cmd, args, {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["pipe", "pipe", "pipe"],
+    ...opts,
+  }).trim();
 
 /** Hand-written source in a directory: the pure filter, applied to what is on disk. */
 const sourceFiles = (dir) => {
@@ -101,11 +109,30 @@ const results = [];
 for (const { fn, dir } of FUNCTIONS) {
   const srcDir = join(REPO, dir);
   let tmp;
+  // Which step failed, for the row's message when one does. The child's stderr
+  // is preferred over its message; this is the fallback (see failureReason).
+  let stage = "aws lambda get-function failed";
   try {
     const url = sh("aws", ["lambda", "get-function", "--function-name", fn, "--region", REGION,
       "--query", "Code.Location", "--output", "text"]);
     tmp = mkdtempSync(join(tmpdir(), `drift-${fn}-`));
-    sh("curl", ["-sS", "-o", join(tmp, "fn.zip"), url]);
+    // The presigned URL goes to curl on STDIN, never in argv: argv is what
+    // execFileSync echoes into its thrown message, and it is also what `ps`
+    // shows any other user on a shared host. `fail` turns an S3 error body into
+    // an honest failure instead of an HTML file that unzip then chokes on.
+    stage = "download failed";
+    sh("curl", ["--config", "-"], {
+      input: [
+        `url = "${url}"`,
+        `output = "${join(tmp, "fn.zip")}"`,
+        "silent",
+        "show-error",
+        "fail",
+        "max-time = 120",
+        "",
+      ].join("\n"),
+    });
+    stage = "unzip failed";
     sh("unzip", ["-oq", join(tmp, "fn.zip"), "-d", join(tmp, "fn")]);
 
     const drifted = [];
@@ -120,6 +147,7 @@ for (const { fn, dir } of FUNCTIONS) {
       if (a !== b) drifted.push(file);
     }
 
+    stage = "aws lambda get-function-configuration failed";
     const lastModified = sh("aws", ["lambda", "get-function-configuration", "--function-name", fn,
       "--region", REGION, "--query", "LastModified", "--output", "text"]);
 
@@ -133,7 +161,7 @@ for (const { fn, dir } of FUNCTIONS) {
     const ok = compared > 0 && drifted.length === 0;
     results.push({ fn, dir, ok, compared, drifted, missing, lastModified });
   } catch (err) {
-    results.push({ fn, dir, ok: false, error: String(err.message || err).split("\n")[0] });
+    results.push({ fn, dir, ok: false, error: failureReason(err, stage) });
   } finally {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
   }

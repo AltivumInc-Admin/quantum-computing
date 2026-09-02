@@ -92,6 +92,35 @@ export function registryGaps(declared, registered, underivable = UNDERIVABLE) {
   return { unregistered, underived, misdirected };
 }
 
+/**
+ * Strip any URL from text bound for a public log.
+ *
+ * execFileSync's thrown message is literally "Command failed: " + the whole
+ * argv, and the argv of the download step carries the PRESIGNED package URL —
+ * X-Amz-Signature and X-Amz-Security-Token included — which would grant an
+ * anonymous reader of a public Actions log the production deployment package
+ * for the URL's validity window. Redacting by shape, rather than by knowing
+ * which call is risky, is what keeps a future subprocess from regressing it.
+ */
+export const redact = (text) => String(text ?? "").replace(/https?:\/\/\S+/g, "<url redacted>");
+
+/**
+ * What to print for a step that threw: the child's own first stderr line.
+ *
+ * err.message is the argv (see redact above) AND it is the same string for
+ * every failure, so a deleted function, an expired token and a network blip all
+ * rendered identically. stderr is where ResourceNotFoundException lives — the
+ * production event this guard is uniquely placed to catch — so that is what the
+ * row reports, falling back to the stage's name when the child said nothing.
+ */
+export function failureReason(err, stage) {
+  const line = String(err?.stderr ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find(Boolean);
+  return redact(line || stage).slice(0, 200);
+}
+
 /** Hand-written source among these filenames: .mjs/.js at the top level, minus tests. */
 export const sourceFiles = (names) =>
   names
