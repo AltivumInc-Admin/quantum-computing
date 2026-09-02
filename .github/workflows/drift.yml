@@ -14,6 +14,10 @@ name: Deploy drift
 # Requires the quantum-ci-drift-check role (infra/github-oidc-drift-role.yaml) and the
 # AWS_DRIFT_ROLE_ARN repository variable. If either is absent the job skips rather than
 # failing, so this file can merge before the role exists.
+#
+# Set DRIFT_EXPECT_ACCOUNT as a second repository variable, naming the account this
+# report is supposed to describe. The checked function names exist in more than one
+# account, so without it a green run cannot say which one it read.
 
 on:
   schedule:
@@ -65,8 +69,16 @@ jobs:
           aws-region: us-east-2
           role-session-name: quantum-drift-check
 
+      # DRIFT_EXPECT_ACCOUNT pins WHICH account the report describes: the same
+      # function names exist in more than one, so a green run that cannot name
+      # its account is not evidence. Same skip-cleanly-if-unset shape as the
+      # role above — unset prints "account unverified" and the job still runs.
+      # The variable holds an account number, which is why it is a repository
+      # variable and not a literal in this file.
       - name: Compare every deployed Lambda against this commit
         if: steps.cfg.outputs.ready == 'true'
+        env:
+          DRIFT_EXPECT_ACCOUNT: ${{ vars.DRIFT_EXPECT_ACCOUNT }}
         run: node scripts/check-lambda-drift.mjs
 
       - name: Compare the deployed rate configuration across pricing functions
@@ -75,6 +87,8 @@ jobs:
         # construction: the script prints presence and MATCH/MISMATCH, never the
         # value and never a digest of it, so it is safe in a public Actions log.
         if: always() && steps.cfg.outputs.ready == 'true'
+        env:
+          DRIFT_EXPECT_ACCOUNT: ${{ vars.DRIFT_EXPECT_ACCOUNT }}
         run: node scripts/check-rate-parity.mjs
 
       - name: Explain a failure

@@ -16,6 +16,7 @@
  *   { fn, dir, ok, drifted[], missing[], lastModified }   checked
  *   { fn, dir, ok: false, error }                         could not be checked
  */
+import { targetLabel } from "./account.mjs";
 
 /** Hand-written source among these filenames: .mjs/.js at the top level, minus tests. */
 export const sourceFiles = (names) =>
@@ -47,9 +48,15 @@ export function verdict(results, held) {
   return { exitCode, bad, held: heldRows, staleHolds: staleHolds(held, results) };
 }
 
-/** The human report, as lines. Returned rather than printed so a test can read it. */
-export function render(results, held, region) {
-  const lines = [`\n  Deployed-vs-git drift  (region ${region})\n`];
+/**
+ * The human report, as lines. Returned rather than printed so a test can read it.
+ *
+ * `target` is { region, accountVerified }: every run states which claim it is
+ * making about WHERE it looked, because the same names exist in more than one
+ * account and an unverified green is not evidence.
+ */
+export function render(results, held, target) {
+  const lines = [`\n  Deployed-vs-git drift  (${targetLabel(target)})\n`];
   for (const r of results) {
     if (r.error) {
       lines.push(`  ??  ${r.fn.padEnd(34)} could not check — ${r.error}`);

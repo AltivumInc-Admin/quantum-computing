@@ -19,6 +19,10 @@
  * Usage:  node scripts/check-lambda-drift.mjs [--json]
  * Exit:   0 = every function matches git   1 = drift found   2 = could not check
  *
+ * Set DRIFT_EXPECT_ACCOUNT to the account this report is meant to describe — every
+ * function name below exists in more than one, and an unverified green says nothing
+ * about which one answered. Unset is allowed and prints as "account unverified".
+ *
  * Needs AWS read access (lambda:GetFunction). GitHub Actions has no AWS credentials
  * today, so this runs locally or anywhere credentials exist — see `make drift`.
  *
@@ -32,6 +36,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync, statSync } 
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { accountCheck } from "./drift/account.mjs";
 import { render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
@@ -95,6 +100,25 @@ const sourceFiles = (dir) => {
   return filterSources(readdirSync(dir)).filter((f) => statSync(join(dir, f)).isFile());
 };
 
+// WHICH account is this report about? The names below exist in more than one,
+// and the answer comes from ambient credentials — so the expectation is stated
+// in the environment and checked before a single function is read. Value-blind:
+// the ids are compared, never printed (scripts/drift/account.mjs).
+const expectAccount = process.env.DRIFT_EXPECT_ACCOUNT;
+let callerAccount;
+if (expectAccount) {
+  try {
+    callerAccount = sh("aws", ["sts", "get-caller-identity", "--query", "Account", "--output", "text"]);
+  } catch {
+    console.error("  ERROR  could not resolve the caller's account (sts get-caller-identity failed).");
+    process.exit(2);
+  }
+}
+const identity = accountCheck(expectAccount, callerAccount);
+// stderr, so --json stays machine-readable.
+for (const line of identity.lines) console.error(line);
+if (identity.refuse) process.exit(2);
+
 const results = [];
 
 for (const { fn, dir } of FUNCTIONS) {
@@ -138,9 +162,11 @@ for (const { fn, dir } of FUNCTIONS) {
 const { exitCode } = verdict(results, HELD);
 
 if (JSON_OUT) {
-  console.log(JSON.stringify({ region: REGION, results }, null, 2));
+  console.log(JSON.stringify({ region: REGION, accountVerified: identity.verified, results }, null, 2));
 } else {
-  for (const line of render(results, HELD, REGION)) console.log(line);
+  for (const line of render(results, HELD, { region: REGION, accountVerified: identity.verified })) {
+    console.log(line);
+  }
 }
 
 process.exit(exitCode);

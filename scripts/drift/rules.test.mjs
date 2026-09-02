@@ -11,6 +11,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { heldFor, render, sourceFiles, staleHolds, verdict } from "./rules.mjs";
 
+const TARGET = { region: "us-east-2", accountVerified: true };
+
 const HOLD = [
   { fn: /^quantum-review-email-/, reason: "a stated reason", clearsWhen: "a stated condition" },
 ];
@@ -49,7 +51,7 @@ test("declared drift prints as HELD and does NOT fail the run", () => {
   assert.equal(v.bad.length, 0);
   assert.deepEqual(v.held.map((r) => r.fn), ["quantum-review-email-sender"]);
 
-  const out = render(results, HOLD, "us-east-2").join("\n");
+  const out = render(results, HOLD, TARGET).join("\n");
   assert.match(out, /HELD {3}quantum-review-email-sender/);
   assert.match(out, /HELD ON PURPOSE/);
   assert.match(out, /why: {3}a stated reason/);
@@ -60,7 +62,7 @@ test("declared drift prints as HELD and does NOT fail the run", () => {
 test("a hold matching nothing that drifts reports itself stale", () => {
   const results = [clean("quantum-tutor"), clean("quantum-review-email-sender")];
   assert.deepEqual(staleHolds(HOLD, results), HOLD);
-  const out = render(results, HOLD, "us-east-2").join("\n");
+  const out = render(results, HOLD, TARGET).join("\n");
   assert.match(out, /no longer matches any drifting function/);
   assert.match(out, /delete it from scripts\/check-lambda-drift\.mjs/);
 });
@@ -77,7 +79,7 @@ test("heldFor names the entry covering a function, and nothing else", () => {
 test("a row that could not be checked prints as ?? and exits 2", () => {
   const results = [clean("quantum-tutor"), errored("quantum-stripe")];
   assert.equal(verdict(results, HOLD).exitCode, 2);
-  const out = render(results, HOLD, "us-east-2").join("\n");
+  const out = render(results, HOLD, TARGET).join("\n");
   assert.match(out, /\?\? {2}quantum-stripe\s+could not check — aws lambda get-function failed/);
 });
 
@@ -85,12 +87,12 @@ test("a drifted row alongside an errored row is still reported as drift", () => 
   const results = [drifting("quantum-stripe"), errored("quantum-tutor")];
   const v = verdict(results, HOLD);
   assert.deepEqual(v.bad.map((r) => r.fn), ["quantum-stripe", "quantum-tutor"]);
-  const out = render(results, HOLD, "us-east-2").join("\n");
+  const out = render(results, HOLD, TARGET).join("\n");
   assert.match(out, /DIFFERS from git: lambda\/x\/index\.mjs/);
 });
 
 test("a clean run says so, with no hold noise", () => {
-  const out = render([clean("quantum-tutor")], [], "us-east-2").join("\n");
+  const out = render([clean("quantum-tutor")], [], TARGET).join("\n");
   assert.match(out, /All 1 unheld functions match git\./);
   assert.doesNotMatch(out, /held on purpose/);
   assert.equal(verdict([clean("quantum-tutor")], []).exitCode, 0);
@@ -99,5 +101,5 @@ test("a clean run says so, with no hold noise", () => {
 test("files git has but the package lacks are informational, not drift", () => {
   const row = { fn: "quantum-qpu-submit", dir: "lambda/qpu", ok: true, drifted: [], missing: ["deploy-check.mjs"], lastModified: "x" };
   assert.equal(verdict([row], []).exitCode, 0);
-  assert.match(render([row], [], "us-east-2").join("\n"), /not packaged, assumed ops-only: deploy-check\.mjs/);
+  assert.match(render([row], [], TARGET).join("\n"), /not packaged, assumed ops-only: deploy-check\.mjs/);
 });
