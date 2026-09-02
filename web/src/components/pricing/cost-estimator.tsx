@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useLocale, localeCode } from "@/i18n";
 import {
   HARDWARE_RATES,
@@ -8,14 +8,20 @@ import {
   TUTOR_RATES,
   jobCredits,
   creditsToUsd,
-  formatCredits,
+  formatCreditNumber,
+  roundCredits,
   formatUsd,
 } from "@/lib/pricing";
 
 const SHOT_PRESETS = [100, 1000, 10000];
 const QUESTION_PRESETS = [25, 100, 300];
 
-/** Big credits-first readout shared by both estimator panes. */
+/**
+ * Big credits-first readout shared by both estimator panes. It resolves its own
+ * locale rather than taking a preformatted string, because the credit unit is
+ * copy: the figure has to be grouped and pluralized for the reader, not printed
+ * in en-US English inside the Spanish page.
+ */
 function Readout({
   label,
   credits,
@@ -25,12 +31,17 @@ function Readout({
   credits: number;
   suffix?: string;
 }) {
+  const { t, locale } = useLocale();
   return (
-    <div aria-live="polite" className="mt-6 border-t border-gray-200/60 dark:border-white/[0.08] pt-5">
+    <div aria-live="polite" className="mt-6 border-t border-(--bd) pt-5">
       <p className="eyebrow eyebrow-mut">{label}</p>
       <p className="mt-1 font-mono text-display-lg text-(--ink) tabular-nums">
-        {formatCredits(credits)}
-        <span className="ml-2 text-base font-mono text-gray-500 dark:text-gray-400">
+        {t(
+          "pricingUi.creditsCount",
+          { n: formatCreditNumber(credits, localeCode(locale)) },
+          roundCredits(credits),
+        )}
+        <span className="ml-2 text-base font-mono text-(--mut)">
           {formatUsd(creditsToUsd(credits))}
           {suffix}
         </span>
@@ -59,10 +70,15 @@ function PresetChips({
           key={p}
           type="button"
           onClick={() => onSelect(p)}
+          // The repo's chip contract (sampling-panel, shots-sampler,
+          // cost-estimate-widget, expectation-widget, jw-explorer): aria-pressed
+          // is the state channel, because chip-selected is a pure colour swap and
+          // says nothing to a screen reader.
+          aria-pressed={value === p}
           className={`rounded-chip px-3 py-1 text-sm font-medium tabular-nums interactive focus-ring ${
             value === p
               ? "chip-selected"
-              : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
+              : "border border-(--bd) bg-(--field) text-(--mut) hover:border-accent/50"
           }`}
         >
           {format(p)}
@@ -83,14 +99,20 @@ function PresetChips({
  * lib/qpu-budget.ts `costMicros`, off the separate table in
  * components/quantum/cost.ts. Different table, different currency, ~12.6% apart, so
  * do not describe the two as one estimate (pricing-page.test.tsx bars that claim in
- * the copy). Tutor: nothing is metered, and the deployed tutor answers on one
- * hardcoded model that takes no parameter from the client — so the model chips are a
- * what-if forecast, labelled and disclosed as one rather than a selector for
- * something purchasable today.
+ * the copy). Tutor: nothing is metered. lambda/tutor DOES take a model parameter and
+ * gate it on the caller's tier, but the deployed function has no wallet table and no
+ * rate card, so it refuses every paid model and serves the free-tier default — so
+ * the model chips are a what-if forecast, labelled and disclosed as one rather than
+ * a selector for something purchasable today.
  */
 export function CostEstimator() {
   const { t, locale } = useLocale();
-  const loc = localeCode(locale);
+  // One formatter for the whole component. `n.toLocaleString(loc)` constructs a
+  // fresh Intl.NumberFormat per call (engines cache only the no-argument form),
+  // and the six sites below — two value readouts, two aria-valuetexts, two preset
+  // rows — all re-render on every `input` event from a range slider, which fires
+  // at pointer rate while dragging.
+  const nf = useMemo(() => new Intl.NumberFormat(localeCode(locale)), [locale]);
   const [deviceIdx, setDeviceIdx] = useState(2); // IQM Garnet — the curriculum's workhorse
   const [shots, setShots] = useState(1000);
   const [modelIdx, setModelIdx] = useState(0);
@@ -104,8 +126,12 @@ export function CostEstimator() {
   const tutor = TUTOR_RATES[modelIdx];
   const tutorCredits = tutor.typicalCreditsPerQuestion * questions;
 
-  const paneChrome =
-    "rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 sm:p-8 shadow-(--shadow-resting)";
+  // The page's own card recipe. These two panes were an opaque --surface-1 card
+  // with a hand-rolled gray/white hairline, sitting between a grid of glass tier
+  // cards and two glass rate tables — so scrolling into the estimator changed the
+  // card's opacity and border weight in both themes. `glass` already carries the
+  // border and the resting shadow, so neither is repeated here.
+  const paneChrome = "rounded-card glass p-6 sm:p-8";
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -114,7 +140,7 @@ export function CostEstimator() {
         <h3 className="font-display text-display-md text-(--ink)">
           {t("pricingUi.priceHardware")}
         </h3>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <p className="mt-1 text-sm text-(--mut)">
           {t("pricingUi.priceHardwareBody")}
         </p>
 
@@ -122,7 +148,7 @@ export function CostEstimator() {
           <div>
             <label
               htmlFor={deviceId}
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+              className="block text-sm font-medium text-(--ink) mb-1.5"
             >
               {t("pricingUi.backend")}
             </label>
@@ -130,25 +156,13 @@ export function CostEstimator() {
               id={deviceId}
               value={deviceIdx}
               onChange={(e) => setDeviceIdx(Number(e.target.value))}
-              className="w-full rounded-control border border-(--bd) bg-(--surface-2) px-3 py-2 text-sm text-(--ink) focus-ring"
+              className="w-full rounded-control border border-(--bd) bg-(--field) px-3 py-2 text-sm text-(--ink) focus-ring"
             >
-              {HARDWARE_RATES.map((r, i) => {
-                const techKey =
-                  r.technology === "Superconducting, 108 qubits"
-                    ? "pricingUi.techSuperconducting108"
-                    : r.technology === "Superconducting"
-                      ? "pricingUi.techSuperconducting"
-                      : r.technology === "Neutral-atom analog"
-                        ? "pricingUi.techNeutralAtom"
-                        : r.technology === "Trapped-ion"
-                          ? "pricingUi.techTrappedIon"
-                          : null;
-                return (
-                  <option key={r.name} value={i}>
-                    {r.name} — {techKey ? t(techKey) : r.technology}
-                  </option>
-                );
-              })}
+              {HARDWARE_RATES.map((r, i) => (
+                <option key={r.name} value={i}>
+                  {r.name} — {t(r.technologyKey)}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -156,12 +170,12 @@ export function CostEstimator() {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor={shotsId}
-                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="text-sm font-medium text-(--ink)"
               >
                 {t("pricingUi.shots")}
               </label>
-              <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                {shots.toLocaleString(loc)}
+              <span className="text-sm tabular-nums text-(--mut)">
+                {nf.format(shots)}
               </span>
             </div>
             <input
@@ -178,15 +192,15 @@ export function CostEstimator() {
               // contract explicitly rather than announcing a bare number with
               // no visible focus affordance.
               className="slider w-full focus-ring"
-              aria-valuetext={t("pricingUi.shotsValue", { n: shots.toLocaleString(loc) })}
+              aria-valuetext={t("pricingUi.shotsValue", { n: nf.format(shots) })}
             />
             <div className="mt-3">
               <PresetChips
                 presets={SHOT_PRESETS}
                 value={shots}
                 onSelect={setShots}
-                format={(v) => v.toLocaleString(loc)}
-                ariaLabel={t("pricingUi.presets")}
+                format={nf.format}
+                ariaLabel={t("pricingUi.shotPresets")}
               />
             </div>
           </div>
@@ -206,13 +220,13 @@ export function CostEstimator() {
         <h3 className="font-display text-display-md text-(--ink)">
           {t("pricingUi.priceTutorMonth")}
         </h3>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <p className="mt-1 text-sm text-(--mut)">
           {t("pricingUi.priceTutorBody")}
         </p>
 
         <div className="mt-6 space-y-5">
           <div>
-            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <span className="block text-sm font-medium text-(--ink) mb-1.5">
               {t("pricingUi.modelToPrice")}
             </span>
             {/* The chips model a future bill; they buy nothing. The disclosure sits
@@ -227,10 +241,11 @@ export function CostEstimator() {
                   key={r.model}
                   type="button"
                   onClick={() => setModelIdx(i)}
+                  aria-pressed={modelIdx === i}
                   className={`rounded-chip px-3 py-1 text-sm font-medium interactive focus-ring ${
                     modelIdx === i
                       ? "chip-selected"
-                      : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
+                      : "border border-(--bd) bg-(--field) text-(--mut) hover:border-accent/50"
                   }`}
                 >
                   {r.model.replace("Claude ", "")}
@@ -243,12 +258,12 @@ export function CostEstimator() {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor={questionsId}
-                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="text-sm font-medium text-(--ink)"
               >
                 {t("pricingUi.questionsPerMonth")}
               </label>
-              <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
-                {questions.toLocaleString(loc)}
+              <span className="text-sm tabular-nums text-(--mut)">
+                {nf.format(questions)}
               </span>
             </div>
             <input
@@ -260,15 +275,15 @@ export function CostEstimator() {
               value={questions}
               onChange={(e) => setQuestions(Number(e.target.value))}
               className="slider w-full focus-ring"
-              aria-valuetext={t("pricingUi.questionsValue", { n: questions.toLocaleString(loc) })}
+              aria-valuetext={t("pricingUi.questionsValue", { n: nf.format(questions) })}
             />
             <div className="mt-3">
               <PresetChips
                 presets={QUESTION_PRESETS}
                 value={questions}
                 onSelect={setQuestions}
-                format={(v) => v.toLocaleString(loc)}
-                ariaLabel={t("pricingUi.presets")}
+                format={nf.format}
+                ariaLabel={t("pricingUi.questionPresets")}
               />
             </div>
           </div>
@@ -281,14 +296,10 @@ export function CostEstimator() {
             {
               model: tutor.model,
               count: tutor.typicalCreditsPerQuestion,
-              note:
-                tutor.model === "Claude Haiku"
-                  ? t("pricingUi.tutorNoteHaiku")
-                  : tutor.model === "Claude Sonnet"
-                    ? t("pricingUi.tutorNoteSonnet")
-                    : tutor.model === "Claude Opus"
-                      ? t("pricingUi.tutorNoteOpus")
-                      : t("pricingUi.tutorNoteFable"),
+              // The row's own key. This was a ternary chain on `tutor.model`,
+              // which meant a fifth model fell through to the Fable blurb and
+              // TutorRate.note was read by nothing at all.
+              note: t(tutor.noteKey),
             },
             tutor.typicalCreditsPerQuestion,
           )}

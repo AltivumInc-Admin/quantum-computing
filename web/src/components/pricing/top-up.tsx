@@ -3,18 +3,15 @@
 import { useId, useState } from "react";
 import {
   startTopUp,
-  BillingAuthError,
+  BillingHttpError,
   TOPUP_MIN_USD,
   TOPUP_MAX_USD,
 } from "@/lib/billing-client";
-import { formatCredits } from "@/lib/pricing";
-import { useLocale } from "@/i18n";
+import { defaultNavigate, routeIfSignedOut } from "@/components/pricing/navigate";
+import { formatCreditNumber, roundCredits } from "@/lib/pricing";
+import { useLocale, localeCode } from "@/i18n";
 
 const PRESETS = [5, 20, 50, 100];
-
-function defaultNavigate(url: string) {
-  window.location.assign(url);
-}
 
 /**
  * Buy credits for any whole-dollar amount from TOPUP_MIN_USD to TOPUP_MAX_USD —
@@ -23,41 +20,63 @@ function defaultNavigate(url: string) {
  * `navigate` is injectable for tests (jsdom locks window.location).
  */
 export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string) => void }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [amount, setAmount] = useState("20");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A refusal reason, never a message. The message used to be an English literal
+  // set here, the only setError("…") string in web/src, rendered inside
+  // role="alert" under Spanish copy — while the sibling CheckoutButton took the
+  // byte-identical sentence from pricingUi.checkoutFailed, which both
+  // dictionaries carry.
+  //
+  // "needsPlan" is its own state because the two refusals want opposite advice:
+  // the Lambda answers every top-up from a free account with 403 "subscription
+  // required" (index.mjs, both the custom and fixed-pack branches), which no
+  // amount of retrying will change, and the button is enabled for anyone with a
+  // valid amount. Telling that learner to try again is advice that cannot work.
+  const [error, setError] = useState<"failed" | "needsPlan" | null>(null);
   const inputId = useId();
+  const hintId = useId();
+
+  /** A credit figure with its localized, plural-aware unit. */
+  const credits = (n: number) =>
+    t("pricingUi.creditsCount", { n: formatCreditNumber(n, localeCode(locale)) }, roundCredits(n));
 
   const parsed = Number(amount);
   const valid =
     Number.isInteger(parsed) && parsed >= TOPUP_MIN_USD && parsed <= TOPUP_MAX_USD;
+  // An empty field is not yet wrong — it is unfinished — so the hint and the
+  // invalid state both wait for something to have been typed.
+  const invalid = !valid && amount !== "";
 
   async function go() {
     if (!valid) return;
+    // Double-submit guard in code rather than `disabled={busy}`, which would blur
+    // the button mid-flight and leave a keyboard buyer at <body> with an alert
+    // asking them to retry a control they can no longer reach. `disabled` stays
+    // for the VALIDATION case, where there is genuinely nothing to press.
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
       const url = await startTopUp(parsed);
       navigate(url); // leaves the page
     } catch (e) {
-      if (e instanceof BillingAuthError) {
-        navigate("/login?mode=signup");
-        return;
-      }
-      setError("Could not start checkout. Please try again.");
+      if (routeIfSignedOut(e, navigate)) return;
+      const needsPlan = e instanceof BillingHttpError && e.status === 403;
+      setError(needsPlan ? "needsPlan" : "failed");
       setBusy(false);
     }
   }
 
   return (
-    <div className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 sm:p-8 shadow-(--shadow-resting)">
+    <div className="rounded-card glass p-6 sm:p-8">
       <h3 className="font-display text-display-md text-(--ink)">
         {t("pricingUi.topUpTitle")}
       </h3>
-      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+      <p className="mt-1 text-sm text-(--mut)">
         {t("pricingUi.topUpBody", {
-          credits: formatCredits(100),
+          credits: credits(100),
           min: TOPUP_MIN_USD,
           max: TOPUP_MAX_USD,
         })}
@@ -70,10 +89,14 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               key={p}
               type="button"
               onClick={() => setAmount(String(p))}
+              // The repo's chip contract. Selection here was colour-only, so a
+              // screen reader announced four unrelated buttons and could not say
+              // which one the amount field currently matches.
+              aria-pressed={parsed === p}
               className={`rounded-chip px-3 py-1.5 font-mono text-sm font-medium tabular-nums interactive focus-ring ${
                 parsed === p
                   ? "chip-selected"
-                  : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
+                  : "border border-(--bd) bg-(--field) text-(--mut) hover:border-accent/50"
               }`}
             >
               ${p}
@@ -89,7 +112,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
             {t("pricingUi.customAmount")}
           </label>
           <div className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="text-gray-500 dark:text-gray-400">$</span>
+            <span aria-hidden="true" className="text-(--mut)">$</span>
             <input
               id={inputId}
               type="number"
@@ -99,7 +122,15 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               step={1}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-24 rounded-control border border-(--bd) bg-(--surface-2) px-3 py-1.5 font-mono text-sm text-(--ink) tabular-nums focus-ring"
+              // Typing "3" or "12.5" used to produce no announcement at all: the
+              // hint was an unassociated sibling paragraph, the field never
+              // reported invalid, and the only other feedback was Buy silently
+              // leaving the tab order. Both attributes are conditional because a
+              // dangling aria-describedby id is ignored by some AT — the house
+              // rule challenge.tsx spells out: describe only what is rendered.
+              aria-invalid={invalid || undefined}
+              aria-describedby={invalid ? hintId : undefined}
+              className="w-24 rounded-control border border-(--bd) bg-(--field) px-3 py-1.5 font-mono text-sm text-(--ink) tabular-nums focus-ring"
             />
           </div>
         </div>
@@ -107,30 +138,40 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
         <button
           type="button"
           onClick={go}
-          disabled={!valid || busy}
-          className="surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-60"
+          disabled={!valid}
+          aria-busy={busy}
+          className={`surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-60 ${
+            busy ? "opacity-60" : ""
+          }`}
         >
           {busy
             ? t("pricingUi.starting")
             : valid
               ? t("pricingUi.buyCreditsAmount", {
-                  amount: formatCredits(parsed * 100),
+                  amount: credits(parsed * 100),
                 })
               : t("pricingUi.buyCredits")}
         </button>
       </div>
 
-      {!valid && amount !== "" && (
-        <p className="mt-3 text-xs text-warm-dark dark:text-warm-light">
+      {invalid && (
+        <p id={hintId} className="mt-3 text-xs text-warm-dark dark:text-warm-light">
           {t("pricingUi.invalidAmount", {
             min: TOPUP_MIN_USD,
             max: TOPUP_MAX_USD,
           })}
         </p>
       )}
-      {error && (
+      {error === "needsPlan" && (
+        // A refusal, not a fault: warm, the same tint the range hint uses, rather
+        // than the danger tint a retryable failure earns.
+        <p role="alert" className="mt-3 text-xs text-warm-dark dark:text-warm-light">
+          {t("pricingUi.topUpNeedsPlan")}
+        </p>
+      )}
+      {error === "failed" && (
         <p role="alert" className="mt-3 text-xs text-danger-dark dark:text-danger-light">
-          {error}
+          {t("pricingUi.checkoutFailed")}
         </p>
       )}
       <p className="mt-4 text-xs text-caption">

@@ -3,10 +3,30 @@
  */
 // web/__tests__/app/pricing-page.test.tsx
 import "@testing-library/jest-dom";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import PricingPage, { metadata } from "@/app/pricing/page";
-import { LocaleProvider } from "@/i18n";
-import { TIERS } from "@/lib/pricing";
+import { LocaleProvider, getDict, localeCode } from "@/i18n";
+import { TIERS, CREDIT_USD, formatCreditNumber } from "@/lib/pricing";
+
+// Only the network calls are stubbed. billingUrl/isBillingConfigured stay real
+// so the env-gating tests below still exercise the actual gate; getWallet in
+// particular decides whether a tier card shows checkout or the billing portal.
+jest.mock("@/lib/billing-client", () => ({
+  ...jest.requireActual("@/lib/billing-client"),
+  getWallet: jest.fn().mockRejectedValue(new Error("401")),
+  openPortal: jest.fn(),
+  startCheckout: jest.fn(),
+  startTopUp: jest.fn(),
+}));
+import { getWallet } from "@/lib/billing-client";
+
+// Default for every test: no wallet answers, which is what a signed-out visitor
+// gets. Reset per test rather than once, so a test that installs a subscriber
+// cannot leak that wallet into the ones after it and quietly change which
+// controls the tier cards render.
+beforeEach(() => {
+  (getWallet as jest.Mock).mockRejectedValue(new Error("401"));
+});
 
 function renderPricing() {
   return render(
@@ -86,7 +106,16 @@ describe("PricingPage", () => {
     for (const tier of TIERS.filter((t) => t.priceUsdPerMonth > 0)) {
       expect(screen.getByText(`$${tier.priceUsdPerMonth}`)).toBeInTheDocument();
     }
-    expect(screen.getByText("Best for regulars")).toBeInTheDocument();
+    const badge = screen.getByText("Best for regulars");
+    expect(badge).toBeInTheDocument();
+    // The featured badge was bg-accent-dark + text-white with no dark: override.
+    // .dark remaps --accent-dark to the light theme's raw --accent (#a38560),
+    // where white computes 3.45:1 — under the AA floor for 12px text — and the
+    // repo-wide contrast guard exempts bg-accent-dark, so nothing caught it.
+    // chip-selected is the one sanctioned gold fill, pinned in both themes.
+    expect(badge.className).toContain("chip-selected");
+    expect(badge.className).not.toContain("text-white");
+    expect(badge.className).not.toContain("bg-accent-dark");
     // Paid tiers are not purchasable yet — both must say so.
     expect(screen.getAllByText("Launching soon")).toHaveLength(2);
   });
@@ -119,6 +148,67 @@ describe("PricingPage", () => {
     } finally {
       delete process.env.NEXT_PUBLIC_BILLING_URL;
     }
+  });
+
+  it("offers a subscriber the portal on their own tier, and checkout on the others", async () => {
+    // The cards rendered CheckoutButton for Plus and Pro whenever billing was
+    // live, regardless of who was looking, and /checkout consults hasPaidTier
+    // only for mode "payment" — so an active Plus subscriber saw an enabled "Get
+    // Plus" that opens Checkout for a SECOND Plus subscription. Meanwhile POST
+    // /portal and openPortal() were fully built with no consumer in web/src, so
+    // a subscriber had no on-site way to change or cancel.
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    (getWallet as jest.Mock).mockResolvedValue({
+      tier: "plus",
+      credits: 1890,
+      subscriptionStatus: "active",
+    });
+    try {
+      renderPricing();
+      expect(await screen.findByText("Current plan")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Get Plus" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+      // The upgrade is still purchasable.
+      expect(screen.getByRole("button", { name: "Get Pro" })).toBeInTheDocument();
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
+  it("shows both buy buttons when no wallet answers (signed out)", async () => {
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    (getWallet as jest.Mock).mockRejectedValue(new Error("401"));
+    try {
+      renderPricing();
+      await waitFor(() => expect(getWallet).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Get Plus" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Get Pro" })).toBeInTheDocument();
+      expect(screen.queryByText("Current plan")).not.toBeInTheDocument();
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
+  it("acknowledges a cancelled checkout on the page Stripe returns to", () => {
+    // cancel_url is `${siteOrigin}/pricing?checkout=cancelled`, and nothing in
+    // web/src read the parameter — so backing out of Checkout dropped the learner
+    // back here on a page indistinguishable from a fresh visit.
+    window.history.replaceState({}, "", "/pricing?checkout=cancelled");
+    try {
+      renderPricing();
+      expect(screen.getByTestId("checkout-cancelled")).toHaveTextContent(
+        /nothing was charged/i,
+      );
+    } finally {
+      window.history.replaceState({}, "", "/pricing");
+    }
+  });
+
+  it("shows no checkout notice on an ordinary visit", () => {
+    renderPricing();
+    expect(screen.queryByTestId("checkout-cancelled")).not.toBeInTheDocument();
   });
 
   it("gates sign-up CTAs on the Cognito env (configured)", () => {
@@ -159,6 +249,27 @@ describe("PricingPage", () => {
         screen.getAllByText(model).some((el) => el.closest("table") !== null)
       ).toBe(true);
     }
+  });
+
+  it("names both rate tables, and lets a keyboard reach the wide one", () => {
+    // Two bare <table>s with no caption and no aria-labelledby are two anonymous
+    // entries in a screen reader's table list — the one place a reader chooses
+    // between them. And the hardware table is min-w-[480px] inside an
+    // overflow-x-auto div, so on a phone that scroller is the ONLY way to reach
+    // the per-shot and 1,000-shot columns; a bare div cannot take focus, so in
+    // Safari a keyboard-only reader could not scroll it at all.
+    renderPricing();
+    const named = screen
+      .getAllByRole("table")
+      .map((table) => table.getAttribute("aria-labelledby"))
+      .map((id) => (id ? document.getElementById(id)?.textContent?.trim() : null));
+    expect(named).toEqual(["AI tutor", "Quantum hardware"]);
+
+    const scroller = screen.getByRole("region", { name: "Quantum hardware" });
+    expect(scroller).toHaveAttribute("tabindex", "0");
+    expect(scroller.className).toContain("overflow-x-auto");
+    expect(scroller.className).toContain("focus-ring");
+    expect(scroller.querySelector("table")).not.toBeNull();
   });
 
   it("answers the fair questions", () => {
@@ -280,9 +391,11 @@ const modelEntitlement = new RegExp(
 );
 
 /**
- * Metering asserted in the PRESENT tense. Nothing meters anything: lambda/tutor answers
- * every question on one hardcoded model and charges nothing, lambda/qpu grants no
- * allowance (LIFETIME_CAP_MICROS = 0) and refuses every submit it cannot fund, and no
+ * Metering asserted in the PRESENT tense. Nothing meters anything: lambda/tutor's
+ * metering is gated on deployed configuration it does not have (WalletTableName and
+ * RATE_CARD are both empty, so `metering` is undefined, every paid model is refused
+ * and every question is answered free), lambda/qpu grants no allowance
+ * (LIFETIME_CAP_MICROS = 0) and refuses every submit it cannot fund, and no
  * code path outside lambda/stripe touches the wallet. So
  * every metering sentence on this page has to be future tense, and this is the pattern
  * the page metadata needed — its description read "one credit wallet METERS the only two
@@ -307,6 +420,21 @@ const presentTenseMetering = new RegExp(
 );
 
 const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
+  {
+    // The at-cost / no-markup framing. CLAUDE.md rules 5 and 9 retired it: every
+    // metered surface debits at one shared factor over true cost, so "at cost" is
+    // not what this page sells, and rule 6 forbids the repo from carrying the
+    // spread that would make any such claim checkable. scripts/stripe/
+    // check-catalog-parity.mjs already bars the same three phrasings on the Stripe
+    // product descriptions; this is the same denylist pointed at the page.
+    //
+    // The Spanish arm anchors on "a costo" / "a precio de costo" rather than the
+    // bare noun: es.ts is full of honest cost talk ("te muestra su costo", "el
+    // costo exacto"), and a pattern that fired on those would redden truthful copy.
+    pattern:
+      /\b(at cost|cost price|no mark-?up|without mark-?up|sin (margen|recargo|sobreprecio)|a (precio de )?costo)\b/i,
+    why: "at-cost/no-markup pricing: CLAUDE.md rules 5 and 9 retired that framing, and rule 6 keeps the spread out of this repo entirely",
+  },
   {
     pattern: presentTenseMetering,
     why: "present-tense metering: the tutor charges nothing, the QPU lambda refuses unfunded submits, and nothing outside lambda/stripe reads the wallet",
@@ -344,10 +472,14 @@ const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
     why: "estimate parity by definite article: the number shown before a run is AWS dollars from qpu-budget.ts, not this page's credit figure",
   },
   {
-    // lambda/tutor/index.mjs binds one process.env.TUTOR_MODEL_ID; ask-tutor.tsx posts
-    // only {slug, question}. No model parameter, no tier lookup, no per-tier routing.
+    // lambda/tutor/index.mjs DOES read body.model and gate it on ROSTER by the
+    // caller's tier — but only when `metering` is defined, which needs a wallet
+    // table and a rate card the deployed function does not have. Without them
+    // every paid model is refused (METERING_UNAVAILABLE) and every question is
+    // answered free on the free-tier default, so an "unlocked" claim is one a
+    // buyer cannot cash. Retire this when that configuration ships, not before.
     pattern: /\b(unlock(ed|s|ing)?|desbloquea\w*)\b/i,
-    why: "tutor model unlocks: the tutor takes no model parameter and no tier is consulted",
+    why: "tutor model unlocks: the deployed tutor has no wallet table or rate card, so it refuses every paid model",
   },
   {
     // Same reason, said the other way round: a model presented as bundled with a plan.
@@ -538,7 +670,11 @@ describe("PricingPage copy honesty", () => {
    * anchors on the noun. Human review owns that case.
    */
   describe("the ban list survives negate-then-claim prose", () => {
-    const meteringPattern = UNDELIVERABLE_CLAIMS[0].pattern; // presentTenseMetering
+    // Looked up by identity, not by index: the list is ordered for readability and
+    // a new entry at the front used to silently re-point this at another pattern.
+    const meteringPattern = UNDELIVERABLE_CLAIMS.find(
+      (c) => c.pattern === presentTenseMetering,
+    )!.pattern;
     const entitlementPattern = UNDELIVERABLE_CLAIMS.find(
       (c) => c.pattern === modelEntitlement,
     )!.pattern;
@@ -560,6 +696,34 @@ describe("PricingPage copy honesty", () => {
       expect(
         entitlementPattern.test("No plan includes Opus today. Plus includes Opus at launch."),
       ).toBe(true);
+    });
+
+    /**
+     * The at-cost pattern, held against the sentence that actually shipped — a
+     * denylist entry nobody has fired once is a comment, not a guard.
+     */
+    describe("the at-cost pattern", () => {
+      const atCost = UNDELIVERABLE_CLAIMS.find((c) =>
+        c.pattern.test("billed at cost with no markup"),
+      )!.pattern;
+
+      it.each([
+        ["One credit wallet will meter real quantum hardware, billed at cost with no markup."],
+        ["Hardware runs are billed at cost."],
+        ["Sold with no mark-up over what the provider charges."],
+        ["El hardware se cobra a precio de costo, sin margen."],
+      ])("fires on the retired framing: %s", (text) => {
+        expect(atCost.test(text)).toBe(true);
+      });
+
+      it.each([
+        // Honest cost talk in both locales, which the page is full of.
+        ["The workspace shows you its cost and makes you approve it."],
+        ["El espacio de trabajo te muestra su costo y te hace aprobarlo."],
+        ["Te muestra el costo exacto de cualquier ejecución de hardware."],
+      ])("stays silent on honest cost talk: %s", (text) => {
+        expect(atCost.test(text)).toBe(false);
+      });
     });
 
     it.each([
@@ -684,19 +848,94 @@ describe("PricingPage copy honesty", () => {
     expect(screen.getByText(/once tutor metering ships/i)).toBeInTheDocument();
   });
 
-  it("keeps every tier's rendered bullets equal to its featureKeys", () => {
-    renderPricing();
-    for (const tier of TIERS) {
-      const heading = screen.getByRole("heading", {
-        level: 3,
-        name: tier.id === "free" ? "Free" : tier.name,
-      });
-      const card = heading.closest("div");
-      const bullets = card?.querySelectorAll("ul > li") ?? [];
-      // A bullet rendered from anywhere other than featureKeys (or a key that silently
-      // resolves to nothing) shows up here as a count mismatch.
-      expect(bullets.length).toBe(tier.featureKeys.length);
-      for (const li of bullets) expect(li.textContent?.trim().length).toBeGreaterThan(0);
+  it("renders no English credit unit inside the Spanish page (billing live)", () => {
+    // formatCredits() appended the English word with en-US grouping and was the only
+    // path to a credit figure on the page, so the Spanish storefront read "1,900
+    // credits cada mes", "1,664 credits" in the rate table and "Comprar 2,000
+    // credits" on the buy button — on its most number-dense surface. Billing live so
+    // the top-up widget and its buy button are mounted too.
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    try {
+      const { container } = renderPricingIn("es");
+      const text = container.textContent ?? "";
+      expect(text).not.toMatch(/\d\s*credits?\b/i);
+      // Non-vacuity: the figures ARE rendered, with the translated unit.
+      expect(text).toMatch(/\d\s*créditos\b/);
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
+  it.each(SHIPPED_LOCALES)(
+    "keeps every tier's rendered bullets equal to its featureKeys (%s)",
+    (locale) => {
+      renderPricingIn(locale);
+      for (const tier of TIERS) {
+        const heading = screen.getByRole("heading", {
+          level: 3,
+          name: tier.id === "free" ? (locale === "es" ? "Gratis" : "Free") : tier.name,
+        });
+        const card = heading.closest("div");
+        const bullets = Array.from(card?.querySelectorAll("ul > li") ?? []);
+        // A bullet rendered from anywhere other than featureKeys (or a key that
+        // silently resolves to nothing) shows up here as a count mismatch.
+        expect(bullets.length).toBe(tier.featureKeys.length);
+        for (const li of bullets) expect(li.textContent?.trim().length).toBeGreaterThan(0);
+
+        // Every grouped figure on a paid card's bullets must be the tier's own
+        // grant. plusF1 and proF1 spelled "1,900" and "6,500" into i18n copy in
+        // both locales, beside the grant line the card renders from TIERS, and the
+        // guard here counted <li>s without reading one — so a reprice shipped a
+        // card showing two different grants, green.
+        if (tier.monthlyCredits > 0) {
+          const grant = formatCreditNumber(tier.monthlyCredits, localeCode(locale));
+          for (const li of bullets) {
+            for (const figure of li.textContent?.match(/\d[\d,]*\b/g) ?? []) {
+              // Percentages are derived from TIERS too, and are checked below.
+              if (li.textContent?.includes(`${figure}%`)) continue;
+              expect(figure).toBe(grant);
+            }
+          }
+        }
+      }
+    },
+  );
+
+  it.each(SHIPPED_LOCALES)(
+    "only claims a bonus over pay-as-you-go where the grant actually beats its price (%s)",
+    (locale) => {
+      // The claim is arithmetic over two figures this page publishes, so it can go
+      // stale silently: "a 10% bonus" was hand-computed into both dictionaries. If a
+      // reprice takes a tier to parity, the sentence has to stop being rendered, not
+      // quietly become "a 0% bonus".
+      renderPricingIn(locale);
+      for (const tier of TIERS) {
+        const heading = screen.getByRole("heading", {
+          level: 3,
+          name: tier.id === "free" ? (locale === "es" ? "Gratis" : "Free") : tier.name,
+        });
+        const text = heading.closest("div")?.textContent ?? "";
+        if (!/bonus|bonificaci[óo]n/i.test(text)) continue;
+        const bonus = Math.round(
+          ((tier.monthlyCredits * CREDIT_USD) / tier.priceUsdPerMonth - 1) * 100,
+        );
+        expect(bonus).toBeGreaterThan(0);
+        expect(text).toContain(`${bonus}%`);
+      }
+    },
+  );
+
+  it("states no grouped credit figure as raw dictionary copy", () => {
+    // The other half of the same defect: the number must reach the page through
+    // TIERS, never through a translator's fingers. A dictionary string carrying a
+    // grouped thousands figure is a second source of truth by construction.
+    for (const locale of SHIPPED_LOCALES) {
+      const pricingUi = (getDict(locale) as Record<string, unknown>)
+        .pricingUi as Record<string, unknown>;
+      const leaves = JSON.stringify(pricingUi);
+      const grouped = leaves.match(/\b\d{1,3},\d{3}\b/g) ?? [];
+      expect(grouped).toEqual([]);
     }
   });
 });

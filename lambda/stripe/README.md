@@ -230,6 +230,9 @@ the same handler code works against either — only the secret differs.
 
 `CATALOG` in `index.mjs`, the tier prices/credits in `web/src/lib/pricing.ts`,
 and the Stripe products/prices must agree. If you change a credit grant, change
-it in all three (the offline test `CATALOG credit counts mirror the published
-pricing` guards the first two; the Stripe metadata is set from `CATALOG` at
-checkout, so it follows automatically).
+it in all three. The offline test that guards the first two is
+`web/__tests__/infra/tier-catalog-parity.test.ts`, which reads BOTH files and
+compares them (it also pins `CUSTOM_TOPUP_MIN_USD`/`MAX_USD` against the
+published bounds); the local `CATALOG credit counts mirror the published
+pricing` test pins literals only, so it cannot see a one-sided edit. The Stripe
+metadata is set from `CATALOG` at checkout, so it follows automatically.

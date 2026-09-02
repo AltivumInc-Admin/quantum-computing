@@ -2,11 +2,8 @@
 
 import { useState } from "react";
 import { useLocale } from "@/i18n";
-import { startCheckout, BillingAuthError, type CheckoutLookupKey } from "@/lib/billing-client";
-
-function defaultNavigate(url: string) {
-  window.location.assign(url);
-}
+import { startCheckout, type CheckoutLookupKey } from "@/lib/billing-client";
+import { defaultNavigate, routeIfSignedOut } from "@/components/pricing/navigate";
 
 /**
  * Starts a Stripe Checkout for a tier or top-up and sends the browser to the
@@ -31,16 +28,19 @@ export function CheckoutButton({
   const [error, setError] = useState(false);
 
   async function go() {
+    // Guards double-submit without `disabled`, which would blur the button the
+    // buyer just pressed — a disabled control is not focusable — dropping focus
+    // to <body> for the whole Checkout Session round trip, with nothing to
+    // restore it. On failure the alert asks for a retry the learner would then
+    // have to re-tab the page to reach. Same trade challenge.tsx documents.
+    if (busy) return;
     setBusy(true);
     setError(false);
     try {
       const url = await startCheckout(lookupKey);
       navigate(url); // leaves the page; no need to reset busy
     } catch (e) {
-      if (e instanceof BillingAuthError) {
-        navigate("/login?mode=signup");
-        return;
-      }
+      if (routeIfSignedOut(e, navigate)) return;
       setError(true);
       setBusy(false);
     }
@@ -51,10 +51,17 @@ export function CheckoutButton({
       <button
         type="button"
         onClick={go}
-        disabled={busy}
+        // Not `disabled`: see go(). The control stays focusable, and aria-busy
+        // carries the state to assistive tech instead.
+        aria-busy={busy}
         className={
           className ??
-          "surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring disabled:opacity-70"
+          // opacity-60 is the repo-wide disabled treatment (auth-form and eleven
+          // other controls); this was the only opacity-70 in web/src, and the two
+          // pricing CTAs sit inches apart.
+          `surface-accent inline-flex items-center rounded-control px-4 py-2 text-sm font-semibold interactive focus-ring ${
+            busy ? "opacity-60" : ""
+          }`
         }
       >
         {busy ? t("pricingUi.starting") : label}

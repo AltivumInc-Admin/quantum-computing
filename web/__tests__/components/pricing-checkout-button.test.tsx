@@ -41,11 +41,32 @@ test("a signed-out click routes to sign-up instead of erroring", async () => {
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-test("a failed checkout shows a retry message and re-enables the button", async () => {
+test("a failed checkout shows a retry message and keeps the button reachable", async () => {
   (startCheckout as jest.Mock).mockRejectedValue(new Error("500"));
   render(<CheckoutButton lookupKey="ql_plus_monthly" label="Get Plus" navigate={navigate} />);
   await userEvent.click(screen.getByRole("button", { name: "Get Plus" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(/could not start checkout/i);
   expect(navigate).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", { name: "Get Plus" })).toBeEnabled();
+  const button = screen.getByRole("button", { name: "Get Plus" });
+  expect(button).toBeEnabled();
+  // The alert asks for a retry, so the control has to still be under the
+  // keyboard. `disabled={busy}` blurred it to <body> for the whole round trip
+  // and nothing restored focus, which made "try again" mean "re-tab the page".
+  expect(button).toHaveFocus();
+});
+
+test("a second click while busy does not start a second Checkout Session", async () => {
+  // The double-submit guard that replaced `disabled={busy}`.
+  let release: (url: string) => void = () => {};
+  (startCheckout as jest.Mock).mockReturnValue(
+    new Promise<string>((resolve) => {
+      release = resolve;
+    }),
+  );
+  render(<CheckoutButton lookupKey="ql_plus_monthly" label="Get Plus" navigate={navigate} />);
+  await userEvent.click(screen.getByRole("button", { name: "Get Plus" }));
+  await userEvent.click(screen.getByRole("button", { name: "Starting…" }));
+  expect(startCheckout).toHaveBeenCalledTimes(1);
+  release("https://checkout.stripe.com/c/pay/cs_1");
+  await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
 });

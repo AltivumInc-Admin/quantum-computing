@@ -113,3 +113,45 @@ test("openPortal returns the portal URL", async () => {
   (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ url: "https://billing.stripe.com/p/1" }) });
   expect(await openPortal()).toBe("https://billing.stripe.com/p/1");
 });
+
+/**
+ * The three routes used to repeat the URL guard / bearer header / status throw /
+ * parse sequence, and now share one `billingFetch`. These pin the parts of that
+ * envelope each route depends on, so collapsing them cannot have quietly dropped
+ * one — the 403 branch in TopUp, for instance, rests entirely on the status
+ * surviving the throw.
+ */
+describe("every route carries the same envelope", () => {
+  it.each([
+    ["checkout", () => startCheckout("ql_plus_monthly"), "/checkout", "POST"],
+    ["portal", () => openPortal(), "/portal", "POST"],
+    ["wallet", () => getWallet(), "/wallet", undefined],
+  ])("%s: bearer token, endpoint and method", async (_op, call, path, method) => {
+    (global.fetch as jest.Mock).mockResolvedValue({ ok: true, json: async () => ({ url: "u" }) });
+    await call();
+    const [endpoint, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(endpoint).toBe(`https://billing.example.com${path}`);
+    expect(init.headers.authorization).toBe("Bearer idtok");
+    expect(init.method).toBe(method);
+  });
+
+  it.each([
+    ["checkout", () => startCheckout("ql_plus_monthly")],
+    ["portal", () => openPortal()],
+    ["wallet", () => getWallet()],
+  ])("%s: a non-2xx throws BillingHttpError carrying the status", async (op, call) => {
+    (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 403 });
+    await expect(call()).rejects.toMatchObject({ name: "BillingHttpError", status: 403 });
+    await expect(call()).rejects.toThrow(new RegExp(op));
+  });
+
+  it.each([
+    ["checkout", () => startCheckout("ql_plus_monthly")],
+    ["portal", () => openPortal()],
+    ["wallet", () => getWallet()],
+  ])("%s: no token means BillingAuthError and no request", async (_op, call) => {
+    (fetchAuthSession as jest.Mock).mockResolvedValue({ tokens: undefined });
+    await expect(call()).rejects.toBeInstanceOf(BillingAuthError);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});

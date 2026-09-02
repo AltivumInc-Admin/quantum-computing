@@ -16,6 +16,7 @@ import { Records } from "@/components/workspace/records";
 import { WithinReach } from "@/components/workspace/within-reach";
 import { ConsolePanel } from "@/components/workspace/console-panel";
 import { QpuSubmitPanel } from "@/components/quantum/qpu-submit-panel";
+import { CheckoutReturnNotice } from "@/components/pricing/checkout-return-notice";
 
 /**
  * /workspace — THE BENCH. The instrument (what you have made durable) beside the valve
@@ -103,6 +104,11 @@ function Bench({
 
   return (
     <Container>
+      {/* Stripe's success_url lands here. Without it, a learner who just paid real
+          money arrived at the bench with no confirmation and no hint that the
+          credits are granted asynchronously by the webhook. Renders nothing unless
+          ?checkout=success is on the URL. */}
+      <CheckoutReturnNotice outcome="success" />
       <Masthead email={authed ? email : null} />
       {authed && <ClaimAnonProgress />}
 

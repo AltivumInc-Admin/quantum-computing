@@ -12,8 +12,18 @@
 /** USD value of one credit. The peg never moves; prices move in credit terms. */
 export const CREDIT_USD = 0.01;
 
-/** Smallest pay-as-you-go top-up, in USD. */
-export const MIN_TOPUP_USD = 5;
+/**
+ * Published pay-as-you-go top-up bounds, in whole USD. ONE declaration, read by
+ * everything: the hero chip and the wallet principle on the page, the TopUp
+ * widget's input and its client-side validation (lib/billing-client.ts re-exports
+ * these rather than restating them), and the FAQ copy, which interpolates them
+ * instead of spelling the figures into prose. `lambda/stripe/index.mjs` holds the
+ * server copy under its own names; __tests__/infra/tier-catalog-parity.test.ts
+ * compares the two offline, because an advertised floor that differs from the
+ * enforced one rejects a valid amount before a request is ever sent.
+ */
+export const TOPUP_MIN_USD = 5;
+export const TOPUP_MAX_USD = 500;
 
 /** Provider price-sheet revision the hardware rates below reflect. */
 export const PRICES_AS_OF = "July 2026";
@@ -22,22 +32,83 @@ export function creditsToUsd(credits: number): number {
   return credits * CREDIT_USD;
 }
 
-/** "196 credits ($1.96)" — the standard dual display used across the page. */
-export function formatCredits(credits: number): string {
-  const rounded = Math.round(credits * 10) / 10;
-  const display = Number.isInteger(rounded)
-    ? rounded.toLocaleString("en-US")
-    : rounded.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  return `${display} credits`;
+/**
+ * A credit figure with no unit — grouped for the reader's locale, at most one
+ * decimal. The unit is COPY and belongs in the dictionaries: this used to return
+ * "N credits" with the word hardcoded in English and the grouping pinned to
+ * en-US, and since it was the only path to a credit figure on the page, the
+ * Spanish storefront rendered "1,900 credits cada mes" and "Comprar 2,000 credits"
+ * on its most number-dense surface. Compose it with `pricingUi.creditsCount`,
+ * which carries the translated, plural-aware unit — never re-append one here.
+ */
+export function formatCreditNumber(credits: number, localeTag = "en-US"): string {
+  const rounded = roundCredits(credits);
+  return Number.isInteger(rounded)
+    ? creditFormatter(localeTag, 0).format(rounded)
+    : creditFormatter(localeTag, 1).format(rounded);
 }
 
+/**
+ * Formatters, kept. `Number.prototype.toLocaleString` with an explicit locale
+ * CONSTRUCTS an Intl.NumberFormat on every call — engines only cache the
+ * no-argument form — and the estimator calls into here from both readouts on
+ * every render, which for a range slider means every pointer move. The static
+ * rate table pays it once per row per locale render on top of that.
+ *
+ * Two keys deep because credits round to one decimal and the integer case must
+ * not print a trailing ".0". The map is bounded by the number of shipped
+ * locales, and the output is byte-identical to the per-call construction.
+ */
+const CREDIT_FORMATTERS = new Map<string, Intl.NumberFormat>();
+function creditFormatter(localeTag: string, decimals: 0 | 1): Intl.NumberFormat {
+  const key = `${localeTag}|${decimals}`;
+  let nf = CREDIT_FORMATTERS.get(key);
+  if (!nf) {
+    nf = new Intl.NumberFormat(
+      localeTag,
+      decimals === 0
+        ? undefined
+        : { minimumFractionDigits: 1, maximumFractionDigits: 1 },
+    );
+    CREDIT_FORMATTERS.set(key, nf);
+  }
+  return nf;
+}
+
+/**
+ * Credits as they are DISPLAYED — one decimal. The plural form has to be chosen
+ * from the same rounded figure the reader sees, or 1.02 credits renders as "1
+ * credits".
+ */
+export function roundCredits(credits: number): number {
+  return Math.round(credits * 10) / 10;
+}
+
+/**
+ * USD is deliberately NOT locale-tagged: the peg and every sticker price on this
+ * page are US dollars, and re-grouping them for es-MX would change the currency's
+ * own presentation, not the reader's number format. One formatter, hoisted for
+ * the same reason as the credit ones above.
+ */
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function formatUsd(usd: number): string {
-  return usd.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return USD_FORMATTER.format(usd);
+}
+
+/**
+ * "$19" — a whole-dollar figure without its dead cents. Sticker prices and the
+ * top-up floor are always whole dollars, and the page stripped the ".00" inline
+ * in two places, one of which additionally special-cased 0 even though "$0.00"
+ * reduces to "$0" under the very same rule.
+ */
+export function formatUsdWhole(usd: number): string {
+  return formatUsd(usd).replace(".00", "");
 }
 
 /* ------------------------------------------------------------------------- */
@@ -48,8 +119,18 @@ export interface HardwareRate {
   /** Device name as shown to users. */
   name: string;
   provider: string;
-  /** Short technology descriptor for the rate table. */
-  technology: string;
+  /**
+   * i18n key for the short technology descriptor in the rate table.
+   *
+   * A KEY, not copy — the same correction the Tier docblock below records. This
+   * was an English literal, and both components that render it recovered the key
+   * by looking the English string up (a Record in pricing-page-content.tsx, a
+   * hand-written ternary chain in cost-estimator.tsx), each falling back to
+   * rendering the raw English on a miss. A new row, or a one-character edit to a
+   * descriptor, silently shipped English inside the Spanish page in whichever
+   * component had not been updated.
+   */
+  technologyKey: string;
   /** Published credits per shot. */
   creditsPerShot: number;
   /** True when the device also carries the flat per-task fee. */
@@ -67,56 +148,56 @@ export const HARDWARE_RATES: HardwareRate[] = [
   {
     name: "Rigetti Cepheus-1-108Q",
     provider: "Rigetti",
-    technology: "Superconducting, 108 qubits",
+    technologyKey: "pricingUi.techSuperconducting108",
     creditsPerShot: 0.048,
     perTask: true,
   },
   {
     name: "Rigetti Ankaa-3",
     provider: "Rigetti",
-    technology: "Superconducting",
+    technologyKey: "pricingUi.techSuperconducting",
     creditsPerShot: 0.101,
     perTask: true,
   },
   {
     name: "IQM Garnet",
     provider: "IQM",
-    technology: "Superconducting",
+    technologyKey: "pricingUi.techSuperconducting",
     creditsPerShot: 0.163,
     perTask: true,
   },
   {
     name: "IQM Emerald",
     provider: "IQM",
-    technology: "Superconducting",
+    technologyKey: "pricingUi.techSuperconducting",
     creditsPerShot: 0.18,
     perTask: true,
   },
   {
     name: "QuEra Aquila",
     provider: "QuEra",
-    technology: "Neutral-atom analog",
+    technologyKey: "pricingUi.techNeutralAtom",
     creditsPerShot: 1.12,
     perTask: true,
   },
   {
     name: "AQT IBEX-Q1",
     provider: "AQT",
-    technology: "Trapped-ion",
+    technologyKey: "pricingUi.techTrappedIon",
     creditsPerShot: 2.64,
     perTask: true,
   },
   {
     name: "IonQ Forte-1",
     provider: "IonQ",
-    technology: "Trapped-ion",
+    technologyKey: "pricingUi.techTrappedIon",
     creditsPerShot: 9.0,
     perTask: true,
   },
   {
     name: "IonQ Forte Enterprise",
     provider: "IonQ",
-    technology: "Trapped-ion",
+    technologyKey: "pricingUi.techTrappedIon",
     creditsPerShot: 9.0,
     perTask: true,
   },
@@ -124,7 +205,8 @@ export const HARDWARE_RATES: HardwareRate[] = [
 
 export interface SimulatorRate {
   name: string;
-  description: string;
+  /** i18n key for the one-line description in the rate table. Key, not copy. */
+  descriptionKey: string;
   creditsPerMinute: number;
 }
 
@@ -132,12 +214,12 @@ export interface SimulatorRate {
 export const SIMULATOR_RATES: SimulatorRate[] = [
   {
     name: "SV1",
-    description: "State-vector simulator, up to 34 qubits",
+    descriptionKey: "pricingUi.simSv1",
     creditsPerMinute: 8.4,
   },
   {
     name: "DM1",
-    description: "Density-matrix (noise) simulator, up to 17 qubits",
+    descriptionKey: "pricingUi.simDm1",
     creditsPerMinute: 8.4,
   },
 ];
@@ -156,21 +238,36 @@ export interface TutorRate {
   model: string;
   /** Typical credits for one question (a full asked-and-answered exchange). */
   typicalCreditsPerQuestion: number;
-  note: string;
+  /**
+   * i18n key for the one-line character note under the estimator's readout. This
+   * was an English literal duplicated verbatim into en.ts as tutorNote*, and
+   * nothing read it: the estimator picked the blurb with a ternary on `model`, so
+   * all four strings here were dead copy — the exact defect the Tier docblock
+   * below records for the old `features` array.
+   */
+  noteKey: string;
 }
 
 /**
  * PLANNED per-question tutor rates. These are published prices, not charges:
- * nothing on this platform debits the wallet yet. `lambda/tutor/index.mjs` binds one
- * `process.env.TUTOR_MODEL_ID` (the deployed profile resolves to Claude Haiku 4.5) and
- * `<AskTutor />` posts only `{slug, question}` — there is no model parameter, no tier
- * lookup, and no wallet call anywhere on the tutor path. Every question today is
- * answered free by that single model.
+ * nothing on this platform debits the wallet yet.
+ *
+ * The MECHANISM exists — `lambda/tutor/index.mjs` reads `body.model`, resolves it
+ * against `ROSTER` in `lambda/tutor/tutor-billing.mjs`, reads the caller's tier and
+ * reserves against the wallet, and `<AskTutor />` posts `{slug, question, model,
+ * meta}`. What is missing is CONFIGURATION: the deployed function carries an empty
+ * `WalletTableName` and an empty `RATE_CARD`, so `metering` is undefined, every
+ * paid-model request is refused rather than served, and each question is answered
+ * free on the free-tier default. That configuration gate — not absent code — is what
+ * keeps this page's future-tense copy honest, and flipping it is a deploy, not a
+ * feature. (This docblock asserted the opposite as fact until 2026-09, which would
+ * lead a maintainer to badly wrong conclusions about what a deploy would enable.)
  *
  * Deliberately NO "which tier unlocks this model" field: a `plus`/`pro` chip beside
- * Sonnet or Opus advertised an unlock the codebase cannot perform, which is the same
- * dishonesty as the credentials wall promising a medal the budget cannot buy. The
- * tier mapping comes back when model selection and metering actually ship.
+ * Sonnet or Opus advertises an unlock this page cannot demonstrate while metering is
+ * off, which is the same dishonesty as the credentials wall promising a medal the
+ * budget cannot buy. `ROSTER` is the server-authoritative tier-to-model mapping and
+ * stays the only one; the column comes back when metering is switched on.
  *
  * Tutor pricing will be metered by tokens under the hood; these are the typical
  * per-question figures for a normal lesson exchange, used for display and the
@@ -180,28 +277,36 @@ export const TUTOR_RATES: TutorRate[] = [
   {
     model: "Claude Haiku",
     typicalCreditsPerQuestion: 1,
-    note: "Fast and sharp — the everyday tutor.",
+    noteKey: "pricingUi.tutorNoteHaiku",
   },
   {
     model: "Claude Sonnet",
     typicalCreditsPerQuestion: 2,
-    note: "Deeper reasoning for tougher derivations.",
+    noteKey: "pricingUi.tutorNoteSonnet",
   },
   {
     model: "Claude Opus",
     typicalCreditsPerQuestion: 4,
-    note: "Full-strength reasoning, circuit review.",
+    noteKey: "pricingUi.tutorNoteOpus",
   },
   {
     model: "Claude Fable",
     typicalCreditsPerQuestion: 7,
-    note: "The frontier model, for the hardest questions.",
+    noteKey: "pricingUi.tutorNoteFable",
   },
 ];
 
 /* ------------------------------------------------------------------------- */
 /* Tiers                                                                     */
 /* ------------------------------------------------------------------------- */
+
+/**
+ * Stripe price lookup keys for the two subscription tiers. Declared here, beside
+ * the tiers themselves, and imported by lib/billing-client.ts — the union was
+ * retyped by hand in both files, and two hand-kept copies of a key set can drift
+ * against each other and against the backend CATALOG with no compiler complaint.
+ */
+export type TierLookupKey = "ql_plus_monthly" | "ql_pro_monthly";
 
 export interface Tier {
   id: "free" | "plus" | "pro";
@@ -216,7 +321,7 @@ export interface Tier {
    * which has nothing to buy). Must match a key in the backend CATALOG and the
    * Stripe catalog.
    */
-  checkoutLookupKey?: "ql_plus_monthly" | "ql_pro_monthly";
+  checkoutLookupKey?: TierLookupKey;
   /**
    * i18n keys for the feature bullets, in display order. The card renders THESE, so a
    * bullet cannot ship without a translation in both locales and cannot appear on the
@@ -263,9 +368,11 @@ export const TIERS: Tier[] = [
     // Three bullets, all true today (the credit grant lands via lambda/stripe's
     // invoice.paid handler, and WALLET# rows carry no expiresAt so credits do roll
     // over). The two dropped bullets — "Claude Sonnet and Opus unlocked in the tutor"
-    // and "Run on any quantum backend from your balance" — described capabilities with
-    // no implementation anywhere: the tutor binds one model id and never reads the
-    // wallet, and lambda/qpu hardcodes IQM Garnet as a platform-sponsored allowance.
+    // and "Run on any quantum backend from your balance" — describe capabilities the
+    // deployed configuration refuses: the tutor's roster gate exists but every paid
+    // model is refused while WalletTableName and RATE_CARD are empty, and lambda/qpu
+    // hardcodes IQM Garnet with LIFETIME_CAP_MICROS = 0, so there is no allowance at
+    // all. They come back with the deploy that turns metering on, not before.
     featureKeys: ["pricingUi.plusF0", "pricingUi.plusF1", "pricingUi.plusF2"],
     footnoteKey: "pricingUi.plusFootnote",
   },

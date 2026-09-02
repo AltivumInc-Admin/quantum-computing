@@ -49,4 +49,48 @@ describe("CostEstimator", () => {
     fireEvent.click(screen.getByRole("button", { name: "10,000" }));
     expect(screen.getByText("1,664 credits")).toBeInTheDocument();
   });
+
+  it("exposes chip selection to assistive tech, not by colour alone", () => {
+    // chip-selected is a pure background swap (globals.css), so without
+    // aria-pressed a screen reader hears three unrelated buttons and nothing says
+    // which is active. Every other chip group in the repo carries this.
+    render(<CostEstimator />);
+    const chip = (name: string) => screen.getByRole("button", { name });
+
+    expect(chip("1,000")).toHaveAttribute("aria-pressed", "true"); // default shots
+    expect(chip("10,000")).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(chip("10,000"));
+    expect(chip("10,000")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("1,000")).toHaveAttribute("aria-pressed", "false");
+
+    expect(chip("Haiku")).toHaveAttribute("aria-pressed", "true"); // default model
+    fireEvent.click(chip("Fable"));
+    expect(chip("Fable")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("Haiku")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("speaks the page's own surface/ink vocabulary, not a gray dialect", () => {
+    // Both panes were an opaque --surface-1 card with a hand-rolled
+    // gray-200/60 hairline, with body copy, labels, readouts, dividers and
+    // unselected chips on raw gray-* + dark:white/N utilities — inside a page
+    // whose every other card is rounded-card glass with --mut/--bd ink. The gray
+    // ladder is chroma-zero oklch while --mut is warm carbon in the light theme,
+    // so the shift was visible in both themes, and nothing pinned the vocabulary.
+    const { container } = render(<CostEstimator />);
+    const panes = container.querySelectorAll(":scope > div > .rounded-card");
+    expect(panes).toHaveLength(2);
+    for (const pane of panes) expect(pane.className).toContain("glass");
+    for (const el of container.querySelectorAll<HTMLElement>("[class]")) {
+      expect(el.className).not.toMatch(/\bgray-\d/);
+      expect(el.className).not.toMatch(/dark:(?:border|text|bg)-white\//);
+    }
+  });
+
+  it("names its two preset groups distinctly", () => {
+    // Both groups were labelled "Presets", so the two entries in a screen
+    // reader's landmark/group list were indistinguishable.
+    render(<CostEstimator />);
+    expect(screen.getByRole("group", { name: "Shot presets" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Question presets" })).toBeInTheDocument();
+  });
 });
