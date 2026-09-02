@@ -101,9 +101,33 @@ Resources:
         - { Key: Feature, Value: billing }
         - { Key: CostCategory, Value: billing }
 
+  # The gateway's OWN log group. The Cognito authorizer runs BEFORE any
+  # invocation, so a JWT it refuses never reaches the function's log group at
+  # all: no log line, no Lambda metric, and the stack's only API-level alarm
+  # watches 5xx. A stale UserPoolClientId or an issuer that moved with the pool
+  # would take the whole storefront down with zero server-side evidence — the
+  # client sees a 401 and renders nothing. This group is where that evidence
+  # lives.
+  StripeApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/${NamePrefix}
+      RetentionInDays: !Ref LogRetentionInDays
+
   StripeApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      # JSON so a Logs Insights query and the metric filter below can both read
+      # fields rather than parse a line. authorizer.error is the one that names
+      # WHY a token was refused (audience, issuer, expiry); integrationErrorMessage
+      # covers the other side, where the route matched but the function did not
+      # answer.
+      AccessLogSettings:
+        DestinationArn: !GetAtt StripeApiLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","routeKey":"$context.routeKey","status":"$context.status","authorizerError":"$context.authorizer.error","errorMessage":"$context.error.message","integrationErrorMessage":"$context.integrationErrorMessage"}
       # Billing endpoints are low-volume (a human clicking Subscribe, Stripe
       # delivering a webhook). 10 rps steady / 20 burst never touches real use,
       # and caps a flood at the front door alongside ReservedConcurrentExecutions.
@@ -475,6 +499,43 @@ Resources:
       Period: 300
       EvaluationPeriods: 1
       Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
+  # The one failure in this stack the FUNCTION never sees. Everything else here
+  # watches a console.error the handler emitted; this watches the gateway
+  # refusing a token before the handler exists.
+  AuthRejectedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref StripeApiLogGroup
+      FilterPattern: '{ $.status = "401" }'
+      MetricTransformations:
+        - MetricNamespace: !Ref MetricNamespace
+          MetricName: AuthRejected
+          MetricValue: "1"
+          Unit: Count
+
+  AuthRejectedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${NamePrefix}-auth-rejected"
+      AlarmDescription: >-
+        The API is refusing Cognito JWTs in bulk. A lone expired token is
+        normal — a learner left a tab open — which is why this threshold is not
+        zero like the money-path alarms. A sustained run means the authorizer's
+        configuration and the pool have diverged: a stale UserPoolClientId
+        (audience), or an issuer that moved when the pool did. The Lambda is
+        never invoked, so nothing lands in the function's log group and the 5xx
+        alarm is blind; the storefront is simply down. Read $.authorizerError
+        in /aws/apigateway/<prefix> for the reason.
+      Namespace: !Ref MetricNamespace
+      MetricName: AuthRejected
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]

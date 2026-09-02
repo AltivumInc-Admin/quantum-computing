@@ -306,13 +306,20 @@ test("a failed delayed payment is alertable", () => {
   assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 
-test("every metric filter in this stack watches the stripe log group and notifies a human", () => {
+test("every metric filter in this stack watches a log group this stack owns and notifies a human", () => {
   const filters = ofType("AWS::Logs::MetricFilter");
   assert.ok(filters.length >= 2, `expected the money-path filters, found: ${filters}`);
   const alarms = ofType("AWS::CloudWatch::Alarm");
   for (const f of filters) {
     const b = body(f);
-    assert.match(b, /LogGroupName: !Ref StripeLogGroup/, `${f}: wrong log group`);
+    // Two groups, and only two. The function's, where every console.error
+    // lands; and the GATEWAY's, which is the only place a rejection that never
+    // reached the function can be seen at all.
+    assert.match(
+      b,
+      /LogGroupName: !Ref (StripeLogGroup|StripeApiLogGroup)/,
+      `${f}: wrong log group`
+    );
     const metric = b.match(/MetricName: (\S+)/)?.[1];
     const alarm = alarms.find((a) => new RegExp(`MetricName: ${metric}\\b`).test(body(a)));
     assert.ok(alarm, `${f}: metric ${metric} has no alarm — a filter nobody watches is decoration`);
@@ -354,6 +361,37 @@ test("the Stripe client's deadline stays under the function's, so the handler's 
     worstCaseMs < fnTimeout * 1000,
     `Stripe's worst case ${worstCaseMs}ms must stay under the function's ${fnTimeout}s`
   );
+});
+
+test("a JWT the gateway refuses is visible somewhere, and it is not the function's log group", () => {
+  // The Cognito authorizer runs BEFORE any invocation, so a refused token
+  // produces no log line, no Lambda metric, and no 5xx. Without access logs a
+  // stale UserPoolClientId takes the storefront down leaving nothing behind at
+  // all — the client renders a 401 as absence.
+  const api = body("StripeApi");
+  assert.match(api, /AccessLogSettings:/, "the HTTP API must write access logs");
+  assert.match(api, /DestinationArn: !GetAtt StripeApiLogGroup\.Arn/);
+  // The field that names WHY a token was refused (audience, issuer, expiry).
+  assert.match(api, /\$context\.authorizer\.error/, "the log must record the authorizer's reason");
+  assert.match(api, /\$context\.status/, "and the status the metric filter counts");
+
+  assert.equal(typeOf("StripeApiLogGroup"), "AWS::Logs::LogGroup");
+  assert.match(body("StripeApiLogGroup"), /DeletionPolicy: Retain/);
+  assert.match(body("StripeApiLogGroup"), /RetentionInDays: !Ref LogRetentionInDays/);
+
+  const filter = body("AuthRejectedMetricFilter");
+  assert.ok(filter, "AuthRejectedMetricFilter missing");
+  assert.match(filter, /LogGroupName: !Ref StripeApiLogGroup/);
+  assert.match(filter, /\$\.status = "401"/);
+
+  const alarm = body("AuthRejectedAlarm");
+  assert.ok(alarm, "AuthRejectedAlarm missing");
+  assert.match(alarm, /MetricName: AuthRejected/);
+  // NOT the money-path threshold of 0: one expired token is a learner with a
+  // tab left open, and paging on that trains the operator to ignore the topic.
+  assert.doesNotMatch(alarm, /Threshold: 0\b/, "a lone expired token must not page");
+  assert.match(alarm, /TreatMissingData: notBreaching/);
+  assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 
 test("a failed webhook transaction is alertable — it is the only clawback-fault signal", () => {

@@ -188,8 +188,24 @@ paying customer's wallet for free.
 
 - Set the `BillingUrl` output as `NEXT_PUBLIC_BILLING_URL` in the Amplify app
   environment (the frontend `billing-client` stays inert until it is present).
-- **Confirm the SNS email subscription** once from the inbox — alarms
-  (`quantum-stripe-errors` / `-throttles` / `-5xx`) deliver nothing until then.
+- **Confirm the SNS email subscription** once from the inbox — every alarm in
+  this stack notifies that one topic, and none of them deliver anything until
+  the subscription is confirmed.
+
+## Where the evidence lives
+
+Two log groups, and the difference matters when the storefront is down:
+
+- `/aws/lambda/<prefix>` — everything the handler itself logs. Every
+  `console.error` in `index.mjs` is pinned to a metric filter and an alarm
+  (`template.test.mjs` asserts that in both directions), because the money
+  paths return 200 and so trip neither the Lambda `Errors` alarm nor the 5xx one.
+- `/aws/apigateway/<prefix>` — the gateway's access log. A JWT the Cognito
+  authorizer refuses is answered **before any invocation**, so it leaves
+  nothing at all in the function's group. `$.authorizerError` on those lines is
+  what names the reason (audience, issuer, expiry); the `<prefix>-auth-rejected`
+  alarm fires on a sustained run of 401s rather than a single one, because a
+  lone expired token is a learner with a tab left open.
 
 ## Sandbox vs live
 
