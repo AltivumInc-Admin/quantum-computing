@@ -1690,6 +1690,103 @@ test("D8: a lost debt-paydown race re-reads and retries against fresh state", as
   assert.equal(second.ExpressionAttributeValues[":owed"], undefined, "nothing left to garnish");
 });
 
+test("D9: a debt paydown contended PAST the budget throws, 500s, and says so", async () => {
+  // D8 stops at one lost race. What actually protects the money when
+  // contention persists is the throw after four CLAWBACK_RETRY outcomes, the
+  // webhook catch that turns it into a 500 (which is what makes Stripe
+  // redeliver), and the pinned log line WebhookHandlerFaultMetricFilter
+  // watches. None of the three was exercised by any test.
+  const ddb = walletDdb({
+    wallet: { credits: { N: "0" }, clawbackOwedCredits: { N: "800" } },
+    transactOutcomes: [cancelledAt(1), cancelledAt(1), cancelledAt(1), cancelledAt(1)],
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await deliver(ddb, {
+      id: "evt_topup_wedged",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_wedged",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_wedged",
+          client_reference_id: "user-9",
+          metadata: { credits: "2000" },
+        },
+      },
+    });
+  });
+  assert.equal(res.statusCode, 500, "the grant must not be dropped — Stripe has to redeliver");
+  assert.equal(
+    ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length,
+    4,
+    "the budget is four attempts, not an unbounded spin"
+  );
+  assert.equal(
+    ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "WALLET#user-9").length,
+    4,
+    "each attempt re-reads the debt rather than replaying a stale split"
+  );
+  const logged = lines.map((l) => l.join(" ")).join("\n");
+  assert.match(logged, /webhook handling failed/);
+  assert.match(logged, /checkout\.session\.completed/);
+});
+
+test("D10: a clawback contended PAST the budget throws, 500s, and says so", async () => {
+  // The reclaim() half of the same contract, contended on the RECEIPT leg.
+  const ddb = walletDdb({
+    grant: RECEIPT_ROW,
+    wallet: { credits: { N: "5000" } },
+    transactOutcomes: [cancelledAt(2), cancelledAt(2), cancelledAt(2), cancelledAt(2)],
+  });
+  let res;
+  const lines = await captureConsoleError(async () => {
+    res = await deliver(ddb, refundEvt({ id: "ch_wedged" }));
+  });
+  assert.equal(res.statusCode, 500, "real money going back must never be dropped silently");
+  assert.equal(ddb.calls.filter((c) => c.name === "TransactWriteItemsCommand").length, 4);
+  assert.equal(
+    ddb.calls.filter((c) => c.name === "GetItemCommand" && c.input.Key.pk.S === "RECEIPT#pi_1").length,
+    4,
+    "each attempt re-reads the receipt"
+  );
+  const logged = lines.map((l) => l.join(" ")).join("\n");
+  assert.match(logged, /webhook handling failed/);
+  assert.match(logged, /charge\.refunded/);
+});
+
+test("customer.subscription.updated writes ONLY subscriptionStatus", async () => {
+  // This is the path that records past_due / unpaid — what the spend surfaces
+  // read to explain a refusal — and no delivery test drove it. It must not
+  // touch tier or credits: a card that failed is not a plan change, and a
+  // stray :amt here would be a credit nobody paid for.
+  const ddb = walletDdb({ wallet: { credits: { N: "1000" } } });
+  const res = await deliver(ddb, {
+    id: "evt_sub_updated",
+    type: "customer.subscription.updated",
+    data: { object: { id: "sub_1", status: "past_due", metadata: { userId: "user-9" } } },
+  });
+  assert.equal(res.statusCode, 200);
+  const tx = txOf(ddb);
+  assert.equal(tx[0].Put.Item.pk.S, "EVENT#evt_sub_updated", "still exactly once");
+  const w = tx[1].Update;
+  assert.equal(w.ExpressionAttributeValues[":ss"].S, "past_due");
+  assert.equal(w.ExpressionAttributeValues[":tier"], undefined, "a failed payment is not a plan change");
+  assert.equal(w.ExpressionAttributeValues[":amt"], undefined, "and it grants nothing");
+});
+
+test("customer.subscription.updated without a userId touches DynamoDB not at all", async () => {
+  const ddb = walletDdb({});
+  const res = await deliver(ddb, {
+    id: "evt_sub_updated_anon",
+    type: "customer.subscription.updated",
+    data: { object: { id: "sub_1", status: "past_due", metadata: {} } },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(ddb.calls.length, 0);
+});
+
 // ---- the denominator a partial dispute needs (#230) ----------------------------
 
 test("a checkout purchase records amountPaidCents on the receipt", async () => {
