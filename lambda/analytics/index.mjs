@@ -26,11 +26,35 @@ import { SITE_HOST, buildRangeIndex, parseLog, summarizeDay } from "./classify.m
 
 export const AWS_RANGES_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
 
+/** Oldest day with retrievable logs, verified. Nothing before it can exist. */
+export const LAUNCH_DAY = "2026-06-28";
+
 /** The day before `today`, in UTC. */
 export function previousDay(today) {
   const d = new Date(`${today}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Refuse a date that is not one, before it reaches an AWS call or a key.
+ *
+ * `event.day` is caller-supplied and lands in two places that both fail
+ * quietly. As the Amplify window it becomes `new Date("2026-8-19T00:00:00Z")`,
+ * an Invalid Date the SDK serializes to `startTime: null` — so a malformed day
+ * degrades to a DEFAULT window rather than erroring, and the row it produces is
+ * not the day it claims to be. As the partition key it becomes a SECOND,
+ * differently-spelled row for a day that already has one. The sibling ops
+ * script validates its own date flags; the Lambda, which an IAM principal can
+ * invoke directly, did not.
+ */
+export function assertDay(label, value) {
+  const bad = (why) => new Error(`${label} ${why}: ${JSON.stringify(value)}`);
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw bad("must be YYYY-MM-DD");
+  const d = new Date(`${value}T00:00:00Z`);
+  // Round-trip, so 2026-02-30 and 2026-13-01 are rejected rather than rolled.
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) throw bad("is not a real date");
+  return value;
 }
 
 export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId, domain, siteHost = SITE_HOST }) {
@@ -56,8 +80,16 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
   }
 
   return async function core(event = {}) {
-    const today = event.today ?? new Date().toISOString().slice(0, 10);
-    const day = event.day ?? previousDay(today);
+    const today = assertDay("today", event.today ?? new Date().toISOString().slice(0, 10));
+    const day = assertDay("day", event.day ?? previousDay(today));
+    if (day > today) throw new Error(`day is in the future: ${day} (today is ${today})`);
+    if (day < LAUNCH_DAY) throw new Error(`day precedes launch (${LAUNCH_DAY}): ${day}`);
+
+    // A day the CALLER named is a re-run, and the documented recovery for a
+    // missed day is exactly that. The scheduled path may keep overwriting its
+    // own row freely; a re-run may not silently replace a good row with the
+    // zeroes an aged-out log produces, on the only copy of the history.
+    const requested = event.day !== undefined;
 
     const { logUrl } = await amplify.send(
       new GenerateAccessLogsCommand({
@@ -106,9 +138,30 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     };
     if (!complete) item.botFilterNote = { S: String(why).slice(0, 200) };
 
-    await ddb.send(new PutItemCommand({ TableName: tableName, Item: item }));
+    const put = { TableName: tableName, Item: item };
+    if (requested && event.overwrite !== true) {
+      // Absent, or already zero, is safe to write. A non-zero row is a real
+      // measurement and outranks anything a re-run can produce today.
+      put.ConditionExpression = "attribute_not_exists(#d) OR requests = :zero";
+      put.ExpressionAttributeNames = { "#d": "day" };
+      put.ExpressionAttributeValues = { ":zero": { N: "0" } };
+    }
 
-    return { day, ...summary, malformed, botFilterComplete: Boolean(complete) };
+    try {
+      await ddb.send(new PutItemCommand(put));
+    } catch (err) {
+      if (err?.name !== "ConditionalCheckFailedException") throw err;
+      // Not an error: the guard did its job. Deliberately NOT alarmed — the
+      // operator asked for this day and is reading the response.
+      console.warn(
+        `analytics-kept-existing-row day=${day} — a non-zero row already exists and was NOT ` +
+          `replaced. Amplify's retention is finite, so a re-run this late usually re-reads a ` +
+          `shorter log. Pass {"day":"${day}","overwrite":true} if the new counts are the better ones.`,
+      );
+      return { day, ...summary, malformed, botFilterComplete: Boolean(complete), written: false };
+    }
+
+    return { day, ...summary, malformed, botFilterComplete: Boolean(complete), written: true };
   };
 }
 

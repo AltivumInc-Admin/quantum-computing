@@ -166,6 +166,25 @@ aws lambda invoke --function-name quantum-analytics \
   --payload '{"day":"2026-08-19"}' --cli-binary-format raw-in-base64-out /dev/stdout
 ```
 
+An explicit `day` is a re-run, and a re-run **cannot replace a non-zero row**:
+the write carries `attribute_not_exists(day) OR requests = 0`. Amplify's
+retention is finite, so a late re-run usually re-reads a shorter log, and
+without the guard the documented recovery is itself the way to overwrite a real
+measurement with zeroes on the only copy of the history. A refused write is
+reported (`written: false`, and an `analytics-kept-existing-row` line), not an
+error. When the new counts really are the better ones, say so:
+
+```sh
+aws lambda invoke --function-name quantum-analytics \
+  --payload '{"day":"2026-08-19","overwrite":true}' \
+  --cli-binary-format raw-in-base64-out /dev/stdout
+```
+
+The scheduled path (no `day` in the payload) is unguarded and keeps overwriting
+its own row. `day` is validated before any AWS call: a real `YYYY-MM-DD`, not in
+the future, not before launch — an unchecked one becomes an Invalid Date that
+the SDK sends as `startTime: null`, quietly fetching a default window.
+
 Amplify's log retention is finite, so a missed day is recoverable only for a
 while. Do not sit on an `errors` alarm.
 

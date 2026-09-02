@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createAnalyticsCore, previousDay } from "./index.mjs";
+import { LAUNCH_DAY, createAnalyticsCore, previousDay } from "./index.mjs";
 
 /** Records commands and dispatches on the command's own class name. */
 function stubClient(responses = {}) {
@@ -73,6 +73,78 @@ test("an explicit day overrides yesterday, so a gap can be re-run", async () => 
   const { core, amplify } = makeCore();
   await core({ day: "2026-07-28", today: "2026-08-20" });
   assert.equal(amplify.calls[0].input.startTime.toISOString(), "2026-07-28T00:00:00.000Z");
+});
+
+test("refuses a day that is not a real date, before any AWS call is made", async () => {
+  // event.day reaches BOTH the Amplify window and the partition key. Unchecked,
+  // "2026-8-19" makes an Invalid Date the SDK serializes to startTime: null —
+  // so the call degrades to a default window instead of failing — and then lands
+  // as a second, differently-spelled row for a day that already has one.
+  for (const day of ["2026-8-19", "19-08-2026", "2026-02-30", "2026-13-01", "", 20260819]) {
+    const { core, amplify, ddb } = makeCore();
+    await assert.rejects(() => core({ day, today: "2026-08-20" }), /day (must be|is not)/);
+    assert.equal(amplify.calls.length, 0, `${day}: nothing may be fetched`);
+    assert.equal(ddb.calls.length, 0, `${day}: nothing may be written`);
+  }
+});
+
+test("refuses a day in the future or before launch — neither can have logs", async () => {
+  const { core, ddb } = makeCore();
+  await assert.rejects(() => core({ day: "2026-08-21", today: "2026-08-20" }), /future/);
+  await assert.rejects(() => core({ day: "2026-06-27", today: "2026-08-20" }), /precedes launch/);
+  assert.equal(ddb.calls.length, 0);
+  assert.equal(LAUNCH_DAY, "2026-06-28");
+});
+
+test("a re-run may not silently replace a good row with zeroes", async () => {
+  // The documented recovery for a missed day is an explicit-day invoke, and
+  // Amplify's retention is finite — so the late re-run that recovery produces
+  // is exactly the one that reads a short log and writes zeroes over a real
+  // measurement, on the only copy of the history. The scheduled path (no
+  // event.day) is unguarded and still overwrites its own row freely.
+  const { core, ddb } = makeCore();
+  await core({ today: "2026-08-20" });
+  assert.equal(ddb.calls[0].input.ConditionExpression, undefined, "the scheduled path is not guarded");
+
+  await core({ day: "2026-08-19", today: "2026-08-20" });
+  const guarded = ddb.calls[1].input;
+  assert.equal(guarded.ConditionExpression, "attribute_not_exists(#d) OR requests = :zero");
+  assert.deepEqual(guarded.ExpressionAttributeNames, { "#d": "day" });
+  assert.deepEqual(guarded.ExpressionAttributeValues, { ":zero": { N: "0" } });
+
+  await core({ day: "2026-08-19", today: "2026-08-20", overwrite: true });
+  assert.equal(ddb.calls[2].input.ConditionExpression, undefined, "overwrite: true is the deliberate bypass");
+});
+
+test("a refused overwrite is reported, not thrown — the guard working is not an error", async () => {
+  const denied = Object.assign(new Error("The conditional request failed"), {
+    name: "ConditionalCheckFailedException",
+  });
+  const amplify = stubClient({ GenerateAccessLogsCommand: { logUrl: "https://s3.test/presigned" } });
+  const ddb = stubClient({ PutItemCommand: denied });
+  const core = createAnalyticsCore({
+    amplify,
+    ddb,
+    fetchImpl: async (url) =>
+      url.includes("ip-ranges")
+        ? { ok: true, json: async () => ({ prefixes: [] }) }
+        : { ok: true, text: async () => LOG },
+    tableName: "t",
+    appId: "app",
+    domain: "d",
+  });
+
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const out = await core({ day: "2026-08-19", today: "2026-08-20" });
+    assert.equal(out.written, false, "the caller is told the row was kept");
+    assert.ok(warnings.some((w) => w.includes("analytics-kept-existing-row")));
+    assert.ok(warnings.some((w) => w.includes("overwrite")), "and told how to force it");
+  } finally {
+    console.warn = realWarn;
+  }
 });
 
 test("STORES NO IDENTIFIERS — the written item is counts only", async () => {
