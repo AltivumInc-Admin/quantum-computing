@@ -65,6 +65,8 @@ Resources:
           Value: quantum
         - Key: Feature
           Value: workspace-auth
+        - Key: CostCategory
+          Value: auth
 
   SignupAlertSubscription:
     Type: AWS::SNS::Subscription
@@ -114,6 +116,8 @@ Resources:
           Value: quantum
         - Key: Feature
           Value: workspace-auth
+        - Key: CostCategory
+          Value: auth
       Code:
         ZipFile: |
           // THIS HANDLER MUST NEVER THROW.

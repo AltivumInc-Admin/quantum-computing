@@ -163,6 +163,21 @@ describe("Cognito new-signup alerter", () => {
     expect(fn).toMatch(/INTERNAL_DOMAIN:\s*\S+/);
   });
 
+  it("carries all three cost-allocation tags, as the pool beside it does", () => {
+    // CostCategory is an activated cost-allocation tag and the canonical
+    // deploy passes no --tags, so a resource missing the key is simply absent
+    // from a CostCategory=auth view — the topic and the function would have
+    // been the only pieces of the auth stack invisible there.
+    for (const resource of ["SignupAlertTopic:", "SignupAlertFunction:"]) {
+      const tags = YAML.indexOf("Tags:", YAML.indexOf(resource));
+      expect(tags).toBeGreaterThan(-1);
+      const block = YAML.slice(tags, tags + 220);
+      expect(block).toMatch(/- Key: Project\s*\n\s*Value: quantum/);
+      expect(block).toMatch(/- Key: Feature\s*\n\s*Value: workspace-auth/);
+      expect(block).toMatch(/- Key: CostCategory\s*\n\s*Value: auth/);
+    }
+  });
+
   it("owns its log group, so retention is stated and the group is not orphaned", () => {
     // Left implicit, Lambda creates the group outside the stack at
     // never-expire retention, untagged for cost allocation and orphaned on
