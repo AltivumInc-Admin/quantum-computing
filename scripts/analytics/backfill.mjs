@@ -16,9 +16,17 @@
  * origin, so /auth/callback with an accounts.google.com referer is the record.
  *
  * Usage:  node scripts/analytics/backfill.mjs [--from YYYY-MM-DD] [--to YYYY-MM-DD]
- *                                             [--cache DIR] [--json]
- * Exit:   0 = every day in range retrieved   1 = retrieved with gaps
- *         2 = could not run (bad usage, missing aws CLI, no app)
+ *                                             [--cache DIR] [--json] [--profile NAME]
+ *                                             [--app-id ID] [--domain APEX]
+ *                                             [--site-host HOST]
+ * Exit:   0 = every day in range retrieved   1 = retrieved with gaps or a host
+ *                                                filter that matched nothing
+ *         2 = could not run (bad usage, missing aws CLI, no credentials)
+ *
+ * Replaying a day the site served under an OLD hostname takes all three
+ * identity flags together, because all three moved together at the cutover:
+ *
+ *   --app-id d1ao02to23x85y --domain altivum.ai --site-host quantum.altivum.ai
  *
  * Read-only. It calls amplify:GenerateAccessLogs and downloads the presigned
  * result; it mutates nothing.
@@ -30,10 +38,31 @@ import { join } from "node:path";
 
 import { buildRangeIndex, parseLog, summarizeDay } from "../../lambda/analytics/classify.mjs";
 
-const APP_ID = "d1ao02to23x85y";
-const DOMAIN = "altivum.ai"; // The association is the apex; "quantum.altivum.ai" 404s.
 const LAUNCH = "2026-06-28"; // Oldest day with retrievable logs, verified.
 const AWS_RANGES = "https://ip-ranges.amazonaws.com/ip-ranges.json";
+const TEMPLATE = new URL("../../lambda/analytics/template.yaml", import.meta.url);
+
+/**
+ * The collector's identity comes from the STACK, never from a copy here.
+ *
+ * This script restated the app id, the apex and (through classify.mjs) the host
+ * filter as constants, and the QL-Prod cutover moved the Lambda without moving
+ * them. The result was worse than an error: it fetched the retired Altivum
+ * app's logs, matched none of them against the new host, printed a table of
+ * zeroes and exited 0. Slicing the defaults out of template.yaml means the
+ * script cannot lag a deploy again, and the three flags below make replaying a
+ * pre-cutover day an explicit, visible choice.
+ */
+function paramDefault(name) {
+  const lines = readFileSync(TEMPLATE, "utf8").split(/\r?\n/);
+  const start = lines.indexOf(`  ${name}:`);
+  if (start === -1) throw new Error(`template.yaml has no ${name} parameter`);
+  const body = [];
+  for (let i = start + 1; i < lines.length && !/^ {0,2}\S/.test(lines[i]); i++) body.push(lines[i]);
+  const value = body.join("\n").match(/^\s+Default: (.+)$/m)?.[1]?.trim();
+  if (!value) throw new Error(`template.yaml's ${name} parameter has no Default`);
+  return value;
+}
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -45,6 +74,11 @@ const asJson = args.includes("--json");
 const cacheDir = flag("--cache") ?? ".analytics-cache";
 const from = flag("--from") ?? LAUNCH;
 const to = flag("--to") ?? new Date().toISOString().slice(0, 10);
+const profile = flag("--profile");
+const appId = flag("--app-id") ?? paramDefault("AmplifyAppId");
+// The association is the apex; a subdomain returns NotFoundException.
+const domain = flag("--domain") ?? paramDefault("AmplifyDomain");
+const siteHost = flag("--site-host") ?? paramDefault("SiteHost");
 
 if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
   console.error("  --from and --to must be YYYY-MM-DD.");
@@ -56,7 +90,11 @@ if (from > to) {
 }
 
 const aws = (a) =>
-  execFileSync("aws", a, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("aws", profile ? [...a, "--profile", profile] : a, {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
 const days = () => {
   const out = [];
@@ -79,9 +117,9 @@ async function fetchWindow(startIso, endIso) {
     "amplify",
     "generate-access-logs",
     "--app-id",
-    APP_ID,
+    appId,
     "--domain-name",
-    DOMAIN,
+    domain,
     "--start-time",
     startIso,
     "--end-time",
@@ -132,15 +170,36 @@ async function loadRanges() {
   }
 }
 
+/**
+ * Say which account answered, before spending an afternoon reading its logs.
+ *
+ * `aws --version` only proved the binary exists. This repo's rule is that a
+ * profile name is not evidence of an account, and the default profile is a
+ * DIFFERENT organization from the one this app runs in — so the identity is
+ * resolved once, printed to stderr, and a failure to resolve it stops the run
+ * rather than letting ambient credentials silently answer for someone else.
+ */
+function whoAmI() {
+  const out = aws(["sts", "get-caller-identity", "--output", "json"]);
+  const { Account } = JSON.parse(out);
+  return { account: Account };
+}
+
 async function main() {
   mkdirSync(cacheDir, { recursive: true });
 
+  let caller;
   try {
-    aws(["--version"]);
-  } catch {
-    console.error("  The aws CLI is not available. Cannot retrieve access logs.");
+    caller = whoAmI();
+  } catch (err) {
+    console.error("  Could not resolve AWS credentials (aws sts get-caller-identity failed).");
+    console.error(`  ${String(err?.stderr ?? err?.message ?? err).trim().split("\n").pop()}`);
     process.exit(2);
   }
+  process.stderr.write(
+    `  account ${caller.account}${profile ? ` via --profile ${profile}` : " (default credentials)"}\n` +
+      `  app ${appId}  domain ${domain}  host ${siteHost}\n`,
+  );
 
   const { index, source } = await loadRanges();
   const today = new Date().toISOString().slice(0, 10);
@@ -166,9 +225,20 @@ async function main() {
     }
 
     const { rows: parsed, malformed } = parseLog(csv);
-    const summary = summarizeDay(parsed, index, { day });
+    const summary = summarizeDay(parsed, index, { day, siteHost });
     summary.malformed = malformed;
     rows.push(summary);
+
+    // The same check index.mjs makes before it alarms: a day that fetched rows
+    // and matched NONE of them is a wrong host filter, not a quiet day. Without
+    // it this script prints zeroes and exits 0 — the exact failure the deployed
+    // stack now pages on, silent in the tool that populates the history.
+    if (summary.requests === 0 && summary.offSiteRequests > 0) {
+      gaps.push({ day, why: `MISMATCHED: ${summary.offSiteRequests} row(s), none for host ${siteHost}` });
+      if (!asJson) process.stderr.write(`  ${day}  MISMATCHED  (host ${siteHost})\n`);
+      continue;
+    }
+
     if (!asJson) {
       process.stderr.write(
         `  ${day}  ${String(summary.requests).padStart(6)} req  ` +
@@ -192,7 +262,7 @@ function report(rows, gaps, rangeSource) {
   const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
   const bucket = (k) => rows.reduce((n, r) => n + r.buckets[k], 0);
 
-  console.log(`\n  Who actually reached quantum.altivum.ai  (${from} to ${to})\n`);
+  console.log(`\n  Who actually reached ${siteHost}  (${from} to ${to})\n`);
   console.log(`  ${"day".padEnd(12)}${"requests".padStart(9)}${"IPs".padStart(6)}${"humans".padStart(8)}${"pages".padStart(7)}${"google".padStart(8)}`);
   for (const r of rows) {
     if (r.requests === 0 && r.humans === 0 && r.googleSignIns === 0) continue;
@@ -221,9 +291,17 @@ function report(rows, gaps, rangeSource) {
   }
 
   if (gaps.length > 0) {
-    console.log(`\n  ${gaps.length} day(s) could not be retrieved:`);
+    console.log(`\n  ${gaps.length} day(s) could not be counted:`);
     for (const g of gaps) console.log(`    ${g.day}  ${g.why}`);
-    console.log("  The totals above are incomplete. Re-run to retry only the gaps.\n");
+    console.log("  The totals above are incomplete. Re-run to retry only the gaps.");
+    if (gaps.some((g) => g.why.startsWith("MISMATCHED"))) {
+      console.log(
+        `  MISMATCHED means the log had rows and none carried host ${siteHost}. A day the\n` +
+          "  site served under an older hostname needs --app-id, --domain and --site-host\n" +
+          "  together; see the usage header.",
+      );
+    }
+    console.log("");
   } else {
     console.log("");
   }

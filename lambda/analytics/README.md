@@ -88,10 +88,26 @@ launch (2026-06-28, the oldest day with retrievable logs):
 node scripts/analytics/backfill.mjs                 # all days, cached in .analytics-cache/
 node scripts/analytics/backfill.mjs --from 2026-07-28 --to 2026-07-28
 node scripts/analytics/backfill.mjs --json
+node scripts/analytics/backfill.mjs --profile ql-prod
 ```
 
+It takes its app id, apex and host filter from this stack's own `template.yaml`
+defaults, so it cannot fetch one app's logs and filter them for another app's
+host — which is exactly what it did after the QL-Prod cutover. **A day the site
+served under an older hostname needs all three overridden together**, because
+all three moved together:
+
+```sh
+node scripts/analytics/backfill.mjs --to 2026-08-30 \
+  --app-id d1ao02to23x85y --domain altivum.ai --site-host quantum.altivum.ai
+```
+
+It prints the answering account before it starts (`sts get-caller-identity`);
+pass `--profile` when the default credentials are not the ones you mean.
+
 It is read-only and writes no DynamoDB rows — it reports and caches locally.
-Exit codes: `0` every day retrieved, `1` retrieved with gaps, `2` could not run.
+Exit codes: `0` every day retrieved, `1` retrieved with gaps **or a day whose
+rows all missed the host filter** (`MISMATCHED`), `2` could not run.
 Raw cached logs contain visitor addresses and are gitignored; do not commit them.
 
 ## Deploy

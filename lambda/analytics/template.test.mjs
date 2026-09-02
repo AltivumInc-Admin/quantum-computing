@@ -139,6 +139,31 @@ test("the Amplify domain parameter is the apex, which is the one that works", ()
   assert.match(params.AmplifyDomain.join("\n"), /Default: quantumenv\.dev\s*$/m);
 });
 
+test("the ops script reads this stack's identity rather than restating it", () => {
+  // The QL-Prod cutover moved the Lambda and left scripts/analytics/backfill.mjs
+  // pointing at the retired Altivum app: it fetched the wrong logs, matched none
+  // of them, printed zeroes and exited 0. The script now slices AmplifyAppId,
+  // AmplifyDomain and SiteHost out of this file, so it cannot lag a deploy —
+  // and this test fails if anyone copies a value back into it.
+  const backfill = readFileSync(new URL("../../scripts/analytics/backfill.mjs", import.meta.url), "utf8");
+  for (const name of ["AmplifyAppId", "AmplifyDomain", "SiteHost"]) {
+    assert.ok(
+      backfill.includes(`paramDefault("${name}")`),
+      `backfill.mjs must take ${name} from template.yaml, not from a constant`,
+    );
+  }
+  const params = blocks(section(template, "Parameters"));
+  for (const name of ["AmplifyAppId", "AmplifyDomain", "SiteHost"]) {
+    const value = params[name].join("\n").match(/^\s+Default: (.+)$/m)?.[1]?.trim();
+    assert.ok(value, `${name} must carry a Default for backfill.mjs to read`);
+    assert.equal(
+      backfill.includes(value),
+      false,
+      `backfill.mjs hardcodes ${name}'s value (${value}); it must read it from the template`,
+    );
+  }
+});
+
 test("the host filter is a parameter, and it names the canonical site host", () => {
   // A stale host filter does not skew this report, it ZEROES it — every row is
   // dropped, `humans` records 0, the job still succeeds and no alarm fires.
