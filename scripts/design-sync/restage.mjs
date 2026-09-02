@@ -37,6 +37,13 @@
  * The derivations for 3 and 4 are pure and live in staging.mjs, where
  * restage.test.mjs exercises them without a staged `.ds-sync/`.
  *
+ * Because the tsconfig is written wholesale, the `paths` it maps `next/*` at
+ * are only as good as the shim files behind them — and those ARE skill-shaped,
+ * so this script checks them rather than creating them. Without that check a
+ * clone with the other prerequisites got a tsconfig pointing at nothing, a
+ * "Staged." banner and an exit 0, with the break surfacing later as an esbuild
+ * resolver error: the confusing failure this script exists to prevent.
+ *
  * Idempotent: run it after any fresh clone, any time web/src grows a new
  * index-bearing directory, and any time componentSrcMap changes. It does NOT
  * vendor the skill's scripts — that copy is the skill's job (the `cp -r` line
@@ -133,6 +140,35 @@ say(
 );
 
 // ── 4. tsconfig paths: exact index rules BEFORE the wildcard ──────────────
+//
+// THE shim map. Because restage rewrites tsconfig.json wholesale, this constant
+// is the only source of the shim `paths` entries — an entry added to the
+// generated file by hand is discarded on the next run. A new `next/*` subpath
+// gets its shim in `.ds-sync/shims/` and its mapping HERE.
+const SHIMS = {
+  "next/link": "next-link.tsx",
+  "next/navigation": "next-navigation.tsx",
+  "next-themes": "next-themes.tsx",
+};
+
+// The shims are gitignored machine state this script does not create, so a
+// clone with the other prerequisites would otherwise get a tsconfig pointing at
+// nothing, print "Staged." and exit 0 — the failure surfacing much later as an
+// esbuild resolver error, which is exactly the confusing shape this script
+// exists to eliminate. Check them before writing the file that references them.
+const missingShims = Object.values(SHIMS).filter((f) => !existsSync(join(ROOT, ".ds-sync/shims", f)));
+if (missingShims.length) {
+  die(
+    `${missingShims.length} shim(s) missing from .ds-sync/shims/ — ${missingShims.join(", ")}\n` +
+      `  Re-stage them with the skill's scripts (the \`cp -r\` line in .ds-sync/storybook/SKILL.md §2.4);\n` +
+      `  the tsconfig this writes would otherwise map next/* at files that do not exist.`
+  );
+}
+
+if (!existsSync(WEB_SRC)) {
+  die(`${relative(ROOT, WEB_SRC)} is missing — run this from a full checkout of the repo.`);
+}
+
 const SKIP = new Set(["__tests__", "__fixtures__", "__mocks__", "node_modules"]);
 const exact = {};
 (function walk(dir) {
@@ -145,14 +181,13 @@ const exact = {};
   }
 })(WEB_SRC);
 
-const shim = (name) => join(ROOT, ".ds-sync/shims", name);
 const paths = {
   // Exact rules first — the resolver matches in key order (see the header).
   ...exact,
   "@/*": [join(WEB_SRC, "*")],
-  "next/link": [shim("next-link.tsx")],
-  "next/navigation": [shim("next-navigation.tsx")],
-  "next-themes": [shim("next-themes.tsx")],
+  ...Object.fromEntries(
+    Object.entries(SHIMS).map(([spec, file]) => [spec, [join(ROOT, ".ds-sync/shims", file)]])
+  ),
 };
 
 mkdirSync(dirname(TSCONFIG), { recursive: true });
@@ -160,7 +195,11 @@ writeFileSync(
   TSCONFIG,
   JSON.stringify({ compilerOptions: { baseUrl: ".", jsx: "react-jsx", paths } }, null, 2) + "\n"
 );
-say(false, `tsconfig.json paths rewritten — ${Object.keys(exact).length} exact rule(s) ahead of "@/*"`);
+say(
+  false,
+  `tsconfig.json paths rewritten — ${Object.keys(exact).length} exact rule(s) ahead of "@/*", ` +
+    `${Object.keys(SHIMS).length} shim(s) verified present`
+);
 for (const k of Object.keys(exact)) console.log(`        ${k}`);
 
 if (!existsSync(join(PKG, "assets"))) {

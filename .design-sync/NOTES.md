@@ -39,7 +39,10 @@ phrased as a command for six weeks.
 - **Next.js shims**: `next/link`, `next/navigation`, `next-themes` are mapped
   to `.ds-sync/shims/*.tsx` via the custom `.ds-sync/tsconfig.json` `paths`
   (the converter's tsconfig-paths esbuild plugin intercepts them before node
-  resolution). This is why the bundle is 45 KB with **0 inlined npm packages** —
+  resolution). That tsconfig is GENERATED — restage writes it wholesale, from
+  the `SHIMS` constant in `scripts/design-sync/restage.mjs`, and refuses to
+  write it at all if a shim file it names is missing. This is why the bundle is
+  45 KB with **0 inlined npm packages** —
   real Next.js never enters the bundle. `@/*` also maps to `web/src` there.
   The shims are self-sufficient (context-free `useRouter`/`useTheme`), so **no
   `cfg.provider` is needed**.
@@ -148,7 +151,10 @@ to match the repo's own playwright pin.
   (all Tailwind utilities + KaTeX + hljs). 20 dead KaTeX @font-face blocks are
   dropped at build; that's expected, not a fault.
 - **Shim drift**: if a scoped component starts importing a new `next/*` subpath,
-  add a shim + a `paths` entry in `.ds-sync/tsconfig.json`.
+  write the shim into `.ds-sync/shims/` and add its mapping to the `SHIMS`
+  constant in `scripts/design-sync/restage.mjs`. Never into
+  `.ds-sync/tsconfig.json` — that file is generated output, and the next restage
+  discards any hand edit.
 - **Groups** are derived from `web/src` dir (quantum / glossary / general).
   Refine with `cfg.docsMap` stubs (`---\ncategory: <Group>\n---`) if needed.
 - **`.ds-sync/` is gitignored** (machine state). The durable inputs are under
