@@ -1099,6 +1099,33 @@ async function loadSecret(secretId) {
  * Exported for tests; the retry semantics are load-bearing during webhook
  * secret rotation.
  */
+/**
+ * Every Stripe call must finish INSIDE the Lambda's own timeout, or the
+ * runtime kills the invocation and none of this handler's error paths run:
+ * the webhook's "webhook handling failed" line is never emitted (so
+ * WebhookHandlerFaultAlarm stays silent and only the dimensionless Errors
+ * alarm fires, with no event type recorded), and a /checkout killed between
+ * customers.create and the UpdateItem that stores the id orphans a Stripe
+ * customer with no retry able to reach it.
+ *
+ * stripe-node's defaults are an 80,000 ms per-request timeout and 2 network
+ * retries — five times the template's `Timeout: 15` for a single attempt, so
+ * a stalled call is ALWAYS ended by the runtime rather than by us. These
+ * numbers are chosen so the worst case stays under it: two attempts of 6 s
+ * plus the SDK's jittered backoff (capped at 2 s) is ~14 s, leaving a stalled
+ * call to surface as a StripeConnectionError inside the handler — logged with
+ * the event type and 500'd for redelivery on the webhook, rendered as a
+ * failure by the button on /checkout.
+ *
+ * template.test.mjs pins this against the template's Timeout; change one and
+ * it reddens rather than silently reopening the gap.
+ */
+export const STRIPE_CLIENT_OPTIONS = {
+  apiVersion: "2026-06-24.dahlia",
+  timeout: 6000,
+  maxNetworkRetries: 1,
+};
+
 export function lazyCore(build) {
   let corePromise;
   return async (event) => {
@@ -1117,7 +1144,7 @@ export function lazyCore(build) {
 export const handler = lazyCore(async () => {
   const { secretKey, webhookSecret } = await loadSecret(process.env.SECRET_ID);
   return createHandlerCore({
-    stripe: new Stripe(secretKey, { apiVersion: "2026-06-24.dahlia" }),
+    stripe: new Stripe(secretKey, STRIPE_CLIENT_OPTIONS),
     ddb: new DynamoDBClient({}),
     tableName: process.env.TABLE_NAME,
     webhookSecret,

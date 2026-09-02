@@ -136,6 +136,13 @@ Resources:
       MemorySize: 256
       # Stripe API round trips (customer + session creation, subscription
       # retrieve) push past sync's 10s; 15s leaves headroom without inviting hangs.
+      #
+      # This number is HALF a contract: the Stripe client's own deadline
+      # (STRIPE_CLIENT_OPTIONS in index.mjs — 6s per request, 1 network retry,
+      # so ~14s worst case including the SDK's capped backoff) must stay under
+      # it. A runtime kill runs none of the handler's error paths, so the
+      # webhook-fault log line and its alarm never fire and a killed /checkout
+      # orphans a Stripe customer. template.test.mjs pins the two together.
       Timeout: 15
       ReservedConcurrentExecutions: !Ref MaxConcurrency
       Environment:

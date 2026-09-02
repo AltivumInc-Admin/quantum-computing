@@ -304,6 +304,32 @@ test("every unreclaimable-money branch is covered by ONE shared filter", () => {
   assert.match(alarm, /AlarmActions: \[!Ref AlertsTopic\]/);
 });
 
+test("the Stripe client's deadline stays under the function's, so the handler's error paths can run", () => {
+  // A runtime timeout kill is not an exception: it runs no catch block, so the
+  // "webhook handling failed" line below is never emitted and its alarm never
+  // fires. stripe-node's defaults (80,000 ms, 2 retries) are five times this
+  // function's whole budget for a single attempt, so without an explicit
+  // deadline a stalled Stripe call is ALWAYS ended by the runtime.
+  const fnTimeout = Number(body("StripeFunction").match(/^\s+Timeout: (\d+)/m)?.[1]);
+  assert.ok(Number.isFinite(fnTimeout), "StripeFunction must declare a Timeout");
+
+  const opts = handlerSrc.match(/export const STRIPE_CLIENT_OPTIONS = \{([\s\S]*?)\};/)?.[1];
+  assert.ok(opts, "index.mjs must export STRIPE_CLIENT_OPTIONS");
+  const timeoutMs = Number(opts.match(/timeout:\s*(\d+)/)?.[1]);
+  const retries = Number(opts.match(/maxNetworkRetries:\s*(\d+)/)?.[1]);
+  assert.ok(Number.isFinite(timeoutMs), "STRIPE_CLIENT_OPTIONS must pin an explicit timeout");
+  assert.ok(Number.isFinite(retries), "STRIPE_CLIENT_OPTIONS must pin maxNetworkRetries");
+
+  // Attempts x per-request timeout, plus the SDK's backoff between them
+  // (jittered, capped at 2 s per sleep), must all fit inside the runtime's.
+  const MAX_BACKOFF_MS = 2000;
+  const worstCaseMs = (retries + 1) * timeoutMs + retries * MAX_BACKOFF_MS;
+  assert.ok(
+    worstCaseMs < fnTimeout * 1000,
+    `Stripe's worst case ${worstCaseMs}ms must stay under the function's ${fnTimeout}s`
+  );
+});
+
 test("a failed webhook transaction is alertable — it is the only clawback-fault signal", () => {
   const { phrase } = filterFor("WebhookHandlerFault");
   assert.ok(handlerSrc.includes(phrase), `index.mjs no longer logs "${phrase}"`);
