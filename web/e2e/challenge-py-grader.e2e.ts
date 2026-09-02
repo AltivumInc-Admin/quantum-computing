@@ -40,6 +40,11 @@ test("tier:py challenge: real Pyodide grades solve/wrong/error, fully same-origi
   page,
   baseURL,
 }) => {
+  // Three sequential grades on one boot declare more waiting (15 + 150 + 60 +
+  // 60) than the config's per-test cap allows, so a late failure would surface
+  // as "Test timeout exceeded" rather than as the expectation that broke.
+  test.setTimeout(300_000);
+
   // Every fetch of the Pyodide wasm marks an interpreter BOOT; the runtime must
   // boot exactly once across all three checks or step 3's fresh-namespace proof
   // goes vacuous (a virgin interpreter raises NameError with or without the
@@ -51,7 +56,9 @@ test("tier:py challenge: real Pyodide grades solve/wrong/error, fully same-origi
   // The py-tier caption proves the spec parsed as tier:"py" BEFORE we click —
   // otherwise a schema regression could silently reroute this test to gradeTs
   // and it would "pass" without ever booting Pyodide.
-  await expect(page.getByText(PY_TIER_CAPTION)).toBeVisible();
+  // Explicit, because this is a post-hydrate assertion: the small expect default
+  // is sized for the negative guards, not for a cold runner's first paint.
+  await expect(page.getByText(PY_TIER_CAPTION)).toBeVisible({ timeout: 30_000 });
 
   const editor = page.getByLabel("Your circuit");
   const check = page.getByRole("button", { name: "Check" });

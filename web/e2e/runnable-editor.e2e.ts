@@ -44,6 +44,11 @@ test("runnable fence: self-hosted Monaco boots, edits reach real Pyodide, fully 
   page,
   baseURL,
 }) => {
+  // Monaco's AMD graph, then a cold Pyodide boot, then a second run: the waits
+  // below (60 + 15 + 150 + 60) declare more than the config's per-test cap, so
+  // without this a late failure reads as "Test timeout exceeded".
+  test.setTimeout(300_000);
+
   const { external, failed } = instrument(page, baseURL, "fixture");
 
   await page.goto(FIXTURE_RUNNABLE_EDITOR);

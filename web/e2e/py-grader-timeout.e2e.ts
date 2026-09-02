@@ -48,7 +48,9 @@ test("watchdog: an infinite loop is killed with a reset message, and a fresh run
   const { external, bootFetches } = instrument(page, baseURL, "fixture");
 
   await page.goto(FIXTURE);
-  await expect(page.getByText(PY_TIER_CAPTION)).toBeVisible();
+  // Post-hydrate, so explicit: the small expect default is sized for the
+  // negative guards below, not for a cold runner's first paint.
+  await expect(page.getByText(PY_TIER_CAPTION)).toBeVisible({ timeout: 30_000 });
 
   const editor = page.getByLabel("Your circuit");
   const check = page.getByRole("button", { name: "Check" });

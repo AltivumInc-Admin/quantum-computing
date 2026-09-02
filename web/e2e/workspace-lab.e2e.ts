@@ -56,5 +56,9 @@ test("a Lab launcher href resolves to a real runnable notebook path from the man
     (n, s) => n + s.notebooks.filter((nb) => nb.runnable).length,
     0,
   );
-  await expect(lab).toContainText(`${runnableTotal} notebooks run in-browser`);
+  // Post-hydrate like the two assertions above, so it carries the same explicit
+  // headroom rather than inheriting the small expect default.
+  await expect(lab).toContainText(`${runnableTotal} notebooks run in-browser`, {
+    timeout: 30_000,
+  });
 });

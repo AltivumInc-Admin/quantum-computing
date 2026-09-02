@@ -19,7 +19,15 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.e2e.ts",
   timeout: 180_000,
-  expect: { timeout: 150_000 },
+  // A SMALL default on purpose. Every assertion that legitimately has to outlast
+  // a WASM boot carries its own explicit timeout, so this default only ever
+  // applies to assertions that resolve instantly when they pass — the negative
+  // guards (no "Traceback", no "Couldn't load the editor", no "Your code
+  // raised:"). Left at the old 150s those burned two and a half minutes each on
+  // the way to a red build, paid twice under `retries: 1`. Anything that needs
+  // more says so at the call site; `timeout` above is the per-test cap, which
+  // each long spec raises with `test.setTimeout` to exceed its own waits.
+  expect: { timeout: 15_000 },
   // The lab is now fully same-origin (Pyodide + wheels self-hosted, comm bundled), so
   // the run is deterministic with no network dependency. The single CI retry is kept
   // only as insurance against CPU-contention timeouts on shared runners, not flaky

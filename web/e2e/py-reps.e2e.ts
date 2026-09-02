@@ -83,7 +83,7 @@ test("every shipped tier:py Rep grades solve/wrong for real, one boot, fully sam
     const scope = page.locator(`[data-testid="py-rep-${id}"]`);
     // The py-tier caption proves this Rep parsed as tier:"py" (would reroute to
     // gradeTs and "pass" without booting Pyodide otherwise).
-    await expect(scope.getByText(PY_TIER_CAPTION)).toBeVisible();
+    await expect(scope.getByText(PY_TIER_CAPTION)).toBeVisible({ timeout: 30_000 });
 
     const editor = scope.getByLabel("Your circuit");
     const check = scope.getByRole("button", { name: "Check" });

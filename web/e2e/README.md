@@ -77,6 +77,24 @@ the other specs, zero third-party requests. Kept separate from
 `challenge-py-grader.e2e.ts` because that spec's fresh-namespace proof is
 premised on a single boot.
 
+## Timeouts
+
+Two knobs, with opposite jobs, and the split is deliberate:
+
+- **`expect.timeout` in `playwright.config.ts` is small (15s).** Every assertion
+  that legitimately has to outlast a WASM boot carries its own explicit timeout,
+  so the default only ever applies to assertions that resolve instantly when
+  they pass — the negative guards (no `Traceback`, no `Couldn't load the
+  editor`, no `Your code raised:`). A large default made each of those cost the
+  full wait on the way to a red build, twice over under the CI retry. A
+  post-hydrate assertion that needs more says `{ timeout: 30_000 }` at the call
+  site.
+- **`timeout` (the per-test cap) is raised per spec with `test.setTimeout`** so
+  each spec's budget exceeds the sum of its own declared waits. Without that a
+  late failure surfaces as `Test timeout … exceeded` rather than as the named
+  expectation that actually broke. Add a wait to a spec, raise its
+  `test.setTimeout` in the same edit.
+
 ## Running
 
 The E2E serves the already-built `web/out/`, so build first:

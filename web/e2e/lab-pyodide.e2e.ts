@@ -43,6 +43,11 @@ test("01-first-circuit: real Pyodide, deterministic stdout, fully same-origin", 
   page,
   baseURL,
 }) => {
+  // The waits below sum to more than the config's per-test cap (120s for the lab
+  // shell, then 150 + 30 + 90 for the outputs). Without this the last one to go
+  // wrong surfaces as "Test timeout exceeded" instead of the named expectation.
+  test.setTimeout(420_000);
+
   const { external } = instrument(page, baseURL, "lab");
   await runAllCells(page, "01-foundations/notebooks/01-first-circuit.ipynb");
 
@@ -69,6 +74,10 @@ test("06-bloch-playground: matplotlib renders + ipywidgets degrades gracefully, 
   page,
   baseURL,
 }) => {
+  // Same budget as the sibling test, for the same reason — and this is the
+  // heavier of the two.
+  test.setTimeout(420_000);
+
   // The heaviest browser path: loads numpy + the full matplotlib wheel closure
   // (pillow/fonttools/kiwisolver/contourpy/…) same-origin and renders inline plots.
   const { external } = instrument(page, baseURL, "lab");
