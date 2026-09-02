@@ -10,6 +10,11 @@
 // web/__tests__/infra/credit-writers.test.ts (which files may move a balance)
 // and wallet-ttl.test.ts (which rows may carry the TTL attribute) — pin THIS
 // file, and why nothing in here may ever learn the founding cohort's key prefix.
+// The first guard also counts any file that so much as NAMES applyOnce or
+// createWalletStore as a writer: a module that takes this store and calls the
+// primitive with a positive delta spells none of the older forms it looks for.
+// A new caller is allow-listed there, with its reason, in the commit that adds
+// it — clawback.mjs and fulfillment.mjs are.
 //
 // Split out of index.mjs on 2026-09-02 so the money arithmetic in the other two
 // modules can be exercised against a stateful DynamoDB stub without a signed
