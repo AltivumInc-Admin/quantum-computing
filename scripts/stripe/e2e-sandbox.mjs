@@ -38,11 +38,13 @@
  *             NOTE: two advances are required. The renewal invoice is created in
  *             `draft` and sits ~1h of simulated time before it is paid.
  *
- *   refund    A PARTIAL refund then the remainder. reclaim()'s target is
- *             absolute (amount_refunded is cumulative), so the second refund must
- *             move refundedCredits 500 -> 1900 with a delta of 1400, not 1900.
- *             That two-step is the whole point; a single full refund would pass
- *             even with incremental arithmetic.
+ *   refund    A PARTIAL refund (a quarter of the charge) then the remainder.
+ *             reclaim()'s target is absolute (amount_refunded is cumulative), so
+ *             the second refund must move refundedCredits from the first
+ *             clawback to the whole grant with a DELTA of the remainder, not the
+ *             whole grant again. That two-step is the whole point; a single full
+ *             refund would pass even with incremental arithmetic. Every figure is
+ *             derived from CATALOG and from what Stripe actually charged.
  *
  *   dispute   A real chargeback via pm_card_createDispute, then WON via
  *             evidence[uncategorized_text]=winning_evidence. Proves #217 end to
@@ -68,6 +70,7 @@
  *             never observed is a FAILED step, not a pass.
  */
 import { spawnSync } from "node:child_process";
+import { CATALOG } from "../../lambda/stripe/catalog.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, stripeClient } from "./lib/preamble.mjs";
 
@@ -315,9 +318,22 @@ const account = await assertAccount(client, expectAccount).catch((err) => fail(e
 console.log(`\n  e2e against ${account.id} (${account.settings?.dashboard?.display_name ?? "?"})`);
 console.log(`  wallet rows keyed by ${sub} in ${table}\n`);
 
+// The grant under test, from the SAME table the deployed handler reads. Typed in
+// by hand, this harness was self-consistent with itself rather than with CATALOG:
+// change CATALOG.ql_plus_monthly.credits and every parity script would pass, this
+// driver would still pass, and it would be proving the pipeline with a number no
+// real /checkout would ever send.
+const PLUS_CREDITS = CATALOG.ql_plus_monthly.credits;
+// The debt the renewal step seeds so the grant has something to garnish.
+const SEEDED_DEBT = 800;
+
 const created = { clocks: [], customers: [], subs: [] };
 let subscriptionPi = null;
 let topupPi = null;
+// What the subscription actually charged, in CENTS. Credits and cents are
+// different units that happen to coincide for Plus at the $0.01 peg, which is
+// exactly why the two must not share a literal.
+let subscriptionCents = null;
 // The invoice.paid event THIS run produced. The replay step resends exactly
 // this one: an event picked by `events?limit=1` belongs to whatever ran last,
 // and a redelivery of a stranger's event cannot move this wallet no matter how
@@ -344,11 +360,12 @@ await step("grant", async () => {
     "items[0][price]": price.id,
     "metadata[userId]": sub,
     "metadata[tier]": "plus",
-    "metadata[credits]": "1900",
+    "metadata[credits]": String(PLUS_CREDITS),
   });
   created.subs.push(subscription.id);
+  subscriptionCents = price.unit_amount;
 
-  const w = await until("invoice.paid to credit the wallet", (x) => x.credits >= 1900);
+  const w = await until("invoice.paid to credit the wallet", (x) => x.credits >= PLUS_CREDITS);
   assert(w.tier === "plus", `tier is ${w.tier}, expected plus`);
   assert(w.status === "active", `subscriptionStatus is ${w.status}, expected active`);
 
@@ -364,8 +381,11 @@ await step("grant", async () => {
 
   const r = receipt(subscriptionPi);
   assert(r.exists, `no RECEIPT# row for ${subscriptionPi}`);
-  assert(r.purchased === 1900, `receipt purchased=${r.purchased}, expected 1900`);
-  assert(r.amountPaidCents === 1900, `receipt amountPaidCents=${r.amountPaidCents}, expected 1900`);
+  assert(r.purchased === PLUS_CREDITS, `receipt purchased=${r.purchased}, expected ${PLUS_CREDITS}`);
+  assert(
+    r.amountPaidCents === subscriptionCents,
+    `receipt amountPaidCents=${r.amountPaidCents}, expected ${subscriptionCents}`
+  );
   return `credits=${w.credits} tier=${w.tier} receipt=${subscriptionPi}`;
 });
 
@@ -387,7 +407,7 @@ await step("renewal", async () => {
     "items[0][price]": price.id,
     "metadata[userId]": sub,
     "metadata[tier]": "plus",
-    "metadata[credits]": "1900",
+    "metadata[credits]": String(PLUS_CREDITS),
   });
 
   await until("the first clock invoice", (x) => x.credits > 0, 120_000);
@@ -395,7 +415,7 @@ await step("renewal", async () => {
 
   // Seed a debt so the renewal has something to garnish. This is the #218 case:
   // before the fix, the grant landed in full and the debt never moved.
-  seedWallet({ clawbackOwedCredits: 800 });
+  seedWallet({ clawbackOwedCredits: SEEDED_DEBT });
 
   const advance = async (to) => {
     await api("POST", `test_helpers/test_clocks/${clock.id}/advance`, { frozen_time: String(to) });
@@ -414,31 +434,51 @@ await step("renewal", async () => {
 
   const w = await until("the renewal grant to garnish the debt", (x) => x.owed === 0 && x.credits > before.credits, 180_000);
   const gained = w.credits - before.credits;
-  assert(gained === 1100, `renewal added ${gained} spendable credits, expected 1100 (1900 grant − 800 debt)`);
-  return `credits +${gained}, debt 800 -> 0`;
+  const expected = PLUS_CREDITS - SEEDED_DEBT;
+  assert(
+    gained === expected,
+    `renewal added ${gained} spendable credits, expected ${expected} (${PLUS_CREDITS} grant − ${SEEDED_DEBT} debt)`
+  );
+  return `credits +${gained}, debt ${SEEDED_DEBT} -> 0`;
 });
 
 // ---- refund (partial then remainder) ---------------------------------------------
 await step("refund", async () => {
   assert(subscriptionPi, "no PaymentIntent from the grant step — run with grant enabled");
+  assert(subscriptionCents, "no charge amount from the grant step — run with grant enabled");
   const before = wallet();
 
-  // 500c of a 1900c charge that granted 1900 credits: floor(1900 * 500/1900) = 500.
-  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: "500" });
-  const partial = await until("the partial refund clawback", (x) => x.credits <= before.credits - 500);
-  const firstDelta = before.credits - partial.credits;
-  assert(firstDelta === 500, `partial refund reclaimed ${firstDelta}, expected 500`);
+  // A quarter of the charge, then the rest. Both are CENTS against the charge and
+  // are derived from what Stripe actually billed; the expected clawbacks are the
+  // handler's own arithmetic over the grant CATALOG stamped. The two units are
+  // only numerically equal because Plus happens to sit on the $0.01 peg.
+  const partialCents = Math.round(subscriptionCents / 4);
+  const remainderCents = subscriptionCents - partialCents;
+  const expectedFirst = Math.floor((PLUS_CREDITS * partialCents) / subscriptionCents);
+  const expectedSecond = PLUS_CREDITS - expectedFirst;
 
-  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: "1400" });
-  const full = await until("the remaining refund clawback", (x) => x.credits <= partial.credits - 1000);
+  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: String(partialCents) });
+  const partial = await until("the partial refund clawback", (x) => x.credits <= before.credits - expectedFirst);
+  const firstDelta = before.credits - partial.credits;
+  assert(firstDelta === expectedFirst, `partial refund reclaimed ${firstDelta}, expected ${expectedFirst}`);
+
+  await api("POST", "refunds", { payment_intent: subscriptionPi, amount: String(remainderCents) });
+  const full = await until(
+    "the remaining refund clawback",
+    (x) => x.credits <= partial.credits - Math.ceil(expectedSecond / 2)
+  );
   const secondDelta = partial.credits - full.credits;
-  // The target is ABSOLUTE: amount_refunded is cumulative (1900 now), so the
-  // counter moves 500 -> 1900 and the DELTA is 1400. An incremental
-  // implementation would reclaim 1900 here and overdraw by 500.
-  assert(secondDelta === 1400, `second refund reclaimed ${secondDelta}, expected 1400 (delta, not a re-clawback)`);
+  // The target is ABSOLUTE: amount_refunded is cumulative (the whole charge now),
+  // so the counter moves expectedFirst -> the full grant and the DELTA is the
+  // remainder. An incremental implementation would reclaim the whole grant here
+  // and overdraw by expectedFirst.
+  assert(
+    secondDelta === expectedSecond,
+    `second refund reclaimed ${secondDelta}, expected ${expectedSecond} (delta, not a re-clawback)`
+  );
   const r = receipt(subscriptionPi);
-  assert(r.refunded === 1900, `receipt refundedCredits=${r.refunded}, expected 1900`);
-  return `deltas 500 then 1400 (absolute target), refundedCredits=1900`;
+  assert(r.refunded === PLUS_CREDITS, `receipt refundedCredits=${r.refunded}, expected ${PLUS_CREDITS}`);
+  return `deltas ${expectedFirst} then ${expectedSecond} (absolute target), refundedCredits=${PLUS_CREDITS}`;
 });
 
 // ---- dispute withdrawn then WON (#217) -------------------------------------------

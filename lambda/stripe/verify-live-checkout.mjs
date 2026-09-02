@@ -12,8 +12,10 @@
 //   STRIPE_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
 //     node lambda/stripe/verify-live-checkout.mjs
 import Stripe from "stripe";
+import { readFileSync } from "node:fs";
 import { createHandlerCore } from "./index.mjs";
 import { CATALOG, STRIPE_API_VERSION } from "./catalog.mjs";
+import { tierPrices } from "../../scripts/stripe/lib/parity-rules.mjs";
 
 const EXPECT_ACCT = "acct_1TuFow07hJdXv6GV";
 const KEY = process.env.STRIPE_KEY;
@@ -68,7 +70,17 @@ const check = (label, actual, expected) => {
   console.log(`   ${ok ? "PASS" : "FAIL"}  ${label}: ${actual}${ok ? "" : `  (expected ${expected})`}`);
 };
 
-for (const lookupKey of ["ql_plus_monthly", "ql_pro_monthly"]) {
+// Driven from CATALOG, not a hand-kept key list: a third subscription tier added
+// there was silently skipped here, and its price would have fallen through to the
+// Pro branch of a two-way ternary. The expected charge comes from the same
+// pricing.ts parser the catalog-parity guard uses, so this harness cannot pass
+// against a figure the published sheet has moved away from.
+const tiers = tierPrices(readFileSync(new URL("../../web/src/lib/pricing.ts", import.meta.url), "utf8"));
+const subscriptionKeys = Object.entries(CATALOG)
+  .filter(([, spec]) => spec.mode === "subscription")
+  .map(([lookupKey]) => lookupKey);
+
+for (const lookupKey of subscriptionKeys) {
   const spec = CATALOG[lookupKey];
   console.log(`\n== ${lookupKey} — CATALOG says ${spec.credits} credits, tier ${spec.tier} ==`);
 
@@ -91,7 +103,13 @@ for (const lookupKey of ["ql_plus_monthly", "ql_pro_monthly"]) {
   const sessionId = url.match(/cs_[A-Za-z0-9_]+/)?.[0];
   const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
 
-  const expectedCents = lookupKey === "ql_plus_monthly" ? 1900 : 5900;
+  const tier = tiers[lookupKey];
+  if (!tier) {
+    console.log(`   FAIL  no TIERS entry in pricing.ts carries checkoutLookupKey "${lookupKey}"`);
+    failures++;
+    continue;
+  }
+  const expectedCents = Math.round(tier.usd * 100);
   const item = session.line_items?.data?.[0];
   // amount_total is the authoritative figure; fall back to the resolved price's own
   // unit_amount, which is what actually proves the lookup key points at the new price.
