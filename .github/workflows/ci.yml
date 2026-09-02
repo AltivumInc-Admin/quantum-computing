@@ -131,6 +131,18 @@ jobs:
         working-directory: .
         run: node --test scripts/changelog/*.test.mjs
 
+      # Two claude.ai projects share the name "Quantum Learner Design System",
+      # and a driver run against the hand-authored one deletes what it cannot
+      # regenerate. The pin lives in scripts/design-sync/targets.mjs and the
+      # target in .design-sync/config.json; this asserts they still agree, so a
+      # one-sided edit — including one the sync skill writes back into the
+      # config on an aborted run — fails the merge instead of waiting for an
+      # operator to remember the preflight command. Zero dependencies: the
+      # module is pure and the config is plain JSON.
+      - name: Design-sync target pin tests
+        working-directory: .
+        run: node --test scripts/design-sync/*.test.mjs
+
       # A learner-visible pull request must say what changed, or record in
       # SILENT why it needs no announcement. The diff is computed HERE rather
       # than inside the script: no script under scripts/ shells out to git, the

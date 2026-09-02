@@ -1,7 +1,7 @@
 # Quantum Learner Design System — conventions
 
 Presentational React primitives from the Quantum Computing Workspace
-(quantum.altivum.ai), a learning app for Amazon Braket / PennyLane. This is
+(learner.quantumenv.dev), a learning app for Amazon Braket / PennyLane. This is
 **"The Instrument, after dark"**: racing-green smoke-and-glass surfaces on an
 abyss ground, a single **gold** signal, oxblood for caution, silver ink,
 Sora + Geist type, and a hue-free phase convention for quantum data. Build

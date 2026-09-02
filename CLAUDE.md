@@ -412,9 +412,13 @@ Because the names are identical in every listing, the id is the only thing
 telling them apart. Before any design-sync work:
 
 ```sh
-node scripts/design-sync/preflight.mjs     # refuses a config that drifted
-node scripts/design-sync/restage.mjs       # rebuilds gitignored .ds-sync/ state
+make design-sync    # preflight (refuses a drifted config, and STOPS the run)
+                    # then restage (rebuilds gitignored .ds-sync/ state)
 ```
+
+The ordering lives in that target, not in prose here. The pin itself is
+`SYNC_TARGET` in `scripts/design-sync/targets.mjs`, and CI asserts it still
+matches `.design-sync/config.json` — a retarget is both edits in one commit.
 
 Hand-maintained assets (imagery, guideline cards) go to the commissioned
 project by targeted `finalize_plan` + `write_files` — never by the driver.

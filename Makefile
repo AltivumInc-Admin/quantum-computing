@@ -1,4 +1,4 @@
-.PHONY: setup git-filters lab test devices cost lint stripe-parity drift deploy-infra teardown-infra lock-container
+.PHONY: setup git-filters lab test devices cost lint stripe-parity drift design-sync deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -61,6 +61,21 @@ drift:
 	@code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
 	 node scripts/check-rate-parity.mjs || code=$$?; \
 	 exit $$code
+
+design-sync:
+	@# Before any design-sync driver run. Two claude.ai projects are named
+	@# "Quantum Learner Design System"; a run against the hand-authored one
+	@# replaces it with generated output and deletes what it cannot regenerate.
+	@# Preflight answers "which one does config.json point at", restage rebuilds
+	@# the gitignored .ds-sync/ state a fresh clone cannot inherit.
+	@# Order matters, and unlike `drift` a red preflight must STOP the run: make
+	@# aborts on the first failing recipe line, which is exactly right here —
+	@# there is nothing to gain from staging a build aimed at the wrong project.
+	@# Preflight red = the TARGET is wrong (stop and read .design-sync/NOTES.md).
+	@# Restage red = a PREREQUISITE is unstaged (npm ci in web/, or the skill's
+	@# `cp -r`); the message names which. Both are read-only about the remote.
+	node scripts/design-sync/preflight.mjs
+	node scripts/design-sync/restage.mjs
 
 deploy-infra:
 	bash infra/scripts/deploy-infra.sh
