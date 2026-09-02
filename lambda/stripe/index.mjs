@@ -99,6 +99,16 @@ export const CLAWBACK_RETRY = Symbol("clawback-retry");
 export const CLAWBACK_UNRECLAIMED = "credits NOT reclaimed";
 
 /**
+ * The mirror of CLAWBACK_UNRECLAIMED for money coming IN. Every branch that
+ * ends a settled purchase without moving the wallet ends with this phrase, and
+ * one metric filter pins it, so a grant-side branch added later is covered for
+ * free. It has to be an umbrella rather than one literal per branch because
+ * these paths all answer 200: Stripe marks the event delivered and never
+ * retries, so an unwatched branch is a buyer who paid and was never credited.
+ */
+export const GRANT_WITHHELD = "credits NOT granted";
+
+/**
  * Pinned phrase for a webhook whose signature did not verify. A metric filter in
  * template.yaml watches for it, so a secret mismatch pages instead of vanishing.
  *
@@ -482,15 +492,36 @@ export function createHandlerCore({
   }
 
   async function fulfillCheckoutSession(evt, obj) {
-    const sub = obj.client_reference_id;
-    if (!sub) return;
+    // Settlement first, identity second — deliberately in that order. An
+    // unpaid session is a non-event and must stay quiet; a SETTLED one with
+    // nobody to credit is money taken and withheld, and has to say so.
     if (obj.payment_status === "unpaid") return; // money not settled yet
+    const sub = obj.client_reference_id;
+    if (!sub) {
+      console.error(
+        `${evt.type}: settled session carries no client_reference_id; ${GRANT_WITHHELD}`,
+        evt.id,
+        obj.id
+      );
+      return;
+    }
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
         await grantThroughDebt(evt, sub, credits, {
           receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits, Number(obj.amount_total)),
         });
+      } else {
+        // The credit count is written into metadata server-side at session
+        // creation, so its absence means the session was minted somewhere
+        // else (a Dashboard payment link, an older deploy) — the buyer paid
+        // and there is nothing here that says what they bought.
+        console.error(
+          `${evt.type}: settled top-up session carries no usable metadata.credits; ${GRANT_WITHHELD}`,
+          evt.id,
+          obj.id,
+          sub
+        );
       }
     } else if (obj.mode === "subscription") {
       // Credits for the period arrive on invoice.paid; here we only light up
@@ -740,7 +771,7 @@ export function createHandlerCore({
           // the retry storm buys nothing.
           if (looksSubscriptionInvoice(obj)) {
             console.error(
-              "invoice.paid: no subscription id resolved on a subscription invoice; credits NOT granted",
+              `invoice.paid: no subscription id resolved on a subscription invoice; ${GRANT_WITHHELD}`,
               evt.id,
               obj.id,
               obj.billing_reason,
@@ -751,9 +782,32 @@ export function createHandlerCore({
         }
         const subscription = await stripe.subscriptions.retrieve(subId);
         const sub = subscription.metadata?.userId;
-        if (!sub) return;
+        if (!sub) {
+          // subscription_data.metadata is stamped by /checkout, so a paid
+          // subscription without a userId is one this handler cannot attribute
+          // to any learner. Same 200-and-never-retried shape as the branch
+          // above, so it needs the same pinned phrase.
+          console.error(
+            `invoice.paid: subscription carries no metadata.userId; ${GRANT_WITHHELD}`,
+            evt.id,
+            obj.id,
+            subId
+          );
+          return;
+        }
         const credits = Number(subscription.metadata?.credits);
         const granted = Number.isFinite(credits) && credits > 0 ? credits : 0;
+        if (granted === 0) {
+          // The tier still lights up below (they are a paying subscriber), but
+          // the period's credits do not land — the one case where the wallet
+          // and the tier disagree, and therefore the one that must be visible.
+          console.error(
+            `invoice.paid: subscription carries no parseable metadata.credits, tier set but period ${GRANT_WITHHELD}`,
+            evt.id,
+            obj.id,
+            subId
+          );
+        }
         // Resolve the PaymentIntent NOW, while the invoice is in hand — at
         // refund time the charge carries no link back to it.
         const pi = granted > 0 ? await invoicePaymentIntent(obj.id) : undefined;

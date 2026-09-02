@@ -250,7 +250,13 @@ Resources:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Ref StripeLogGroup
-      FilterPattern: '"no subscription id resolved on a subscription invoice"'
+      # The UMBRELLA phrase, not one branch's literal — the grant-side mirror of
+      # the shared clawback phrase below. Five branches end a settled purchase
+      # without moving the wallet (a session with no client_reference_id,
+      # a top-up with no usable metadata.credits, an invoice whose subscription
+      # id or userId will not resolve, and a subscription with no parseable
+      # credits); pinning one literal watched exactly one of them.
+      FilterPattern: '"credits NOT granted"'
       MetricTransformations:
         - MetricNamespace: !Ref MetricNamespace
           MetricName: UncreditedInvoice
@@ -262,11 +268,14 @@ Resources:
     Properties:
       AlarmName: !Sub "${NamePrefix}-uncredited-invoice"
       AlarmDescription: >-
-        A paid subscription invoice arrived with no resolvable subscription id,
-        so its credits were NOT granted — the buyer paid and their balance did
-        not move. The route answered 200, so Stripe treats the event as
-        delivered and will never retry: this needs a manual grant. This is the
-        exact failure that shipped once already (the id moved under
+        A settled purchase was NOT credited — the buyer paid and their balance
+        did not move. One of: a Checkout Session with no client_reference_id, a
+        top-up session with no usable metadata.credits, an invoice with no
+        resolvable subscription id, a subscription with no metadata.userId, or
+        one with no parseable metadata.credits. Every one of those routes
+        answers 200, so Stripe treats the event as delivered and will never
+        retry: each needs a manual grant. The subscription-id case is the exact
+        failure that shipped once already (the id moved under
         parent.subscription_details) and went unnoticed because nothing watched
         for it.
       Namespace: !Ref MetricNamespace

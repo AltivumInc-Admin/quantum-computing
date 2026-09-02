@@ -247,6 +247,11 @@ function filterFor(metricName) {
 
 test("an uncredited subscription invoice is alertable, not just greppable", () => {
   const { b, phrase } = filterFor("UncreditedInvoice");
+  // The UMBRELLA phrase, exactly as the clawback side does it: five branches
+  // end a settled purchase without moving the wallet, and pinning one branch's
+  // literal watched exactly one of them while the other four returned 200 into
+  // the void.
+  assert.equal(phrase, "credits NOT granted", "one phrase must cover every withheld grant");
   assert.match(b, /LogGroupName: !Ref StripeLogGroup/);
   // The literal namespace moved to a parameter so a sandbox stack cannot page on
   // live money; "the default is still QuantumStripe" is pinned by the zero-diff test.

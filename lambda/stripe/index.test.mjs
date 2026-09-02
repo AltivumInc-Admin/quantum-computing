@@ -572,6 +572,125 @@ test("webhook invoice.paid stays silent for a genuine one-off invoice", async ()
   assert.deepEqual(lines, []);
 });
 
+// ---- every withheld grant leaves the ONE alertable phrase -------------------
+// All the branches below answer 200, so Stripe marks the event delivered and
+// never retries: a buyer paid and their balance did not move. GRANT_WITHHELD is
+// the umbrella phrase one metric filter pins (template.yaml's
+// UncreditedInvoiceMetricFilter), the grant-side mirror of CLAWBACK_UNRECLAIMED.
+
+/** Drive `event` and return the delivery plus every console.error, joined. */
+async function deliverCapturing(event, stripeOver = {}) {
+  let out;
+  const lines = await captureConsoleError(async () => {
+    out = await deliverWebhook(event, stripeOver);
+  });
+  return { out, lines, logged: lines.map((l) => l.join(" ")) };
+}
+
+test("webhook settled session with no client_reference_id LOGS the withheld grant", async () => {
+  const event = {
+    id: "evt_cs_nosub",
+    type: "checkout.session.completed",
+    data: {
+      object: { id: "cs_nosub", mode: "payment", payment_status: "paid", metadata: { credits: "2000" } },
+    },
+  };
+  const { out, lines, logged } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200); // contract unchanged: no retry storm
+  assert.equal(out.ddb.calls.length, 0, "nothing granted");
+  assert.equal(lines.length, 1, "a settled session nobody owns must be logged");
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_cs_nosub/); // the event id, for log lookup
+  assert.match(logged[0], /cs_nosub/); // and the session id
+});
+
+test("webhook UNPAID session with no client_reference_id stays silent", async () => {
+  // The settlement guard runs first on purpose: an unpaid session is a
+  // non-event, and logging it would be the noise that trains us to ignore the
+  // line the test above pins.
+  const event = {
+    id: "evt_cs_unpaid_nosub",
+    type: "checkout.session.completed",
+    data: { object: { id: "cs_unpaid_nosub", mode: "payment", payment_status: "unpaid" } },
+  };
+  const { out, lines } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0);
+  assert.deepEqual(lines, []);
+});
+
+test("webhook settled top-up with unusable metadata.credits LOGS the withheld grant", async () => {
+  const event = {
+    id: "evt_cs_nocredits",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_nocredits",
+        mode: "payment",
+        payment_status: "paid",
+        client_reference_id: "user-11",
+        metadata: { credits: "not-a-number" },
+      },
+    },
+  };
+  const { out, lines, logged } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0, "nothing granted");
+  assert.equal(lines.length, 1);
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_cs_nocredits/);
+  assert.match(logged[0], /user-11/);
+});
+
+test("webhook invoice.paid LOGS when the subscription carries no metadata.userId", async () => {
+  const event = {
+    id: "evt_inv_nouser",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_nouser",
+        billing_reason: "subscription_cycle",
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_nouser" } },
+      },
+    },
+  };
+  // stubStripe's default subscription is `{ metadata: {} }` — exactly this shape.
+  const { out, lines, logged } = await deliverCapturing(event);
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(out.ddb.calls.length, 0, "nothing granted");
+  assert.equal(lines.length, 1);
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_inv_nouser/);
+  assert.match(logged[0], /sub_nouser/);
+});
+
+test("webhook invoice.paid LOGS a tier lit with no parseable credits", async () => {
+  // The one case where the wallet and the tier disagree: the subscriber goes
+  // active but the period's credits never land.
+  const event = {
+    id: "evt_inv_zerocredits",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: "in_zerocredits",
+        billing_reason: "subscription_cycle",
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_z" } },
+      },
+    },
+  };
+  const { out, lines, logged } = await deliverCapturing(event, {
+    subscription: { metadata: { userId: "user-12", tier: "plus" } }, // no credits
+  });
+  assert.equal(out.res.statusCode, 200);
+  assert.equal(lines.length, 1);
+  assert.match(logged[0], /credits NOT granted/);
+  assert.match(logged[0], /evt_inv_zerocredits/);
+  // The tier still lights up — that half is correct and must not regress.
+  const tx = txItems(out.ddb);
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":tier"].S, "plus");
+  assert.equal(tx[1].Update.ExpressionAttributeValues[":amt"], undefined, "no credit delta");
+});
+
 // ---- delayed-notification payment methods ----------------------------------
 // Klarna / Cash App / Amazon Pay / ACH complete the Checkout Session BEFORE the
 // money settles: checkout.session.completed arrives with payment_status
