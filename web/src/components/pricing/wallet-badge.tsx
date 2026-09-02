@@ -43,18 +43,25 @@ export function WalletBadge() {
   if (!wallet) return null;
 
   return (
+    // The hero chip recipe, verbatim from its two siblings in
+    // pricing-page-content.tsx. This chip was painted in the pre-token dialect —
+    // border-gray-200 / dark:border-white/10 over an OPAQUE --surface-1 — so it
+    // sat beside two translucent --field chips with a visibly different hairline
+    // and fill in both themes.
     <span
-      className="inline-flex items-center gap-2 rounded-chip border border-gray-200 dark:border-white/10 bg-(--surface-1) px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 tabular-nums"
+      className="inline-flex items-center gap-2 rounded-chip border border-(--bd) bg-(--field) px-3 py-1.5 text-sm font-medium text-(--mut) tabular-nums"
       data-testid="wallet-badge"
     >
-      <span className="text-accent-dark dark:text-accent-light">
+      {/* Everything measured is mono (docs/instrument-after-dark.md): this was the
+          only credits readout in the product still set in the body face. */}
+      <span className="font-mono text-accent-dark dark:text-accent-light">
         {t(
           "pricingUi.creditsCount",
           { n: formatCreditNumber(wallet.credits, localeCode(locale)) },
           roundCredits(wallet.credits),
         )}
       </span>
-      <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">·</span>
+      <span aria-hidden="true" className="text-caption">·</span>
       <span>
         {tierLabel(wallet.tier, t)} {t("pricingUi.plan")}
       </span>

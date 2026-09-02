@@ -77,11 +77,11 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   }
 
   return (
-    <div className="rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 sm:p-8 shadow-(--shadow-resting)">
+    <div className="rounded-card glass p-6 sm:p-8">
       <h3 className="font-display text-display-md text-(--ink)">
         {t("pricingUi.topUpTitle")}
       </h3>
-      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+      <p className="mt-1 text-sm text-(--mut)">
         {t("pricingUi.topUpBody", {
           credits: credits(100),
           min: TOPUP_MIN_USD,
@@ -103,7 +103,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               className={`rounded-chip px-3 py-1.5 font-mono text-sm font-medium tabular-nums interactive focus-ring ${
                 parsed === p
                   ? "chip-selected"
-                  : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
+                  : "border border-(--bd) bg-(--field) text-(--mut) hover:border-accent/50"
               }`}
             >
               ${p}
@@ -119,7 +119,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
             {t("pricingUi.customAmount")}
           </label>
           <div className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="text-gray-500 dark:text-gray-400">$</span>
+            <span aria-hidden="true" className="text-(--mut)">$</span>
             <input
               id={inputId}
               type="number"
@@ -137,7 +137,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               // rule challenge.tsx spells out: describe only what is rendered.
               aria-invalid={invalid || undefined}
               aria-describedby={invalid ? hintId : undefined}
-              className="w-24 rounded-control border border-(--bd) bg-(--surface-2) px-3 py-1.5 font-mono text-sm text-(--ink) tabular-nums focus-ring"
+              className="w-24 rounded-control border border-(--bd) bg-(--field) px-3 py-1.5 font-mono text-sm text-(--ink) tabular-nums focus-ring"
             />
           </div>
         </div>

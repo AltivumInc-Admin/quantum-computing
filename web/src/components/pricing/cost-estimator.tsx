@@ -33,7 +33,7 @@ function Readout({
 }) {
   const { t, locale } = useLocale();
   return (
-    <div aria-live="polite" className="mt-6 border-t border-gray-200/60 dark:border-white/[0.08] pt-5">
+    <div aria-live="polite" className="mt-6 border-t border-(--bd) pt-5">
       <p className="eyebrow eyebrow-mut">{label}</p>
       <p className="mt-1 font-mono text-display-lg text-(--ink) tabular-nums">
         {t(
@@ -41,7 +41,7 @@ function Readout({
           { n: formatCreditNumber(credits, localeCode(locale)) },
           roundCredits(credits),
         )}
-        <span className="ml-2 text-base font-mono text-gray-500 dark:text-gray-400">
+        <span className="ml-2 text-base font-mono text-(--mut)">
           {formatUsd(creditsToUsd(credits))}
           {suffix}
         </span>
@@ -78,7 +78,7 @@ function PresetChips({
           className={`rounded-chip px-3 py-1 text-sm font-medium tabular-nums interactive focus-ring ${
             value === p
               ? "chip-selected"
-              : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
+              : "border border-(--bd) bg-(--field) text-(--mut) hover:border-accent/50"
           }`}
         >
           {format(p)}
@@ -121,8 +121,12 @@ export function CostEstimator() {
   const tutor = TUTOR_RATES[modelIdx];
   const tutorCredits = tutor.typicalCreditsPerQuestion * questions;
 
-  const paneChrome =
-    "rounded-card border border-gray-200/60 dark:border-white/[0.06] bg-(--surface-1) p-6 sm:p-8 shadow-(--shadow-resting)";
+  // The page's own card recipe. These two panes were an opaque --surface-1 card
+  // with a hand-rolled gray/white hairline, sitting between a grid of glass tier
+  // cards and two glass rate tables — so scrolling into the estimator changed the
+  // card's opacity and border weight in both themes. `glass` already carries the
+  // border and the resting shadow, so neither is repeated here.
+  const paneChrome = "rounded-card glass p-6 sm:p-8";
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -131,7 +135,7 @@ export function CostEstimator() {
         <h3 className="font-display text-display-md text-(--ink)">
           {t("pricingUi.priceHardware")}
         </h3>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <p className="mt-1 text-sm text-(--mut)">
           {t("pricingUi.priceHardwareBody")}
         </p>
 
@@ -139,7 +143,7 @@ export function CostEstimator() {
           <div>
             <label
               htmlFor={deviceId}
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+              className="block text-sm font-medium text-(--ink) mb-1.5"
             >
               {t("pricingUi.backend")}
             </label>
@@ -147,7 +151,7 @@ export function CostEstimator() {
               id={deviceId}
               value={deviceIdx}
               onChange={(e) => setDeviceIdx(Number(e.target.value))}
-              className="w-full rounded-control border border-(--bd) bg-(--surface-2) px-3 py-2 text-sm text-(--ink) focus-ring"
+              className="w-full rounded-control border border-(--bd) bg-(--field) px-3 py-2 text-sm text-(--ink) focus-ring"
             >
               {HARDWARE_RATES.map((r, i) => (
                 <option key={r.name} value={i}>
@@ -161,11 +165,11 @@ export function CostEstimator() {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor={shotsId}
-                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="text-sm font-medium text-(--ink)"
               >
                 {t("pricingUi.shots")}
               </label>
-              <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
+              <span className="text-sm tabular-nums text-(--mut)">
                 {shots.toLocaleString(loc)}
               </span>
             </div>
@@ -211,13 +215,13 @@ export function CostEstimator() {
         <h3 className="font-display text-display-md text-(--ink)">
           {t("pricingUi.priceTutorMonth")}
         </h3>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        <p className="mt-1 text-sm text-(--mut)">
           {t("pricingUi.priceTutorBody")}
         </p>
 
         <div className="mt-6 space-y-5">
           <div>
-            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            <span className="block text-sm font-medium text-(--ink) mb-1.5">
               {t("pricingUi.modelToPrice")}
             </span>
             {/* The chips model a future bill; they buy nothing. The disclosure sits
@@ -236,7 +240,7 @@ export function CostEstimator() {
                   className={`rounded-chip px-3 py-1 text-sm font-medium interactive focus-ring ${
                     modelIdx === i
                       ? "chip-selected"
-                      : "border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:border-accent/50"
+                      : "border border-(--bd) bg-(--field) text-(--mut) hover:border-accent/50"
                   }`}
                 >
                   {r.model.replace("Claude ", "")}
@@ -249,11 +253,11 @@ export function CostEstimator() {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor={questionsId}
-                className="text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="text-sm font-medium text-(--ink)"
               >
                 {t("pricingUi.questionsPerMonth")}
               </label>
-              <span className="text-sm tabular-nums text-gray-500 dark:text-gray-400">
+              <span className="text-sm tabular-nums text-(--mut)">
                 {questions.toLocaleString(loc)}
               </span>
             </div>
