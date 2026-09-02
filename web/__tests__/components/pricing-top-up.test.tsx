@@ -112,8 +112,30 @@ test("out-of-range and fractional amounts disable the buy button with a hint", a
     await userEvent.type(input, bad);
     expect(screen.getByRole("button", { name: "Buy credits" })).toBeDisabled();
     expect(screen.getByText(/whole dollar amount from \$5 to \$500/i)).toBeInTheDocument();
+    // ...and the field says so. The hint was an unassociated sibling paragraph
+    // and the input never reported invalid, so a screen-reader user who typed
+    // "12.5" heard nothing at all — the only other signal was Buy silently
+    // dropping out of the tab order.
+    expect(input).toBeInvalid();
+    expect(input).toHaveAccessibleDescription(/whole dollar amount/i);
   }
   expect(startTopUp).not.toHaveBeenCalled();
+});
+
+test("a valid amount clears both the hint and the invalid state", async () => {
+  renderTopUp();
+  const input = screen.getByLabelText("Custom amount (USD)");
+  await userEvent.clear(input);
+  await userEvent.type(input, "12.5");
+  expect(input).toBeInvalid();
+
+  await userEvent.clear(input);
+  await userEvent.type(input, "37");
+  expect(input).toBeValid();
+  // No dangling aria-describedby: the house rule is to describe only what is
+  // actually rendered, because some AT ignores a description pointing at nothing.
+  expect(input).not.toHaveAttribute("aria-describedby");
+  expect(screen.queryByText(/whole dollar amount/i)).not.toBeInTheDocument();
 });
 
 test("a signed-out click routes to sign-up", async () => {

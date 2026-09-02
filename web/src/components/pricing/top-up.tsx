@@ -40,6 +40,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   // valid amount. Telling that learner to try again is advice that cannot work.
   const [error, setError] = useState<"failed" | "needsPlan" | null>(null);
   const inputId = useId();
+  const hintId = useId();
 
   /** A credit figure with its localized, plural-aware unit. */
   const credits = (n: number) =>
@@ -48,6 +49,9 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   const parsed = Number(amount);
   const valid =
     Number.isInteger(parsed) && parsed >= TOPUP_MIN_USD && parsed <= TOPUP_MAX_USD;
+  // An empty field is not yet wrong — it is unfinished — so the hint and the
+  // invalid state both wait for something to have been typed.
+  const invalid = !valid && amount !== "";
 
   async function go() {
     if (!valid) return;
@@ -120,6 +124,14 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               step={1}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              // Typing "3" or "12.5" used to produce no announcement at all: the
+              // hint was an unassociated sibling paragraph, the field never
+              // reported invalid, and the only other feedback was Buy silently
+              // leaving the tab order. Both attributes are conditional because a
+              // dangling aria-describedby id is ignored by some AT — the house
+              // rule challenge.tsx spells out: describe only what is rendered.
+              aria-invalid={invalid || undefined}
+              aria-describedby={invalid ? hintId : undefined}
               className="w-24 rounded-control border border-(--bd) bg-(--surface-2) px-3 py-1.5 font-mono text-sm text-(--ink) tabular-nums focus-ring"
             />
           </div>
@@ -141,8 +153,8 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
         </button>
       </div>
 
-      {!valid && amount !== "" && (
-        <p className="mt-3 text-xs text-warm-dark dark:text-warm-light">
+      {invalid && (
+        <p id={hintId} className="mt-3 text-xs text-warm-dark dark:text-warm-light">
           {t("pricingUi.invalidAmount", {
             min: TOPUP_MIN_USD,
             max: TOPUP_MAX_USD,
