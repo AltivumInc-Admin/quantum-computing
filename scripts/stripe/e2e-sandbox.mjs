@@ -19,6 +19,8 @@
  *
  *   --only grant,refund      run a subset (default: all)
  *   --keep                   leave objects behind for inspection
+ *   --webhook-endpoint we_   which endpoint `replay` resends to (default: the
+ *                            account's only enabled one)
  *
  * WHAT EACH STEP PROVES, and why it is shaped the way it is:
  *
@@ -58,6 +60,12 @@
  *   replay    stripe events resend against the deployed endpoint. The only way to
  *             get a genuine duplicate delivery on demand, and therefore the only
  *             real test of applyOnce's EVENT# idempotency leg.
+ *             Its assertion is a NEGATIVE (the wallet must not move), so it needs
+ *             positive controls or it passes vacuously: it resends the event THIS
+ *             run's grant produced, requires the handler's EVENT# row for it to
+ *             already exist, pins the endpoint, and waits for Stripe to report the
+ *             redelivery drained before reading the wallet. A redelivery that is
+ *             never observed is a FAILED step, not a pass.
  */
 import { spawnSync } from "node:child_process";
 import { resolveAccount } from "./lib/accounts.mjs";
@@ -82,6 +90,9 @@ const sub = flag("--sub");
 const region = flag("--region", "us-east-2");
 const only = (flag("--only") ?? "").split(",").filter(Boolean);
 const keep = args.includes("--keep");
+// Which endpoint the replay step resends to. Discovered when the account has
+// exactly one enabled endpoint; required when it has more.
+const webhookEndpoint = flag("--webhook-endpoint");
 
 const fail = (m) => {
   console.error(m);
@@ -131,6 +142,23 @@ function wallet() {
     status: item?.subscriptionStatus?.S ?? null,
     exists: Boolean(item),
   };
+}
+
+/**
+ * The handler's idempotency marker for one Stripe event. Its presence is the
+ * positive control the replay step needs: it proves the deployed handler has
+ * actually processed THIS event id, so a redelivery of it must hit applyOnce's
+ * EVENT# leg rather than being an event the endpoint under test never saw.
+ */
+function eventRow(id) {
+  const r = spawnSync(
+    "aws",
+    ["dynamodb", "get-item", "--table-name", table, "--region", region,
+     "--key", JSON.stringify({ pk: { S: `EVENT#${id}` } }), "--output", "json"],
+    { encoding: "utf8" }
+  );
+  if (r.status !== 0) throw new Error(`ddb get-item failed: ${r.stderr}`);
+  return Boolean(JSON.parse(r.stdout || "{}").Item);
 }
 
 function receipt(pi) {
@@ -225,6 +253,47 @@ async function disputedCharge({ amountCents, purchasedCredits, amountPaidCents }
   return pi.id;
 }
 
+/**
+ * The endpoint a resend must be pinned to. `stripe events resend` with no
+ * --webhook-endpoint fans out to every subscribed endpoint, and a rotation
+ * deliberately leaves two coexisting, so an unpinned resend can prove something
+ * about an endpoint that is not the one under test.
+ */
+async function soleEnabledEndpoint() {
+  const { data = [] } = await api("GET", "webhook_endpoints?limit=100");
+  const enabled = data.filter((e) => e.status === "enabled");
+  assert(enabled.length > 0, "no enabled webhook endpoint in this account");
+  assert(
+    enabled.length === 1,
+    `${enabled.length} enabled endpoints; pass --webhook-endpoint we_... to name the one under test`
+  );
+  return enabled[0].id;
+}
+
+/**
+ * Watch a redelivery actually go out. `pending_webhooks` is Stripe's own count
+ * of deliveries still queued for an event: a resend pushes it above zero and it
+ * falls back to zero once the attempt has been made. That rise-and-fall is the
+ * only signal available here, because the handler is expected to write NOTHING
+ * — "the wallet did not move" is equally what a resend that never left the
+ * building looks like.
+ *
+ * Polled fast, because a sandbox delivery can complete in well under a second.
+ * If this ever races, widen the budget; do not go back to sleeping blind and
+ * calling the result a pass.
+ */
+async function untilRedelivered(eventId, timeoutMs = 60_000) {
+  const started = Date.now();
+  let queued = false;
+  while (Date.now() - started < timeoutMs) {
+    const e = await api("GET", `events/${eventId}`);
+    if (Number(e.pending_webhooks ?? 0) > 0) queued = true;
+    else if (queued) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
 /** Webhook delivery is asynchronous. Poll the row rather than sleeping blind. */
 async function until(desc, predicate, timeoutMs = 90_000) {
   const started = Date.now();
@@ -266,6 +335,11 @@ console.log(`  wallet rows keyed by ${sub} in ${table}\n`);
 const created = { clocks: [], customers: [], subs: [] };
 let subscriptionPi = null;
 let topupPi = null;
+// The invoice.paid event THIS run produced. The replay step resends exactly
+// this one: an event picked by `events?limit=1` belongs to whatever ran last,
+// and a redelivery of a stranger's event cannot move this wallet no matter how
+// broken the idempotency leg is — a guaranteed pass.
+let grantEventId = null;
 
 // ---- grant ---------------------------------------------------------------------
 await step("grant", async () => {
@@ -299,6 +373,12 @@ await step("grant", async () => {
   const full = await api("GET", `invoices/${inv.id}?expand[]=payments`);
   subscriptionPi = full.payments?.data?.find((p) => p.payment?.payment_intent)?.payment?.payment_intent;
   assert(subscriptionPi, "no PaymentIntent resolved on the invoice — the receipt cannot be written");
+  // The event that carried this invoice, kept for the replay step. Stripe has no
+  // "events for object" filter, so the type-filtered page is scanned for it.
+  const events = (await api("GET", "events?type=invoice.paid&limit=100")).data ?? [];
+  grantEventId = events.find((e) => e.data?.object?.id === inv.id)?.id ?? null;
+  assert(grantEventId, `no invoice.paid event found for invoice ${inv.id}`);
+
   const r = receipt(subscriptionPi);
   assert(r.exists, `no RECEIPT# row for ${subscriptionPi}`);
   assert(r.purchased === 1900, `receipt purchased=${r.purchased}, expected 1900`);
@@ -422,19 +502,44 @@ await step("prorate", async () => {
 });
 
 // ---- replay (idempotency) ---------------------------------------------------------
+//
+// This is the one step whose assertion is a NEGATIVE — the wallet must not move
+// — so it needs a positive control or it passes for all the wrong reasons: a
+// redelivery that never landed, a CLI that is not installed, an event that
+// belongs to another run, a resend routed to a different endpoint. Each of those
+// also leaves the wallet unchanged.
 await step("replay", async () => {
-  const evt = (await api("GET", "events?type=invoice.paid&limit=1")).data[0];
-  assert(evt, "no invoice.paid event to replay");
+  assert(grantEventId, "no invoice.paid event from the grant step — run replay with grant enabled");
+  // Control 1: the handler has demonstrably processed THIS event id already, so
+  // a duplicate of it has to reach applyOnce's EVENT# leg.
+  assert(
+    eventRow(grantEventId),
+    `no EVENT# row for ${grantEventId} — the handler never recorded the original delivery, so a redelivery proves nothing`
+  );
+  const endpointId = webhookEndpoint ?? (await soleEnabledEndpoint());
   const before = wallet();
-  const r = spawnSync("stripe", ["events", "resend", evt.id, "--api-key", key], { encoding: "utf8" });
-  assert(r.status === 0, `stripe events resend failed: ${r.stderr?.slice(0, 200)}`);
-  await new Promise((res) => setTimeout(res, 15000));
+
+  const r = spawnSync(
+    "stripe",
+    ["events", "resend", grantEventId, "--api-key", key, "--webhook-endpoint", endpointId],
+    { encoding: "utf8" }
+  );
+  // A missing CLI lands in r.error, not r.stderr — which is why the old failure
+  // message read "failed: undefined".
+  assert(!r.error, `stripe events resend could not run: ${r.error.message}`);
+  assert(r.status === 0, `stripe events resend failed: ${(r.stderr || r.stdout || "").slice(0, 200)}`);
+
+  // Control 2: the redelivery is observed leaving Stripe before the negative is
+  // asserted. Timing out here is a FAILED step, not a pass.
+  assert(await untilRedelivered(grantEventId), `no redelivery of ${grantEventId} was ever observed leaving Stripe`);
+  await new Promise((res) => setTimeout(res, 2000)); // let the handler's writes settle
+
   const after = wallet();
   assert(
     after.credits === before.credits && after.owed === before.owed,
     `replay moved the wallet: ${JSON.stringify(before)} -> ${JSON.stringify(after)} — EVENT# idempotency leg failed`
   );
-  return `wallet unchanged across a genuine duplicate delivery`;
+  return `${grantEventId} redelivered to ${endpointId}; wallet unchanged`;
 });
 
 // ---- teardown ----------------------------------------------------------------------
