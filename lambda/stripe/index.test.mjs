@@ -575,6 +575,19 @@ async function deliverWebhook(event, stripeOver = {}) {
   return { res, ddb, stripe };
 }
 
+/** Capture console.log for the duration of `fn` — the audit line, parsed. */
+async function captureAudit(fn) {
+  const original = console.log;
+  const lines = [];
+  console.log = (...args) => lines.push(args.join(" "));
+  try {
+    await fn();
+  } finally {
+    console.log = original;
+  }
+  return lines.map((l) => JSON.parse(l));
+}
+
 /** Capture console.error for the duration of `fn` (node:test has no spy sugar). */
 async function captureConsoleError(fn) {
   const original = console.error;
@@ -1785,6 +1798,100 @@ test("customer.subscription.updated without a userId touches DynamoDB not at all
   });
   assert.equal(res.statusCode, 200);
   assert.equal(ddb.calls.length, 0);
+});
+
+// ---- the audit line -------------------------------------------------------------
+// Every accepted delivery leaves exactly one structured line, so the money path
+// can be read from CloudWatch instead of by joining DynamoDB rows to the Stripe
+// Dashboard by hand. Credits only: never a dollar amount, never an email.
+
+test("a grant and its replay leave one audit line each, with different outcomes", async () => {
+  const grantEvt = {
+    id: "evt_audit_1",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_audit",
+        mode: "payment",
+        payment_status: "paid",
+        payment_intent: "pi_audit",
+        client_reference_id: "user-9",
+        metadata: { credits: "2000" },
+      },
+    },
+  };
+
+  const first = walletDdb({ wallet: { credits: { N: "0" } } });
+  const applied = await captureAudit(() => deliver(first, grantEvt));
+  assert.equal(applied.length, 1, "exactly one line per delivery");
+  assert.deepEqual(applied[0], {
+    msg: "stripe-webhook",
+    type: "checkout.session.completed",
+    eventId: "evt_audit_1",
+    outcome: "applied",
+    sub: "user-9",
+    deltaCredits: 2000,
+    owedDelta: 0,
+  });
+
+  // The same event again: the EVENT# leg cancels the transaction and the
+  // wallet is untouched. Indistinguishable from a fresh purchase until now.
+  const again = walletDdb({ wallet: { credits: { N: "2000" } }, transactOutcomes: [cancelledAt(0)] });
+  const replay = await captureAudit(() => deliver(again, grantEvt));
+  assert.equal(replay.length, 1);
+  assert.equal(replay[0].outcome, "replay");
+  assert.equal(replay[0].eventId, "evt_audit_1");
+});
+
+test("a delivery that writes nothing still says so, as a noop", async () => {
+  const ddb = walletDdb({});
+  const lines = await captureAudit(() =>
+    deliver(ddb, {
+      id: "evt_audit_noop",
+      type: "customer.subscription.updated",
+      data: { object: { id: "sub_1", status: "past_due", metadata: {} } },
+    })
+  );
+  assert.equal(ddb.calls.length, 0);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].outcome, "noop");
+});
+
+test("a clawback's audit line reports the NEGATIVE delta it actually applied", async () => {
+  const ddb = walletDdb({ grant: RECEIPT_ROW, wallet: { credits: { N: "5000" } } });
+  const lines = await captureAudit(() => deliver(ddb, refundEvt()));
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].type, "charge.refunded");
+  assert.equal(lines[0].outcome, "applied");
+  assert.equal(lines[0].deltaCredits, -2000);
+  assert.equal(lines[0].owedDelta, 0);
+});
+
+test("the audit line carries no money and no personal data", async () => {
+  // The log group is a support tool, not a second copy of the ledger. A dollar
+  // amount or a customer email here would be a disclosure with no upside.
+  const ddb = walletDdb({ wallet: { credits: { N: "0" } } });
+  const lines = await captureAudit(() =>
+    deliver(ddb, {
+      id: "evt_audit_priv",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_priv",
+          mode: "payment",
+          payment_status: "paid",
+          payment_intent: "pi_priv",
+          client_reference_id: "user-9",
+          amount_total: 2000,
+          customer_details: { email: "buyer@example.com" },
+          metadata: { credits: "2000" },
+        },
+      },
+    })
+  );
+  const serialized = JSON.stringify(lines[0]);
+  assert.doesNotMatch(serialized, /@/, "no email may reach the log group");
+  assert.doesNotMatch(serialized, /amount|cents|usd/i, "credits only — never a currency amount");
 });
 
 // ---- the denominator a partial dispute needs (#230) ----------------------------

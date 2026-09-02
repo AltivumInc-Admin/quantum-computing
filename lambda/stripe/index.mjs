@@ -520,7 +520,9 @@ export function createHandlerCore({
   async function applyOnceRetrying(label, args) {
     for (let attempt = 0; attempt < 4; attempt++) {
       const outcome = await applyOnce(args);
-      if (outcome !== CLAWBACK_RETRY) return outcome;
+      if (outcome !== CLAWBACK_RETRY) {
+        return { sub: args.sub, outcome: outcome ? "applied" : "replay" };
+      }
     }
     throw new Error(`${label}: wallet write contended past retry budget for ${args.sub}`);
   }
@@ -534,7 +536,14 @@ export function createHandlerCore({
     for (let attempt = 0; attempt < 4; attempt++) {
       const split = await splitAgainstDebt(sub, credits);
       const outcome = await applyOnce({ eventId: evt.id, sub, ...split, ...extra });
-      if (outcome !== CLAWBACK_RETRY) return;
+      if (outcome !== CLAWBACK_RETRY) {
+        return {
+          sub,
+          deltaCredits: split.deltaCredits,
+          owedDelta: split.owedCredits,
+          outcome: outcome ? "applied" : "replay",
+        };
+      }
       // Lost the race: loop, re-read the debt, recompute the split.
     }
     throw new Error(`${evt.type}: debt paydown contended past retry budget for ${sub}`);
@@ -570,7 +579,7 @@ export function createHandlerCore({
     if (obj.mode === "payment") {
       const credits = Number(obj.metadata?.credits);
       if (Number.isFinite(credits) && credits > 0) {
-        await grantThroughDebt(evt, sub, credits, {
+        return await grantThroughDebt(evt, sub, credits, {
           receiptLeg: receiptRowLeg(idOf(obj.payment_intent), sub, credits, Number(obj.amount_total)),
         });
       } else {
@@ -588,7 +597,7 @@ export function createHandlerCore({
     } else if (obj.mode === "subscription") {
       // Credits for the period arrive on invoice.paid; here we only light up
       // the tier immediately so the UI reflects the purchase without waiting.
-      await applyOnceRetrying(evt.type, {
+      return await applyOnceRetrying(evt.type, {
         eventId: evt.id,
         sub,
         setTier: obj.metadata?.tier,
@@ -776,7 +785,10 @@ export function createHandlerCore({
           },
         },
       });
-      if (outcome !== CLAWBACK_RETRY) return; // committed, or a replay
+      if (outcome !== CLAWBACK_RETRY) {
+        // Committed, or a replay.
+        return { sub, deltaCredits, owedDelta, outcome: outcome ? "applied" : "replay" };
+      }
       // Lost the race: loop, re-read, recompute against fresh state.
     }
     // Contended past the retry budget. Throw so Stripe retries the delivery —
@@ -788,10 +800,8 @@ export function createHandlerCore({
     const obj = evt.data?.object ?? {};
     switch (evt.type) {
       case "checkout.session.completed":
-      case "checkout.session.async_payment_succeeded": {
-        await fulfillCheckoutSession(evt, obj);
-        return;
-      }
+      case "checkout.session.async_payment_succeeded":
+        return await fulfillCheckoutSession(evt, obj);
 
       case "checkout.session.async_payment_failed": {
         // The delayed payment fell through: the buyer was told at checkout,
@@ -894,26 +904,26 @@ export function createHandlerCore({
           setSubStatus: "active",
           receiptLeg: receiptRowLeg(pi, sub, granted, Number(obj.amount_paid)),
         };
-        if (granted > 0) {
-          await grantThroughDebt(evt, sub, granted, extra);
-        } else {
-          await applyOnceRetrying(evt.type, { eventId: evt.id, sub, ...extra });
-        }
-        return;
+        return granted > 0
+          ? await grantThroughDebt(evt, sub, granted, extra)
+          : await applyOnceRetrying(evt.type, { eventId: evt.id, sub, ...extra });
       }
 
       case "customer.subscription.deleted": {
         const sub = obj.metadata?.userId;
         if (!sub) return;
-        await applyOnceRetrying(evt.type, { eventId: evt.id, sub, setTier: "free", setSubStatus: "canceled" });
-        return;
+        return await applyOnceRetrying(evt.type, {
+          eventId: evt.id,
+          sub,
+          setTier: "free",
+          setSubStatus: "canceled",
+        });
       }
 
       case "customer.subscription.updated": {
         const sub = obj.metadata?.userId;
         if (!sub) return;
-        await applyOnceRetrying(evt.type, { eventId: evt.id, sub, setSubStatus: obj.status });
-        return;
+        return await applyOnceRetrying(evt.type, { eventId: evt.id, sub, setSubStatus: obj.status });
       }
 
       // Money going back to the customer takes its credits with it.
@@ -923,21 +933,20 @@ export function createHandlerCore({
         if (!(amount > 0)) return;
         // amount_refunded is CUMULATIVE, so this fraction is absolute: the
         // target it produces is "what this grant should total", not a delta.
-        await reclaim({
+        return await reclaim({
           eventId: evt.id,
           paymentIntent: idOf(obj.payment_intent),
           field: "refundedCredits",
           fraction: refunded / amount,
           label: "charge.refunded",
         });
-        return;
       }
 
       // Disputes: act on the FUNDS-MOVEMENT events, never charge.dispute.created
       // — that also fires for inquiries where Stripe withdraws nothing, and
       // clawing back there would zero a paying customer's wallet for free.
       case "charge.dispute.funds_withdrawn": {
-        await reclaim({
+        return await reclaim({
           eventId: evt.id,
           paymentIntent: idOf(obj.payment_intent),
           field: "disputedCredits",
@@ -948,11 +957,10 @@ export function createHandlerCore({
           disputedAmountCents: Number(obj.amount),
           label: "charge.dispute.funds_withdrawn",
         });
-        return;
       }
 
       case "charge.dispute.funds_reinstated": {
-        await reclaim({
+        return await reclaim({
           eventId: evt.id,
           paymentIntent: idOf(obj.payment_intent),
           field: "disputedCredits",
@@ -960,7 +968,6 @@ export function createHandlerCore({
           restore: true,
           label: "charge.dispute.funds_reinstated",
         });
-        return;
       }
 
       default:
@@ -1013,13 +1020,29 @@ export function createHandlerCore({
         console.error(LIVEMODE_MISMATCH, evt.id, evt.type, `livemode=${evt.livemode}`);
         return json(400, { error: "livemode mismatch" });
       }
+      let summary;
       try {
-        await handleEvent(evt);
+        summary = await handleEvent(evt);
       } catch (err) {
         // A 5xx tells Stripe to retry later; idempotency makes that safe.
         console.error("webhook handling failed", evt.type, err);
         return json(500, { error: "handler error" });
       }
+      // ONE structured line per accepted delivery — the only console.log in
+      // this file. Until it existed the money path could not be audited from
+      // CloudWatch at all: a learner saying "I paid and got nothing" could
+      // only be investigated by reading DynamoDB rows and the Stripe Dashboard
+      // side by side, a redelivery storm was indistinguishable from a run of
+      // fresh purchases, and no Logs Insights query could count grants,
+      // clawbacks or replays. `outcome` distinguishes a committed write from a
+      // replayed one (which applyOnce already knew and every caller threw
+      // away) and from a delivery that decided to write nothing.
+      //
+      // CREDITS ONLY — never a dollar amount, never a customer email. The log
+      // group is a support tool, not a second copy of the ledger.
+      console.log(
+        JSON.stringify({ msg: "stripe-webhook", type: evt.type, eventId: evt.id, outcome: "noop", ...summary })
+      );
       return json(200, { received: true });
     }
 
