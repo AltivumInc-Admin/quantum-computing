@@ -161,6 +161,27 @@ describe("PricingPage", () => {
     }
   });
 
+  it("names both rate tables, and lets a keyboard reach the wide one", () => {
+    // Two bare <table>s with no caption and no aria-labelledby are two anonymous
+    // entries in a screen reader's table list — the one place a reader chooses
+    // between them. And the hardware table is min-w-[480px] inside an
+    // overflow-x-auto div, so on a phone that scroller is the ONLY way to reach
+    // the per-shot and 1,000-shot columns; a bare div cannot take focus, so in
+    // Safari a keyboard-only reader could not scroll it at all.
+    renderPricing();
+    const named = screen
+      .getAllByRole("table")
+      .map((table) => table.getAttribute("aria-labelledby"))
+      .map((id) => (id ? document.getElementById(id)?.textContent?.trim() : null));
+    expect(named).toEqual(["AI tutor", "Quantum hardware"]);
+
+    const scroller = screen.getByRole("region", { name: "Quantum hardware" });
+    expect(scroller).toHaveAttribute("tabindex", "0");
+    expect(scroller.className).toContain("overflow-x-auto");
+    expect(scroller.className).toContain("focus-ring");
+    expect(scroller.querySelector("table")).not.toBeNull();
+  });
+
   it("answers the fair questions", () => {
     renderPricing();
     expect(screen.getByText("Do credits expire?")).toBeInTheDocument();

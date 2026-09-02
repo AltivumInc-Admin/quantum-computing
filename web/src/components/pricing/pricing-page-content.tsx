@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
 import { isAuthConfigured } from "@/lib/auth-config";
 import {
@@ -92,6 +93,8 @@ export function PricingPageContent() {
   const configured = isAuthConfigured();
   const billingLive = isBillingConfigured();
   const exampleShots = 1000;
+  const tutorRatesHeadingId = useId();
+  const hardwareRatesHeadingId = useId();
   const minTop = formatUsdWhole(TOPUP_MIN_USD);
   /** A credit figure with its localized, plural-aware unit. */
   const credits = (n: number) =>
@@ -339,13 +342,19 @@ export function PricingPageContent() {
 
           <div className="grid gap-5 lg:grid-cols-5">
             <div className="lg:col-span-2 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
-              <h3 className="font-display text-display-md text-(--ink) px-6 pt-6">
+              <h3
+                id={tutorRatesHeadingId}
+                className="font-display text-display-md text-(--ink) px-6 pt-6"
+              >
                 {t("pricingUi.aiTutor")}
               </h3>
               <p className="px-6 pt-1 pb-4 text-sm text-(--mut)">
                 {t("pricingUi.tutorTypical")}
               </p>
-              <table className="w-full text-sm">
+              {/* Named from the h3 that visually names it. Without this the two
+                  rate tables are anonymous entries in a screen reader's table
+                  list, which is the one place a reader chooses between them. */}
+              <table className="w-full text-sm" aria-labelledby={tutorRatesHeadingId}>
                 <thead>
                   {/* No "Tier" column. It rendered a plus/pro chip beside Sonnet, Opus,
                       and Fable, which reads as "this tier unlocks this model" — an unlock
@@ -379,14 +388,29 @@ export function PricingPageContent() {
             </div>
 
             <div className="lg:col-span-3 rounded-card glass shadow-(--shadow-resting) overflow-hidden">
-              <h3 className="font-display text-display-md text-(--ink) px-6 pt-6">
+              <h3
+                id={hardwareRatesHeadingId}
+                className="font-display text-display-md text-(--ink) px-6 pt-6"
+              >
                 {t("pricingUi.quantumHardware")}
               </h3>
               <p className="px-6 pt-1 pb-4 text-sm text-(--mut)">
                 {t("pricingUi.hardwarePerShotPlusFee", { fee: TASK_FEE_CREDITS })}
               </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[480px]">
+              {/* The table is wider than a phone, so this scroller is the only way
+                  to reach the per-shot and 1,000-shot columns. A bare overflow div
+                  cannot be focused, so in Safari a keyboard-only reader could not
+                  scroll it at all. Same treatment circuit-diagram.tsx uses. */}
+              <div
+                className="overflow-x-auto focus-ring"
+                tabIndex={0}
+                role="region"
+                aria-labelledby={hardwareRatesHeadingId}
+              >
+                <table
+                  className="w-full text-sm min-w-[480px]"
+                  aria-labelledby={hardwareRatesHeadingId}
+                >
                   <thead>
                     <tr className="border-t border-(--bd) text-left">
                       <th scope="col" className="px-6 py-2.5 font-medium text-caption">
