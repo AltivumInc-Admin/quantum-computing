@@ -56,9 +56,17 @@ stripe-parity:
 	@# ACCOUNT takes an alias (live/sandbox) resolved through
 	@# scripts/stripe/lib/accounts.mjs, or an explicit acct_... An alias cannot go
 	@# stale the way the written-down sandbox id did.
+	@# Both ALWAYS run, and the exit codes accumulate — same shape as `drift`
+	@# below, for the same reason. These scripts exit 1 on ordinary drift, so a
+	@# recipe of two separate lines aborts after the first report in exactly the
+	@# case the target exists for: on 2026-08-17 the live endpoint was subscribed
+	@# to 4 of 9 events AND the product descriptions had drifted, and only the
+	@# first would have been shown. One shell also means one 1Password prompt.
 	@test -n "$(ACCOUNT)" || { echo "ACCOUNT=acct_... is required"; exit 2; }
-	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT) $(if $(ENDPOINT),--expect-url $(ENDPOINT))
-	@STRIPE_API_KEY="$$(op read '$(KEYREF)')" node scripts/stripe/check-catalog-parity.mjs --expect-account $(ACCOUNT)
+	@code=0; export STRIPE_API_KEY="$$(op read '$(KEYREF)')"; \
+	 node scripts/stripe/check-webhook-parity.mjs --expect-account $(ACCOUNT) $(if $(ENDPOINT),--expect-url $(ENDPOINT)) || code=$$?; \
+	 node scripts/stripe/check-catalog-parity.mjs --expect-account $(ACCOUNT) || code=$$?; \
+	 exit $$code
 
 drift:
 	@# Is what is RUNNING what is in git? Merging is not shipping, and a green CI plus a
