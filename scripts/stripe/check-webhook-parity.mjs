@@ -23,9 +23,11 @@
  * secret reaches argv or shell history:
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
- *     node scripts/stripe/check-webhook-parity.mjs --expect-account acct_1TuFow07hJdXv6GV
+ *     node scripts/stripe/check-webhook-parity.mjs --expect-account live
  *
- * --expect-account is REQUIRED and verified before anything else: this owner's
+ * --expect-account takes `live` or `sandbox` (resolved through
+ * scripts/stripe/lib/accounts.mjs) or an explicit acct_. It is REQUIRED and
+ * verified before anything else: this owner's
  * Stripe login also controls Altivum Logic and Tj-Scents, and every `stripe` CLI
  * profile on this machine currently points at the WRONG one. Never infer the
  * account from a profile, a session, or a previous run.
@@ -33,6 +35,7 @@
  * Exit 0 = parity. Exit 1 = drift (or a wrong account). Exit 2 = usage error.
  */
 import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import { resolveAccount } from "./lib/accounts.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -41,7 +44,15 @@ const flag = (name) => {
 };
 
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  console.error(err.message);
+  process.exit(2);
+}
 const expectUrl = flag("--expect-url"); // optional: pin which endpoint we audit
 const json = args.includes("--json");
 

@@ -29,15 +29,19 @@
  * makes sandbox behaviour predictive. Run check-catalog-parity.mjs against both
  * accounts; sandbox should pass and live's failures are the worklist.
  *
- * SAFETY. This script WRITES, so it refuses to run unless BOTH hold:
+ * SAFETY. This script WRITES, so it refuses to run unless ALL of these hold:
  *   - the key is a test/sandbox key (never sk_live_ / rk_live_)
+ *   - --expect-account is not the LIVE account id. A standard Stripe account
+ *     returns the same acct_ for its test and live keys, so the id alone cannot
+ *     separate the modes: naming the live account here can only be a mistake.
  *   - --expect-account matches the authenticated account exactly
  * Every `stripe` CLI profile on this machine points at the wrong account, so
- * identity is never inferred — only asserted.
+ * identity is never inferred — only asserted. `--expect-account sandbox` is the
+ * alias for the provisioned sandbox (scripts/stripe/lib/accounts.mjs).
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe Sandbox/Secret Key") \
  *     node scripts/stripe/provision-sandbox.mjs \
- *       --expect-account acct_1TuFpH0a2DloOdGu \
+ *       --expect-account sandbox \
  *       --webhook-url https://<api-id>.execute-api.us-east-2.amazonaws.com/webhook \
  *       --secret-id quantum-stripe-sandbox
  *
@@ -48,6 +52,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { CATALOG, CUSTOM_TOPUP_PRODUCT, REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import { LIVE_ACCOUNT, resolveAccount } from "./lib/accounts.mjs";
 
 const args = process.argv.slice(2);
 const flag = (n) => {
@@ -56,7 +61,15 @@ const flag = (n) => {
 };
 const dryRun = args.includes("--dry-run");
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `sandbox` resolves to the provisioned sandbox; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  console.error(err.message);
+  process.exit(2);
+}
 const webhookUrl = flag("--webhook-url");
 const secretId = flag("--secret-id");
 const region = flag("--region") ?? "us-east-2";
@@ -64,6 +77,13 @@ const region = flag("--region") ?? "us-east-2";
 if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
 if (!expectAccount) die(2, "--expect-account <acct_...> is required. This script writes; it will not guess.");
 if (/^(sk|rk)_live_/.test(key)) die(2, "REFUSING: that is a LIVE key. This script only ever provisions a sandbox.");
+// The key-prefix refusal above and this one are two halves of the same guard. A
+// standard Stripe account returns the SAME acct_ for its test and its live key,
+// so the id cannot tell the modes apart — but naming the live account as the
+// thing to provision is unambiguous, and it is the shape a copy-paste takes.
+if (expectAccount === LIVE_ACCOUNT) {
+  die(2, `REFUSING: ${LIVE_ACCOUNT} is the LIVE account. This script only ever provisions a sandbox.`);
+}
 if (webhookUrl && !secretId && !dryRun) die(2, "--webhook-url requires --secret-id (where the signing secret goes).");
 
 function die(code, msg) {

@@ -13,7 +13,7 @@
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe Sandbox/Secret Key") \
  *     node scripts/stripe/e2e-sandbox.mjs \
- *       --expect-account acct_1U5IQr0txWLZHlL3 \
+ *       --expect-account sandbox \
  *       --table quantum-stripe-sandbox-wallet \
  *       --sub e2e-$(date +%s)            # the Cognito sub these rows are keyed by
  *
@@ -60,6 +60,7 @@
  *             real test of applyOnce's EVENT# idempotency leg.
  */
 import { spawnSync } from "node:child_process";
+import { resolveAccount } from "./lib/accounts.mjs";
 
 const args = process.argv.slice(2);
 const flag = (n, d) => {
@@ -67,7 +68,15 @@ const flag = (n, d) => {
   return i === -1 ? d : args[i + 1];
 };
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `sandbox` resolves to the provisioned sandbox; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  console.error(err.message);
+  process.exit(2);
+}
 const table = flag("--table");
 const sub = flag("--sub");
 const region = flag("--region", "us-east-2");

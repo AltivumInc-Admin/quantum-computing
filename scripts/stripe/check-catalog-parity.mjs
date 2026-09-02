@@ -23,12 +23,16 @@
  * READ-ONLY. Key by environment; --expect-account is required and verified first.
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
- *     node scripts/stripe/check-catalog-parity.mjs --expect-account acct_1TuFow07hJdXv6GV
+ *     node scripts/stripe/check-catalog-parity.mjs --expect-account live
+ *
+ * --expect-account takes `live` or `sandbox` (resolved through
+ * scripts/stripe/lib/accounts.mjs) or an explicit acct_.
  *
  * Exit 0 = parity, 1 = drift, 2 = usage error.
  */
 import { readFileSync } from "node:fs";
 import { CATALOG } from "../../lambda/stripe/index.mjs";
+import { resolveAccount } from "./lib/accounts.mjs";
 
 const args = process.argv.slice(2);
 const flag = (n) => {
@@ -36,7 +40,15 @@ const flag = (n) => {
   return i === -1 ? undefined : args[i + 1];
 };
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  console.error(err.message);
+  process.exit(2);
+}
 const json = args.includes("--json");
 
 if (!key) {

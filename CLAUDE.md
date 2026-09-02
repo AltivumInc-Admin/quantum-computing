@@ -160,6 +160,9 @@ writing prices to one of those is silent and easy. Sandbox is **`acct_1U5IQr0txW
 `op://Quantum Learner/Stripe Sandbox/Secret Key`). An older `acct_1TuFpH0a2DloOdGu` is
 recorded in some places and is NOT the one that is provisioned — another reason every
 script takes `--expect-account` and refuses a mismatch rather than trusting a written-down id.
+Both ids live in `scripts/stripe/lib/accounts.mjs`, and every script accepts the aliases
+`--expect-account live` / `sandbox` so a usage example cannot go stale the way this one did;
+`scripts/stripe/accounts.test.mjs` fails if the retired id reappears outside this sentence.
 
 **Confirm identity before any mutation; never infer it from a CLI profile, an MCP session,
 or a previous conversation:**
@@ -183,7 +186,7 @@ to act on a mismatch.
 
 ### Evaluate in the sandbox. Always. Then live.
 
-**Anything Stripe gets exercised in the sandbox (`acct_1TuFpH0a2DloOdGu`) before it is
+**Anything Stripe gets exercised in the sandbox (`acct_1U5IQr0txWLZHlL3`) before it is
 believed about live.** Sandbox runs real Checkout, real webhook deliveries, real refunds
 and real disputes, so "tests pass but the path cannot be exercised end to end" is never a
 true statement about this integration — it only ever meant the sandbox had not been built.

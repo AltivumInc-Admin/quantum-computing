@@ -28,7 +28,7 @@
  *
  *   STRIPE_API_KEY=$(op read "op://Quantum Learner/Stripe/add more/Secret Key") \
  *     node scripts/stripe/rotate-webhook-endpoint.mjs \
- *       --expect-account acct_1TuFow07hJdXv6GV \
+ *       --expect-account live \
  *       --url https://bfiloz43aa.execute-api.us-east-2.amazonaws.com/webhook \
  *       --secret-id quantum-stripe \
  *       --function quantum-stripe \
@@ -39,6 +39,7 @@
 import { createHmac } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { REQUIRED_WEBHOOK_EVENTS } from "../../lambda/stripe/index.mjs";
+import { resolveAccount } from "./lib/accounts.mjs";
 
 const args = process.argv.slice(2);
 const flag = (n) => {
@@ -46,7 +47,15 @@ const flag = (n) => {
   return i === -1 ? undefined : args[i + 1];
 };
 const key = process.env.STRIPE_API_KEY;
-const expectAccount = flag("--expect-account");
+// `live` / `sandbox` resolve to the recorded ids; an explicit acct_ passes
+// through. A retired id throws here rather than failing closed at Stripe.
+let expectAccount;
+try {
+  expectAccount = resolveAccount(flag("--expect-account"));
+} catch (err) {
+  console.error(err.message);
+  process.exit(2);
+}
 const url = flag("--url");
 const secretId = flag("--secret-id");
 const fnName = flag("--function");
