@@ -10,7 +10,7 @@ HTTP API v2, deployed in **us-east-2** (the Cognito pool's region).
 | --- | --- | --- | --- |
 | `POST` | `/checkout` | Cognito JWT | Create a Checkout Session for a tier subscription or a credit top-up; returns `{ url }`. |
 | `POST` | `/portal` | Cognito JWT | Create a Billing Portal Session (self-serve manage/cancel); returns `{ url }`. |
-| `GET` | `/wallet` | Cognito JWT | The caller's `{ tier, credits, subscriptionStatus }`. |
+| `GET` | `/wallet` | Cognito JWT | The caller's `{ tier, credits, subscriptionStatus, clawbackOwedCredits }`. |
 | `POST` | `/webhook` | **public** | Stripe-signed events. The **only** writer of credits and tier. |
 
 Identity on the authenticated routes is the verified Cognito `sub` from the API

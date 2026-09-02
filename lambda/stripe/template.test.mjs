@@ -125,6 +125,14 @@ test("the wallet table protects paid balances: Retain + PITR + TTL", () => {
   // Idempotency rows expire; wallet rows (no expiresAt) never do.
   assert.match(b, /AttributeName: expiresAt/);
   assert.match(b, /Enabled: true/);
+  // The stack's own Description is the first thing anyone reads about this
+  // table. It listed WALLET# and EVENT# only, though every refund path reads a
+  // RECEIPT# row this Lambda writes — and a row prefix nobody knows exists is
+  // one nobody protects.
+  const description = template.match(/^Description: >\n([\s\S]*?)\n\S/m)?.[1] ?? "";
+  for (const prefix of ["WALLET#", "EVENT#", "RECEIPT#"]) {
+    assert.ok(description.includes(prefix), `the stack Description omits the ${prefix} rows`);
+  }
 });
 
 test("the function's DynamoDB access is least-privilege and scoped to one table", () => {
@@ -232,13 +240,20 @@ test("the parameter defaults reproduce today's LIVE names exactly (a zero-diff u
       .replace(/^!Ref MetricNamespace$/, "QuantumStripe");
 
   const resolved = new Set(physicalNames().map(({ value }) => resolve(value)));
-  // Exactly what `aws cloudformation describe-stack-resources` reports today.
+  // Every name `aws cloudformation describe-stack-resources` reports today. It
+  // is one-directional on purpose: each of these must still be produced, but
+  // the template may legitimately declare names not yet deployed (a new alarm
+  // arrives here only once it exists in the live stack).
   for (const live of [
     "quantum-stripe-wallet",
     "quantum-stripe",
     "quantum-stripe-alerts",
     "quantum-stripe-errors",
     "quantum-stripe-uncredited-invoice",
+    // Born from an unnoticed rotation, and the one alarm whose live name this
+    // list forgot — so it was the only one a NamePrefix regression could have
+    // silently replaced.
+    "quantum-stripe-signature-rejected",
     "quantum-stripe-async-payment-failed",
     "quantum-stripe-unreclaimed-refund",
     "quantum-stripe-webhook-fault",

@@ -5,10 +5,11 @@ Description: >
   v2 Lambda with three Cognito-authorized routes (POST /checkout, POST /portal,
   GET /wallet) and one PUBLIC, Stripe-signature-verified route (POST /webhook)
   that is the sole writer of credits and tier. One DynamoDB table holds pk-
-  prefixed rows (WALLET#<sub>, EVENT#<id> with TTL); money -> credits is exactly
-  once via a conditional TransactWriteItems. Stripe keys arrive from Secrets
-  Manager at deploy time (never in the template or on the CLI). Deploy in
-  us-east-2 (the Cognito pool's region).
+  prefixed rows (WALLET#<sub>, EVENT#<id> with TTL, RECEIPT#<pi> with none — a
+  refund can arrive long after the idempotency marker has aged out); money ->
+  credits is exactly once via a conditional TransactWriteItems. Stripe keys
+  arrive from Secrets Manager at deploy time (never in the template or on the
+  CLI). Deploy in us-east-2 (the Cognito pool's region).
 
 Parameters:
   NamePrefix:
@@ -16,7 +17,7 @@ Parameters:
     Default: quantum-stripe
     Description: >
       Prefix for every physical, account-unique name in this stack (the wallet
-      table, the function, the SNS topic, all seven alarms). It exists so the
+      table, the function, the SNS topic, every alarm). It exists so the
       SAME template can be deployed a second time as a sandbox stack in this
       account and region, which is where payment and credit-issuance changes get
       exercised before they touch real money.
@@ -89,8 +90,8 @@ Resources:
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
-      # EVENT#<id> idempotency rows self-expire; WALLET#<sub> rows carry no
-      # expiresAt and so are never reclaimed.
+      # EVENT#<id> idempotency rows self-expire; WALLET#<sub> and RECEIPT#<pi>
+      # rows carry no expiresAt and so are never reclaimed.
       TimeToLiveSpecification:
         AttributeName: expiresAt
         Enabled: true
