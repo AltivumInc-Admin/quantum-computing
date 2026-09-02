@@ -826,13 +826,14 @@ export const es: TranslationDict = {
     plusTagline: "Créditos mensuales, incluidos en tu suscripción.",
     plusFootnote: "Cancela cuando quieras. Los créditos comprados no expiran.",
     plusF0: "Todo lo de Gratis",
-    plusF1: "1,900 créditos cada mes",
+    // Ver la nota en en.ts: la cifra viene de TIERS, nunca del diccionario.
+    plusF1: "{{credits}} cada mes",
     plusF2: "Los créditos se acumulan mientras estés suscrito",
     proTagline: "El paquete mensual de créditos más grande.",
     proFootnote:
       "Para quienes más lo usan. Cancela cuando quieras; los créditos no expiran.",
     proF0: "Todo lo de Plus",
-    proF1: "6,500 créditos cada mes — un 10% de bonificación sobre pago por uso",
+    proF1: "{{credits}} cada mes — un {{bonus}}% de bonificación sobre pago por uso",
     techSuperconducting108: "Superconductor, 108 cúbits",
     techSuperconducting: "Superconductor",
     techNeutralAtom: "Analógico de átomos neutros",

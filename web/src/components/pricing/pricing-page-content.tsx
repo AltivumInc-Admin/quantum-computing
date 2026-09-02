@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { isAuthConfigured } from "@/lib/auth-config";
 import {
+  CREDIT_USD,
   TIERS,
   type Tier,
   TUTOR_RATES,
@@ -45,12 +46,30 @@ const SIM_DESC_KEY: Record<string, string> = {
  * required every tier to have exactly five features and let lib/pricing.ts's own
  * feature strings drift out of sight. Reading Tier.featureKeys means the card renders
  * exactly what the data says, at whatever length the data says.
+ *
+ * Every bullet is resolved WITH the tier's figures, so a bullet that mentions the
+ * grant interpolates it instead of restating it. plusF1 and proF1 spelled the grant
+ * into i18n copy in both locales ("1,900 credits every month"), beside the grant line
+ * the card renders from TIERS — two sources for one number, on the point of sale,
+ * which is precisely the rule 13 failure this project has already shipped once.
+ *
+ * `bonus` is the grant's value over its own sticker price, both of which are
+ * published on this page; it discloses nothing about what anything costs to serve.
  */
-function tierCopy(t: TFunction, tier: Tier) {
+function tierCopy(t: TFunction, tier: Tier, credits: (n: number) => string) {
+  const values = {
+    credits: credits(tier.monthlyCredits),
+    bonus:
+      tier.priceUsdPerMonth > 0
+        ? Math.round(
+            ((tier.monthlyCredits * CREDIT_USD) / tier.priceUsdPerMonth - 1) * 100,
+          )
+        : 0,
+  };
   return {
     tagline: t(tier.taglineKey),
     footnote: t(tier.footnoteKey),
-    features: tier.featureKeys.map((key) => t(key)),
+    features: tier.featureKeys.map((key) => t(key, values)),
   };
 }
 
@@ -202,7 +221,7 @@ export function PricingPageContent() {
           <div className="grid gap-5 lg:grid-cols-3 items-start">
             {TIERS.map((tier) => {
               const featured = tier.id === "plus";
-              const copy = tierCopy(t, tier);
+              const copy = tierCopy(t, tier, credits);
               const displayName =
                 tier.id === "free" ? t("pricingUi.free") : tier.name;
               return (

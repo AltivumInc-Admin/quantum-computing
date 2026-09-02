@@ -5,8 +5,8 @@
 import "@testing-library/jest-dom";
 import { cleanup, render, screen } from "@testing-library/react";
 import PricingPage, { metadata } from "@/app/pricing/page";
-import { LocaleProvider } from "@/i18n";
-import { TIERS } from "@/lib/pricing";
+import { LocaleProvider, getDict, localeCode } from "@/i18n";
+import { TIERS, CREDIT_USD, formatCreditNumber } from "@/lib/pricing";
 
 function renderPricing() {
   return render(
@@ -750,19 +750,75 @@ describe("PricingPage copy honesty", () => {
     }
   });
 
-  it("keeps every tier's rendered bullets equal to its featureKeys", () => {
-    renderPricing();
-    for (const tier of TIERS) {
-      const heading = screen.getByRole("heading", {
-        level: 3,
-        name: tier.id === "free" ? "Free" : tier.name,
-      });
-      const card = heading.closest("div");
-      const bullets = card?.querySelectorAll("ul > li") ?? [];
-      // A bullet rendered from anywhere other than featureKeys (or a key that silently
-      // resolves to nothing) shows up here as a count mismatch.
-      expect(bullets.length).toBe(tier.featureKeys.length);
-      for (const li of bullets) expect(li.textContent?.trim().length).toBeGreaterThan(0);
+  it.each(SHIPPED_LOCALES)(
+    "keeps every tier's rendered bullets equal to its featureKeys (%s)",
+    (locale) => {
+      renderPricingIn(locale);
+      for (const tier of TIERS) {
+        const heading = screen.getByRole("heading", {
+          level: 3,
+          name: tier.id === "free" ? (locale === "es" ? "Gratis" : "Free") : tier.name,
+        });
+        const card = heading.closest("div");
+        const bullets = Array.from(card?.querySelectorAll("ul > li") ?? []);
+        // A bullet rendered from anywhere other than featureKeys (or a key that
+        // silently resolves to nothing) shows up here as a count mismatch.
+        expect(bullets.length).toBe(tier.featureKeys.length);
+        for (const li of bullets) expect(li.textContent?.trim().length).toBeGreaterThan(0);
+
+        // Every grouped figure on a paid card's bullets must be the tier's own
+        // grant. plusF1 and proF1 spelled "1,900" and "6,500" into i18n copy in
+        // both locales, beside the grant line the card renders from TIERS, and the
+        // guard here counted <li>s without reading one — so a reprice shipped a
+        // card showing two different grants, green.
+        if (tier.monthlyCredits > 0) {
+          const grant = formatCreditNumber(tier.monthlyCredits, localeCode(locale));
+          for (const li of bullets) {
+            for (const figure of li.textContent?.match(/\d[\d,]*\b/g) ?? []) {
+              // Percentages are derived from TIERS too, and are checked below.
+              if (li.textContent?.includes(`${figure}%`)) continue;
+              expect(figure).toBe(grant);
+            }
+          }
+        }
+      }
+    },
+  );
+
+  it.each(SHIPPED_LOCALES)(
+    "only claims a bonus over pay-as-you-go where the grant actually beats its price (%s)",
+    (locale) => {
+      // The claim is arithmetic over two figures this page publishes, so it can go
+      // stale silently: "a 10% bonus" was hand-computed into both dictionaries. If a
+      // reprice takes a tier to parity, the sentence has to stop being rendered, not
+      // quietly become "a 0% bonus".
+      renderPricingIn(locale);
+      for (const tier of TIERS) {
+        const heading = screen.getByRole("heading", {
+          level: 3,
+          name: tier.id === "free" ? (locale === "es" ? "Gratis" : "Free") : tier.name,
+        });
+        const text = heading.closest("div")?.textContent ?? "";
+        if (!/bonus|bonificaci[óo]n/i.test(text)) continue;
+        const bonus = Math.round(
+          ((tier.monthlyCredits * CREDIT_USD) / tier.priceUsdPerMonth - 1) * 100,
+        );
+        expect(bonus).toBeGreaterThan(0);
+        expect(text).toContain(`${bonus}%`);
+      }
+    },
+  );
+
+  it("states no grouped credit figure as raw dictionary copy", () => {
+    // The other half of the same defect: the number must reach the page through
+    // TIERS, never through a translator's fingers. A dictionary string carrying a
+    // grouped thousands figure is a second source of truth by construction.
+    for (const locale of SHIPPED_LOCALES) {
+      const pricingUi = (getDict(locale) as Record<string, unknown>)
+        .pricingUi as Record<string, unknown>;
+      const leaves = JSON.stringify(pricingUi);
+      const grouped = leaves.match(/\b\d{1,3},\d{3}\b/g) ?? [];
+      expect(grouped).toEqual([]);
     }
   });
 });

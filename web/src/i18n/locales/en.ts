@@ -902,15 +902,18 @@ export const en: TranslationDict = {
     plusTagline: "Monthly credits, included with your subscription.",
     plusFootnote: "Cancel anytime. Purchased credits never expire.",
     plusF0: "Everything in Free",
-    // No "bonus over pay-as-you-go" claim: under the 2026-08 pricing the monthly grant is
-    // deliberately worth less than the sticker price, so that framing is false. State the
-    // grant plainly and let the tier's model access carry the value.
-    plusF1: "1,900 credits every month",
+    // {{credits}} and {{bonus}} are interpolated from TIERS by tierCopy — never
+    // typed here. This key read "1,900 credits every month" as literal copy, in
+    // both locales, beside the grant line the card renders from the data; a
+    // reprice moved one and left the card showing two different grants. It also
+    // carried a comment claiming the grant is "worth less than the sticker
+    // price", which pricing.test.ts contradicts: parity is the asserted FLOOR.
+    plusF1: "{{credits}} every month",
     plusF2: "Credits roll over while you are subscribed",
     proTagline: "The largest monthly credit bundle.",
     proFootnote: "For the heaviest users. Cancel anytime; credits never expire.",
     proF0: "Everything in Plus",
-    proF1: "6,500 credits every month — a 10% bonus over pay-as-you-go",
+    proF1: "{{credits}} every month — a {{bonus}}% bonus over pay-as-you-go",
     // Hardware technology descriptors for rate table
     techSuperconducting108: "Superconducting, 108 qubits",
     techSuperconducting: "Superconducting",
