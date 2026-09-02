@@ -75,6 +75,24 @@ test("a preset chip fills the amount and updates the preview", async () => {
   expect(screen.getByRole("button", { name: "Buy 10,000 credits" })).toBeEnabled();
 });
 
+test("preset chips expose which one the amount field matches", async () => {
+  // Selection was carried by chip-selected alone, a pure colour swap, so a screen
+  // reader heard four unrelated buttons.
+  renderTopUp();
+  expect(screen.getByRole("button", { name: "$20" })).toHaveAttribute("aria-pressed", "true");
+  await userEvent.click(screen.getByRole("button", { name: "$100" }));
+  expect(screen.getByRole("button", { name: "$100" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "$20" })).toHaveAttribute("aria-pressed", "false");
+
+  // A typed amount that matches no preset leaves every chip unpressed.
+  const input = screen.getByLabelText("Custom amount (USD)");
+  await userEvent.clear(input);
+  await userEvent.type(input, "37");
+  for (const p of ["$5", "$20", "$50", "$100"]) {
+    expect(screen.getByRole("button", { name: p })).toHaveAttribute("aria-pressed", "false");
+  }
+});
+
 test("a custom amount starts checkout for exactly that amount", async () => {
   (startTopUp as jest.Mock).mockResolvedValue("https://checkout.stripe.com/c/pay/cs_x");
   renderTopUp();

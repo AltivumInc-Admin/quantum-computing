@@ -49,4 +49,31 @@ describe("CostEstimator", () => {
     fireEvent.click(screen.getByRole("button", { name: "10,000" }));
     expect(screen.getByText("1,664 credits")).toBeInTheDocument();
   });
+
+  it("exposes chip selection to assistive tech, not by colour alone", () => {
+    // chip-selected is a pure background swap (globals.css), so without
+    // aria-pressed a screen reader hears three unrelated buttons and nothing says
+    // which is active. Every other chip group in the repo carries this.
+    render(<CostEstimator />);
+    const chip = (name: string) => screen.getByRole("button", { name });
+
+    expect(chip("1,000")).toHaveAttribute("aria-pressed", "true"); // default shots
+    expect(chip("10,000")).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(chip("10,000"));
+    expect(chip("10,000")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("1,000")).toHaveAttribute("aria-pressed", "false");
+
+    expect(chip("Haiku")).toHaveAttribute("aria-pressed", "true"); // default model
+    fireEvent.click(chip("Fable"));
+    expect(chip("Fable")).toHaveAttribute("aria-pressed", "true");
+    expect(chip("Haiku")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("names its two preset groups distinctly", () => {
+    // Both groups were labelled "Presets", so the two entries in a screen
+    // reader's landmark/group list were indistinguishable.
+    render(<CostEstimator />);
+    expect(screen.getByRole("group", { name: "Shot presets" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Question presets" })).toBeInTheDocument();
+  });
 });

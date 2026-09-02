@@ -787,7 +787,9 @@ export const es: TranslationDict = {
     modelToPrice: "Modelo a calcular",
     modelNotSelectableYet:
       "Todavía no se puede elegir — hoy cada pregunta la responde gratis Claude Haiku. Calcula aquí cualquier modelo para ver cuánto costaría con la medición.",
-    presets: "Preajustes",
+    // Ver la nota en en.ts: los dos grupos necesitan nombres distintos.
+    shotPresets: "Preajustes de disparos",
+    questionPresets: "Preajustes de preguntas",
     priceHardware: "Precio de una ejecución de hardware",
     priceHardwareBody:
       "Una proyección de la tarifa medida, no un cobro. Las ejecuciones de hardware no están disponibles por ahora; antes de que cualquier ejecución se lleve a cabo, la comprobación previa del espacio de trabajo la cotiza en dólares a la tarifa de lista de AWS — no la cifra en créditos que se muestra aquí — y nada se ejecuta hasta que apruebes ese número.",

@@ -70,6 +70,11 @@ function PresetChips({
           key={p}
           type="button"
           onClick={() => onSelect(p)}
+          // The repo's chip contract (sampling-panel, shots-sampler,
+          // cost-estimate-widget, expectation-widget, jw-explorer): aria-pressed
+          // is the state channel, because chip-selected is a pure colour swap and
+          // says nothing to a screen reader.
+          aria-pressed={value === p}
           className={`rounded-chip px-3 py-1 text-sm font-medium tabular-nums interactive focus-ring ${
             value === p
               ? "chip-selected"
@@ -186,7 +191,7 @@ export function CostEstimator() {
                 value={shots}
                 onSelect={setShots}
                 format={(v) => v.toLocaleString(loc)}
-                ariaLabel={t("pricingUi.presets")}
+                ariaLabel={t("pricingUi.shotPresets")}
               />
             </div>
           </div>
@@ -227,6 +232,7 @@ export function CostEstimator() {
                   key={r.model}
                   type="button"
                   onClick={() => setModelIdx(i)}
+                  aria-pressed={modelIdx === i}
                   className={`rounded-chip px-3 py-1 text-sm font-medium interactive focus-ring ${
                     modelIdx === i
                       ? "chip-selected"
@@ -268,7 +274,7 @@ export function CostEstimator() {
                 value={questions}
                 onSelect={setQuestions}
                 format={(v) => v.toLocaleString(loc)}
-                ariaLabel={t("pricingUi.presets")}
+                ariaLabel={t("pricingUi.questionPresets")}
               />
             </div>
           </div>

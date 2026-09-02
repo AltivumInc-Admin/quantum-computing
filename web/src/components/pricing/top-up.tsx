@@ -87,6 +87,10 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
               key={p}
               type="button"
               onClick={() => setAmount(String(p))}
+              // The repo's chip contract. Selection here was colour-only, so a
+              // screen reader announced four unrelated buttons and could not say
+              // which one the amount field currently matches.
+              aria-pressed={parsed === p}
               className={`rounded-chip px-3 py-1.5 font-mono text-sm font-medium tabular-nums interactive focus-ring ${
                 parsed === p
                   ? "chip-selected"

@@ -851,7 +851,11 @@ export const en: TranslationDict = {
     // (no wallet table, no rate card) and answers on the free-tier default.
     modelNotSelectableYet:
       "Not selectable yet — every question today is answered free by Claude Haiku. Price any model here to see what metering would cost.",
-    presets: "Presets",
+    // Two preset groups render on this page. They carried the same accessible
+    // name, so a screen reader announced two identical "Presets" groups and the
+    // only way to tell them apart was to walk into one.
+    shotPresets: "Shot presets",
+    questionPresets: "Question presets",
     priceHardware: "Price a hardware run",
     // A forecast, and only a forecast. This pane prices eight backends in credits;
     // only one of them (IQM Garnet) is wired to the submit path at all, and the
