@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * E2E config for the in-browser Pyodide smoke. It serves the already-built static
- * export (web/out) and drives a real Chromium against the JupyterLite lab.
+ * E2E config for the in-browser smokes. It serves the already-built static export
+ * (web/out) and drives a real Chromium against it: the JupyterLite lab, the
+ * tier:"py" grader and its watchdog, the self-hosted Monaco editor, and the
+ * /workspace Lab launcher (which boots no kernel at all).
  *
  * `serve` is used (not `next start`, which is unavailable with output: "export"),
  * with NO SPA fallback (`-s`): the export emits a per-route index.html and the lab
@@ -31,7 +33,7 @@ export default defineConfig({
   // The lab is now fully same-origin (Pyodide + wheels self-hosted, comm bundled), so
   // the run is deterministic with no network dependency. The single CI retry is kept
   // only as insurance against CPU-contention timeouts on shared runners, not flaky
-  // CDN fetches; the spec also asserts zero third-party requests.
+  // CDN fetches; the browser specs also assert zero third-party requests.
   retries: process.env.CI ? 1 : 0,
   // Two files at a time in CI. The suite is now six specs — two JupyterLite
   // kernel boots (the second pulling the whole matplotlib wheel closure), three

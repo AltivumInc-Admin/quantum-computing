@@ -29,8 +29,11 @@ import {
  * Also asserts the whole flow is fully same-origin (zero third-party requests):
  * the grader must boot from the self-hosted /pyodide/, never the CDN fallback.
  *
- * The fixture page (src/app/e2e-fixtures/py-challenge/page.tsx) is the only
- * mount of a tier:"py" challenge; its spec and this test move in lockstep.
+ * Division of labour: this spec owns VERDICT and NAMESPACE semantics on a
+ * synthetic spec no lesson ships — its fixture page
+ * (src/app/e2e-fixtures/py-challenge/page.tsx) and this test move in lockstep.
+ * Coverage of the tier:"py" Reps that actually reach learners belongs to
+ * py-reps.e2e.ts, which drives every id in src/lib/py-reps.ts.
  */
 
 const WRONG_BUT_VALID = "from braket.circuits import Circuit\ncircuit = Circuit().x(0)";
