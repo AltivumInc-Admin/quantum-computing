@@ -9,7 +9,17 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { failureReason, heldFor, isVacuous, redact, render, sourceFiles, staleHolds, verdict } from "./rules.mjs";
+import {
+  failureReason,
+  handlerMismatch,
+  heldFor,
+  isVacuous,
+  redact,
+  render,
+  sourceFiles,
+  staleHolds,
+  verdict,
+} from "./rules.mjs";
 
 const TARGET = { region: "us-east-2", accountVerified: true };
 
@@ -210,4 +220,36 @@ test("a child that said nothing falls back to the stage, never to the argv", () 
 test("even a URL on stderr is redacted before it is reported", () => {
   const reason = failureReason({ stderr: "curl: (22) https://example.com/pkg.zip?X-Amz-Signature=x returned 403" }, "download failed");
   assert.doesNotMatch(reason, /https?:\/\//);
+});
+
+test("a module in the package that the repository never had is drift", () => {
+  const row = { ...clean("quantum-tutor"), ok: false, extra: ["leftover.mjs"] };
+  const v = verdict([row], HOLD);
+  assert.equal(v.exitCode, 1);
+  assert.match(render([row], HOLD, TARGET).join("\n"), /ONLY IN THE PACKAGE: leftover\.mjs/);
+});
+
+test("a repointed entry point is drift, and the row says both sides", () => {
+  const row = {
+    ...clean("quantum-qpu-submit"),
+    ok: false,
+    handlerDrift: { deployed: "old.handler", declared: "index.handler" },
+  };
+  assert.equal(verdict([row], HOLD).exitCode, 1);
+  assert.match(
+    render([row], HOLD, TARGET).join("\n"),
+    /ENTRYPOINT: deployed Handler is old\.handler, the template declares index\.handler/,
+  );
+});
+
+test("an entry point missing on either side is nothing to compare, not a mismatch", () => {
+  // lambda/stripe names its function through a parameter, so no template
+  // literal exists for it and its rows make no entry-point claim at all.
+  assert.equal(handlerMismatch("index.handler", "index.handler"), null);
+  assert.equal(handlerMismatch("index.handler", undefined), null);
+  assert.equal(handlerMismatch(undefined, "index.handler"), null);
+  assert.deepEqual(handlerMismatch("a.handler", "b.handler"), {
+    deployed: "a.handler",
+    declared: "b.handler",
+  });
 });

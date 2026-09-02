@@ -17,19 +17,19 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { FUNCTIONS, UNDERIVABLE, declaredFunctionNames, registryGaps } from "./rules.mjs";
+import { FUNCTIONS, UNDERIVABLE, declaredFunctionNames, declaredFunctions, registryGaps } from "./rules.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** Every { fn, dir } a lambda template declares as a literal FunctionName. */
+/** Every { fn, dir, handler } a lambda template declares as a literal. */
 const declaredInTemplates = () => {
   const declared = [];
   for (const entry of readdirSync(join(REPO, "lambda"), { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const template = join(REPO, "lambda", entry.name, "template.yaml");
     if (!existsSync(template)) continue;
-    for (const fn of declaredFunctionNames(readFileSync(template, "utf8"))) {
-      declared.push({ fn, dir: `lambda/${entry.name}` });
+    for (const d of declaredFunctions(readFileSync(template, "utf8"))) {
+      declared.push({ ...d, dir: `lambda/${entry.name}` });
     }
   }
   return declared;
@@ -103,4 +103,32 @@ test("a commented-out or !Ref FunctionName is not a declaration", () => {
     "      FunctionName: quantum-real",
   ].join("\n");
   assert.deepEqual(declaredFunctionNames(template), ["quantum-real"]);
+});
+
+test("every literal function declares an entry point for the Handler comparison", () => {
+  // The deployed-vs-declared Handler check is only as good as this: a template
+  // that stopped declaring one would silently take its function out of it.
+  for (const d of declaredInTemplates()) {
+    assert.match(d.handler ?? "", /^[\w.-]+\.handler$/, `${d.fn} declares no Handler`);
+  }
+});
+
+test("a Handler is attributed to the function in its own resource block", () => {
+  const template = [
+    "Resources:",
+    "  AlphaFunction:",
+    "    Type: AWS::Serverless::Function",
+    "    Properties:",
+    "      FunctionName: quantum-alpha",
+    "      Handler: alpha.handler",
+    "  BetaFunction:",
+    "    Type: AWS::Serverless::Function",
+    "    Properties:",
+    "      FunctionName: quantum-beta",
+    "      Handler: beta.handler",
+  ].join("\n");
+  assert.deepEqual(declaredFunctions(template), [
+    { fn: "quantum-alpha", handler: "alpha.handler" },
+    { fn: "quantum-beta", handler: "beta.handler" },
+  ]);
 });

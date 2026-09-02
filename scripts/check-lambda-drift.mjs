@@ -14,7 +14,10 @@
  *
  * Compares hand-written source only — node_modules and build metadata legitimately
  * differ between a packaged artifact and a working tree, and comparing them would make
- * this cry wolf until someone turned it off.
+ * this cry wolf until someone turned it off. Within that set the comparison runs BOTH
+ * ways (a module shipped that git never had is drift too), and the deployed Handler is
+ * compared to the template's, because a repointed entry point changes what executes
+ * while leaving every compared byte identical.
  *
  * Usage:  node scripts/check-lambda-drift.mjs [--json]
  * Exit:   0 = every function matches git   1 = drift found   2 = could not check
@@ -37,7 +40,15 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountCheck } from "./drift/account.mjs";
-import { FUNCTIONS, failureReason, render, sourceFiles as filterSources, verdict } from "./drift/rules.mjs";
+import {
+  FUNCTIONS,
+  declaredFunctions,
+  failureReason,
+  handlerMismatch,
+  render,
+  sourceFiles as filterSources,
+  verdict,
+} from "./drift/rules.mjs";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const REGION = process.env.AWS_REGION || "us-east-2";
@@ -101,6 +112,21 @@ const sourceFiles = (dir) => {
   return filterSources(readdirSync(dir)).filter((f) => statSync(join(dir, f)).isFile());
 };
 
+/**
+ * Entry point each function's template declares, by function name.
+ *
+ * Read from the working tree, compared against the deployed Handler below.
+ * lambda/stripe names its function through a parameter, so it contributes
+ * nothing here and its rows carry no entry-point claim (see UNDERIVABLE).
+ */
+const DECLARED_HANDLERS = new Map(
+  [...new Set(FUNCTIONS.map((f) => f.dir))]
+    .map((dir) => join(REPO, dir, "template.yaml"))
+    .filter((path) => existsSync(path))
+    .flatMap((path) => declaredFunctions(readFileSync(path, "utf8")))
+    .map((d) => [d.fn, d.handler]),
+);
+
 // WHICH account is this report about? The names below exist in more than one,
 // and the answer comes from ambient credentials — so the expectation is stated
 // in the environment and checked before a single function is read. Value-blind:
@@ -153,10 +179,11 @@ for (const { fn, dir } of FUNCTIONS) {
     stage = "unzip failed";
     sh("unzip", ["-oq", join(tmp, "fn.zip"), "-d", join(tmp, "fn")]);
 
+    const gitFiles = sourceFiles(srcDir);
     const drifted = [];
     const missing = [];
     let compared = 0;
-    for (const file of sourceFiles(srcDir)) {
+    for (const file of gitFiles) {
       const deployedPath = join(tmp, "fn", file);
       if (!existsSync(deployedPath)) { missing.push(file); continue; }
       const a = readFileSync(join(srcDir, file), "utf8");
@@ -165,9 +192,17 @@ for (const { fn, dir } of FUNCTIONS) {
       if (a !== b) drifted.push(file);
     }
 
+    // The comparison runs BOTH ways. Walking only the working-tree side means a
+    // top-level module that ships in the package and exists nowhere in the
+    // repository — a leftover, a hand-edited file, a build artifact — is never
+    // looked at, and the run still reports the function as matching.
+    const extra = sourceFiles(join(tmp, "fn")).filter((f) => !gitFiles.includes(f));
+
     stage = "aws lambda get-function-configuration failed";
-    const lastModified = shRetry("aws", ["lambda", "get-function-configuration", "--function-name", fn,
-      "--region", REGION, "--query", "LastModified", "--output", "text"]);
+    const [lastModified, deployedHandler] = shRetry("aws", ["lambda", "get-function-configuration",
+      "--function-name", fn, "--region", REGION, "--query", "[LastModified,Handler]",
+      "--output", "text"]).split(/\s+/);
+    const handlerDrift = handlerMismatch(deployedHandler, DECLARED_HANDLERS.get(fn));
 
     // Only a file present in BOTH and differing is drift. A file that exists in git but
     // not in the package is almost always an ops script that was never meant to ship
@@ -176,8 +211,8 @@ for (const { fn, dir } of FUNCTIONS) {
     // A zero-file comparison is not a match: "nothing differed" is trivially true
     // of nothing. `compared` is what makes the difference visible, here and on
     // every printed row.
-    const ok = compared > 0 && drifted.length === 0;
-    results.push({ fn, dir, ok, compared, drifted, missing, lastModified });
+    const ok = compared > 0 && drifted.length === 0 && extra.length === 0 && !handlerDrift;
+    results.push({ fn, dir, ok, compared, drifted, extra, missing, handlerDrift, lastModified });
   } catch (err) {
     results.push({ fn, dir, ok: false, error: failureReason(err, stage) });
   } finally {

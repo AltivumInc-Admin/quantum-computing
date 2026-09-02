@@ -68,9 +68,38 @@ export const UNDERIVABLE = [
   },
 ];
 
+/**
+ * Every function a CloudFormation template declares with a LITERAL name, and
+ * the entry point it declares for it.
+ *
+ * Split on top-level resource keys so a Handler is attributed to the function
+ * in its own block and not to a neighbour's.
+ */
+export function declaredFunctions(template) {
+  const declared = [];
+  for (const block of String(template).split(/^ {2}(?=[A-Za-z0-9]+: *$)/m)) {
+    const fn = block.match(/^ *FunctionName: *(quantum-[A-Za-z0-9-]+) *$/m)?.[1];
+    if (!fn) continue;
+    declared.push({ fn, handler: block.match(/^ *Handler: *(\S+) *$/m)?.[1] });
+  }
+  return declared;
+}
+
 /** Function names a CloudFormation template declares as a literal. */
-export const declaredFunctionNames = (template) =>
-  [...template.matchAll(/^ *FunctionName: *(quantum-[A-Za-z0-9-]+) *$/gm)].map((m) => m[1]);
+export const declaredFunctionNames = (template) => declaredFunctions(template).map((d) => d.fn);
+
+/**
+ * Is the DEPLOYED entry point the one the template declares?
+ *
+ * Comparing files answers "does the shipped code match git" but not "does the
+ * function still run the file we think it runs". A Handler repointed at
+ * another module — by a console edit, or a deploy from a branch — leaves every
+ * compared byte identical and changes what actually executes. Absent on either
+ * side means there is nothing to compare, not a mismatch: lambda/stripe names
+ * its function through a parameter, so no template literal exists for it.
+ */
+export const handlerMismatch = (deployed, declared) =>
+  deployed && declared && deployed !== declared ? { deployed, declared } : null;
 
 /**
  * Does the registry match what the templates declare?
@@ -196,6 +225,13 @@ export function render(results, held, target) {
       lines.push(`         Did the source directory move, or the package layout change?`);
     }
     for (const f of r.drifted) lines.push(`         DIFFERS from git: ${r.dir}/${f}`);
+    for (const f of r.extra ?? []) lines.push(`         ONLY IN THE PACKAGE: ${f}`);
+    if (r.handlerDrift) {
+      lines.push(
+        `         ENTRYPOINT: deployed Handler is ${r.handlerDrift.deployed}, ` +
+          `the template declares ${r.handlerDrift.declared}`,
+      );
+    }
     if (r.missing.length) {
       lines.push(`         (not packaged, assumed ops-only: ${r.missing.join(", ")})`);
     }
