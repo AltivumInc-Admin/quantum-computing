@@ -449,6 +449,55 @@ test("any other Amplify failure still throws, so the errors alarm fires", async 
   assert.equal(ddb.calls.length, 0);
 });
 
+test("a log that cannot be READ is flagged, not recorded as a quiet day", async () => {
+  // A format change that breaks every data line yields rows: [], which means no
+  // error, no matched-nothing (that needs off-site rows to exist), and a row of
+  // zeroes — indistinguishable from a day with no visitors. `malformed` was
+  // written to the row and returned to the invoker, and read by nothing.
+  const broken = [HEADER, "2026-08-19|10:00:00|198.51.100.4|/|200", "not,even,close"].join("\n");
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const { core, ddb } = makeCore({ logText: broken });
+    const out = await core({ today: "2026-08-20" });
+    assert.equal(out.requests, 0);
+    assert.equal(out.malformed, 2);
+    assert.ok(
+      warnings.some((w) => w.includes("analytics-parse-degraded")),
+      "must emit the line the metric filter alarms on",
+    );
+    assert.equal(ddb.calls[0].input.Item.malformed.N, "2", "and the evidence lands on the row");
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test("a handful of bad lines does NOT page — incidental damage is not a broken parse", async () => {
+  // parseLog drops a line it cannot trust precisely so one bad line does not
+  // cost the other 3,000. The alarm must respect the same reasoning or it
+  // cries wolf, and an alarm that cries wolf is worse than none.
+  const mostlyFine = [
+    HEADER,
+    ...Array.from({ length: 20 }, (_, i) =>
+      `2026-08-19,10:00:${String(i).padStart(2, "0")},198.51.100.4,/,200,-,Mozilla/5.0,learner.quantumenv.dev,text/html`,
+    ),
+    "truncated,row",
+  ].join("\n");
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  try {
+    const { core } = makeCore({ logText: mostlyFine });
+    const out = await core({ today: "2026-08-20" });
+    assert.equal(out.malformed, 1);
+    assert.ok(out.requests > 0);
+    assert.equal(warnings.some((w) => w.includes("analytics-parse-degraded")), false);
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
 test("a quiet day is recorded as zero, not skipped", async () => {
   const { core, ddb } = makeCore({ logText: HEADER });
   const out = await core({ today: "2026-08-20" });

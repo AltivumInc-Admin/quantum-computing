@@ -160,6 +160,10 @@ test("the bot-filter-incomplete alarm is wired to index.mjs's exact log line", (
   assertWarnAlarmChain("BotFilterIncomplete", "AnalyticsBotFilterAlarm");
 });
 
+test("the parse-degraded alarm is wired to index.mjs's exact log line", () => {
+  assertWarnAlarmChain("ParseDegraded", "AnalyticsParseDegradedAlarm");
+});
+
 test("the alerts topic reaches a human by email, and every alarm notifies it", () => {
   assert.equal(typeOf("AlertsTopic"), "AWS::SNS::Topic");
   assert.match(body("AlertsTopic"), /Protocol: email/);
@@ -177,6 +181,7 @@ test("the alerts topic reaches a human by email, and every alarm notifies it", (
       "AnalyticsDurationAlarm",
       "AnalyticsErrorsAlarm",
       "AnalyticsMatchedNothingAlarm",
+      "AnalyticsParseDegradedAlarm",
       "AnalyticsSilentAlarm",
       "AnalyticsThrottlesAlarm",
     ],

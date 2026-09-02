@@ -253,6 +253,45 @@ Resources:
       TreatMissingData: notBreaching
       AlarmActions: [!Ref AlertsTopic]
 
+  # The third silent degradation, and the subtlest: the log arrived and could
+  # not be READ. parseLog drops lines it cannot trust and counts them, so a
+  # format change that breaks every data line yields no rows, no error, and a
+  # row of zeroes that is indistinguishable from a quiet day — matched-nothing
+  # cannot see it either, because that needs off-site rows to exist. The handler
+  # only emits this above a share of the day's lines, so incidental damage stays
+  # quiet and this cannot cry wolf.
+  AnalyticsParseDegradedMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref AnalyticsLogGroup
+      FilterPattern: '"analytics-parse-degraded"'
+      MetricTransformations:
+        - MetricNamespace: QuantumAnalytics
+          MetricName: ParseDegraded
+          MetricValue: "1"
+          Unit: Count
+
+  AnalyticsParseDegradedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: quantum-analytics-parse-degraded
+      AlarmDescription: >-
+        A large share of the day's access-log lines could not be parsed, so the
+        counts recorded for it are an UNDERCOUNT — and a wholly unparseable log
+        records as a quiet day with no error at all. Almost always a change to
+        CloudFront's CSV columns or escaping: compare the header against COLUMNS
+        in classify.mjs. The malformed count is on the row.
+      Namespace: QuantumAnalytics
+      MetricName: ParseDegraded
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      # Quiet is healthy here: the metric only exists on a broken day.
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertsTopic]
+
   AnalyticsSilentAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:

@@ -161,6 +161,7 @@ loop), `scripts/check-lambda-drift.mjs` (`FUNCTIONS`), and
 | `quantum-analytics-did-not-run` | no invocation in 26 hours |
 | `quantum-analytics-slow` | duration approaching the 120s timeout |
 | `quantum-analytics-bot-filter-incomplete` | AWS's prefix list could not be fetched, so the datacenter filter did not run and that day's `humans` is an overcount — the run itself succeeded, so nothing else can see it |
+| `quantum-analytics-parse-degraded` | a large share of the day's log lines would not parse, so the counts are an undercount — a wholly unparseable log otherwise records as a quiet day |
 
 `did-not-run` is the only alarm in this stack that **breaches on missing data**,
 and deliberately so: a collector that silently stops looks exactly like a site

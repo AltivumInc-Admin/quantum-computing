@@ -39,6 +39,19 @@ export const AWS_RANGES_URL = "https://ip-ranges.amazonaws.com/ip-ranges.json";
 export const RANGES_TIMEOUT_MS = 10_000;
 export const LOG_DOWNLOAD_TIMEOUT_MS = 60_000;
 
+/**
+ * Above this share of unparseable lines, the parse is broken rather than lossy.
+ *
+ * parseLog drops a line it cannot trust and counts it, because one bad line
+ * must never cost the other 3,000. But a format change that makes EVERY data
+ * line unparseable produces rows: [], which reads as a quiet day — no error, no
+ * matched-nothing (that needs offSiteRequests > 0), and a row of zeroes. A
+ * partial break is worse: dropping 40% of a day's lines under-reports by 40%
+ * with every alarm green. Set well above incidental damage so a handful of bad
+ * lines never pages, per the cry-wolf reasoning in template.yaml.
+ */
+export const MAX_MALFORMED_SHARE = 0.2;
+
 /** Oldest day with retrievable logs, verified. Nothing before it can exist. */
 export const LAUNCH_DAY = "2026-06-28";
 
@@ -137,6 +150,16 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
       }
     });
     const { rows, malformed } = parseLog(csv);
+
+    // Emitted as a distinctive line so a metric filter can alarm on it
+    // (quantum-analytics-parse-degraded). Until now `malformed` was written to
+    // the row and returned to the invoker, and read by nothing.
+    if (malformed > 0 && malformed / (malformed + rows.length) > MAX_MALFORMED_SHARE) {
+      console.warn(
+        `analytics-parse-degraded day=${day} malformed=${malformed} parsed=${rows.length} — the ` +
+          `access log format has probably changed; this day's counts are an UNDERCOUNT`,
+      );
+    }
 
     const { index, complete, why } = await ranges();
     const summary = summarizeDay(rows, index, { day, siteHost });
