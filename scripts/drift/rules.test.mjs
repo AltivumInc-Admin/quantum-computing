@@ -9,7 +9,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { heldFor, render, sourceFiles, staleHolds, verdict } from "./rules.mjs";
+import { heldFor, isVacuous, render, sourceFiles, staleHolds, verdict } from "./rules.mjs";
 
 const TARGET = { region: "us-east-2", accountVerified: true };
 
@@ -17,8 +17,10 @@ const HOLD = [
   { fn: /^quantum-review-email-/, reason: "a stated reason", clearsWhen: "a stated condition" },
 ];
 
-const clean = (fn, dir = "lambda/x") => ({ fn, dir, ok: true, drifted: [], missing: [], lastModified: "2026-09-01T00:00:00.000+0000" });
-const drifting = (fn, dir = "lambda/x") => ({ fn, dir, ok: false, drifted: ["index.mjs"], missing: [], lastModified: "2026-09-01T00:00:00.000+0000" });
+const clean = (fn, dir = "lambda/x") => ({ fn, dir, ok: true, compared: 3, drifted: [], missing: [], lastModified: "2026-09-01T00:00:00.000+0000" });
+const drifting = (fn, dir = "lambda/x") => ({ fn, dir, ok: false, compared: 3, drifted: ["index.mjs"], missing: [], lastModified: "2026-09-01T00:00:00.000+0000" });
+// ok:false because the shell requires compared > 0 to call a row a match.
+const vacuous = (fn, dir = "lambda/x") => ({ fn, dir, ok: false, compared: 0, drifted: [], missing: [], lastModified: "2026-09-01T00:00:00.000+0000" });
 const errored = (fn, dir = "lambda/x") => ({ fn, dir, ok: false, error: "aws lambda get-function failed" });
 
 test("hand-written source is .mjs/.js at the top level, minus tests and probes", () => {
@@ -52,7 +54,7 @@ test("declared drift prints as HELD and does NOT fail the run", () => {
   assert.deepEqual(v.held.map((r) => r.fn), ["quantum-review-email-sender"]);
 
   const out = render(results, HOLD, TARGET).join("\n");
-  assert.match(out, /HELD {3}quantum-review-email-sender/);
+  assert.match(out, /HELD {4}quantum-review-email-sender/);
   assert.match(out, /HELD ON PURPOSE/);
   assert.match(out, /why: {3}a stated reason/);
   assert.match(out, /until: a stated condition/);
@@ -99,7 +101,47 @@ test("a clean run says so, with no hold noise", () => {
 });
 
 test("files git has but the package lacks are informational, not drift", () => {
-  const row = { fn: "quantum-qpu-submit", dir: "lambda/qpu", ok: true, drifted: [], missing: ["deploy-check.mjs"], lastModified: "x" };
+  const row = { fn: "quantum-qpu-submit", dir: "lambda/qpu", ok: true, compared: 2, drifted: [], missing: ["deploy-check.mjs"], lastModified: "x" };
   assert.equal(verdict([row], []).exitCode, 0);
   assert.match(render([row], [], TARGET).join("\n"), /not packaged, assumed ops-only: deploy-check\.mjs/);
+});
+
+test("a row that compared nothing is VACUOUS, fails the run, and says so", () => {
+  const results = [clean("quantum-tutor"), vacuous("quantum-stripe")];
+  assert.equal(isVacuous(results[1]), true);
+  const v = verdict(results, HOLD);
+  assert.equal(v.exitCode, 1);
+  assert.deepEqual(v.vacuous.map((r) => r.fn), ["quantum-stripe"]);
+
+  const out = render(results, HOLD, TARGET).join("\n");
+  assert.match(out, /VACUOUS quantum-stripe/);
+  assert.match(out, /NOTHING WAS COMPARED/);
+  assert.match(out, /1 of 2 functions compared NOTHING/);
+  // The claim this whole finding exists to prevent.
+  assert.doesNotMatch(out, /All \d+ unheld functions match git/);
+});
+
+test("every file landing in missing is vacuous too, not a clean row", () => {
+  const row = { fn: "quantum-analytics", dir: "lambda/analytics", ok: false, compared: 0, drifted: [], missing: ["index.mjs"], lastModified: "x" };
+  assert.equal(verdict([row], []).exitCode, 1);
+  assert.match(render([row], [], TARGET).join("\n"), /VACUOUS quantum-analytics/);
+});
+
+test("a HELD entry cannot excuse a vacuous row", () => {
+  // A hold declares that DRIFT is deliberate. Nothing here was compared closely
+  // enough to have drifted, so the hold has nothing to say about it.
+  const results = [vacuous("quantum-review-email-sender", "lambda/review-email")];
+  const v = verdict(results, HOLD);
+  assert.equal(v.exitCode, 1);
+  assert.equal(v.held.length, 0);
+  assert.match(render(results, HOLD, TARGET).join("\n"), /VACUOUS quantum-review-email-sender/);
+});
+
+test("a vacuous held row does not make a stale hold look live", () => {
+  assert.deepEqual(staleHolds(HOLD, [vacuous("quantum-review-email-prefs")]), HOLD);
+});
+
+test("the compared count prints on every row, so a shrinking one is visible", () => {
+  const out = render([clean("quantum-tutor")], [], TARGET).join("\n");
+  assert.match(out, /3 compared/);
 });

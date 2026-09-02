@@ -133,11 +133,13 @@ for (const { fn, dir } of FUNCTIONS) {
 
     const drifted = [];
     const missing = [];
+    let compared = 0;
     for (const file of sourceFiles(srcDir)) {
       const deployedPath = join(tmp, "fn", file);
       if (!existsSync(deployedPath)) { missing.push(file); continue; }
       const a = readFileSync(join(srcDir, file), "utf8");
       const b = readFileSync(deployedPath, "utf8");
+      compared += 1;
       if (a !== b) drifted.push(file);
     }
 
@@ -148,8 +150,11 @@ for (const { fn, dir } of FUNCTIONS) {
     // not in the package is almost always an ops script that was never meant to ship
     // (deploy-check.mjs, cfn-slice.mjs, backfill-*.mjs), and failing on those would make
     // this cry wolf until someone disabled it — which is how guards die.
-    const ok = drifted.length === 0;
-    results.push({ fn, dir, ok, drifted, missing, lastModified });
+    // A zero-file comparison is not a match: "nothing differed" is trivially true
+    // of nothing. `compared` is what makes the difference visible, here and on
+    // every printed row.
+    const ok = compared > 0 && drifted.length === 0;
+    results.push({ fn, dir, ok, compared, drifted, missing, lastModified });
   } catch (err) {
     results.push({ fn, dir, ok: false, error: String(err.message || err).split("\n")[0] });
   } finally {
