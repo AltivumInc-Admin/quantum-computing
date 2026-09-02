@@ -100,7 +100,9 @@ for (const ep of targets) {
   if (!ep.api_version) {
     problems.push(
       `${ep.url}: api_version is NULL, so payload shape follows the ACCOUNT DEFAULT and can change under a ` +
-        `deployed handler. Endpoint API version is creation-only — recreate the endpoint pinned (runbook §1.1c).`
+        `deployed handler. Endpoint API version is creation-only — recreate the endpoint pinned with ` +
+        `scripts/stripe/rotate-webhook-endpoint.mjs (it rotates the signing secret, recycles the function ` +
+        `and proves the new secret before retiring the old endpoint).`
     );
   }
   report.push({
