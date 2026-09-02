@@ -819,7 +819,7 @@ export const en: TranslationDict = {
       "Hardware rates track the providers' published price sheets (currently the {{date}} revision). Nothing on this page is fetched from a provider: these credit rates are compiled into the site, and the pre-flight check before a hardware run reads its own separate table of AWS dollar rates, also compiled in. A reprice reaches either table only through a new release — which is what the revision date on the rate table records.",
     faqBuyQ: "How do I buy credits?",
     faqBuyA:
-      "Right on this page: pick a plan, or top up any whole-dollar amount from $5 to $500 — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire — and nothing draws them down yet, so a balance today is a balance waiting for metering to ship.",
+      "Right on this page: pick a plan, or top up any whole-dollar amount from ${{min}} to ${{max}} — checkout is a hosted Stripe page, and credits land in your wallet the moment payment completes. Purchased credits never expire — and nothing draws them down yet, so a balance today is a balance waiting for metering to ship.",
     faqWhenQ: "When can I buy credits?",
     faqWhenA:
       "Billing is launching soon; the prices on this page are launch pricing. Until then, the tutor is free to try and hardware runs are not currently available — create your free account now so you are ready the moment wallets go live.",

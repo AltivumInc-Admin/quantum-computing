@@ -5,6 +5,7 @@
 // so this module is import-safe before the auth bridge configures Amplify.
 
 import { isAuthConfigured } from "./auth-config";
+import { TOPUP_MIN_USD, TOPUP_MAX_USD, type TierLookupKey } from "./pricing";
 
 /** All credit top-up lookup keys, matching the backend CATALOG + Stripe. */
 export type TopUpLookupKey =
@@ -13,7 +14,12 @@ export type TopUpLookupKey =
   | "ql_credits_5000"
   | "ql_credits_10000";
 
-export type CheckoutLookupKey = "ql_plus_monthly" | "ql_pro_monthly" | TopUpLookupKey;
+/**
+ * The tier half comes from lib/pricing.ts, which owns the published catalog; this
+ * module owns only the top-up packs. Both halves are checked against the backend
+ * CATALOG by __tests__/infra/tier-catalog-parity.test.ts.
+ */
+export type CheckoutLookupKey = TierLookupKey | TopUpLookupKey;
 
 export interface Wallet {
   tier: "free" | "plus" | "pro";
@@ -66,9 +72,12 @@ async function authHeader(): Promise<string> {
   return `Bearer ${token}`;
 }
 
-/** Custom top-up bounds — mirrors the server's validation (whole dollars). */
-export const TOPUP_MIN_USD = 5;
-export const TOPUP_MAX_USD = 500;
+/**
+ * Custom top-up bounds — mirrors the server's validation (whole dollars).
+ * Re-exported from lib/pricing.ts, which publishes them, so the amount this
+ * client refuses to send and the amount the page advertises cannot diverge.
+ */
+export { TOPUP_MIN_USD, TOPUP_MAX_USD };
 
 async function createSession(body: Record<string, unknown>): Promise<string> {
   const base = billingUrl();

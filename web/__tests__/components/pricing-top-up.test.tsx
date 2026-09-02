@@ -7,17 +7,23 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TopUp } from "@/components/pricing/top-up";
 
-jest.mock("@/lib/billing-client", () => ({
-  startTopUp: jest.fn(),
-  TOPUP_MIN_USD: 5,
-  TOPUP_MAX_USD: 500,
-  BillingAuthError: class BillingAuthError extends Error {
-    constructor() {
-      super("not signed in");
-      this.name = "BillingAuthError";
-    }
-  },
-}));
+// Only the network call is stubbed. The bounds come from the REAL published
+// constants: mocking them as fresh literals decoupled this suite from the source
+// of truth, so a change to the published floor could not redden the widget test.
+jest.mock("@/lib/billing-client", () => {
+  const pricing = jest.requireActual("@/lib/pricing");
+  return {
+    startTopUp: jest.fn(),
+    TOPUP_MIN_USD: pricing.TOPUP_MIN_USD,
+    TOPUP_MAX_USD: pricing.TOPUP_MAX_USD,
+    BillingAuthError: class BillingAuthError extends Error {
+      constructor() {
+        super("not signed in");
+        this.name = "BillingAuthError";
+      }
+    },
+  };
+});
 import { startTopUp, BillingAuthError } from "@/lib/billing-client";
 
 let navigate: jest.Mock;

@@ -763,7 +763,7 @@ export const es: TranslationDict = {
       "Las tarifas de hardware siguen las hojas de precios publicadas de los proveedores (actualmente la revisión de {{date}}). Nada en esta página se consulta al proveedor: estas tarifas en créditos están compiladas en el sitio, y la comprobación previa a una ejecución de hardware lee su propia tabla aparte de tarifas en dólares de AWS, también compilada. Un cambio de precio llega a cualquiera de las dos tablas solo con una nueva versión — que es lo que registra la fecha de revisión de la tabla de tarifas.",
     faqBuyQ: "¿Cómo compro créditos?",
     faqBuyA:
-      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de $5 a $500 — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran — y todavía nada los descuenta, así que un saldo de hoy es un saldo que espera a que se lance la medición.",
+      "Justo en esta página: elige un plan, o recarga cualquier monto en dólares enteros de ${{min}} a ${{max}} — el checkout es una página hospedada de Stripe, y los créditos llegan a tu billetera en cuanto se completa el pago. Los créditos comprados no expiran — y todavía nada los descuenta, así que un saldo de hoy es un saldo que espera a que se lance la medición.",
     faqWhenQ: "¿Cuándo puedo comprar créditos?",
     faqWhenA:
       "La facturación se lanza pronto; los precios de esta página son de lanzamiento. Hasta entonces, el tutor es gratis para probar y las ejecuciones de hardware no están disponibles por ahora — crea tu cuenta gratis ahora para estar listo en cuanto las billeteras se activen.",

@@ -11,10 +11,13 @@ import {
   SIMULATOR_RATES,
   TUTOR_RATES,
   TIERS,
+  TOPUP_MIN_USD,
+  TOPUP_MAX_USD,
   jobCredits,
   creditsToUsd,
   formatCredits,
   formatUsd,
+  formatUsdWhole,
 } from "@/lib/pricing";
 import { PRICING } from "@/components/quantum/cost";
 import { translate } from "@/i18n";
@@ -34,6 +37,23 @@ describe("pricing peg and helpers", () => {
   it("formats USD with two decimals", () => {
     expect(formatUsd(1.97)).toBe("$1.97");
     expect(formatUsd(18)).toBe("$18.00");
+  });
+
+  it("drops dead cents from whole-dollar figures, zero included", () => {
+    // The page carried this as an inline `.replace(".00", "")` twice, one of which
+    // also special-cased 0 — "$0.00" reduces to "$0" under the same rule, so the
+    // branch was dead weight that only invited the two copies to diverge.
+    expect(formatUsdWhole(19)).toBe("$19");
+    expect(formatUsdWhole(0)).toBe("$0");
+    expect(formatUsdWhole(TOPUP_MIN_USD)).toBe("$5");
+    // Non-whole amounts keep their cents rather than being silently truncated.
+    expect(formatUsdWhole(1.97)).toBe("$1.97");
+  });
+
+  it("publishes top-up bounds as one ordered whole-dollar pair", () => {
+    expect(Number.isInteger(TOPUP_MIN_USD)).toBe(true);
+    expect(Number.isInteger(TOPUP_MAX_USD)).toBe(true);
+    expect(TOPUP_MAX_USD).toBeGreaterThan(TOPUP_MIN_USD);
   });
 
   it("computes a job as shots x rate + task fee", () => {

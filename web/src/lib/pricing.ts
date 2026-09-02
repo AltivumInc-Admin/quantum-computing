@@ -12,8 +12,18 @@
 /** USD value of one credit. The peg never moves; prices move in credit terms. */
 export const CREDIT_USD = 0.01;
 
-/** Smallest pay-as-you-go top-up, in USD. */
-export const MIN_TOPUP_USD = 5;
+/**
+ * Published pay-as-you-go top-up bounds, in whole USD. ONE declaration, read by
+ * everything: the hero chip and the wallet principle on the page, the TopUp
+ * widget's input and its client-side validation (lib/billing-client.ts re-exports
+ * these rather than restating them), and the FAQ copy, which interpolates them
+ * instead of spelling the figures into prose. `lambda/stripe/index.mjs` holds the
+ * server copy under its own names; __tests__/infra/tier-catalog-parity.test.ts
+ * compares the two offline, because an advertised floor that differs from the
+ * enforced one rejects a valid amount before a request is ever sent.
+ */
+export const TOPUP_MIN_USD = 5;
+export const TOPUP_MAX_USD = 500;
 
 /** Provider price-sheet revision the hardware rates below reflect. */
 export const PRICES_AS_OF = "July 2026";
@@ -38,6 +48,16 @@ export function formatUsd(usd: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * "$19" — a whole-dollar figure without its dead cents. Sticker prices and the
+ * top-up floor are always whole dollars, and the page stripped the ".00" inline
+ * in two places, one of which additionally special-cased 0 even though "$0.00"
+ * reduces to "$0" under the very same rule.
+ */
+export function formatUsdWhole(usd: number): string {
+  return formatUsd(usd).replace(".00", "");
 }
 
 /* ------------------------------------------------------------------------- */
@@ -203,6 +223,14 @@ export const TUTOR_RATES: TutorRate[] = [
 /* Tiers                                                                     */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * Stripe price lookup keys for the two subscription tiers. Declared here, beside
+ * the tiers themselves, and imported by lib/billing-client.ts — the union was
+ * retyped by hand in both files, and two hand-kept copies of a key set can drift
+ * against each other and against the backend CATALOG with no compiler complaint.
+ */
+export type TierLookupKey = "ql_plus_monthly" | "ql_pro_monthly";
+
 export interface Tier {
   id: "free" | "plus" | "pro";
   name: string;
@@ -216,7 +244,7 @@ export interface Tier {
    * which has nothing to buy). Must match a key in the backend CATALOG and the
    * Stripe catalog.
    */
-  checkoutLookupKey?: "ql_plus_monthly" | "ql_pro_monthly";
+  checkoutLookupKey?: TierLookupKey;
   /**
    * i18n keys for the feature bullets, in display order. The card renders THESE, so a
    * bullet cannot ship without a translation in both locales and cannot appear on the

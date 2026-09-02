@@ -9,12 +9,14 @@ import {
   HARDWARE_RATES,
   SIMULATOR_RATES,
   TASK_FEE_CREDITS,
-  MIN_TOPUP_USD,
+  TOPUP_MIN_USD,
+  TOPUP_MAX_USD,
   PRICES_AS_OF,
   jobCredits,
   creditsToUsd,
   formatCredits,
   formatUsd,
+  formatUsdWhole,
 } from "@/lib/pricing";
 import { isBillingConfigured } from "@/lib/billing-client";
 import { CostEstimator } from "@/components/pricing/cost-estimator";
@@ -82,7 +84,7 @@ export function PricingPageContent() {
   const configured = isAuthConfigured();
   const billingLive = isBillingConfigured();
   const exampleShots = 1000;
-  const minTop = formatUsd(MIN_TOPUP_USD).replace(".00", "");
+  const minTop = formatUsdWhole(TOPUP_MIN_USD);
 
   const principles = [
     {
@@ -109,7 +111,13 @@ export function PricingPageContent() {
       a: t("pricingUi.faqProviderA", { date: PRICES_AS_OF }),
     },
     billingLive
-      ? { q: t("pricingUi.faqBuyQ"), a: t("pricingUi.faqBuyA") }
+      ? {
+          q: t("pricingUi.faqBuyQ"),
+          // The bounds are interpolated, not spelled into the answer: prose copies
+          // of a published figure are exactly how the advertised floor and the
+          // enforced floor come apart.
+          a: t("pricingUi.faqBuyA", { min: TOPUP_MIN_USD, max: TOPUP_MAX_USD }),
+        }
       : { q: t("pricingUi.faqWhenQ"), a: t("pricingUi.faqWhenA") },
   ];
 
@@ -213,9 +221,7 @@ export function PricingPageContent() {
                   <p className="mt-1 text-sm text-(--mut) min-h-10">{copy.tagline}</p>
                   <p className="mt-5 flex items-baseline gap-1.5 tabular-nums">
                     <span className="font-mono text-display-lg text-(--ink)">
-                      {tier.priceUsdPerMonth === 0
-                        ? "$0"
-                        : formatUsd(tier.priceUsdPerMonth).replace(".00", "")}
+                      {formatUsdWhole(tier.priceUsdPerMonth)}
                     </span>
                     <span className="text-sm text-caption">
                       {tier.priceUsdPerMonth === 0
