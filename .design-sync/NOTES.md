@@ -153,8 +153,10 @@ to match the repo's own playwright pin.
   Refine with `cfg.docsMap` stubs (`---\ncategory: <Group>\n---`) if needed.
 - **`.ds-sync/` is gitignored** (machine state). The durable inputs are under
   `.design-sync/` (config.json, NOTES.md, previews/, conventions.md). A fresh
-  clone must re-stage `.ds-sync/` (cp the skill scripts), recreate the
-  node_modules symlink, reinstall converter deps, and rebuild `web`.
+  clone runs `npm ci` in `web/`, the skill's `cp -r` of the driver scripts, then
+  `node scripts/design-sync/restage.mjs` — which rebuilds every repo-shaped
+  piece (symlink, tsconfig ordering, barrel, package stub). Converter deps and
+  the `web` build are still yours.
 
 ## TWO projects share the name "Quantum Learner Design System"
 
@@ -216,27 +218,32 @@ mirror was re-synced. Notes for next time:
   display-weight rule retired). Verified after-dark in the uploaded CSS: gold
   #c2a379 present, retired olive #8d9b51 absent. The jade imagery was pushed
   to the COMMISSIONED project (see the two-projects note above), not here.
+- DONE 2026-08-24: the commissioned project's `assets/imagery/*.webp` were the
+  TEAL-graded originals (verified against the product's jade regrades) even
+  though its own brand-imagery guideline says "cool greens". The three jade
+  regrades from `web/public/welcome/` were written to `ed6de090-…`'s
+  `assets/imagery/`, so the guideline card no longer contradicts its specimens.
 
-## Machine-state traps hit on 2026-08-24 (fix before the next resync)
+## Machine-state traps hit on 2026-08-24 — now handled by restage.mjs
+
+Both traps below cost a re-sync each. Neither is a to-do any more: run
+`node scripts/design-sync/restage.mjs`. Kept because the causes are subtle
+enough that a future reader of the script needs them, and because the second
+one's real fix is still open upstream.
 
 - `.ds-sync/pkg/node_modules` was a symlink to `…/altivum-dev/quantum/…`, a
-  path from a previous machine layout. Repoint it at the current checkout or
-  the driver dies with "--node-modules … does not exist".
+  path from a previous machine layout. The driver then dies with
+  "--node-modules … does not exist", which reads like a missing install rather
+  than a stale link. restage computes the target from the current checkout.
 - **The tsconfig-paths plugin cannot resolve a bare directory import.**
   `.ds-sync/lib/bundle.mjs` probes extensions starting with `''` using
   `existsSync`, which is TRUE for a directory — so `@/*` resolves `@/i18n` to
   the DIRECTORY and esbuild dies with `Cannot read file "web/src/i18n": is a
   directory`. It matches rules in KEY ORDER, not by specificity, so an exact
-  `"@/i18n"` rule only wins when it is listed BEFORE `"@/*"`. That ordering is
-  now in `.ds-sync/tsconfig.json` — but `.ds-sync/` is gitignored, so a fresh
-  clone must redo it. The real fix is upstream: the plugin should skip a
-  directory hit (statSync().isFile()) before accepting the empty extension.
-  This was NOT new breakage — `@/i18n` entered the components on 2026-07-24,
-  six days after the last successful sync, so the first regen since then hit it.
-
-- The remote project's `assets/imagery/*.webp` were the TEAL-graded
-  originals (verified 2026-08-24 against the product's jade regrades), even
-  though its own brand-imagery guideline says "cool greens". Restage them
-  from `web/public/welcome/` at re-sync so the guideline card stops
-  contradicting its specimens. DONE 2026-08-24 — the three jade regrades were
-  written to `ed6de090-…`'s `assets/imagery/`.
+  `"@/i18n"` rule only wins when it is listed BEFORE `"@/*"`. restage now
+  generates that ordering from the filesystem, so a directory added later is
+  covered without anyone rediscovering the rule. **The real fix is still open
+  and upstream**: the plugin should skip a directory hit (statSync().isFile())
+  before accepting the empty extension. This was NOT new breakage — `@/i18n`
+  entered the components on 2026-07-24, six days after the last successful
+  sync, so the first regen since then hit it.
