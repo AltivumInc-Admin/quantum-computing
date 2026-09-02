@@ -35,6 +35,20 @@
  *       --confirm-live
  *
  * --confirm-live is mandatory for any sk_live_ key. Sandbox needs no such flag.
+ *
+ * THE OTHER HALF OF THE SECRET. Secrets Manager holds {secretKey, webhookSecret},
+ * so this rotation rewrites the API key too. It stores STRIPE_API_KEY — the key
+ * GET /v1/account just proved belongs to --expect-account — and nothing else, the
+ * same thing provision-sandbox.mjs does. It used to shell out to `op read` for a
+ * SECOND key with no identity check at all, defaulted to the LIVE 1Password item;
+ * a sandbox rotation therefore wrote the LIVE key into the sandbox function's
+ * secret, after which the sandbox Lambda would create real customers and real
+ * charges on the live account, invisibly to every offline guard.
+ *
+ * --secret-key-ref <op://...> overrides it, for an operator driving the rotation
+ * with a restricted key. The override is read and VERIFIED (right account, right
+ * mode, a full sk_ key) BEFORE the replacement endpoint is minted, because the
+ * signing secret is returned only at creation: aborting after that point loses it.
  */
 import { createHmac } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
@@ -60,7 +74,9 @@ const url = flag("--url");
 const secretId = flag("--secret-id");
 const fnName = flag("--function");
 const region = flag("--region") ?? "us-east-2";
-const secretKeyRef = flag("--secret-key-ref") ?? "op://Quantum Learner/Stripe/add more/Secret Key";
+// No default: an unnamed ref used to mean the LIVE 1Password item, on every
+// path including the sandbox one.
+const secretKeyRef = flag("--secret-key-ref");
 const confirmLive = args.includes("--confirm-live");
 
 const die = (c, m) => {
@@ -74,9 +90,8 @@ for (const [v, n] of [[expectAccount, "--expect-account"], [url, "--url"], [secr
 const isLive = /^(sk|rk)_live_/.test(key);
 if (isLive && !confirmLive) die(2, "That is a LIVE key. Re-run with --confirm-live if you mean it.");
 
-const auth = `Basic ${Buffer.from(`${key}:`).toString("base64")}`;
-async function api(method, path, form) {
-  const init = { method, headers: { Authorization: auth } };
+async function apiAs(withKey, method, path, form) {
+  const init = { method, headers: { Authorization: `Basic ${Buffer.from(`${withKey}:`).toString("base64")}` } };
   if (form) {
     init.headers["Content-Type"] = "application/x-www-form-urlencoded";
     init.body = form.toString();
@@ -86,6 +101,7 @@ async function api(method, path, form) {
   if (body?.error) throw new Error(`${method} ${path}: ${body.error.message}`);
   return body;
 }
+const api = (method, path, form) => apiAs(key, method, path, form);
 
 const say = (verb, what) => console.log(`  ${verb.padEnd(9)} ${what}`);
 
@@ -106,6 +122,39 @@ const apiVersion = readFileSync(new URL("../../lambda/stripe/index.mjs", import.
 )?.[1];
 if (!apiVersion) die(2, "could not read the SDK apiVersion pin from index.mjs");
 
+// ---- the API key this rotation will store, resolved and PROVED before any write --
+// Ordering is the point: the replacement endpoint returns its signing secret once
+// and only at creation, so every reason to abort has to fire before that call.
+const handlerKey = await resolveHandlerKey();
+
+async function resolveHandlerKey() {
+  if (!secretKeyRef) {
+    // STRIPE_API_KEY already proved, above, that it belongs to expectAccount.
+    if (!/^sk_/.test(key)) {
+      die(
+        2,
+        "STRIPE_API_KEY is not a full secret key (sk_), so it cannot be what the deployed function " +
+          "authenticates to Stripe with. Pass --secret-key-ref <op://...> naming the key to store."
+      );
+    }
+    return key;
+  }
+  const read = spawnSync("op", ["read", secretKeyRef], { encoding: "utf8" });
+  if (read.status !== 0 || !read.stdout.trim()) die(1, `could not read ${secretKeyRef} from 1Password`);
+  const candidate = read.stdout.trim();
+  if (!/^sk_/.test(candidate)) die(1, `${secretKeyRef} is not a full Stripe secret key (sk_).`);
+  if (/^sk_live_/.test(candidate) !== isLive) {
+    die(1, `${secretKeyRef} is a ${/^sk_live_/.test(candidate) ? "LIVE" : "test"} key; this rotation is ${isLive ? "LIVE" : "sandbox"}.`);
+  }
+  // Identity is asserted for this key too, not inherited from the other one.
+  const who = await apiAs(candidate, "GET", "account");
+  if (who.id !== expectAccount) {
+    die(1, `${secretKeyRef} belongs to ${who.id} (${who.settings?.dashboard?.display_name ?? "?"}), expected ${expectAccount}.`);
+  }
+  say("verified", `${secretKeyRef} -> ${who.id}`);
+  return candidate;
+}
+
 const required = [...REQUIRED_WEBHOOK_EVENTS].sort();
 const { data: endpoints = [] } = await api("GET", "webhook_endpoints?limit=100");
 const old = endpoints.find((e) => e.url === url && e.status === "enabled");
@@ -118,12 +167,11 @@ const created = await api("POST", "webhook_endpoints", form);
 if (!created.secret) die(1, "Stripe returned no signing secret on create; aborting before anything is retired.");
 say("created", `${created.id} (${required.length} events, pinned ${created.api_version})`);
 
-// ---- store the secret, reconstructing the API key from 1Password -------------------
+// ---- store both halves of the secret ----------------------------------------------
 // Deliberately NOT `get-secret-value`: the existing secret is never read. The API
-// key half comes from 1Password, the webhook half from the create response above.
-const opRead = spawnSync("op", ["read", secretKeyRef], { encoding: "utf8" });
-if (opRead.status !== 0 || !opRead.stdout.trim()) die(1, `could not read ${secretKeyRef} from 1Password`);
-const payload = JSON.stringify({ secretKey: opRead.stdout.trim(), webhookSecret: created.secret });
+// key half is the one verified above, the webhook half comes from the create
+// response. Neither is ever printed.
+const payload = JSON.stringify({ secretKey: handlerKey, webhookSecret: created.secret });
 await new Promise((resolve, reject) => {
   const p = spawn(
     "aws",

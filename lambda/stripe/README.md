@@ -90,9 +90,19 @@ a secret is allowed; only *reading* `get-secret-value` is forbidden).
 **Phase 1 — create the secret with the Stripe key + a placeholder:**
 
 ```bash
-# Live uses the 1Password entry; for a sandbox stack, read the sandbox sk_test_ instead.
+# LIVE stack:
 SK=$(op read "op://Quantum Learner/Stripe/add more/Secret Key")
 aws secretsmanager create-secret --name quantum-stripe --region us-east-2 \
+  --secret-string "$(jq -nc --arg sk "$SK" '{secretKey:$sk, webhookSecret:"whsec_PLACEHOLDER"}')"
+unset SK
+```
+
+```bash
+# SANDBOX stack — a different 1Password item AND a different secret name. Both
+# halves have to change together: the live key under a sandbox secret name makes
+# the sandbox function bill real customers.
+SK=$(op read "op://Quantum Learner/Stripe Sandbox/Secret Key")
+aws secretsmanager create-secret --name quantum-stripe-sandbox --region us-east-2 \
   --secret-string "$(jq -nc --arg sk "$SK" '{secretKey:$sk, webhookSecret:"whsec_PLACEHOLDER"}')"
 unset SK
 ```
