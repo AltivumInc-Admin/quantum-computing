@@ -813,6 +813,9 @@ export const es: TranslationDict = {
     topUpFootnote:
       "Las recargas requieren un plan activo. Los créditos comprados no expiran, y verás el monto exacto en la página de checkout de Stripe antes de pagar.",
     checkoutFailed: "No se pudo iniciar el checkout. Inténtalo de nuevo.",
+    // Ver la nota en en.ts: el 403 del servidor, dicho con claridad.
+    topUpNeedsPlan:
+      "Las recargas requieren un plan activo, y esta cuenta todavía no tiene uno. Elige un plan arriba y vuelve para recargar.",
     freeTagline: "Toda la plataforma de aprendizaje. Sin tarjeta, sin reloj.",
     freeFootnote: "Gratis para siempre. Aprender nunca pasa detrás de la billetera.",
     freeF0: "Currículo completo — cada sección, cada cuaderno",

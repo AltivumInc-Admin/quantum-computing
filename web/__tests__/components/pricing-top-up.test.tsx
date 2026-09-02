@@ -23,9 +23,19 @@ jest.mock("@/lib/billing-client", () => {
         this.name = "BillingAuthError";
       }
     },
+    // instanceof must work in the component, and the status has to survive: the
+    // 403 branch is the whole point of the class.
+    BillingHttpError: class BillingHttpError extends Error {
+      status: number;
+      constructor(op: string, status: number) {
+        super(`billing ${op} failed (${status})`);
+        this.name = "BillingHttpError";
+        this.status = status;
+      }
+    },
   };
 });
-import { startTopUp, BillingAuthError } from "@/lib/billing-client";
+import { startTopUp, BillingAuthError, BillingHttpError } from "@/lib/billing-client";
 
 let navigate: jest.Mock;
 beforeEach(() => {
@@ -101,6 +111,34 @@ test("a failed checkout surfaces a retry message", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Buy 2,000 credits" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(/could not start checkout/i);
   expect(navigate).not.toHaveBeenCalled();
+});
+
+test("a 403 tells a free account it needs a plan, not to try again", async () => {
+  // lambda/stripe answers every top-up from an account without a paid tier with
+  // 403 "subscription required", on both the custom and the fixed-pack branch.
+  // The button is enabled for anyone with a valid amount, so this is the first
+  // thing a free learner meets — and "please try again" can never succeed.
+  (startTopUp as jest.Mock).mockRejectedValue(new BillingHttpError("checkout", 403));
+  renderTopUp();
+  await userEvent.click(screen.getByRole("button", { name: "Buy 2,000 credits" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/needs? an active plan/i);
+  expect(alert).not.toHaveTextContent(/try again/i);
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+test("a non-403 http failure keeps the retry advice", async () => {
+  (startTopUp as jest.Mock).mockRejectedValue(new BillingHttpError("checkout", 500));
+  renderTopUp();
+  await userEvent.click(screen.getByRole("button", { name: "Buy 2,000 credits" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/could not start checkout/i);
+});
+
+test("the plan-required refusal is localized too", async () => {
+  (startTopUp as jest.Mock).mockRejectedValue(new BillingHttpError("checkout", 403));
+  renderTopUp("es");
+  await userEvent.click(screen.getByRole("button", { name: "Comprar 2,000 créditos" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/requieren un plan activo/i);
 });
 
 test("the failure message is localized, not a hardcoded English literal", async () => {

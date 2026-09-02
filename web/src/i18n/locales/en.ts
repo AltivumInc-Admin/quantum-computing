@@ -881,6 +881,11 @@ export const en: TranslationDict = {
     topUpFootnote:
       "Top-ups require an active plan. Purchased credits never expire, and you will see the exact amount on the Stripe checkout page before paying.",
     checkoutFailed: "Could not start checkout. Please try again.",
+    // The server's 403, said plainly. Top-ups are a subscriber convenience, so
+    // "try again" is advice that cannot work for a free account — this states the
+    // rule the footnote already carries, at the moment it actually bites.
+    topUpNeedsPlan:
+      "Top-ups need an active plan, and this account does not have one yet. Start a plan above, then come back to top up.",
     // Tier marketing (names Free/Plus/Pro stay English product names). Every bullet
     // here must be true of the deployed system TODAY — the tier cards are the point of
     // sale, so a roadmap item a buyer could read as included belongs nowhere in them.

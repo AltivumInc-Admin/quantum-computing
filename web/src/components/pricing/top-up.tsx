@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import {
   startTopUp,
   BillingAuthError,
+  BillingHttpError,
   TOPUP_MIN_USD,
   TOPUP_MAX_USD,
 } from "@/lib/billing-client";
@@ -26,11 +27,18 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   const { t, locale } = useLocale();
   const [amount, setAmount] = useState("20");
   const [busy, setBusy] = useState(false);
-  // A flag, not a message. The message used to be an English literal set here,
-  // the only setError("…") string in web/src, rendered inside role="alert" under
-  // Spanish copy — while the sibling CheckoutButton took the byte-identical
-  // sentence from pricingUi.checkoutFailed, which both dictionaries carry.
-  const [error, setError] = useState(false);
+  // A refusal reason, never a message. The message used to be an English literal
+  // set here, the only setError("…") string in web/src, rendered inside
+  // role="alert" under Spanish copy — while the sibling CheckoutButton took the
+  // byte-identical sentence from pricingUi.checkoutFailed, which both
+  // dictionaries carry.
+  //
+  // "needsPlan" is its own state because the two refusals want opposite advice:
+  // the Lambda answers every top-up from a free account with 403 "subscription
+  // required" (index.mjs, both the custom and fixed-pack branches), which no
+  // amount of retrying will change, and the button is enabled for anyone with a
+  // valid amount. Telling that learner to try again is advice that cannot work.
+  const [error, setError] = useState<"failed" | "needsPlan" | null>(null);
   const inputId = useId();
 
   /** A credit figure with its localized, plural-aware unit. */
@@ -44,7 +52,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
   async function go() {
     if (!valid) return;
     setBusy(true);
-    setError(false);
+    setError(null);
     try {
       const url = await startTopUp(parsed);
       navigate(url); // leaves the page
@@ -53,7 +61,8 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
         navigate("/login?mode=signup");
         return;
       }
-      setError(true);
+      const needsPlan = e instanceof BillingHttpError && e.status === 403;
+      setError(needsPlan ? "needsPlan" : "failed");
       setBusy(false);
     }
   }
@@ -136,7 +145,14 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
           })}
         </p>
       )}
-      {error && (
+      {error === "needsPlan" && (
+        // A refusal, not a fault: warm, the same tint the range hint uses, rather
+        // than the danger tint a retryable failure earns.
+        <p role="alert" className="mt-3 text-xs text-warm-dark dark:text-warm-light">
+          {t("pricingUi.topUpNeedsPlan")}
+        </p>
+      )}
+      {error === "failed" && (
         <p role="alert" className="mt-3 text-xs text-danger-dark dark:text-danger-light">
           {t("pricingUi.checkoutFailed")}
         </p>
