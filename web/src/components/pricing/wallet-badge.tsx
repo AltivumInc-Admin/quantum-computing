@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { getWallet, isBillingConfigured, type Wallet } from "@/lib/billing-client";
-import { formatCredits } from "@/lib/pricing";
-import { useLocale } from "@/i18n";
+import { formatCreditNumber, roundCredits } from "@/lib/pricing";
+import { useLocale, localeCode } from "@/i18n";
 
 
 /**
@@ -22,7 +22,7 @@ function tierLabel(
 }
 
 export function WalletBadge() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [wallet, setWallet] = useState<Wallet | null>(null);
 
   useEffect(() => {
@@ -47,7 +47,13 @@ export function WalletBadge() {
       className="inline-flex items-center gap-2 rounded-chip border border-gray-200 dark:border-white/10 bg-(--surface-1) px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 tabular-nums"
       data-testid="wallet-badge"
     >
-      <span className="text-accent-dark dark:text-accent-light">{formatCredits(wallet.credits)}</span>
+      <span className="text-accent-dark dark:text-accent-light">
+        {t(
+          "pricingUi.creditsCount",
+          { n: formatCreditNumber(wallet.credits, localeCode(locale)) },
+          roundCredits(wallet.credits),
+        )}
+      </span>
       <span aria-hidden="true" className="text-gray-300 dark:text-gray-600">·</span>
       <span>
         {tierLabel(wallet.tier, t)} {t("pricingUi.plan")}

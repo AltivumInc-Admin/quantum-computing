@@ -8,14 +8,20 @@ import {
   TUTOR_RATES,
   jobCredits,
   creditsToUsd,
-  formatCredits,
+  formatCreditNumber,
+  roundCredits,
   formatUsd,
 } from "@/lib/pricing";
 
 const SHOT_PRESETS = [100, 1000, 10000];
 const QUESTION_PRESETS = [25, 100, 300];
 
-/** Big credits-first readout shared by both estimator panes. */
+/**
+ * Big credits-first readout shared by both estimator panes. It resolves its own
+ * locale rather than taking a preformatted string, because the credit unit is
+ * copy: the figure has to be grouped and pluralized for the reader, not printed
+ * in en-US English inside the Spanish page.
+ */
 function Readout({
   label,
   credits,
@@ -25,11 +31,16 @@ function Readout({
   credits: number;
   suffix?: string;
 }) {
+  const { t, locale } = useLocale();
   return (
     <div aria-live="polite" className="mt-6 border-t border-gray-200/60 dark:border-white/[0.08] pt-5">
       <p className="eyebrow eyebrow-mut">{label}</p>
       <p className="mt-1 font-mono text-display-lg text-(--ink) tabular-nums">
-        {formatCredits(credits)}
+        {t(
+          "pricingUi.creditsCount",
+          { n: formatCreditNumber(credits, localeCode(locale)) },
+          roundCredits(credits),
+        )}
         <span className="ml-2 text-base font-mono text-gray-500 dark:text-gray-400">
           {formatUsd(creditsToUsd(credits))}
           {suffix}

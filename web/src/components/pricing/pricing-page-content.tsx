@@ -14,7 +14,8 @@ import {
   PRICES_AS_OF,
   jobCredits,
   creditsToUsd,
-  formatCredits,
+  formatCreditNumber,
+  roundCredits,
   formatUsd,
   formatUsdWhole,
 } from "@/lib/pricing";
@@ -85,6 +86,9 @@ export function PricingPageContent() {
   const billingLive = isBillingConfigured();
   const exampleShots = 1000;
   const minTop = formatUsdWhole(TOPUP_MIN_USD);
+  /** A credit figure with its localized, plural-aware unit. */
+  const credits = (n: number) =>
+    t("pricingUi.creditsCount", { n: formatCreditNumber(n, loc) }, roundCredits(n));
 
   const principles = [
     {
@@ -232,7 +236,7 @@ export function PricingPageContent() {
                   {tier.monthlyCredits > 0 && (
                     <p className="mt-1 font-mono text-sm text-accent-dark dark:text-accent-light font-medium tabular-nums">
                       {t("pricingUi.creditsEveryMonth", {
-                        credits: formatCredits(tier.monthlyCredits),
+                        credits: credits(tier.monthlyCredits),
                       })}
                     </p>
                   )}
@@ -412,7 +416,7 @@ export function PricingPageContent() {
                             {r.creditsPerShot}
                           </td>
                           <td className="px-6 py-3 text-right tabular-nums text-(--mut)">
-                            {formatCredits(total)}
+                            {credits(total)}
                             <span className="block text-xs text-caption">
                               {formatUsd(creditsToUsd(total))}
                             </span>

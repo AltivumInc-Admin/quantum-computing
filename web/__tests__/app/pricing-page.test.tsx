@@ -731,6 +731,25 @@ describe("PricingPage copy honesty", () => {
     expect(screen.getByText(/once tutor metering ships/i)).toBeInTheDocument();
   });
 
+  it("renders no English credit unit inside the Spanish page (billing live)", () => {
+    // formatCredits() appended the English word with en-US grouping and was the only
+    // path to a credit figure on the page, so the Spanish storefront read "1,900
+    // credits cada mes", "1,664 credits" in the rate table and "Comprar 2,000
+    // credits" on the buy button — on its most number-dense surface. Billing live so
+    // the top-up widget and its buy button are mounted too.
+    setAuthEnv(true);
+    process.env.NEXT_PUBLIC_BILLING_URL = "https://billing.example.com";
+    try {
+      const { container } = renderPricingIn("es");
+      const text = container.textContent ?? "";
+      expect(text).not.toMatch(/\d\s*credits?\b/i);
+      // Non-vacuity: the figures ARE rendered, with the translated unit.
+      expect(text).toMatch(/\d\s*créditos\b/);
+    } finally {
+      delete process.env.NEXT_PUBLIC_BILLING_URL;
+    }
+  });
+
   it("keeps every tier's rendered bullets equal to its featureKeys", () => {
     renderPricing();
     for (const tier of TIERS) {

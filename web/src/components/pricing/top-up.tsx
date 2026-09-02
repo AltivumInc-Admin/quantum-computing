@@ -7,8 +7,8 @@ import {
   TOPUP_MIN_USD,
   TOPUP_MAX_USD,
 } from "@/lib/billing-client";
-import { formatCredits } from "@/lib/pricing";
-import { useLocale } from "@/i18n";
+import { formatCreditNumber, roundCredits } from "@/lib/pricing";
+import { useLocale, localeCode } from "@/i18n";
 
 const PRESETS = [5, 20, 50, 100];
 
@@ -23,11 +23,15 @@ function defaultNavigate(url: string) {
  * `navigate` is injectable for tests (jsdom locks window.location).
  */
 export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string) => void }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [amount, setAmount] = useState("20");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
+
+  /** A credit figure with its localized, plural-aware unit. */
+  const credits = (n: number) =>
+    t("pricingUi.creditsCount", { n: formatCreditNumber(n, localeCode(locale)) }, roundCredits(n));
 
   const parsed = Number(amount);
   const valid =
@@ -57,7 +61,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
       </h3>
       <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
         {t("pricingUi.topUpBody", {
-          credits: formatCredits(100),
+          credits: credits(100),
           min: TOPUP_MIN_USD,
           max: TOPUP_MAX_USD,
         })}
@@ -114,7 +118,7 @@ export function TopUp({ navigate = defaultNavigate }: { navigate?: (url: string)
             ? t("pricingUi.starting")
             : valid
               ? t("pricingUi.buyCreditsAmount", {
-                  amount: formatCredits(parsed * 100),
+                  amount: credits(parsed * 100),
                 })
               : t("pricingUi.buyCredits")}
         </button>

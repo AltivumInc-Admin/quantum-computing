@@ -715,6 +715,11 @@ export const es: TranslationDict = {
     bestForRegulars: "Ideal para uso regular",
     forever: "para siempre",
     perMonth: "/ mes",
+    // Ver la nota en en.ts: la unidad de crédito vive aquí, no en el formateador.
+    creditsCount: {
+      one: "{{n}} crédito",
+      other: "{{n}} créditos",
+    },
     creditsEveryMonth: "{{credits}} cada mes",
     getTier: "Obtener {{name}}",
     startFreeWhileWait: "Empieza gratis mientras esperas",

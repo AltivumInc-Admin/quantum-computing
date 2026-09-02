@@ -771,6 +771,16 @@ export const en: TranslationDict = {
     bestForRegulars: "Best for regulars",
     forever: "forever",
     perMonth: "/ month",
+    // The credit UNIT, in one place. Every credit figure on the page composes this
+    // with lib/pricing.ts formatCreditNumber(): `n` is the already-grouped figure
+    // and the raw count picks the form. It must never move back into the formatter
+    // — the word was hardcoded English there, and it rendered inside the Spanish
+    // page beside Spanish copy on the tier cards, the rate table, the estimator,
+    // the wallet chip and the buy button.
+    creditsCount: {
+      one: "{{n}} credit",
+      other: "{{n}} credits",
+    },
     creditsEveryMonth: "{{credits}} every month",
     getTier: "Get {{name}}",
     startFreeWhileWait: "Start free while you wait",

@@ -32,13 +32,29 @@ export function creditsToUsd(credits: number): number {
   return credits * CREDIT_USD;
 }
 
-/** "196 credits ($1.96)" — the standard dual display used across the page. */
-export function formatCredits(credits: number): string {
-  const rounded = Math.round(credits * 10) / 10;
-  const display = Number.isInteger(rounded)
-    ? rounded.toLocaleString("en-US")
-    : rounded.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  return `${display} credits`;
+/**
+ * A credit figure with no unit — grouped for the reader's locale, at most one
+ * decimal. The unit is COPY and belongs in the dictionaries: this used to return
+ * "N credits" with the word hardcoded in English and the grouping pinned to
+ * en-US, and since it was the only path to a credit figure on the page, the
+ * Spanish storefront rendered "1,900 credits cada mes" and "Comprar 2,000 credits"
+ * on its most number-dense surface. Compose it with `pricingUi.creditsCount`,
+ * which carries the translated, plural-aware unit — never re-append one here.
+ */
+export function formatCreditNumber(credits: number, localeTag = "en-US"): string {
+  const rounded = roundCredits(credits);
+  return Number.isInteger(rounded)
+    ? rounded.toLocaleString(localeTag)
+    : rounded.toLocaleString(localeTag, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+/**
+ * Credits as they are DISPLAYED — one decimal. The plural form has to be chosen
+ * from the same rounded figure the reader sees, or 1.02 credits renders as "1
+ * credits".
+ */
+export function roundCredits(credits: number): number {
+  return Math.round(credits * 10) / 10;
 }
 
 export function formatUsd(usd: number): string {

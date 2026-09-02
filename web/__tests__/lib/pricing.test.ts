@@ -15,7 +15,8 @@ import {
   TOPUP_MAX_USD,
   jobCredits,
   creditsToUsd,
-  formatCredits,
+  formatCreditNumber,
+  roundCredits,
   formatUsd,
   formatUsdWhole,
 } from "@/lib/pricing";
@@ -29,9 +30,26 @@ describe("pricing peg and helpers", () => {
   });
 
   it("formats credits with locale grouping and at most one decimal", () => {
-    expect(formatCredits(197.0000000003)).toBe("197 credits");
-    expect(formatCredits(50.3)).toBe("50.3 credits");
-    expect(formatCredits(1664)).toBe("1,664 credits");
+    expect(formatCreditNumber(197.0000000003)).toBe("197");
+    expect(formatCreditNumber(50.3)).toBe("50.3");
+    expect(formatCreditNumber(1664)).toBe("1,664");
+  });
+
+  it("carries no unit, and groups for the locale it is given", () => {
+    // The word "credits" was baked into this helper in English, which is how the
+    // Spanish page rendered "Comprar 2,000 credits". The unit is copy now
+    // (pricingUi.creditsCount); this returns a bare figure, and it must stay bare.
+    expect(formatCreditNumber(1664)).not.toMatch(/[A-Za-z]/);
+    expect(formatCreditNumber(1664, "es-MX")).not.toMatch(/[A-Za-z]/);
+    // es-MX groups thousands the same way, which is exactly why the untranslated
+    // unit was the visible half of the defect and the grouping was not.
+    expect(formatCreditNumber(1664, "es-MX")).toBe("1,664");
+  });
+
+  it("rounds to the figure that is displayed, so the plural form matches it", () => {
+    expect(roundCredits(197.0000000003)).toBe(197);
+    expect(roundCredits(1.02)).toBe(1);
+    expect(roundCredits(50.34)).toBe(50.3);
   });
 
   it("formats USD with two decimals", () => {
