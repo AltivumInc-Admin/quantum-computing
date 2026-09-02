@@ -33,10 +33,18 @@ export default defineConfig({
   // only as insurance against CPU-contention timeouts on shared runners, not flaky
   // CDN fetches; the spec also asserts zero third-party requests.
   retries: process.env.CI ? 1 : 0,
-  // Serial: each test boots its own Pyodide kernel; running them concurrently would
-  // pit two heavy WASM boots against each other on a 2-core CI runner and risk
-  // timeouts. Wall-clock is a few notebook runs, still well under the build-smoke job.
-  workers: 1,
+  // Two files at a time in CI. The suite is now six specs — two JupyterLite
+  // kernel boots (the second pulling the whole matplotlib wheel closure), three
+  // more Pyodide boots for the grader/watchdog/py-Reps specs, plus Monaco — so
+  // strict serialization made the wall clock the sum of every heavy boot,
+  // including the two specs that need no kernel at all.
+  //
+  // The parallelism unit is the FILE and no spec shares state: each drives its
+  // own fixture page and its own request log, so the per-page boot-count
+  // assertions stay valid however many workers run. Two is deliberately modest
+  // for a 2-core runner, and `retries: 1` above already covers a contention
+  // timeout. Locally, 1 keeps the output readable.
+  workers: process.env.CI ? 2 : 1,
   // `list` alone replaces the DEFAULT reporter set, so no playwright-report/ was
   // ever written and a red CI run left nothing but stdout — while the trace that
   // `retries: 1` + `trace: "on-first-retry"` exist to capture died with the
