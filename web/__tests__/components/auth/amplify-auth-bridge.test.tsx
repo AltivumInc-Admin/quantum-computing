@@ -60,7 +60,10 @@ const sessionWithEmail = (email: string) => ({
   tokens: { idToken: { payload: { email } } },
 });
 
-jest.mock("@/lib/auth-config", () => ({ amplifyAuthConfig: () => ({ Auth: { Cognito: {} } }) }));
+jest.mock("@/lib/auth-config", () => ({
+  amplifyAuthConfig: () => ({ Auth: { Cognito: {} } }),
+  cognitoConfig: () => ({ userPoolClientId: "testclient" }),
+}));
 
 // hashEmail stays real by default (the digest is deterministic and near-instant),
 // but wrapped in a jest.fn so one test can control exactly when it settles — that
@@ -100,13 +103,46 @@ const lastEmailHash = (m: jest.Mock) => m.mock.calls.at(-1)?.[0];
 describe("AmplifyAuthBridge", () => {
   beforeEach(() => {
     hubCb = null;
-    configure.mockClear();
+    localStorage.clear();
+    window.history.replaceState({}, "", "/");
+    configure.mockReset();
     setKeyValueStorage.mockClear();
     hubUnsub.mockClear();
     getCurrentUser.mockReset();
     fetchAuthSession.mockReset();
     amplifySignOut.mockReset();
     (hashEmail as jest.Mock).mockReset().mockImplementation(actualFoundingTen.hashEmail);
+  });
+
+  // The Google sign-in deadlock. Amplify keeps its OAuth handshake in
+  // localStorage while this bridge puts tokens in sessionStorage, and it blocks
+  // getCurrentUser() on an untimed, unrejectable promise while `inflightOAuth`
+  // reads "true". An abandoned "Continue with Google" therefore hung hydrate()
+  // on every later page load. The clear must happen BEFORE configure, because
+  // configure is what arms that gate.
+  it("clears a stale OAuth handshake, before Amplify.configure arms the gate", () => {
+    const K = "CognitoIdentityServiceProvider.testclient.";
+    localStorage.setItem(K + "inflightOAuth", "true");
+    localStorage.setItem(K + "oauthPKCE", "verifier");
+    localStorage.setItem(K + "oauthState", "state");
+    let flagAtConfigureTime: string | null = "unset";
+    configure.mockImplementation(() => {
+      flagAtConfigureTime = localStorage.getItem(K + "inflightOAuth");
+    });
+    getCurrentUser.mockRejectedValue(new Error("no user"));
+    setup();
+    expect(flagAtConfigureTime).toBeNull();
+    expect(localStorage.getItem(K + "oauthPKCE")).toBeNull();
+    expect(localStorage.getItem(K + "oauthState")).toBeNull();
+  });
+
+  it("keeps the handshake on a real callback, so the token exchange still runs", () => {
+    const K = "CognitoIdentityServiceProvider.testclient.";
+    localStorage.setItem(K + "inflightOAuth", "true");
+    window.history.replaceState({}, "", "/auth/callback?code=abc&state=xyz");
+    getCurrentUser.mockRejectedValue(new Error("no user"));
+    setup();
+    expect(localStorage.getItem(K + "inflightOAuth")).toBe("true");
   });
 
   it("configures Amplify and scopes Cognito tokens to sessionStorage", async () => {

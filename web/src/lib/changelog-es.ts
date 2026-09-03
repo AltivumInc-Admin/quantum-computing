@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-03-google-sign-in-stall": {
+    title: "Iniciar sesión con Google ya no se atasca ni dice que falló cuando funcionó",
+    body: "Iniciar sesión con Google podía quedarse en \"Iniciando sesión…\" durante quince segundos, mostrar \"El inicio de sesión con Google no se completó\" y aun así dejarte entrar un momento después. Un rastro de cualquier intento anterior con Google que no terminaste — un botón atrás, una pestaña cerrada, un reinicio del navegador a mitad del proceso — bloqueaba la comprobación que confirma quién eres, y el error era en realidad la página rindiéndose de esperar. Ese rastro ahora se borra antes de que algo lo espere. Dos arreglos relacionados: la página solo dice que el inicio de sesión falló cuando de verdad falló, y si llegaste desde una lección, Google te devuelve a esa lección en lugar de al espacio de trabajo.",
+  },
   "2026-09-02-pricing-page-reads-right": {
     title: "La página de precios se lee bien en español, y dice solo lo que es cierto",
     body: "Cada cifra de créditos de la página de precios en español se escribe ahora a la española, con la palabra en español y el separador de miles español, y las viñetas de cada plan toman sus números de la misma tabla que los precios, así que ya no pueden contradecirse. La descripción que los buscadores muestran de la página ya no hace una afirmación sobre precios que el monedero no implementa. Para quienes usan lector de pantalla o teclado: los botones de valores predefinidos anuncian cuál está seleccionado, las dos tablas de tarifas tienen nombre, la tabla de hardware se desplaza con el teclado, y la etiqueta del plan destacado se lee bien en el tema oscuro.",

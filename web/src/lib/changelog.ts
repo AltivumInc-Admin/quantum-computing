@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-03-google-sign-in-stall",
+    shipped: "2026-09-03",
+    kind: "fixed",
+    title: "Signing in with Google no longer stalls, or claims it failed when it worked",
+    body: "Signing in with Google could sit on \"Signing you in…\" for fifteen seconds, show \"Google sign-in didn't complete\", and then sign you in anyway a moment later. A leftover marker from any earlier Google attempt you did not finish — a back button, a closed tab, a browser restart part-way through — was blocking the check that confirms who you are, and the error was really just the page giving up waiting. The leftover is now cleared before anything waits on it. Two related fixes: the page only says sign-in failed when it actually did, and if you were sent to sign in from a lesson, Google now returns you to that lesson instead of the workspace.",
+    href: "/login",
+  },
+  {
     id: "2026-09-02-pricing-page-reads-right",
     shipped: "2026-09-02",
     kind: "fixed",
