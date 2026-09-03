@@ -29,12 +29,23 @@ interchangeable. Neither is the founder's Altivum address.
   subscription, which means the new address starts unconfirmed and the alarms go
   silent until someone clicks the link. Check with
   `aws sns list-subscriptions-by-topic` after any such change; a
-  `PendingConfirmation` subscription ARN is the symptom.
+  `PendingConfirmation` subscription ARN is the symptom for the first 48 hours.
+  **After 48 hours SNS deletes the unconfirmed subscription**, and the symptom
+  becomes an EMPTY list while every alarm still reads OK/ALARM normally; a
+  later stack update does NOT recreate it. That is exactly what happened to all
+  eight QL-Prod alarm topics between 2026-08-30 and 2026-09-02. Re-subscribe
+  with `aws sns subscribe` and confirm the same day, from the API
+  (`aws sns confirm-subscription --token` with the token in the email) rather
+  than waiting on a click.
 - **`INTERNAL_DOMAIN` in `infra/workspace/cognito.yaml` is still `altivum.ai`.** It
   is what the signup alert uses to say "internal account, does not occupy a
   founding-cohort slot". A future `@quantumlearner.dev` team account would be
-  reported as an external signup. Decide that when the signup alert actually
-  deploys — it never has (see below).
+  reported as an external signup. **The alerter IS deployed** — in QL-Prod
+  since 2026-08-29 as the pool's PostConfirmation trigger, inside the
+  `quantum-workspace-auth` stack — and has delivered since 2026-09-02; until
+  then every invocation died at load (an ESM `import` inside a CommonJS
+  `Code.ZipFile`), so no alert was ever sent and the decision is overdue, not
+  pending a deploy.
 - This repo is PUBLIC. These addresses are already published (the privacy page
   renders one), so naming them here discloses nothing new — but do not add a
   personal address that is not already public.
@@ -130,6 +141,18 @@ access with an actual `assume-role`, never from a successful `ListAccounts` — 
 
 **The default profile is Altivum.** Any AWS command intended for Delta Centric that
 omits `--profile` runs against Altivum production instead, silently.
+
+**Deploying `infra/workspace/cognito.yaml` (stack `quantum-workspace-auth`, QL-Prod
+us-east-2): keep `SiteUrl` at its previous value.** The template declares ONE
+callback and ONE logout URL per app client (`${SiteUrl}/auth/callback`), but
+the live client carries four of each (localhost, `learner.quantumenv.dev`, the
+amplifyapp host, `quantumlearner.dev`), added by hand during the domain flip.
+CloudFormation only rewrites a resource whose resolved properties changed, so a
+change set built with `UsePreviousValue=true` for `SiteUrl` (and for the Google
+client id/secret) leaves the client alone; the change set's resource list must
+NOT contain `UserPoolClient` — if it does, stop, or Google sign-in on the
+canonical domain breaks. Declaring all four URLs in the template is the real
+fix and is still owed.
 
 **`docs/account-migration-runbook.md`'s destination was re-pointed to QL-Prod
 (2026-08-27).** It was written 2026-07-18 to blue-green from the Altivum original
