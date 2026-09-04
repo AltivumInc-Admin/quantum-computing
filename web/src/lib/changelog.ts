@@ -60,6 +60,15 @@ export const CHANGELOG: readonly ChangeEntry[] = [
     href: "/login",
   },
   {
+    id: "2026-09-03-notebooks-that-teach",
+    shipped: "2026-09-03",
+    kind: "improved",
+    title: "The lesson notebooks explain themselves",
+    body: "Every notebook in the curriculum has been rewritten to teach, not just to label. Each section now says what the code is about to show, what to look for in the result, and the mistake it is steering you around \u2014 with the honest caveats included, so you learn where each idea stops working as well as where it starts. The exercises, hints and self-checks are unchanged.",
+    href: "/learn/00-prereqs",
+    section: "00-prereqs",
+  },
+  {
     id: "2026-09-02-pricing-page-reads-right",
     shipped: "2026-09-02",
     kind: "fixed",
