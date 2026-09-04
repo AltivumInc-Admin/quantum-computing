@@ -386,6 +386,8 @@ export const en: TranslationDict = {
     setNewPassword: "Set new password",
     continueWithGoogle: "Continue with Google",
     googleFailed: "Google sign-in didn't complete. Please try again.",
+    signInTimedOut:
+      "Sign-in is taking longer than usual. If you are not signed in a moment from now, please try again.",
     checkingAccess: "Checking your access…",
     accountMenu: "Account",
     workspace: "Workspace",

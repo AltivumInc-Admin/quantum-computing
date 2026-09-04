@@ -18,6 +18,7 @@ import {
   SIGN_IN_INCOMPLETE,
   type AuthView,
 } from "@/lib/auth-errors";
+import { OAUTH_NEXT_KEY, isSafeNext } from "@/lib/oauth-inflight";
 import { hasUserPoolAdminScope } from "@/lib/auth-session";
 import { allCriteriaMet } from "@/lib/password-policy";
 import { PasswordField } from "./password-field";
@@ -42,11 +43,19 @@ export function AuthForm() {
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  // Google failure lands with ?error=google — resolve from the active dictionary
-  // at first render (no setState-in-effect; locale is already available).
-  const [error, setError] = useState<string | null>(() =>
-    params.get("error") === "google" ? t("auth.googleFailed") : null,
-  );
+  // A failed Google round-trip lands with ?error=google; a callback that simply
+  // never resolved lands with ?error=timeout. They are deliberately different:
+  // the first is evidence the provider refused, the second is only evidence we
+  // stopped waiting, and telling a learner their sign-in failed when it was
+  // merely slow is how this page spent a year lying about a deadlock.
+  // Resolved from the active dictionary at first render (no setState-in-effect;
+  // locale is already available).
+  const [error, setError] = useState<string | null>(() => {
+    const reason = params.get("error");
+    if (reason === "google") return t("auth.googleFailed");
+    if (reason === "timeout") return t("auth.signInTimedOut");
+    return null;
+  });
   const [busy, setBusy] = useState(false);
   // Resend-code feedback + a cooldown that guards rapid re-clicks straight into a
   // Cognito rate-limit and gives the user explicit confirmation a code was re-sent.
@@ -177,6 +186,16 @@ export function AuthForm() {
   // Cognito's /logout and back — so unlike signInFresh this path may sign out.
   const doGoogle = async () => {
     setError(null);
+    // Carry the visitor's destination across the hop. Cognito's registered
+    // redirect URI is a fixed /auth/callback, so ?next= does not survive the
+    // round trip; sessionStorage is per-tab, which is exactly this trip's scope.
+    try {
+      const next = params.get("next");
+      if (isSafeNext(next)) window.sessionStorage.setItem(OAUTH_NEXT_KEY, next!);
+      else window.sessionStorage.removeItem(OAUTH_NEXT_KEY);
+    } catch {
+      // Blocked storage just means we land on the default destination.
+    }
     try {
       await signInWithRedirect({ provider: "Google" });
     } catch (err) {

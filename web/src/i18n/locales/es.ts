@@ -384,6 +384,8 @@ export const es: TranslationDict = {
     setNewPassword: "Establecer nueva contraseña",
     continueWithGoogle: "Continuar con Google",
     googleFailed: "El inicio de sesión con Google no se completó. Inténtalo de nuevo.",
+    signInTimedOut:
+      "El inicio de sesión está tardando más de lo habitual. Si en un momento no has entrado, inténtalo de nuevo.",
     checkingAccess: "Comprobando tu acceso…",
     accountMenu: "Cuenta",
     workspace: "Espacio de trabajo",

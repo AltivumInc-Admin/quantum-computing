@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-03-google-sign-in-stall": {
+    title: "Iniciar sesión con Google ya no se atasca ni dice que falló cuando funcionó",
+    body: "Iniciar sesión con Google podía quedarse en \"Iniciando sesión…\" durante quince segundos, mostrar \"El inicio de sesión con Google no se completó\" y aun así dejarte entrar un momento después. Un rastro de cualquier intento anterior con Google que no terminaste — un botón atrás, una pestaña cerrada, un reinicio del navegador a mitad del proceso — bloqueaba la comprobación que confirma quién eres, y el error era en realidad la página rindiéndose de esperar. Ese rastro ahora se borra antes de que algo lo espere. Dos arreglos relacionados: la página solo dice que el inicio de sesión falló cuando de verdad falló, y si llegaste desde una lección, Google te devuelve a esa lección en lugar de al espacio de trabajo.",
+  },
   "2026-09-03-notebooks-that-teach": {
     title: "Los cuadernos de las lecciones ahora se explican solos",
     body: "Cada cuaderno del plan de estudios se ha reescrito para ense\u00f1ar, no solo para etiquetar. Cada secci\u00f3n dice ahora qu\u00e9 va a mostrar el c\u00f3digo, en qu\u00e9 fijarse en el resultado y el error que te est\u00e1 evitando, con las salvedades honestas incluidas, para que aprendas d\u00f3nde deja de funcionar cada idea y no solo d\u00f3nde empieza. Los ejercicios, las pistas y las autocomprobaciones no cambian.",

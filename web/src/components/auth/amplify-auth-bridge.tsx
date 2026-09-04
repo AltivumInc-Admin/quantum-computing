@@ -10,7 +10,8 @@ import {
 } from "aws-amplify/auth";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 import { setCurrentOwner } from "@/lib/progress-owner";
-import { amplifyAuthConfig } from "@/lib/auth-config";
+import { amplifyAuthConfig, cognitoConfig } from "@/lib/auth-config";
+import { clearStaleOAuthHandshake } from "@/lib/oauth-inflight";
 import { hashEmail } from "@/lib/founding-ten";
 import type { AuthStatus } from "./auth-provider";
 
@@ -97,6 +98,21 @@ export default function AmplifyAuthBridge({
   useEffect(() => {
     const cfg = amplifyAuthConfig();
     if (cfg) {
+      // BEFORE configure, and before anything can await a token: drop an OAuth
+      // handshake this page is not part of. Amplify keeps those keys in
+      // localStorage (shared across tabs, surviving a restart) while the tokens
+      // they refer to live in per-tab sessionStorage below, and it BLOCKS
+      // getCurrentUser()/fetchAuthSession() on an untimed, unrejectable promise
+      // while `inflightOAuth` reads "true". One abandoned "Continue with
+      // Google" therefore hung hydrate() on every later load until the callback
+      // page timed out — sign-in appeared to fail and then instantly succeed,
+      // because clearing the flag is what released the blocked call.
+      // See lib/oauth-inflight.ts; a real callback (code+state, or error) keeps
+      // its handshake and exchanges normally.
+      const client = cognitoConfig()?.userPoolClientId;
+      if (client && typeof window !== "undefined") {
+        clearStaleOAuthHandshake(window.localStorage, client, window.location.search);
+      }
       Amplify.configure(cfg);
       // Scope Cognito tokens to per-tab sessionStorage instead of the v6 default
       // localStorage (shared across same-origin tabs, incl. the Pyodide lab).

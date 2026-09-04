@@ -28,6 +28,7 @@ describe("CallbackPage", () => {
     mockAuth = { status: "configuring" };
     replace.mockReset();
     hubCb = null;
+    sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -58,14 +59,34 @@ describe("CallbackPage", () => {
     expect(replace).toHaveBeenCalledWith("/login?error=google");
   });
 
-  it("falls back to /login?error=google if nothing resolves within the timeout", () => {
+  it("reports a TIMEOUT, not a Google failure, when nothing resolves in time", () => {
+    // The distinction is the point: a timeout is evidence we stopped waiting,
+    // never evidence the provider refused. Claiming the latter is what made a
+    // successful-but-slow sign-in look broken.
     jest.useFakeTimers();
     render(<CallbackPage />);
     expect(replace).not.toHaveBeenCalled();
     act(() => {
       jest.advanceTimersByTime(15000);
     });
-    expect(replace).toHaveBeenCalledWith("/login?error=google");
+    expect(replace).toHaveBeenCalledWith("/login?error=timeout");
+    expect(replace).not.toHaveBeenCalledWith("/login?error=google");
+  });
+
+  it("returns the visitor to the destination stashed before the Google hop", () => {
+    sessionStorage.setItem("qc:oauth:next", "/learn/03-algorithms");
+    mockAuth = { status: "authenticated" };
+    render(<CallbackPage />);
+    expect(replace).toHaveBeenCalledWith("/learn/03-algorithms");
+    // consumed, so a later plain sign-in does not inherit it
+    expect(sessionStorage.getItem("qc:oauth:next")).toBeNull();
+  });
+
+  it("ignores an off-origin destination (no open redirect)", () => {
+    sessionStorage.setItem("qc:oauth:next", "//evil.example.com/x");
+    mockAuth = { status: "authenticated" };
+    render(<CallbackPage />);
+    expect(replace).toHaveBeenCalledWith("/workspace");
   });
 
   it("clears the timeout once authenticated (no stray redirect to login)", () => {
@@ -78,5 +99,6 @@ describe("CallbackPage", () => {
       jest.advanceTimersByTime(15000);
     });
     expect(replace).not.toHaveBeenCalledWith("/login?error=google");
+    expect(replace).not.toHaveBeenCalledWith("/login?error=timeout");
   });
 });
