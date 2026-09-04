@@ -1,4 +1,4 @@
-.PHONY: setup git-filters lab test devices cost lint stripe-parity drift design-sync deploy-infra teardown-infra lock-container
+.PHONY: setup git-filters lab test devices cost lint stripe-parity drift fleet design-sync deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -110,3 +110,20 @@ lock-container:
 	pip-compile 06-hybrid-jobs/containers/requirements.in \
 		--output-file=06-hybrid-jobs/containers/requirements.lock \
 		--strip-extras --allow-unsafe
+
+fleet:
+	@# Does the fleet this repo TEACHES still exist on Amazon Braket? Every other
+	@# device guard reads lib/hardware/devices.py and asserts something against it —
+	@# shot bounds, the Lambda's device constants, the web mirror — so a retired
+	@# device blesses itself: the row says it is fine and every check reads the row.
+	@# This is the only check that asks AWS. It compares BOTH ways: a row the live
+	@# fleet contradicts (a dispatch bug — run_circuit prints a cost estimate and
+	@# submits to a machine the service will refuse), and an ONLINE device the
+	@# curriculum has no row for (the half no test derived from devices.py can
+	@# produce). Read-only: braket:SearchDevices in five regions, no task, no spend.
+	@# With no credentials it prints SKIPPED and exits 0 rather than failing.
+	@# NO account pinning, unlike `drift`: the Braket device catalog is a per-region
+	@# SERVICE catalog, identical for every account, so DRIFT_EXPECT_ACCOUNT would
+	@# pin nothing here. Runs nightly in .github/workflows/device-fleet.yml.
+	@# Exit: 0 current  1 divergent  2 could not check.
+	node scripts/check-device-fleet.mjs

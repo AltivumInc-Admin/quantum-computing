@@ -14,6 +14,7 @@ from lib.hardware import (
     allowlisted_gate_devices,
     cheapest_allowlisted_device,
 )
+from lib.hardware.devices import device_status, dispatchable_devices
 from lib.utils.cost import PRICING
 
 QPU_CORE = Path(__file__).resolve().parent.parent / "lambda" / "qpu" / "qpu-core.mjs"
@@ -27,10 +28,34 @@ def test_iqm_garnet_is_the_only_v1_allowlisted_device():
 def test_quera_is_not_gate_capable_and_ionq_is_not_allowlisted():
     # QuEra Aquila is analog-only — it can never be a gate-circuit QPU.
     assert DEVICES["quera_aquila"]["gate_capable"] is False
-    # IonQ Forte is gate-capable but OFF the allowlist (its 2500-shot mitigation
-    # floor is unmodeled, so the ledger would under-charge by ~$200).
-    assert DEVICES["ionq_forte"]["gate_capable"] is True
-    assert DEVICES["ionq_forte"]["allowlist"] is False
+    # Both IonQ Forte machines are gate-capable but OFF the allowlist (their 2500-shot
+    # mitigation floor is unmodeled, so the ledger would under-charge by ~$200).
+    for name in ("ionq_forte", "ionq_forte_enterprise"):
+        assert DEVICES[name]["gate_capable"] is True
+        assert DEVICES[name]["allowlist"] is False
+
+
+def test_the_2026_09_04_fleet_adoption_did_not_widen_the_allowlist():
+    """Adopting a device into the CURRICULUM must never widen the real-money path.
+
+    cheapest_allowlisted_device() re-derives the Lambda's expected device from cost.PRICING,
+    so allowlisting a cheaper QPU silently re-points production spend. Rigetti Cepheus is
+    ~3.4x cheaper per shot than Garnet and WOULD win that comparison at 1,000 shots, so this
+    is not hypothetical: the four devices adopted on 2026-09-04 all land allowlist: False,
+    and moving any of them onto the allowlist is a separate, deliberate change that must
+    also move qpu-core.mjs's DEVICE / DEVICE_ARN / DEVICE_REGION constants.
+    """
+    for name in ("ionq_forte_enterprise", "iqm_emerald", "aqt_ibex_q1", "rigetti_cepheus"):
+        assert DEVICES[name]["allowlist"] is False, f"{name} must stay off the allowlist"
+    assert allowlisted_gate_devices() == ["iqm_garnet"]
+
+
+def test_no_undispatchable_device_is_allowlisted():
+    # The allowlist authorizes real spend; a device Braket will not accept a task for must
+    # never be on it. Belt and braces with run_circuit's own status refusal.
+    for name in allowlisted_gate_devices():
+        assert device_status(name) == "ONLINE", f"{name} is allowlisted but not ONLINE"
+        assert name in dispatchable_devices()
 
 
 def test_every_allowlisted_device_is_gate_capable_and_priced():

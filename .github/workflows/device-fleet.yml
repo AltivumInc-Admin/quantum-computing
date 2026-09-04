@@ -1,0 +1,171 @@
+name: Device fleet
+
+# Does the fleet this repo TEACHES still exist on Amazon Braket?
+#
+# Every other device guard reads lib/hardware/devices.py and asserts something against
+# it — shot bounds, the Lambda's device constants, the web mirror. All of that is
+# internal consistency, and a retired device therefore blesses itself: the row says it
+# is fine, and every check reads the row. On 2026-09-04 the table still dispatched to
+# TN1, RETIRED in all three regions that listed it, and had never heard of four ONLINE
+# devices. Nothing in CI could have said so, because nothing in CI asked AWS.
+#
+# This asks AWS, once a night, in both directions: a row the live fleet contradicts,
+# and an ONLINE device the curriculum has no row for.
+#
+# Deliberately NOT a pull-request check, for the same reason drift.yml is not: the
+# fleet changes when AWS changes it, not when someone opens a PR, so a PR gate would
+# block unrelated work for a retirement nobody in that PR caused. Scheduled instead,
+# so the signal lands on whoever can act on it.
+#
+# Requires a read-only role with braket:SearchDevices and the AWS_FLEET_ROLE_ARN
+# repository variable. If it is absent the job skips loudly rather than failing, so
+# this file can merge before the role exists.
+#
+# NOTE ON THE ROLE: quantum-ci-drift-check (infra/github-oidc-drift-role.yaml) does
+# NOT currently grant braket:SearchDevices — its policy is lambda:GetFunction /
+# GetFunctionConfiguration on eleven named functions and nothing else. So this
+# workflow reads its OWN variable rather than reusing AWS_DRIFT_ROLE_ARN, which would
+# assume a role that can only fail with AccessDenied and paint the nightly red for a
+# permissions reason rather than a fleet reason. Adding the statement below to that
+# role and pointing AWS_FLEET_ROLE_ARN at the same ARN is a perfectly good way to wire
+# this up — braket:SearchDevices is a catalog read that exposes no account data:
+#
+#   - Effect: Allow
+#     Action: braket:SearchDevices
+#     Resource: "*"          # SearchDevices has no resource types; "*" is the only form
+#
+# Region is not scoped by that statement because the check reads five regions and the
+# region lives in the endpoint, not the ARN.
+
+on:
+  schedule:
+    - cron: "30 13 * * *" # 13:30 UTC daily — half an hour after the drift check, so
+      # two nightly reports do not land in the same minute
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required to request the OIDC token; nothing else
+
+concurrency:
+  group: device-fleet
+  cancel-in-progress: true
+
+jobs:
+  fleet:
+    name: Repo fleet vs live Braket
+    runs-on: ubuntu-latest
+    # Five SearchDevices calls plus one sts call; seconds, typically. A cap means a
+    # hung child fails visibly instead of holding the concurrency group until
+    # GitHub's six-hour default expires.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The ARN goes through env rather than being interpolated into the script body.
+      # It is a repository variable (admin-set, not attacker-controlled), so this is
+      # not closing a live hole — it is the documented safe pattern, and it costs
+      # nothing. Same shape as drift.yml's role check.
+      - name: Check the role is configured
+        id: cfg
+        env:
+          ROLE_ARN: ${{ vars.AWS_FLEET_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "AWS_FLEET_ROLE_ARN is not set — grant braket:SearchDevices to a"
+            echo "read-only CI role and add its ARN as a repository variable. Skipping."
+            # LOUD, not silent. Without the annotation this job succeeds every
+            # morning having asked Braket nothing, and the green badge is
+            # indistinguishable from a fleet that was actually checked.
+            echo "::warning::AWS_FLEET_ROLE_ARN is unset — the live-fleet check asked Braket nothing today"
+            {
+              echo "### Device fleet"
+              echo ""
+              echo "**SKIPPED — nothing was compared.** \`AWS_FLEET_ROLE_ARN\` is unset, so no"
+              echo "credentials were minted and Braket's device catalog was never read."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Python is only used to read the DEVICES literal out of lib/hardware/devices.py
+      # with ast.literal_eval — no braket install, no pip step. ubuntu-latest ships a
+      # python3 already; this pins the version so a runner image change cannot move it.
+      - name: Set up Python
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Assume the read-only fleet role
+        if: steps.cfg.outputs.ready == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_FLEET_ROLE_ARN }}
+          # The check names its own region per call; this only satisfies the action
+          # and gives sts:GetCallerIdentity somewhere to land.
+          aws-region: us-east-1
+          role-session-name: quantum-device-fleet-check
+          # The job takes seconds. IAM's MaxSessionDuration floor is 3600 and cannot
+          # go lower, so the cap goes on the request side instead.
+          role-duration-seconds: 900
+
+      # The exit code is recorded, not just pass/fail: 1 means the table and the live
+      # fleet disagree and somebody owes a curriculum edit, 2 means the check could
+      # not read what it needed. The failure annotation below says the right one.
+      - name: Compare devices.py against the live Braket fleet
+        id: fleet
+        if: steps.cfg.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set +e
+          node scripts/check-device-fleet.mjs
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Explain a failure
+        if: failure() && steps.cfg.outputs.ready == 'true'
+        shell: bash
+        env:
+          FLEET_CODE: ${{ steps.fleet.outputs.code }}
+        run: |
+          if [ "$FLEET_CODE" = "1" ]; then
+            echo "::error::The curriculum's device table and Amazon Braket disagree. A STALE"
+            echo "::error::row is a dispatch bug (run_circuit prints a cost estimate and submits"
+            echo "::error::to a machine the service will refuse). An UNKNOWN device is curriculum"
+            echo "::error::drift. Run 'make fleet' locally for the same report, then either fix"
+            echo "::error::lib/hardware/devices.py or add an ACKNOWLEDGED entry with a reason."
+          elif [ "$FLEET_CODE" = "2" ]; then
+            echo "::error::The fleet check could not READ what it needed — a region that did not"
+            echo "::error::answer, or a devices.py it could not parse. It says NOTHING about"
+            echo "::error::whether the table is current. Read the report's rows."
+          fi
+
+      # The counterpart to the skip warning above: an executed run says so on the run
+      # page, so "it ran and was clean" and "it never ran" are told apart without
+      # opening a log.
+      - name: Record what this run inspected
+        if: always() && steps.cfg.outputs.ready == 'true'
+        shell: bash
+        env:
+          FLEET_CODE: ${{ steps.fleet.outputs.code }}
+        run: |
+          {
+            echo "### Device fleet"
+            echo ""
+            echo "Compared \`lib/hardware/devices.py\` against Braket's live device catalog,"
+            echo "in both directions (a row the fleet contradicts, and an ONLINE device with"
+            echo "no row)."
+            echo ""
+            echo "| check | exit |"
+            echo "| --- | --- |"
+            echo "| repo fleet vs live Braket (0 current, 1 divergent, 2 could not check) | ${FLEET_CODE:-did not run} |"
+          } >> "$GITHUB_STEP_SUMMARY"
