@@ -343,6 +343,25 @@ function report(rows, gaps, rangeSource) {
   console.log(`    human page views        ${sum("humanPageViews")}`);
   console.log(`    google sign-ins         ${sum("googleSignIns")}`);
 
+  // Added with the curriculum counts (2026-09-04). Read defensively: a summary
+  // produced before that change has no such map, and absent means NOT COLLECTED
+  // rather than zero — which is also true of the seven stored rows from
+  // 2026-08-28 to 2026-09-03, and why there is no backfill for them.
+  const reach = {};
+  for (const r of rows) {
+    for (const [section, n] of Object.entries(r.sectionReach ?? {})) {
+      reach[section] = (reach[section] ?? 0) + n;
+    }
+  }
+  const notebooks = rows.reduce((n, r) => n + Object.keys(r.notebookOpens ?? {}).length, 0);
+  if (Object.keys(reach).length > 0) {
+    console.log(`\n  How far readers got  (people per section, summed over the range)`);
+    for (const section of Object.keys(reach).sort()) {
+      console.log(`    ${section.padEnd(22)}${reach[section]}`);
+    }
+    console.log(`    ${"notebooks opened".padEnd(22)}${notebooks} (distinct notebooks opened, summed per day)`);
+  }
+
   console.log(`\n  What was filtered out, and by which signal`);
   for (const k of ["scanner", "declared-bot", "datacenter", "no-page-view", "no-assets", "high-volume", "high-rate"]) {
     console.log(`    ${k.padEnd(22)}${bucket(k)}`);

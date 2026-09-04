@@ -6,15 +6,34 @@ A daily count of who actually reached learner.quantumenv.dev.
 
 One scheduled Lambda, one DynamoDB table, one row per day. It reads the previous
 day's CloudFront access logs through Amplify's `GenerateAccessLogs`, classifies
-each visitor, and stores aggregate counts.
+each visitor, and stores aggregate counts — how many people reached the site,
+how many opened each lesson notebook, and how far through the curriculum a day's
+readers got.
 
-**It stores no identifiers.** Not addresses, not user agents, not paths — counts
-only. Nothing is added to the browser: no script, no cookie, no beacon. The
-privacy policy states in both locales that no analytics or tracking scripts exist
-anywhere on the site, and that remains true as written. The logs being read here
-already exist and are already disclosed as operational service logs. `index.test.mjs`
-pins the written attribute set on every branch that writes a row, so widening it
-fails the build rather than quietly breaking that promise.
+**It stores no identifiers.** Not addresses, not user agents, not request URLs,
+and nothing that links one day to another — counts only. Nothing is added to the
+browser: no analytics script, no tracking cookie, no beacon, no visitor
+identifier. The logs being read here already exist and are already disclosed as
+operational service logs.
+
+**What was read is stored as a curriculum identifier, never as a path.**
+`curriculum.mjs` is a checked-in allowlist of the seven section slugs and
+forty-five notebook keys, each already public in a lesson URL, and
+`curriculum.test.mjs` pins it to `web/src/lib/content-manifest.json` in both
+directions. A path outside it cannot become a key, so a scanner's probe, a query
+string, a rename or an unreviewed future route are structurally incapable of
+reaching the table. `index.test.mjs` pins the written attribute set on every
+branch that writes a row **and** asserts every curriculum key against that
+allowlist, so widening either fails the build rather than quietly breaking the
+promise.
+
+**The privacy policy was amended to match, in both locales, in the same change
+(2026-09-04).** "What we store" now discloses the daily counts, says that a
+day's requests are grouped by network address to tell crawlers from people and
+to count one person's second open once, that those addresses are used and then
+discarded, and that nothing kept links one day to another. The code and the copy
+move together: an aggregate this row cannot express is one the policy does not
+promise, and vice versa.
 
 ## Why it exists
 
@@ -68,6 +87,55 @@ forger who also drives a browser from a residential address can still be counted
 once; that is a different class of effort, and it is the residual.
 
 **`humans` is a floor by construction.** Uncertain visitors are dropped.
+
+### What a person read
+
+Counted in the same pass, gated on the same `human` verdict, so the notebook
+figures and the human total can never disagree about who was a person. A crawler
+sweeping the whole curriculum — the real one was 56 requests from `curl/8.7.1`
+fetching all 45 notebooks in ten seconds — is already a `declared-bot` and
+contributes nothing.
+
+| Attribute | Unit |
+|---|---|
+| `notebookOpens` | per notebook key: distinct people who loaded it that day |
+| `sectionReach` | per section slug: distinct people who touched it that day |
+| `sectionDepth` | keyed `"1"`..`"7"`: people who touched that many sections |
+| `furthestSection` | per section slug: people whose deepest section it was |
+
+Three measurement facts, all verified against production traffic, that the code
+encodes and an edit must not undo:
+
+- **A 304 revalidation carries no `sc-content-type`.** JupyterLite fetches a
+  notebook on every open, the object is served `max-age=0`, and the browser
+  revalidates. A predicate written on content-type — the way `isPageView` is —
+  silently drops every repeat open. `notebookKey` reads status instead.
+- **The same notebook is fetched twice per open**, and JupyterLab re-fetches
+  whatever was open when the workspace was last used. Counts are therefore
+  DISTINCT (address, notebook) pairs per day, not requests. The honest name for
+  the metric is "a notebook was loaded into the lab", restores included.
+- **`/learn/<slug>/__next.*.txt` is an RSC prefetch, not a read.** Next.js fires
+  one for every in-viewport link; on a five-reader day all seven sections carried
+  ten each. Counting them would report that everyone reached everything.
+
+**Progression is a SET, deliberately unordered.** "Reached 00, 01 and 03 today"
+is recoverable; "read 03 first" is not, and nothing links one day to another, so
+retention and per-person funnels are not answerable from these rows and never
+will be. That is the design, not a gap: a consenting-account funnel is already
+derivable from the `sync` Lambda's stored "sections completed", which the privacy
+policy has always disclosed. An ordered transition matrix would answer the
+literal words "section-to-section" but, on a day with a handful of visitors,
+would coarsely describe one person's path through the site — it is a separate
+decision needing its own policy sentence, not an implementation detail.
+
+**Known undercount, deliberately not fixed here.** `loadedAppAssets` accepts only
+`/_next/static/`, and the JupyterLite lab is not a Next.js page. A visitor who
+arrives on a lab deep link — which is what a shared notebook link is — fetches
+`/lab/build/*.js` and is bucketed `no-assets`, so their opens go uncounted.
+Widening the predicate is the right fix and uses this file's own argument, but it
+would produce a step change in the `humans` series on the day it deploys, and
+that series is the only history this stack has. It needs an explicit decision and
+a note here, not a drive-by.
 
 Two traps worth keeping in mind if you edit `HOSTILE_PATH`:
 
@@ -218,8 +286,9 @@ while. Do not sit on an `errors` alarm.
 ## Cost / abuse
 
 Negligible and bounded. One invocation a day, reserved concurrency of 2, a
-PAY_PER_REQUEST table holding a few hundred bytes per day — one row per day
-forever is well under a megabyte a decade. `GenerateAccessLogs` and the
+PAY_PER_REQUEST table holding a few kilobytes per day (the four curriculum maps
+are at most 45 + 7 + 7 + 7 keys, against a 400 KB item limit) — one row per day
+forever is a few megabytes a decade. `GenerateAccessLogs` and the
 presigned download are not separately billed.
 
 The table carries **no TTL specification, deliberately**. TTL is table-wide and

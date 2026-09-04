@@ -973,9 +973,11 @@ export const en: TranslationDict = {
       "if you run a circuit on real quantum hardware, a record of that run (device, shot count, cost, and a hash of the circuit) to enforce hardware spending limits",
     storeTutor:
       "If you ask the lesson tutor a question, the question and the surrounding lesson context are sent to our tutor service (AWS, us-east-2), which forwards them to Anthropic, the AI provider, to generate the answer.",
+    storeAggregates:
+      "Separately from any account, our servers keep a daily count of how the site is used: how many people reached the site, how many people signed in, how many opened each lesson notebook, how many opened each course section, how many course sections a day's visitors reached, and which section a day's readers got furthest into. These counts are worked out after the fact from our web host's ordinary access logs — the records of the requests that fetch the site — and only the daily totals are kept. While a day is being counted, its requests are grouped by network address so that automated crawlers can be told apart from people, and so that one person opening the same notebook twice is counted once; those addresses are used for the count and then discarded, never written down. What we keep contains no addresses, no user agents, no request URLs and no identifier of any kind, and nothing that connects one day to another. On a quiet day, when only a handful of people visit, these totals are necessarily a coarse description of that handful's reading — but never of who they are.",
     whatWeDont: "What we don't collect",
     noAnalytics:
-      "No analytics or tracking scripts — none exist anywhere on this site.",
+      "No analytics or tracking scripts in your browser. Nothing is added to the page to watch you: no analytics script, no tracking cookie, no beacon, no visitor identifier. We do count usage, but only on our own servers and only as daily totals; the section above says exactly what those totals are.",
     noAds: "No advertising, and no data is sold or shared for advertising.",
     noCookies:
       "No tracking cookies. Sign-in tokens are kept in your browser's per-tab session storage.",
@@ -988,7 +990,7 @@ export const en: TranslationDict = {
     retentionDelete:
       "Server-side data is kept until you delete it. Your workspace has a \"Delete account\" control that permanently removes your synced progress, your email preference, your account itself, and this device's local copy — in that order, and it stops and tells you if any step fails. There is no undo and no recovery period.",
     retentionLogs:
-      "Operational service logs (used for debugging and abuse prevention) are retained in AWS CloudWatch for 30 days and then deleted automatically.",
+      "Operational service logs (used for debugging and abuse prevention) are retained in AWS CloudWatch for 30 days and then deleted automatically. Our web host's access logs, which record the requests that fetch the site, are kept on the host's own schedule and are not retained by us; once a day we read the previous day's logs, produce the daily totals described above, and keep only those totals. The totals are kept indefinitely.",
     contact: "Contact",
     contactBody: "Questions about this policy or your data:",
     lastUpdated: "Last updated {{date}}.",

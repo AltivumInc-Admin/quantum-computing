@@ -6,9 +6,12 @@ Description: >
   Amplify's GenerateAccessLogs serves roughly one day per call and refuses wider
   windows, so history only exists if something collects it daily. This reads the
   previous day's access logs, classifies each visitor, and writes ONE row of
-  aggregate counts — never an address, a user agent or a path. Nothing is added
-  to the browser: no script, no cookie, no beacon, so the privacy policy's "no
-  analytics or tracking scripts" remains true as written. Deploy in us-east-2.
+  aggregate counts — never an address, a user agent or a request URL, and
+  nothing that links one day to another. What was read is stored as a curriculum
+  identifier from a fixed checked-in allowlist (curriculum.mjs), never as a
+  path. Nothing is added to the browser: no analytics script, no tracking
+  cookie, no beacon, no visitor identifier, and the privacy policy discloses
+  these daily counts in both locales under "What we store". Deploy in us-east-2.
 
 Parameters:
   AmplifyAppId:

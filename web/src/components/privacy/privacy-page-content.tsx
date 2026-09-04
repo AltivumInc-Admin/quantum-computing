@@ -2,7 +2,11 @@
 
 import { useLocale } from "@/i18n";
 
-const LAST_UPDATED = "2026-07-12";
+// Bumped 2026-09-04 with the aggregate-telemetry amendment: "What we store"
+// gained storeAggregates and "Retention" now says what happens to the host's
+// access logs. A policy change nobody can date is a policy change nobody can
+// audit, so this moves whenever privacyUi's claims do.
+const LAST_UPDATED = "2026-09-04";
 const CONTACT_EMAIL = "christian.perez@altivum.io";
 
 export function PrivacyPageContent() {
@@ -34,6 +38,7 @@ export function PrivacyPageContent() {
             <li>{t("privacyUi.storeHardware")}</li>
           </ul>
           <p>{t("privacyUi.storeTutor")}</p>
+          <p>{t("privacyUi.storeAggregates")}</p>
         </Section>
 
         <Section title={t("privacyUi.whatWeDont")}>

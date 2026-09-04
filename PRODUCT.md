@@ -217,6 +217,72 @@ is the engagement law; `/credentials` and `/founding-ten` are it implemented.
   — the tutor's rate table is an explicitly unverified placeholder and is the
   single named blocker on reopening the storefront.
 
+## Learner telemetry — settled 2026-09-04
+
+**Decision: measure per-notebook opens and how far a day's readers get through
+the curriculum. Aggregate only, derived from access logs that already exist, with
+the privacy policy amended in both locales in the same change.**
+
+Until this decision the product had no learner telemetry at all — by design, and
+at real cost. Nobody could say whether anyone ever reached section 03, which
+notebooks were opened and which were never touched, or whether a rewrite changed
+either. Every content judgment was made blind.
+
+**What it now measures**, written once a day as counts on one row:
+
+- how many people reached the site (already measured; unchanged),
+- how many distinct people opened each lesson notebook,
+- how many distinct people touched each course section,
+- how many sections a day's readers each covered, and how deep they got.
+
+**How, and why that shape.** The counts are computed after the fact from the web
+host's ordinary CloudFront access logs — the same logs the daily human count has
+always read. **Nothing was added to the browser**: no analytics script, no
+tracking cookie, no beacon, no visitor identifier, no change to any component. A
+notebook open is already an HTTP request, because JupyterLite fetches the file
+every time one is opened. Requests are grouped by network address only while the
+day is being counted — to tell crawlers from people, and so one person opening
+the same notebook twice counts once — and those addresses are then discarded.
+What is written is keyed by curriculum identifiers from a checked-in allowlist
+(seven section slugs, forty-five notebook keys, all already public in lesson
+URLs), so a request path cannot become a stored key even in principle.
+
+**What it deliberately still does not measure, and will not from these rows:**
+
+- **Order.** The sections a person touched are recorded as an unordered set.
+  "Reached 00, 01 and 03 today" survives; "read 03 before 00" does not. An
+  ordered transition matrix would answer the literal words "section-to-section",
+  but on a day with a handful of visitors it would coarsely describe one person's
+  path through the site. That is a separate decision needing its own policy
+  sentence, not an implementation detail.
+- **Anything across days.** Nothing links one day's row to another's, so
+  retention, return rate and per-person funnels are not answerable here and never
+  will be. Where a per-person funnel is genuinely needed, the `sync` Lambda
+  already stores "sections completed" per consenting account, and the privacy
+  policy has always disclosed it — no new collection is required.
+- **Anything about an individual.** No addresses, no user agents, no request
+  URLs, no identifiers of any kind reach durable storage.
+
+**Why the policy moved with the code.** The page previously said "No analytics or
+tracking scripts — none exist anywhere on this site." The in-your-browser half is
+still true and is still asserted, per locale; the unqualified "none exist
+anywhere" half became false the moment this shipped and is now barred by test in
+both locales, in exactly the shape that once let withdrawn sponsorship copy
+outlive its withdrawal. "What we store" gained a paragraph stating the daily
+counts, the grouping-then-discarding of addresses, and that nothing connects one
+day to another — including the honest admission that on a quiet day these totals
+are a coarse description of a handful of people's reading. The rule is
+symmetrical and load-bearing: an aggregate the row cannot express is one the
+policy does not promise, and a claim the policy makes is one a test asserts.
+
+**Known undercount, accepted for now.** A visitor who arrives directly on a lab
+deep link — which is what a shared notebook link is — loads `/lab/build/*.js`
+rather than `/_next/static/`, so the existing bot filter buckets them
+`no-assets` and their opens go uncounted. Widening that predicate is the right
+fix, but it would step-change the `humans` series, which is the only history this
+stack has. It needs an explicit decision, not a drive-by. Failing toward
+undercounting is the direction this classifier has always chosen.
+
 ## Product Principles
 
 1. **Consistency over surprise.** One widget vocabulary across ~30 explorables; a
