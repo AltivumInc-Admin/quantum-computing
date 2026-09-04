@@ -143,15 +143,35 @@ test("the CI role grants exactly the functions the drift check reads", () => {
   assert.deepEqual(granted.sort(), FUNCTIONS.map((f) => f.fn).sort());
 });
 
-test("the CI role stays scoped: no wildcard resource, no ListFunctions", () => {
+test("the CI role stays scoped: the only wildcard resource is the one Braket forces", () => {
   // Comment lines stripped: this is an assertion about the POLICY, and the
   // policy explains in prose why the deleted grant is not coming back.
-  const policy = readFileSync(join(REPO, "infra", "github-oidc-drift-role.yaml"), "utf8")
+  const lines = readFileSync(join(REPO, "infra", "github-oidc-drift-role.yaml"), "utf8")
     .split("\n")
-    .filter((line) => !/^ *#/.test(line))
-    .join("\n");
+    .filter((line) => !/^ *#/.test(line));
+  const policy = lines.join("\n");
   assert.doesNotMatch(policy, /ListFunctions/);
-  assert.doesNotMatch(policy, /^ *Resource: *"\*" *$/m);
   // A wildcarded region segment would reach same-named functions elsewhere.
   assert.doesNotMatch(policy, /arn:aws:lambda:\*:/);
+
+  // This used to forbid `Resource: "*"` outright, which was the right rule while
+  // every grant was a Lambda read: both of those return the function's
+  // environment in full, so a wildcard there is a public repository's workflow
+  // reading every value every quantum-* function keeps. braket:SearchDevices is
+  // not that. It has NO resource types in the service authorization reference,
+  // so an ARN denies every call — the wildcard is the only expressible value —
+  // and what it reads is the public device catalog this repo already prints in
+  // README.md. So the rule is now "paired with SearchDevices, or not at all":
+  // a wildcard on any other action still fails, which is the part worth keeping.
+  const wildcards = lines
+    .map((line, i) => ({ line, i }))
+    .filter(({ line }) => /^ *Resource: *"\*" *$/.test(line));
+  for (const { i } of wildcards) {
+    const preceding = lines.slice(0, i).filter((l) => l.trim()).pop() ?? "";
+    assert.match(
+      preceding,
+      /^ *Action: *braket:SearchDevices *$/,
+      `Resource: "*" on line ${i + 1} is not the Braket device listing — it follows ${preceding.trim()}`,
+    );
+  }
 });
