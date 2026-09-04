@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-03-notebooks-that-teach": {
+    title: "Los cuadernos de las lecciones ahora se explican solos",
+    body: "Cada cuaderno del plan de estudios se ha reescrito para ense\u00f1ar, no solo para etiquetar. Cada secci\u00f3n dice ahora qu\u00e9 va a mostrar el c\u00f3digo, en qu\u00e9 fijarse en el resultado y el error que te est\u00e1 evitando, con las salvedades honestas incluidas, para que aprendas d\u00f3nde deja de funcionar cada idea y no solo d\u00f3nde empieza. Los ejercicios, las pistas y las autocomprobaciones no cambian.",
+  },
   "2026-09-02-pricing-page-reads-right": {
     title: "La página de precios se lee bien en español, y dice solo lo que es cierto",
     body: "Cada cifra de créditos de la página de precios en español se escribe ahora a la española, con la palabra en español y el separador de miles español, y las viñetas de cada plan toman sus números de la misma tabla que los precios, así que ya no pueden contradecirse. La descripción que los buscadores muestran de la página ya no hace una afirmación sobre precios que el monedero no implementa. Para quienes usan lector de pantalla o teclado: los botones de valores predefinidos anuncian cuál está seleccionado, las dos tablas de tarifas tienen nombre, la tabla de hardware se desplaza con el teclado, y la etiqueta del plan destacado se lee bien en el tema oscuro.",
