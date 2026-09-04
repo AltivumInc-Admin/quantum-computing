@@ -92,7 +92,7 @@ code, never executed under the real SDK).
 - Hardware: `braket.aws.AwsDevice`, IonQ/IQM/Rigetti device URIs.
 - Observables / expectation values via `.expectation()` (notebooks compute these manually from counts).
 - Noise channels, mid-circuit measurement, classical control flow.
-- Anything that requires a managed simulator (SV1/DM1/TN1).
+- Anything that requires a managed simulator (SV1 or DM1; TN1 is retired).
 
 Notebooks that import `braket.aws` MUST NOT be marked
 `<!-- browser-runnable -->`.

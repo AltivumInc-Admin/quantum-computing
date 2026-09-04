@@ -262,7 +262,7 @@ flowchart TB
     end
 
     subgraph aws["☁ AWS (opt-in)"]
-        braket["Amazon Braket<br/>SV1·DM1·TN1 · IonQ·IQM·QuEra"]
+        braket["Amazon Braket<br/>SV1·DM1 · IonQ·IQM·QuEra·Rigetti·AQT"]
         infra["CloudFormation<br/>S3 · IAM · Budget · Notebook"]
         amplify["Amplify Hosting"]
     end
@@ -368,10 +368,10 @@ quantum-computing/
 |---|---|
 | `get_device(name="local")` | `LocalSimulator` for `"local"`, else `AwsDevice`; raises on unknown names |
 | `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results. **Fails fast** on an unknown device, an analog-only device, out-of-range `shots`, or a missing `s3_location` (so CI needs no credentials). On a billable device it **blocks** until the task leaves the queue (the SDK's 5-day `poll_timeout_seconds` default) and raises `RuntimeError` if the task produced no result — use `get_device(name).run(...)` for the un-awaited `AwsQuantumTask` |
-| `shot_bounds(device_name)` | `(min, max)` shots per task Braket accepts for that device (e.g. Garnet `(1, 20000)`, IonQ `(100, 100000)`) |
+| `shot_bounds(device_name)` | `(min, max)` shots per task Braket accepts for that device (e.g. Garnet `(1, 20000)`, IonQ `(100, 5000)`) |
 | `list_available_devices()` | The **full** device fleet with each row's `ONLINE`/`OFFLINE`/`RETIRED` status — no status filter is applied, so check it before dispatching (needs AWS) |
 | `allowlisted_gate_devices()` · `cheapest_allowlisted_device(shots)` | The gate QPUs approved for the hard-capped QPU-submit path, and the cheapest of them (derived from `PRICING`) |
-| `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_forte, iqm_garnet, quera_aquila` |
+| `DEVICE_ARNS` | `dict` of short names → ARNs, derived from `DEVICES`: `sv1`, `dm1`, `tn1`, `ionq_forte`, `ionq_forte_enterprise`, `iqm_garnet`, `iqm_emerald`, `aqt_ibex_q1`, `rigetti_cepheus`, `quera_aquila`. `lib/hardware/devices.py` is the single source of truth; rows for retired (`tn1`) and offline (`ionq_forte`) machines stay so the curriculum can still teach them, and `run_circuit` refuses to dispatch to one — `dispatchable_devices()` is the ONLINE subset |
 </details>
 
 <details>
@@ -543,9 +543,11 @@ flowchart LR
     merge --> amp["Amplify auto-build & deploy"]
 ```
 
-**Python test suite ([`tests/`](tests/)):** one pytest module per concern, covering the `lib/` toolkit (circuits, devices, cost math, results, visualization), QML and chemistry (gated on the PennyLane / OpenFermion extras), and the platform's own guarantees — `test_qcsim_parity.py` (**`qcsim` vs the real Braket SDK** to 4σ, plus exact state-vector / norm / adjoint checks), `test_notebook_contract.py` (static AST scan + manifest drift guard + **live execution** of every runnable notebook), and content guards (notebook links, pricing prose, the `00-prereqs` invariants). Browse `tests/` for the full, current list.
+**Python test suite ([`tests/`](tests/)):** one pytest module per concern, covering the `lib/` toolkit (circuits, devices, cost math, results, visualization), QML and chemistry (gated on the PennyLane / OpenFermion extras), and the platform's own guarantees — `test_qcsim_parity.py` (**`qcsim` vs the real Braket SDK** to 4σ, plus exact state-vector / norm / adjoint checks), `test_notebook_contract.py` (static AST scan + manifest drift guard + **live execution** of every runnable notebook), and content guards (notebook links, pricing prose, the `00-prereqs` invariants). Browse `tests/` for the full, current list. Braket's fleet changes underneath all of that, so it is checked against the live service rather than against itself: [`scripts/check-device-fleet.mjs`](scripts/check-device-fleet.mjs) (`make fleet`, and nightly via [`.github/workflows/device-fleet.yml`](.github/workflows/device-fleet.yml)) calls `braket:SearchDevices` in every Braket region and fails when a device this repo teaches has been retired or taken offline, or when a device the service now offers has no row here.
 
-Pinning: **Python 3.12** (matches the Amplify image; `pyscf`/`openfermionpyscf` wheels exist for 3.12), **Node 20**. Run the fast subset locally with `pytest -m "not slow"`.
+Pinning: **Python 3.12** (matches the Amplify image; `pyscf`/`openfermionpyscf` wheels exist for 3.12), **Node 20**.
+
+> **`make test` is the run that proves something** — it is what CI runs, with no marker filter. For a tight inner loop, `pytest -m "not slow"` finishes in seconds instead of minutes, but know exactly what it drops: **every test that executes a notebook.** In this repo the `slow` marker means "runs a notebook through nbclient", so deselecting it removes both exercise gates (`test_exercise_checks.py` — canonical solutions must pass, unsolved must not), the live qcsim execution of every runnable notebook (`test_notebook_contract.py`), and the real-Braket-SDK sample tier (`test_notebook_real_sdk.py`). What survives in those modules is static structure, AST and manifest checking; **no notebook is executed at all**. pytest reports this only as an unlabelled `(N deselected)` line — no category, no names — so it is easy to mistake for a clean run. A green `pytest -m "not slow"` is never a basis for saying the notebooks work — run `make test` before you claim that, and before you push.
 
 ---
 
@@ -577,17 +579,24 @@ flowchart TB
 
 **Always prototype on the free local simulator, then escalate only when validated.** Helper utilities (`lib.utils.cost`, the per-section `cost_estimator.py`, and `make cost`) estimate spend before you submit.
 
-| Backend | Price (on-demand, verified 2026-07-06) |
-|---|---|
-| **Local simulator** (`LocalSimulator`) | **Free** |
-| SV1 / DM1 (managed) | $0.075 / minute |
-| TN1 (tensor-network) | $0.275 / minute |
-| IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |
-| IQM (Garnet 20q) | $0.30 / task + $0.00145 / shot |
-| QuEra (Aquila 256q) | $0.30 / task + $0.01 / shot |
-| Rigetti *(reference only — not dispatchable via `lib.hardware`)* | $0.30 / task + $0.000425 / shot |
+Rates below are what **AWS charges us**, verified 2026-09-04 against the Braket Price List API and each device's live `deviceCapabilities`. They are not customer prices. Status is Braket's own `deviceStatus`, checked by `make fleet`.
 
-Recommended workflow: **local sim → SV1 for larger circuits → DM1/TN1 → QPU only once the algorithm is validated.** Check `make cost` regularly.
+| Backend | Status | Price (on-demand) |
+|---|---|---|
+| **Local simulator** (`LocalSimulator`) | always available | **Free** |
+| SV1 (state vector, 34q) / DM1 (density matrix, 17q) | ONLINE | $0.075 / minute |
+| TN1 (tensor-network, 50q) | **RETIRED** in every region — kept in the curriculum as the ladder's top rung, and `run_circuit` refuses to dispatch to it | $0.275 / minute |
+| IonQ Forte 1 (36q, all-to-all) | **OFFLINE** — a reversible calibration state, not a retirement | $0.30 / task + $0.08 / shot |
+| IonQ Forte Enterprise 1 (36q, all-to-all) | ONLINE — same qubit count, gate set and rate as Forte 1 | $0.30 / task + $0.08 / shot |
+| IQM Garnet (20q, lattice) | ONLINE | $0.30 / task + $0.00145 / shot |
+| IQM Emerald (54q, lattice) | ONLINE | $0.30 / task + $0.0016 / shot — **not Garnet's rate**; the two IQM devices are priced separately |
+| QuEra Aquila (256q, analog only) | ONLINE | $0.30 / task + $0.01 / shot |
+| Rigetti Cepheus-1-108Q (107q, lattice) | ONLINE | $0.30 / task + $0.000425 / shot |
+| AQT IBEX Q1 (12q, all-to-all) | ONLINE | $0.30 / task + $0.0235 / shot |
+
+IonQ Aria and Harmony, Rigetti's Aspen and Ankaa families, Oxford's Lucy, Xanadu's Borealis and every D-Wave device are retired and carry no row in this repo's device tables. (Scope is deliberate: this sentence is about `lib/hardware/devices.py` and the curriculum tables derived from it. The published customer rate sheet is a separate surface with its own owner, and `scripts/check-device-fleet.mjs` does not read it — see [`docs/followup-retired-device-on-pricing-sheet.md`](docs/followup-retired-device-on-pricing-sheet.md).) Per-task shot ceilings differ sharply by device (Aquila 1,000; AQT 2,000; IonQ 5,000; IQM 20,000; SV1/DM1/Rigetti 50,000) — `shot_bounds()` is the authority, and `run_circuit` rejects an out-of-range request before it costs anything.
+
+Recommended workflow: **local sim → SV1 for larger circuits → DM1 when you need noise → QPU only once the algorithm is validated.** Check `make cost` regularly, and `make fleet` before you rely on a device being there.
 
 ---
 
