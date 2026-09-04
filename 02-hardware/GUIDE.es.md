@@ -140,20 +140,34 @@ Con esos dos compromisos en mano, los dispositivos en Braket se agrupan en tres 
 cada una en un punto distinto del espacio.
 
 **IonQ — iones atrapados.** Átomos cargados individuales retenidos en campos electromagnéticos; los
-cúbits se codifican en sus niveles de energía y las compuertas se impulsan con pulsos láser. *Forte*
-(36 cúbits) está en Braket — su predecesor *Aria* (25 cúbits) ya está retirado — con compuertas
-nativas GPi, GPi2 y el entrelazador Mølmer–Sørensen (MS). Su superpoder es la **conectividad
+cúbits se codifican en sus niveles de energía y las compuertas se impulsan con pulsos láser. Braket
+lleva dos máquinas *Forte* de 36 cúbits: **Forte Enterprise 1** (Basilea), que está en línea, y
+**Forte 1** (Maryland), que está fuera de línea por mantenimiento mientras se escribe esto. Su
+predecesor *Aria* (25 cúbits) está retirado para siempre. Las compuertas nativas son GPi, GPi2 y el
+entrelazador Mølmer–Sørensen (MS). Su superpoder es la **conectividad
 todo-a-todo** (sin impuesto de SWAP) y alta fidelidad (un cúbit >99.5 %, dos cúbits >97 %) con
 coherencia medida en *segundos*. El costo: compuertas lentas a escala de microsegundos y menos
 cúbits. Ideal para circuitos donde la conectividad y la fidelidad importan más que la velocidad
 cruda.
 
+Un segundo proveedor de iones atrapados vive en la misma familia: **AQT** (Innsbruck) opera
+*IBEX Q1*, 12 cúbits, compuertas nativas PRx, XX y RZ, totalmente conectado. Doce cúbits es poco,
+pero es la misma física y la misma historia de cableado — y una máquina de 12 cúbits a la que
+puedes entrar vale más que una de 36 que está en ventana de mantenimiento.
+
 **IQM — superconductor.** Pequeños circuitos transmon enfriados a ~15 milikelvin, impulsados por
-pulsos de microondas. *Garnet* (20 cúbits, red cuadrada) está en Braket con compuertas nativas CZ y
+pulsos de microondas. *Garnet* (20 cúbits, red cuadrada, Espoo) y su hermana mayor *Emerald*
+(54 cúbits, Múnich) están ambas en Braket con compuertas nativas CZ y
 PRx. Las compuertas corren en *nanosegundos* — órdenes de magnitud más rápido — y la fabricación
 aprovecha décadas de manufactura de semiconductores. El costo: **conectividad de vecinos más
 cercanos** (el impuesto de SWAP de arriba) y ~100 microsegundos de coherencia. Ideal para circuitos
 con estructura local donde gana la velocidad.
+
+**Rigetti** construye sobre la misma física y volvió a Braket con *Cepheus-1-108Q* (California),
+compuertas nativas RX, RZ y CZ sobre una red — la máquina de modelo de compuertas más grande de la
+flota. Red más grande, impuesto de SWAP más grande: el costo de enrutamiento crece con la distancia
+entre los cúbits que tu circuito quiere entrelazar, así que una red de cien cúbits no abarata un
+problema de grafo denso. Lo que hace es agrandar un problema con estructura *local*.
 
 **QuEra — átomos neutros (analógico).** Arreglos de átomos de rubidio retenidos en pinzas ópticas.
 *Aquila* (256 átomos) es fundamentalmente distinto: **no** ejecuta circuitos de compuertas. En su
@@ -184,6 +198,46 @@ nómbrala:
 }
 ```
 
+### La flota cambia bajo tus pies
+
+Cada especificación de arriba es una instantánea. Las máquinas entran en línea, salen de línea para
+recalibrarse y se retiran del todo; la flota que obtienes es la que Braket le expone a tu cuenta y
+región el día que preguntas. Esta es la instantánea al 2026-09-04:
+
+| Dispositivo | Proveedor | Familia | Cúbits | Cableado | Región | Estado |
+| --- | --- | --- | ---: | --- | --- | --- |
+| Forte Enterprise 1 | IonQ | Iones atrapados | 36 | todo-a-todo | `us-east-1` | ONLINE |
+| Forte 1 | IonQ | Iones atrapados | 36 | todo-a-todo | `us-east-1` | OFFLINE |
+| IBEX Q1 | AQT | Iones atrapados | 12 | todo-a-todo | `eu-north-1` | ONLINE |
+| Garnet | IQM | Superconductor | 20 | red | `eu-north-1` | ONLINE |
+| Emerald | IQM | Superconductor | 54 | red | `eu-north-1` | ONLINE |
+| Cepheus-1-108Q | Rigetti | Superconductor | 107 | red | `us-west-1` | ONLINE |
+| Aquila | QuEra | Átomos neutros (analógico) | 256 | geométrico | `us-east-1` | ONLINE |
+| SV1 | AWS | Simulador (vector de estado) | 34 | — | cuatro regiones | ONLINE |
+| DM1 | AWS | Simulador (matriz de densidad) | 17 | — | cuatro regiones | ONLINE |
+| TN1 | AWS | Simulador (red de tensores) | 50 | — | — | **RETIRADO** |
+
+Tres filas de esa tabla cargan toda la lección.
+
+**`OFFLINE` es temporal; `RETIRED` es permanente.** Forte 1 está fuera de línea — una ventana de
+mantenimiento o recalibración, y volverá. TN1 y el Aria de IonQ están retirados: sus ARN todavía se
+parsean, las máquinas ya no existen, y una tarea enviada a cualquiera de las dos simplemente falla.
+Nada en la cadena del ARN te dice en cuál de los dos casos estás. Solo `status` lo dice, y solo en
+el momento en que preguntas.
+
+**El nombre no es la especificación.** El *Cepheus-1-108Q* de Rigetti reporta `qubitCount = 107`.
+Lee el número del dispositivo, no de la etiqueta.
+
+**Así que resuelve los dispositivos; no los vuelvas a teclear.** Cada tabla de esta GUÍA — incluida
+la de arriba — es material didáctico con fecha. El código que trabaja de verdad le pregunta al
+servicio: `AwsDevice.get_devices()` devuelve la flota viva con el `status` de cada máquina, y
+`python 02-hardware/scripts/device_status.py` imprime exactamente eso. Dentro de este repositorio la
+identidad de los dispositivos vive en un solo archivo, `lib/hardware/devices.py`, para que haya un
+solo lugar que corregir cuando una máquina se retira, en vez de una docena de copias tecleadas a
+mano que hay que ir cazando. El retiro de TN1 es la razón por la que esa regla existe y no es una
+mera preferencia de estilo: era un peldaño de la escalera de simuladores de abajo, enseñado en un
+notebook y citado en tres archivos, y ninguno se enteró por el ARN.
+
 ## La escalera de simuladores — tu defensa
 
 Dado todo lo anterior, casi nunca empiezas en un QPU. Subes una escalera de simuladores clásicos,
@@ -197,8 +251,12 @@ cada uno una defensa contra desperdiciar tiempo y dinero en hardware real:
 - **DM1** (matriz de densidad, hasta 17 cúbits, $0.075/min) — el único simulador que modela
   **ruido**. Aquí estudias el decaimiento que viste arriba antes de pagarle a una máquina real para
   que te lo muestre.
-- **TN1** (red de tensores, hasta ~50 cúbits, $0.275/min) — eficiente para circuitos grandes pero
-  ligeramente entrelazados.
+- **TN1** (red de tensores, hasta ~50 cúbits, $0.275/min) — **RETIRADO por AWS; ya no puedes
+  enviarle nada.** Sigue en esta escalera porque su razonamiento es la parte más transferible: el
+  costo de un simulador de red de tensores sigue cuánto **entrelaza** un circuito, no cuántos cúbits
+  tiene, y por eso "¿qué tan grande es mi circuito?" es la pregunta equivocada sobre simulabilidad
+  clásica. En la práctica, sin embargo, la escalera administrada ahora se detiene en los 34 cúbits
+  de SV1. Por encima de eso vas con tu propio software de redes de tensores o con hardware.
 
 ```qcard
 {"id":"hw-dm1-noise-sim-1","prompt":"¿Qué simulador administrado de Braket puede modelar ruido, y por qué puede hacerlo cuando SV1 no?","answer":"`DM1`, el simulador de matriz de densidad. Una matriz de densidad puede representar estados mixtos (ruidosos), así que DM1 puede aplicar canales de ruido como despolarizante y amortiguamiento de amplitud. `SV1` es un simulador de vector de estado exacto y sin ruido."}
@@ -316,7 +374,8 @@ Juntándolo todo, un flujo de decisión rápido:
 1. **¿Desarrollando o depurando?** Simulador local. Siempre.
 2. **¿Validando un circuito de compuertas a escala, sin ruido?** SV1.
 3. **¿Estudiando cómo el ruido afecta los resultados?** DM1.
-4. **¿Circuito grande pero ligeramente entrelazado?** TN1.
+4. **¿Circuito grande pero ligeramente entrelazado?** Ya no hay peldaño administrado para esto —
+   TN1 está retirado. Córrelo en tu propio simulador de redes de tensores, o pasa a hardware.
 5. **¿Listo para hardware real, problema densamente conectado (p. ej. QAOA en grafo denso)?** IonQ —
    conectividad todo-a-todo, alta fidelidad.
 6. **¿Hardware real, estructura local, la velocidad importa?** IQM.
@@ -396,13 +455,13 @@ Compruébate:
 
 4. **`notebooks/04-quera-analog.ipynb`** — Define arreglos de átomos con `AnalogHamiltonianSimulation`. Configura campos de impulso (frecuencia de Rabi, desintonización). Resuelve un problema pequeño de Maximum Independent Set.
 
-5. **`notebooks/05-simulator-comparison.ipynb`** — Ejecuta el mismo circuito en SV1, DM1 (con ruido), TN1 y el simulador local. Compara resultados, tiempo de ejecución y costo. Entiende cuándo cada uno es apropiado.
+5. **`notebooks/05-simulator-comparison.ipynb`** — Ejecuta el mismo circuito en el simulador local y compáralo contra SV1 y DM1 (con ruido), más el peldaño retirado TN1. Compara resultados, tiempo de ejecución y costo. Entiende cuándo cada uno es apropiado — y qué quita un retiro.
 
 6. **`notebooks/06-noise-and-errors.ipynb`** — Añade canales de ruido (despolarizante, amortiguamiento de amplitud) a circuitos en DM1. Compara resultados ruidosos vs. ideales. Introducción a la mitigación de errores (concepto de extrapolación a ruido cero).
 
 **Scripts:**
 - `scripts/device_status.py` — Ejecuta desde la terminal: `python 02-hardware/scripts/device_status.py` para consultar la disponibilidad actual de dispositivos sin abrir un notebook
-- `scripts/cost_estimator.py` — Estima costos: `python 02-hardware/scripts/cost_estimator.py --device IonQ --shots 1000`. `--device` toma un nombre de **proveedor** de la tabla de precios (`IonQ`, `IQM`, `QuEra`, `Rigetti`, `SV1`, `DM1`, `TN1`, `LocalSimulator`) — estos van con mayúscula, a diferencia de los nombres cortos de dispositivo en minúsculas (`ionq_forte`, `iqm_garnet`) que toma `run_circuit`. Ejecútalo con `--help` para ver los valores aceptados.
+- `scripts/cost_estimator.py` — Estima costos: `python 02-hardware/scripts/cost_estimator.py --device IonQ --shots 1000`. `--device` toma un nombre de **proveedor** de la tabla de precios (`IonQ`, `IQM`, `IQM_Emerald`, `AQT`, `QuEra`, `Rigetti`, `SV1`, `DM1`, `TN1`, `LocalSimulator`) — estos van con mayúscula, a diferencia de los nombres cortos de dispositivo en minúsculas (`ionq_forte`, `iqm_garnet`) que toma `run_circuit`. `TN1` sigue en la tabla de precios para que el peldaño retirado se pueda seguir costeando con fines didácticos; no es enviable. Ejecútalo con `--help` para ver los valores aceptados.
 
 ## Hacia dónde va esto
 
@@ -418,7 +477,7 @@ en la escalera de simuladores que acabas de aprender, exactamente como prescribe
 ### Documentación de AWS
 - [Amazon Braket supported devices](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices.html) — Lista completa de hardware disponible y regiones
 - [Amazon Braket pricing](https://aws.amazon.com/braket/pricing/) — Precios actuales por disparo y por tarea para todos los dispositivos
-- [Testing with simulators](https://docs.aws.amazon.com/braket/latest/developerguide/braket-test.html) — Capacidades y límites de SV1, DM1, TN1
+- [Testing with simulators](https://docs.aws.amazon.com/braket/latest/developerguide/braket-test.html) — Capacidades y límites de SV1 y DM1
 - [IonQ device properties](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices-ionq.html) — Compuertas nativas, conectividad, especificaciones
 - [IQM device properties](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices-iqm.html) — Topología, compuertas nativas, compilación
 - [QuEra Aquila documentation](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices-quera.html) — Configuración de simulación hamiltoniana analógica

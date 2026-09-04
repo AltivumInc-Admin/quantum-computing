@@ -11,8 +11,8 @@ import {
   standaloneWallClockSec,
   type InstanceType,
 } from "./hybrid";
-import { isPerShot, type Provider } from "./cost";
-import { DEVICES } from "./devices";
+import { isPerShot, providerLabel, type Provider } from "./cost";
+import { dispatchableDevices } from "./devices";
 import { usePrefersReducedMotion } from "./use-display-caps";
 
 /**
@@ -40,14 +40,19 @@ const STARTUP_SEC = 60; // one-time Hybrid Job container startup
  * hand-listed, from the two catalogs that already own this knowledge: the
  * device table (devices.ts, the fleet a learner can reach) intersected with the
  * per-shot rates in cost.ts. The previous literal list had gone stale against
- * both: it offered Rigetti, which cost.ts/lib.utils.cost price as reference-only
- * because no Rigetti device is dispatchable (devices.test.ts asserts that
- * carve-out), so the picker advertised a backend the platform's own catalog
- * says you cannot submit to. Deriving means the next fleet change moves one
- * file and this select, its chips, and the parse-error string follow.
+ * both: it offered Rigetti at a time when no Rigetti device was dispatchable, so
+ * the picker advertised a backend the platform's own catalog said you could not
+ * submit to. Deriving means the next fleet change moves one file and this
+ * select, its chips, and the parse-error string follow.
+ *
+ * The filter is dispatchableDevices(), not DEVICES: the catalog now LISTS
+ * retired and offline hardware so a learner can look it up, and a backend picker
+ * is exactly the surface where listing it would be a lie. IonQ survives the
+ * filter because Forte Enterprise 1 is online even while Forte-1 is not; a
+ * provider drops out only when none of its devices are live.
  */
 const PROVIDERS: Provider[] = Array.from(
-  new Set(DEVICES.map((d) => d.provider))
+  new Set(dispatchableDevices().map((d) => d.provider))
 ).filter(isPerShot);
 const INSTANCE_KEYS = Object.keys(INSTANCES) as InstanceType[];
 
@@ -284,12 +289,17 @@ function SelectField({
   options,
   onChange,
   ariaLabel,
+  labelOf,
 }: {
   label: ReactNode;
   value: string;
   options: readonly string[];
   onChange: (value: string) => void;
   ariaLabel: string;
+  /** Display text for an option. Defaults to the option itself; the provider
+   *  select passes providerLabel so a rate key like IQM_Emerald never reaches a
+   *  learner's eye while the option VALUE stays the key the model uses. */
+  labelOf?: (option: string) => string;
 }) {
   const id = useId();
   return (
@@ -306,7 +316,7 @@ function SelectField({
       >
         {options.map((o) => (
           <option key={o} value={o}>
-            {o}
+            {labelOf ? labelOf(o) : o}
           </option>
         ))}
       </select>
@@ -380,7 +390,7 @@ export function JobExplorer({ source }: { source: string }) {
           {/* shots drives ~99.6% of every dollar on screen at the GUIDE's
               1000-shot default, so it cannot stay an invisible config value. */}
           <Chip>{shots} shots</Chip>
-          <Chip>{provider}</Chip>
+          <Chip>{providerLabel(provider)}</Chip>
         </>
       }
     >
@@ -452,6 +462,7 @@ export function JobExplorer({ source }: { source: string }) {
               label="provider"
               value={provider}
               options={PROVIDERS}
+              labelOf={(o) => providerLabel(o as Provider)}
               onChange={(v) => setProvider(v as Provider)}
               ariaLabel="Quantum provider (per-shot QPU rates)"
             />

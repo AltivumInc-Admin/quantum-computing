@@ -1,6 +1,14 @@
 import { readFileSync } from "fs";
 import path from "path";
-import { estimateCost, costLabel, PRICING } from "@/components/quantum/cost";
+import {
+  estimateCost,
+  costLabel,
+  providerLabel,
+  isRetired,
+  RETIRED_PROVIDERS,
+  PRICING,
+  type Provider,
+} from "@/components/quantum/cost";
 import { qpuCost } from "@/components/quantum/hybrid";
 
 // The committed parity fixture, generated from lib/utils/cost.py — the single
@@ -80,11 +88,60 @@ describe("costLabel", () => {
     expect(costLabel("IonQ")).toBe("$0.30/task + $0.08/shot");
     expect(costLabel("IQM")).toBe("$0.30/task + $0.00145/shot");
   });
+  it("prices IQM's two devices apart", () => {
+    // Emerald is $0.0016/shot, Garnet $0.00145. One shared key would quote every
+    // Emerald run at Garnet's rate, ~10% under true cost.
+    expect(costLabel("IQM_Emerald")).toBe("$0.30/task + $0.0016/shot");
+    expect(costLabel("IQM_Emerald")).not.toBe(costLabel("IQM"));
+  });
+  it("formats the devices adopted with the 2026-09-04 fleet refresh", () => {
+    expect(costLabel("AQT")).toBe("$0.30/task + $0.0235/shot");
+    expect(costLabel("Rigetti")).toBe("$0.30/task + $0.000425/shot");
+  });
   it("formats per-minute simulators", () => {
     expect(costLabel("SV1")).toBe("$0.075/min");
+    // TN1 is retired but still priced: its row in devices.ts renders as Retired,
+    // and a retired row with no rate of its own could only be priced at some
+    // other device's rate — the exact bug the removed Aria row shipped.
     expect(costLabel("TN1")).toBe("$0.275/min");
   });
   it("labels the free local simulator", () => {
     expect(costLabel("LocalSimulator")).toBe("Free");
+  });
+});
+
+describe("providerLabel", () => {
+  it("names the device behind an ambiguous vendor key", () => {
+    expect(providerLabel("IQM")).toBe("IQM Garnet");
+    expect(providerLabel("IQM_Emerald")).toBe("IQM Emerald");
+  });
+  it("never leaks a raw rate key into learner-facing text", () => {
+    for (const provider of Object.keys(PRICING) as Provider[]) {
+      expect(providerLabel(provider)).not.toContain("_");
+    }
+  });
+  it("covers every pricing key (the Record is exhaustive by type)", () => {
+    for (const provider of Object.keys(PRICING) as Provider[]) {
+      expect(providerLabel(provider)).toBeTruthy();
+    }
+  });
+});
+
+describe("retired rates", () => {
+  it("flags TN1, and only TN1, as retired", () => {
+    expect(isRetired("TN1")).toBe(true);
+    for (const provider of Object.keys(PRICING) as Provider[]) {
+      if (provider !== "TN1") expect(isRetired(provider)).toBe(false);
+    }
+  });
+
+  it("keeps a retired rate in the table rather than deleting it", () => {
+    // Deleting it is what would force the retired row in devices.ts to render at
+    // some other device's price — the Aria bug. The rate stays; isRetired is how
+    // a surface knows not to present it as a live quote.
+    for (const provider of RETIRED_PROVIDERS) {
+      expect(Object.keys(PRICING)).toContain(provider);
+      expect(costLabel(provider)).toBeTruthy();
+    }
   });
 });

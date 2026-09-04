@@ -15,11 +15,15 @@ for _fam in family_ranking:
 """,
     2: """
 def choose_device(needs_noise, needs_all_to_all, n_qubits):
+    online = [d for d in DEVICES if d["status"] == "ONLINE"]
+    sims = [d for d in online if d["family"].startswith("Simulator")]
     if needs_noise:
-        return "DM1"
+        return next(d["name"] for d in sims if "noise" in d["native_gates"])
     if needs_all_to_all:
-        return "IonQ Forte"
-    return "SV1" if n_qubits <= 34 else "TN1"
+        all_to_all = [d for d in online if d["connectivity"] == "all-to-all"]
+        return max(all_to_all, key=lambda d: d["qubits"])["name"]
+    biggest_sim = max(sims, key=lambda d: d["qubits"])
+    return biggest_sim["name"] if n_qubits <= biggest_sim["qubits"] else None
 
 print(choose_device(needs_noise=True, needs_all_to_all=False, n_qubits=10))
 print(choose_device(needs_noise=False, needs_all_to_all=True, n_qubits=20))

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { DEVICES, sortDevices, type SortKey } from "./devices";
+import { DEVICES, sortDevices, STATUS_LABELS, type Device, type SortKey } from "./devices";
 import { costLabel } from "./cost";
 import { fieldClass, LiveStatus, WidgetCard } from "./widget-ui";
 import { useScrollRegion } from "@/hooks/use-scroll-region";
@@ -31,6 +31,10 @@ export function DeviceTable() {
   const filtered = tech === "All" ? DEVICES : DEVICES.filter((d) => d.technology === tech);
   const sorted = sortDevices(filtered, sortKey, sortDir);
   const hasAnalog = sorted.some((d) => !d.gateModel);
+  // Retired and offline devices are LISTED, not dropped. A learner who just read
+  // the simulator ladder in 02-hardware comes here to look TN1 up; an absent row
+  // reads as "I mis-remembered", a row marked Retired reads as "AWS retired it".
+  const notLive = sorted.filter((d) => d.status !== "online").length;
 
   const sortProps = (key: SortKey, label: string) => ({
     sortBy: key,
@@ -67,10 +71,10 @@ export function DeviceTable() {
       <LiveStatus>
         {`${sorted.length} device${sorted.length === 1 ? "" : "s"} shown${
           tech === "All" ? "" : `, ${tech}`
-        }.`}
+        }${notLive ? `, ${notLive} not accepting tasks` : ""}.`}
       </LiveStatus>
 
-      {/* Table. Seven nowrap columns overflow a phone's content box, so the
+      {/* Table. Eight nowrap columns overflow a phone's content box, so the
           wrapper is a labelled keyboard scroll region when (and only when) it
           actually scrolls — the sort buttons inside it suppress the browser's
           implicit focusable-scroller fallback. */}
@@ -78,11 +82,16 @@ export function DeviceTable() {
         <table className="w-full text-sm border-collapse">
           <caption className="sr-only">
             Quantum devices by technology. Rows with a tinted background are analog
-            (non-gate-model) hardware.
+            (non-gate-model) hardware. The status column says whether Amazon Braket
+            accepts tasks for a device today: offline devices are down temporarily,
+            retired devices are gone for good.
           </caption>
           <thead>
             <tr className="border-b border-(--bd) bg-(--field)">
               <SortableTh {...sortProps("model", "Model")} />
+              <th scope="col" className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap">
+                Status
+              </th>
               <SortableTh {...sortProps("technology", "Technology")} />
               <th scope="col" className="px-4 py-2 text-left font-medium text-caption whitespace-nowrap">
                 Vendor
@@ -114,6 +123,9 @@ export function DeviceTable() {
                 >
                   <td className="px-4 py-2.5 font-mono font-medium text-(--ink) whitespace-nowrap">
                     {device.model}
+                  </td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">
+                    <StatusBadge device={device} />
                   </td>
                   <td className="px-4 py-2.5 text-caption whitespace-nowrap">
                     {device.technology}
@@ -152,6 +164,35 @@ export function DeviceTable() {
         </div>
       )}
     </WidgetCard>
+  );
+}
+
+/**
+ * Lifecycle badge. Carries its meaning in TEXT, never in colour alone — the
+ * whole point of listing a retired device instead of deleting it is that the
+ * learner can read why it is here, and a colour-only cue would be invisible to
+ * a screen reader and ambiguous to everyone else.
+ */
+function StatusBadge({ device }: { device: Device }) {
+  const tone =
+    device.status === "online"
+      ? "bg-accent-light/15 text-accent-dark dark:text-accent-light ring-accent-dark/25"
+      : device.status === "offline"
+        ? "bg-warm/15 text-(--ink) ring-warm/40"
+        : "bg-(--field) text-caption ring-(--bd)";
+  return (
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 whitespace-nowrap ${tone}`}
+      title={
+        device.status === "online"
+          ? "Amazon Braket accepts tasks for this device."
+          : device.status === "offline"
+            ? "Temporarily not accepting tasks (calibration or maintenance). Expected back."
+            : "Permanently retired by AWS. It will never accept a task again."
+      }
+    >
+      {STATUS_LABELS[device.status]}
+    </span>
   );
 }
 
