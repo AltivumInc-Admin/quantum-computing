@@ -36,6 +36,8 @@
  * (backfill.mjs) owns every side effect.
  */
 
+import { NOTEBOOKS, SECTIONS, sectionIndex } from "./curriculum.mjs";
+
 // ---------------------------------------------------------------------------
 // Log parsing
 // ---------------------------------------------------------------------------
@@ -309,6 +311,71 @@ export const isPageView = (row) =>
 export const loadedAppAssets = (rows) => rows.some((r) => r.path.includes("/_next/static/"));
 
 // ---------------------------------------------------------------------------
+// What a person read — curriculum identifiers, never a request path
+// ---------------------------------------------------------------------------
+
+/**
+ * A notebook the in-browser lab actually loaded.
+ *
+ * MEASURED against production traffic, not assumed. JupyterLite's contents
+ * manager awaits `fetch(baseUrl + "files/" + path)` on EVERY open, including
+ * one whose local copy is already in IndexedDB, and the lab's service worker
+ * leaves it alone (its cache is off unless activated with enableCache=true).
+ * The object is served `cache-control: public, max-age=0, s-maxage=31536000`,
+ * so the browser revalidates every time and CloudFront logs the viewer request
+ * whether the edge Hit or Missed. A notebook open is therefore always in this
+ * log, with no beacon and no change to the web app.
+ *
+ * TWO CONSEQUENCES THE PREDICATE ENCODES, both observed in the real log:
+ *
+ *   - A 304 REVALIDATION CARRIES NO sc-content-type. The column arrives as
+ *     "-". Keying on content-type the way isPageView does would silently drop
+ *     every repeat open, so status is the only usable success signal here.
+ *   - THE SAME NOTEBOOK IS FETCHED TWICE PER OPEN (a 200 then a 304), and
+ *     JupyterLab re-fetches whatever was open when the workspace was last used.
+ *     A request count would roughly double and would score a restore as a
+ *     fresh read, which is why summarizeDay counts DISTINCT (address, notebook)
+ *     pairs per day. The honest name for what this measures is "a notebook was
+ *     loaded into the lab", restores included.
+ *
+ * Returns a curriculum key ("01-foundations/01-first-circuit") or null. The key
+ * must be in the checked-in allowlist: an unknown path is not counted at all,
+ * rather than becoming a new column of a table that promises to hold none.
+ */
+export const NOTEBOOK_FETCH = /^\/lab\/files\/(\d{2}-[a-z0-9-]+)\/notebooks\/([0-9a-z][0-9a-z-]*)\.ipynb$/;
+
+export function notebookKey(row) {
+  if (row.status !== "200" && row.status !== "304") return null;
+  const m = NOTEBOOK_FETCH.exec(row.path ?? "");
+  if (!m) return null;
+  const key = `${m[1]}/${m[2]}`;
+  return NOTEBOOKS.has(key) ? key : null;
+}
+
+/**
+ * A lesson page, as a section slug.
+ *
+ * DELIBERATELY NOT the RSC prefetch. Next.js fires `/learn/<slug>/__next.*.txt`
+ * for every link in the viewport, so on a day with five readers all seven
+ * sections carried ten prefetch rows each. Counting those would report that
+ * everyone reached everything. The anchored regex excludes them structurally
+ * (they carry an extra path segment) and isPageView excludes them again (they
+ * are text/plain, not text/html) — two independent guards, because this is the
+ * one signal here that would fail toward OVER-counting.
+ */
+export const LEARN_PAGE = /^\/learn\/(\d{2}-[a-z0-9-]+)\/?$/;
+
+/** The section a single request evidences: a lesson page, or a notebook load. */
+export function sectionOf(row) {
+  const nb = notebookKey(row);
+  if (nb) return nb.slice(0, nb.indexOf("/"));
+  if (!isPageView(row)) return null;
+  const m = LEARN_PAGE.exec(row.path ?? "");
+  if (!m) return null;
+  return SECTIONS.has(m[1]) ? m[1] : null;
+}
+
+// ---------------------------------------------------------------------------
 // Sign-in extraction
 // ---------------------------------------------------------------------------
 
@@ -418,7 +485,14 @@ export function classifyVisitor(rows, rangeIndex) {
  * and by backfill.mjs replaying a day the site served under its old hostname.
  */
 export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {}) {
-  const mine = rows.filter((r) => r.host === siteHost);
+  // Host AND, when the caller named one, DAY. Amplify's GenerateAccessLogs was
+  // observed returning another in-flight call's window under concurrency: a
+  // backfill of 2026-09-01 came back byte-identical to 2026-09-02, every `date`
+  // column reading 09-02, and the run printed a plausible row and exited 0. The
+  // rows themselves say which day they are, so a wrong-window response now
+  // lands as requests: 0 with offSiteRequests > 0 — the shape that already
+  // alarms — instead of a mislabelled row on the only copy of the history.
+  const mine = rows.filter((r) => r.host === siteHost && (!day || r.date === day));
 
   const byIp = new Map();
   for (const r of mine) {
@@ -438,6 +512,21 @@ export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {
     human: 0,
   };
   const humans = [];
+  // What people read, as counts, never as a trail. Each map is keyed by a
+  // checked-in curriculum identifier (curriculum.mjs) and valued by a number of
+  // DISTINCT ADDRESSES — so a value can never exceed `humans`, one person
+  // opening one notebook twice counts once, and the address that made the
+  // grouping possible is dropped with `byIp` at the end of this function. The
+  // section set is deliberately UNORDERED: "reached 00, 01 and 03 today" is
+  // recoverable, "read 03 first" is not, and on a day with a handful of
+  // visitors that ordering would describe one person's path through the site.
+  // An ordered transition matrix is a separate decision with its own policy
+  // sentence, not something to slip in here.
+  const notebookOpens = {};
+  const sectionReach = {};
+  const sectionDepth = {};
+  const furthestSection = {};
+  const bump = (map, key) => { map[key] = (map[key] ?? 0) + 1; };
   // Counted per address and corroborated, for the same reason the verdict is:
   // an uncorroborated callback row is a header anyone can send, and this is the
   // only Google sign-in figure this account has.
@@ -447,6 +536,30 @@ export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {
     buckets[verdict]++;
     if (verdict === "human") {
       humans.push({ ip, pages: list.filter(isPageView).length });
+
+      // Bot exclusion is REUSED, never re-implemented: these counts are taken
+      // inside the same loop, gated on the same verdict, so the notebook map
+      // and the human total can never disagree about who was a person. The
+      // curl/8.7.1 sweep that fetched all 45 notebooks in ten seconds is
+      // already a `declared-bot` here and contributes nothing.
+      const books = new Set();
+      const sections = new Set();
+      for (const r of list) {
+        const key = notebookKey(r);
+        if (key) books.add(key);
+        const section = sectionOf(r);
+        if (section) sections.add(section);
+      }
+      for (const key of books) bump(notebookOpens, key);
+      for (const section of sections) bump(sectionReach, section);
+      if (sections.size > 0) {
+        bump(sectionDepth, String(sections.size));
+        let furthest = null;
+        for (const section of sections) {
+          if (furthest === null || sectionIndex(section) > sectionIndex(furthest)) furthest = section;
+        }
+        bump(furthestSection, furthest);
+      }
     }
     google += verifiedGoogleSignIns(list, rangeIndex).length;
   }
@@ -460,5 +573,11 @@ export function summarizeDay(rows, rangeIndex, { day, siteHost = SITE_HOST } = {
     humans: buckets.human,
     humanPageViews: humans.reduce((n, h) => n + h.pages, 0),
     googleSignIns: google,
+    // Sparse by construction: a notebook nobody opened has no key at all, so
+    // absent means "not read", and on an older row it means "not collected".
+    notebookOpens,
+    sectionReach,
+    sectionDepth,
+    furthestSection,
   };
 }

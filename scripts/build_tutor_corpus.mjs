@@ -7,8 +7,17 @@
  * The strip/heading logic is imported from lambda/tutor/tutor-core.mjs (the
  * single source of truth, shared with the Lambda). Run via
  * `npm --prefix lambda/tutor run build:corpus` or `node scripts/build_tutor_corpus.mjs`
- * before packaging the Lambda. `npm run deploy` in lambda/tutor chains it ahead of
- * the preflight and `sam deploy`, so a hand-typed deploy cannot skip it.
+ * before packaging the Lambda.
+ *
+ * A HAND-TYPED DEPLOY *CAN* SKIP THIS, and once did. npm only fires `predeploy`
+ * for `npm run deploy`; a bare `sam build && sam deploy` runs neither, and the
+ * 2026-08-29 QL-Prod deploy shipped a corpus built before 2026-08-19 for exactly
+ * that reason — including a sponsored-QPU promise the curriculum had already
+ * withdrawn. Three guards now exist because the npm hook alone is not one:
+ *   - lambda/tutor/corpus-freshness.test.mjs — offline, runs under `npm test`
+ *   - .github/workflows/tutor-corpus.yml — rebuilds + preflights on every push
+ *   - lambda/tutor `npm run deploy` chains the gate INSIDE the deploy script,
+ *     not only in the predeploy hook, so `--ignore-scripts` cannot strip it.
  *
  * TRUNCATION IS A BUILD FAILURE. A section that exceeds SECTION_CHAR_CAP is cut,
  * and because the system prompt orders the model to answer ONLY from the text it
@@ -24,7 +33,14 @@ import { fileURLToPath } from "node:url";
 import { buildCorpusEntry, SECTION_CHAR_CAP } from "../lambda/tutor/tutor-core.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = path.join(ROOT, "lambda", "tutor", "corpus.json");
+// TUTOR_CORPUS_OUT redirects the write so a freshness test can rebuild into a
+// temp dir and diff the result against the checked-out artifact WITHOUT
+// clobbering it (a test that overwrote corpus.json would repair the very
+// staleness it is supposed to detect). Unset — the normal path — it writes the
+// one location the Lambda package reads.
+const OUT = process.env.TUTOR_CORPUS_OUT
+  ? path.resolve(process.env.TUTOR_CORPUS_OUT)
+  : path.join(ROOT, "lambda", "tutor", "corpus.json");
 
 const dirs = fs
   .readdirSync(ROOT)

@@ -1,0 +1,119 @@
+name: Tutor corpus
+
+# Is the tutor's grounding text the text the curriculum actually ships?
+#
+# THE FAILURE THIS EXISTS FOR, in full, because it already happened. The deployed
+# tutor answers ONLY from lambda/tutor/corpus.json, which is DERIVED from the
+# seven NN-*/GUIDE.md files and is a gitignored build artifact. On 2026-08-29 the
+# QL-Prod deploy shipped a corpus built before 2026-08-19: it told learners, in
+# the platform's own voice, that a free account came with a sponsored budget on
+# IQM Garnet and that the platform pays Amazon Braket — a promise withdrawn from
+# the GUIDE fourteen hours earlier, that the wallet cannot fund and the closed
+# storefront cannot sell. It also described library APIs deleted ten days before.
+#
+# The gate that catches this exactly (lambda/tutor/deploy-check.mjs) already
+# existed. It simply never ran: npm fires `predeploy` only for `npm run deploy`,
+# and the operator typed `sam build && sam deploy`. Nothing else could see it —
+# `make drift` compares only .mjs/.js source bytes, and would have reported MATCH
+# because the working-tree corpus was the same stale artifact.
+#
+# So the check needed a path nobody can forget. This workflow rebuilds the corpus
+# from the GUIDEs on a clean checkout and runs the real preflight. No credentials,
+# no network, no AWS call — it is pure and it cannot be skipped by how someone
+# chooses to deploy. A red run here means a GUIDE moved and the tutor would teach
+# the old text; the fix is always to rebuild the corpus, never to relax the gate.
+#
+# Separate file from ci.yml on purpose: this guard is owned by lambda/tutor and
+# should be readable, and re-editable, without touching the shared matrix.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tutor-corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  corpus:
+    name: Corpus freshness + deploy preflight
+    runs-on: ubuntu-latest
+    # Node install plus two pure scripts; well under a minute in practice. A cap
+    # means a hung run fails visibly instead of holding the concurrency group
+    # until GitHub's six-hour default expires.
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: lambda/tutor
+    steps:
+      # Full checkout: the builder reads every NN-*/GUIDE.md from the repo root,
+      # so a sparse or shallow-path checkout would silently produce a short corpus.
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: lambda/tutor/package-lock.json
+
+      # node --test imports the handler, which imports its AWS SDK clients at
+      # module top, so the deps have to be present before the suite runs.
+      - name: Install dependencies
+        run: npm ci
+
+      # Build from the GUIDEs on a clean checkout. corpus.json is gitignored, so
+      # this is the only copy CI ever sees and it cannot inherit a stale one from
+      # someone's working tree. Exits non-zero if any section is truncated.
+      - name: Build the corpus from the GUIDEs
+        run: npm run build:corpus
+
+      # The gate the 2026-08-29 deploy went around. Fails if any section is
+      # missing, empty, orphaned, or differs from a fresh build, and if any
+      # roster model id still carries a Bedrock prefix.
+      - name: Deploy preflight
+        run: node deploy-check.mjs
+
+      # Belt and braces: the offline suite re-derives the corpus into a temp dir
+      # and bars the withdrawn sponsorship wording by content. Runs here as well as
+      # in ci.yml's lambdas matrix so a red corpus is attributable to this workflow
+      # by name.
+      #
+      # Note what this step does NOT prove. Its byte-comparison is against the
+      # corpus the step above just built, so here it compares a file to itself —
+      # staleness is a property of an operator's working tree, and CI has none
+      # (corpus.json is gitignored, so CI never receives one). The content bar is
+      # the part that carries weight in CI: it fails if a GUIDE on this branch
+      # reintroduces the withdrawn sponsored-hardware promise, fresh build or not.
+      - name: Corpus freshness suite
+        run: node --test corpus-freshness.test.mjs
+
+      # A green run should say what it inspected, not just exit 0 — the same
+      # reason drift.yml records its scope. "It ran and was clean" and "it never
+      # ran" must not look alike.
+      - name: Record what this run inspected
+        run: |
+          echo "### Tutor corpus" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Rebuilt from these GUIDEs and preflighted:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          node -e '
+            const fs = require("node:fs");
+            const c = JSON.parse(fs.readFileSync("corpus.json", "utf8"));
+            const rows = Object.entries(c).map(
+              ([k, v]) => `| \`${k}\` | ${v.title} | ${v.headings.length} | ${v.text.length} |`
+            );
+            const out = [
+              "| section | title | headings | chars |",
+              "| --- | --- | ---: | ---: |",
+              ...rows,
+              "",
+              `Total: ${rows.length} sections, ${fs.statSync("corpus.json").size} bytes.`,
+            ].join("\n");
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out + "\n");
+          '

@@ -489,12 +489,29 @@ Amazon Braket charges per-task and per-shot on real hardware. Always:
 3. Only move to QPU when the algorithm is validated
 4. Check `make cost` regularly
 
-Approximate costs (as of 2025):
+Our costs, and the live fleet (verified 2026-09-04 against the Braket Price List API and
+`deviceStatus`). **`make fleet` machine-checks this roster against `braket:SearchDevices`
+in every region** (`scripts/check-device-fleet.mjs`, nightly via `device-fleet.yml`), so
+treat it as checked rather than remembered — and re-run it before trusting a status here.
+
 - Local simulator: Free
-- SV1/DM1/TN1: $0.075-$0.275 per minute
-- IonQ: $0.08 per shot + $0.30 per task (Forte; Aria retired)
-- IQM: $0.00145 per shot + $0.30 per task
-- QuEra: $0.01 per shot + $0.30 per task
+- SV1, DM1 (managed, ONLINE): $0.075 per minute
+- TN1: **RETIRED in every region.** Still priced at $0.275 per minute and still in
+  `DEVICES` so the simulator-ladder lesson survives; `run_circuit` refuses to dispatch to it.
+- IonQ: $0.08 per shot + $0.30 per task. **Forte 1 is OFFLINE** (calibration, reversible);
+  **Forte Enterprise 1 is ONLINE** at the same qubit count, gate set and rate. Aria and
+  Harmony are retired.
+- IQM: Garnet ONLINE at $0.00145 per shot + $0.30 per task. **Emerald is ONLINE and bills a
+  DIFFERENT rate — $0.0016 per shot + $0.30 per task.** Never price an Emerald run off
+  Garnet's number; `PRICING` keys them separately for exactly that reason.
+- QuEra Aquila (analog only, ONLINE): $0.01 per shot + $0.30 per task
+- Rigetti: $0.000425 per shot + $0.30 per task. **Cepheus-1-108Q is ONLINE** — the old
+  "reference pricing only, nothing dispatchable" note no longer holds.
+- AQT IBEX Q1 (eu-north-1, ONLINE): $0.0235 per shot + $0.30 per task. A provider the
+  curriculum had never carried before 2026-09-04.
+
+Per-task shot ceilings differ by device (Aquila 1,000; AQT 2,000; IonQ 5,000;
+IQM 20,000; SV1/DM1/Rigetti 50,000). `shot_bounds()` in `lib/hardware/devices.py` is the authority.
 
 ## Dependencies
 

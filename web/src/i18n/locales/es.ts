@@ -884,9 +884,11 @@ export const es: TranslationDict = {
       "si ejecutas un circuito en hardware cuántico real, un registro de esa ejecución (dispositivo, número de disparos, costo y un hash del circuito) para aplicar los límites de gasto de hardware",
     storeTutor:
       "Si le haces una pregunta al tutor de la lección, la pregunta y el contexto de la lección se envían a nuestro servicio de tutor (AWS, us-east-2), que los reenvía a Anthropic, el proveedor de IA, para generar la respuesta.",
+    storeAggregates:
+      "Aparte de cualquier cuenta, nuestros servidores guardan un conteo diario de cómo se usa el sitio: cuántas personas llegaron al sitio, cuántas iniciaron sesión, cuántas abrieron cada cuaderno de lección, cuántas abrieron cada sección del curso, a cuántas secciones del curso llegaron las visitas de ese día y hasta qué sección llegaron más lejos las personas que leyeron ese día. Estos conteos se calculan después, a partir de los registros de acceso ordinarios de nuestro proveedor de alojamiento web — el registro de las solicitudes que cargan el sitio — y solo se conservan los totales diarios. Mientras se cuenta un día, sus solicitudes se agrupan por dirección de red para poder distinguir los rastreadores automáticos de las personas, y para que alguien que abre el mismo cuaderno dos veces se cuente una sola vez; esas direcciones se usan para el conteo y luego se descartan, nunca se anotan. Lo que conservamos no contiene direcciones, ni agentes de usuario, ni URLs de solicitudes, ni ningún identificador, ni nada que enlace un día con otro. En un día tranquilo, cuando solo visitan unas pocas personas, estos totales son inevitablemente una descripción aproximada de la lectura de ese puñado de personas — pero nunca de quiénes son.",
     whatWeDont: "Qué no recopilamos",
     noAnalytics:
-      "Sin analítica ni scripts de seguimiento — no existen en ningún lugar de este sitio.",
+      "Sin analítica ni scripts de seguimiento en tu navegador. No se añade nada a la página para observarte: ningún script de analítica, ninguna cookie de seguimiento, ninguna baliza, ningún identificador de visitante. Sí contamos el uso, pero solo en nuestros propios servidores y solo como totales diarios; la sección anterior explica exactamente qué son esos totales.",
     noAds: "Sin publicidad, y no se vende ni se comparte datos con fines publicitarios.",
     noCookies:
       "Sin cookies de seguimiento. Los tokens de inicio de sesión se guardan en el almacenamiento de sesión por pestaña de tu navegador.",
@@ -899,7 +901,7 @@ export const es: TranslationDict = {
     retentionDelete:
       "Los datos del servidor se conservan hasta que los elimines. Tu espacio de trabajo tiene un control \"Eliminar cuenta\" que borra de forma permanente tu progreso sincronizado, tu preferencia de correo, la cuenta misma y la copia local de este dispositivo — en ese orden, y se detiene y te avisa si algún paso falla. No hay deshacer ni periodo de recuperación.",
     retentionLogs:
-      "Los registros operativos del servicio (para depuración y prevención de abusos) se conservan en AWS CloudWatch durante 30 días y luego se eliminan automáticamente.",
+      "Los registros operativos del servicio (para depuración y prevención de abusos) se conservan en AWS CloudWatch durante 30 días y luego se eliminan automáticamente. Los registros de acceso de nuestro proveedor de alojamiento web, que anotan las solicitudes que cargan el sitio, se conservan según el calendario del propio proveedor y no los retenemos nosotros; una vez al día leemos los del día anterior, producimos los totales diarios descritos arriba y guardamos solo esos totales. Los totales se conservan de forma indefinida.",
     contact: "Contacto",
     contactBody: "Preguntas sobre esta política o tus datos:",
     lastUpdated: "Última actualización {{date}}.",

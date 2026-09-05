@@ -26,6 +26,15 @@
  *      it would put the API key somewhere it does not belong. Confirm the secret
  *      exists with `aws secretsmanager describe-secret --secret-id quantum-tutor`
  *      (metadata only, never the value) before deploying.
+ *   3. WITHDRAWN CLAIMS — no section may carry the sponsored-hardware promise the
+ *      curriculum withdrew on 2026-08-19. Freshness alone does not cover this: a
+ *      GUIDE that REINTRODUCES the sentence rebuilds into a perfectly fresh corpus
+ *      that this gate would otherwise wave through. The tutor answers only from
+ *      this text, so a sentence here is an advertisement in the platform's own
+ *      voice for something the wallet cannot fund and the closed storefront cannot
+ *      sell. `WITHDRAWN_CLAIM_PATTERNS` is the single source of truth for the bar;
+ *      `corpus-freshness.test.mjs` imports it rather than keeping a second copy,
+ *      so the deploy path and the test path can never disagree about what is banned.
  *
  * Pure helpers are exported and unit-tested in deploy-check.test.mjs (CI runs it via
  * `node --test`). Not in package.json `files`, so `sam build` never packages it.
@@ -111,6 +120,47 @@ export function corpusFreshnessProblems(corpus, sections, root = REPO_ROOT) {
   return problems;
 }
 
+/**
+ * Wording the curriculum WITHDREW and the deployed system cannot honour. The exact
+ * claim that shipped to QL-Prod on 2026-08-29: "a free Workspace account comes with
+ * a sponsored budget on IQM Garnet — the platform pays Amazon Braket, you pay
+ * nothing." Hardware runs are not funded, the storefront is closed, and every credit
+ * in a wallet was paid for, so the promise is false in every direction.
+ *
+ * This list is exported because it must have exactly one definition. It is enforced
+ * on the deploy path (`runPreflight`, and therefore `npm run deploy` and CI) and
+ * imported by `corpus-freshness.test.mjs` for the `npm test` path.
+ */
+export const WITHDRAWN_CLAIM_PATTERNS = [
+  /sponsored budget/i,
+  /the platform pays/i,
+  /you pay nothing/i,
+  /sponsor(ed|ship|s)?\s+(budget|allowance|hardware|qpu)/i,
+  /patrocinad/i,
+];
+
+/**
+ * Scan a corpus object for withdrawn claims. Returns human-readable problems
+ * (empty ⇒ clean). `where` names the artifact in the message so a failure says
+ * which copy is at fault. Pure.
+ */
+export function withdrawnClaimProblems(corpus, where = "corpus") {
+  const problems = [];
+  for (const [slug, entry] of Object.entries(corpus)) {
+    const text = entry && typeof entry.text === "string" ? entry.text : "";
+    for (const re of WITHDRAWN_CLAIM_PATTERNS) {
+      if (re.test(text)) {
+        problems.push(
+          `withdrawn claim: ${where} section "${slug}" matches ${re} — the tutor would ` +
+            `advertise sponsored hardware the wallet cannot fund. Fix the GUIDE.md and ` +
+            `rebuild; never relax this bar.`
+        );
+      }
+    }
+  }
+  return problems;
+}
+
 export function runPreflight({ corpusPath = CORPUS_PATH, root = REPO_ROOT } = {}) {
   const errors = [];
 
@@ -124,6 +174,9 @@ export function runPreflight({ corpusPath = CORPUS_PATH, root = REPO_ROOT } = {}
   }
   if (corpus) {
     for (const p of corpusFreshnessProblems(corpus, listGuideSections(root), root)) errors.push(p);
+    // Content bar, not a freshness check: a GUIDE that reintroduces the withdrawn
+    // promise builds a FRESH corpus, so the comparison above would pass it.
+    for (const p of withdrawnClaimProblems(corpus, corpusPath)) errors.push(p);
   }
   return errors;
 }
@@ -135,7 +188,10 @@ function main() {
     for (const e of errors) console.error(`  - ${e}`);
     process.exit(1);
   }
-  console.log("tutor deploy preflight OK — corpus is fresh and every roster model id is invocable.");
+  console.log(
+    "tutor deploy preflight OK — corpus is fresh, carries no withdrawn sponsorship claim, " +
+      "and every roster model id is invocable."
+  );
 }
 
 // Only run the CLI when executed directly, so importing the helpers in tests is side-effect-free.

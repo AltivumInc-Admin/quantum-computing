@@ -6,13 +6,28 @@
  * keep the aggregate. This runs once a day, classifies the previous day's
  * requests, and writes ONE row of counts.
  *
- * WHAT THIS DELIBERATELY DOES NOT STORE: addresses, user agents, paths, or
- * anything else that identifies a visitor. Only counts are written. The privacy
- * policy states, in both locales, that no analytics or tracking scripts exist
- * anywhere on the site, and that remains true — nothing is added to the browser,
- * no cookie, no identifier, no beacon. The logs being read here already exist
- * and are already disclosed as operational service logs. Keep it that way: the
- * moment this writes an IP, that promise needs rewriting.
+ * WHAT THIS DELIBERATELY DOES NOT STORE: addresses, user agents, request URLs,
+ * or anything else that identifies a visitor, and nothing that links one day to
+ * another. Only counts are written.
+ *
+ * Since 2026-09-04 those counts include WHAT was read as well as how many read
+ * it: per-notebook opens, and how far through the curriculum a day's readers
+ * got. The keys for those are curriculum identifiers drawn from a fixed,
+ * checked-in allowlist (curriculum.mjs — seven sections, forty-five notebooks,
+ * each already public in a lesson URL), never a request path. An unrecognized
+ * path cannot become a key, so the earlier "no paths" promise is kept in the
+ * only form that matters: nothing a visitor can cause to be logged can appear
+ * in this table.
+ *
+ * NOTHING IS ADDED TO THE BROWSER: no analytics script, no tracking cookie, no
+ * beacon, no visitor identifier. The logs being read here already exist and are
+ * already disclosed as operational service logs. While a day is being counted
+ * its requests are grouped by address so crawlers can be told apart from people
+ * and so one person opening the same notebook twice counts once; those
+ * addresses are used and dropped, never written. The privacy policy says all of
+ * this, in both locales, under "What we store" — it was amended in the same
+ * change that added these counts. Keep it that way: the moment this writes an
+ * IP, or a key that is not on the allowlist, that copy needs rewriting FIRST.
  *
  * All classification lives in classify.mjs and all retrieval in retrieve.mjs,
  * both of which the ops script scripts/analytics/backfill.mjs imports from here
@@ -54,6 +69,15 @@ export const MAX_MALFORMED_SHARE = 0.2;
 
 /** Oldest day with retrievable logs, verified. Nothing before it can exist. */
 export const LAUNCH_DAY = "2026-06-28";
+
+/**
+ * A DynamoDB M of Ns from a plain object of counts.
+ *
+ * Every map written to the row goes through this, so "the values are numbers"
+ * is a property of one function rather than of five call sites.
+ */
+export const mapOfN = (counts) =>
+  Object.fromEntries(Object.entries(counts ?? {}).map(([k, v]) => [k, { N: String(v) }]));
 
 /** The day before `today`, in UTC. */
 export function previousDay(today) {
@@ -197,7 +221,7 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
     if (summary.requests === 0 && summary.offSiteRequests > 0) {
       console.warn(
         `analytics-matched-nothing day=${day} offSiteRequests=${summary.offSiteRequests} ` +
-          `siteHost=${siteHost} — the log had rows and none matched the host filter`
+          `siteHost=${siteHost} — the log had rows and none matched the host+day filter`
       );
     }
 
@@ -210,7 +234,17 @@ export function createAnalyticsCore({ amplify, ddb, fetchImpl, tableName, appId,
       humanPageViews: { N: String(summary.humanPageViews) },
       googleSignIns: { N: String(summary.googleSignIns) },
       malformed: { N: String(malformed) },
-      buckets: { M: Object.fromEntries(Object.entries(summary.buckets).map(([k, v]) => [k, { N: String(v) }])) },
+      buckets: { M: mapOfN(summary.buckets) },
+      // What was read, as counts. Sparse: a notebook nobody opened has no key,
+      // and a row written before 2026-09-04 has none of these four attributes
+      // at all. A reader must treat ABSENT as "not collected", never as zero —
+      // the seven rows from 2026-08-28 to 2026-09-03 predate this and there is
+      // deliberately no backfill, because Amplify's retention has already lost
+      // the raw logs those days were computed from.
+      notebookOpens: { M: mapOfN(summary.notebookOpens) },
+      sectionReach: { M: mapOfN(summary.sectionReach) },
+      sectionDepth: { M: mapOfN(summary.sectionDepth) },
+      furthestSection: { M: mapOfN(summary.furthestSection) },
       // Without the ranges, the datacenter filter did not run and `humans` is
       // an overcount. Recorded on the row so a later reader is not misled.
       botFilterComplete: { BOOL: Boolean(complete) },

@@ -22,10 +22,13 @@ import {
   isDeclaredBot,
   isHostilePath,
   isPageView,
+  notebookKey,
   parseLog,
+  sectionOf,
   summarizeDay,
   verifiedGoogleSignIns,
 } from "./classify.mjs";
+import { NOTEBOOKS, SECTIONS } from "./curriculum.mjs";
 
 /** The real CloudFront CSV header, verbatim — note the escaped parentheses. */
 const HEADER =
@@ -454,4 +457,160 @@ test("signing in does not launder a visitor that also probed hostile paths", () 
     row({ ip: "198.51.100.9", path: "/.env", status: "404" }),
   );
   assert.equal(classifyVisitor(rows, null), "scanner");
+});
+
+// ---------------------------------------------------------------------------
+// What was read — per-notebook opens and how far a day's readers got
+// ---------------------------------------------------------------------------
+
+test("a notebook fetch is recognized on a 200 AND on a 304 revalidation", () => {
+  // The 304 is not an edge case: JupyterLite fetches the same notebook twice on
+  // every open, and the second carries NO sc-content-type at all (the column
+  // arrives as "-"). A predicate written on content-type — the way isPageView
+  // is — silently drops every repeat open, which is why this one reads status.
+  const [ok, revalidated] = parse(
+    row({ path: "/lab/files/01-foundations/notebooks/01-first-circuit.ipynb", contentType: "application/octet-stream" }),
+    row({ path: "/lab/files/01-foundations/notebooks/01-first-circuit.ipynb", status: "304", contentType: "-" }),
+  );
+  assert.equal(notebookKey(ok), "01-foundations/01-first-circuit");
+  assert.equal(notebookKey(revalidated), "01-foundations/01-first-circuit");
+  assert.equal(sectionOf(ok), "01-foundations", "a notebook load is section evidence too");
+});
+
+test("a path outside the checked-in curriculum can never become a key", () => {
+  // The whole reason the privacy promise survives per-notebook counting: what
+  // may be WRITTEN is bounded by curriculum.mjs, not by what a visitor can make
+  // the CDN log. A probe, a rename, an unreviewed future route — all null.
+  const cases = [
+    "/lab/files/01-foundations/notebooks/does-not-exist.ipynb",
+    "/lab/files/99-not-a-section/notebooks/01-first-circuit.ipynb",
+    "/lab/files/01-foundations/notebooks/../../../etc/passwd.ipynb",
+    "/lab/files/01-foundations/notebooks/01-first-circuit.ipynb?x=1",
+    "/lab/api/contents/01-foundations/notebooks/all.json",
+    "/lab/build/x.js",
+    "/wp-admin/install.php",
+  ];
+  for (const path of cases) {
+    const [r] = parse(row({ path, contentType: "application/octet-stream" }));
+    assert.equal(notebookKey(r), null, path);
+  }
+  // A 404 probe for a real notebook path is a request, not a read.
+  const [missing] = parse(
+    row({ path: "/lab/files/01-foundations/notebooks/01-first-circuit.ipynb", status: "404" }),
+  );
+  assert.equal(notebookKey(missing), null);
+});
+
+test("a lesson page counts as section reach; its RSC prefetch does not", () => {
+  // Next.js prefetches every in-viewport link, so on a five-reader day all seven
+  // sections carried ten of these each. Counting them would report that everyone
+  // reached everything — the one signal here that fails toward OVER-counting.
+  const [page, prefetch, subpath] = parse(
+    row({ path: "/learn/03-algorithms" }),
+    row({ path: "/learn/03-algorithms/__next.abc123.txt", contentType: "text/plain" }),
+    row({ path: "/learn/03-algorithms/_tree.txt", contentType: "text/plain" }),
+  );
+  assert.equal(sectionOf(page), "03-algorithms");
+  assert.equal(sectionOf(prefetch), null);
+  assert.equal(sectionOf(subpath), null);
+  const [unknown] = parse(row({ path: "/learn/99-not-a-section" }));
+  assert.equal(sectionOf(unknown), null);
+});
+
+test("one person opening one notebook twice is counted once", () => {
+  const rows = parse(
+    row({ ip: "198.51.100.4", path: "/", time: "10:00:00" }),
+    row({ ip: "198.51.100.4", path: "/_next/static/x.js", time: "10:00:01", contentType: "text/javascript" }),
+    row({ ip: "198.51.100.4", path: "/lab/files/00-prereqs/notebooks/01-python-numpy-warmup.ipynb", time: "10:01:00", contentType: "application/octet-stream" }),
+    row({ ip: "198.51.100.4", path: "/lab/files/00-prereqs/notebooks/01-python-numpy-warmup.ipynb", time: "10:01:01", status: "304", contentType: "-" }),
+  );
+  const s = summarizeDay(rows, buildRangeIndex([]), { day: "2026-08-19" });
+  assert.deepEqual(s.notebookOpens, { "00-prereqs/01-python-numpy-warmup": 1 });
+  assert.equal(s.humans, 1);
+});
+
+test("a crawler sweeping every notebook contributes nothing", () => {
+  // Real traffic: 56 requests from one address with curl/8.7.1 fetching all 45
+  // notebooks in ten seconds. Bot exclusion is REUSED here — the counts are
+  // taken inside the same loop, gated on the same verdict — so this can only
+  // fail if classifyVisitor itself does, never because a second classifier
+  // drifted from the first.
+  const rows = [];
+  for (const key of NOTEBOOKS) {
+    rows.push(row({ ip: "203.0.113.99", ua: "curl/8.7.1", path: `/lab/files/${key.replace("/", "/notebooks/")}.ipynb`, contentType: "application/octet-stream" }));
+  }
+  const s = summarizeDay(parse(...rows), buildRangeIndex([]), { day: "2026-08-19" });
+  assert.equal(s.buckets["declared-bot"], 1);
+  assert.equal(s.humans, 0);
+  assert.deepEqual(s.notebookOpens, {});
+  assert.deepEqual(s.sectionReach, {});
+});
+
+test("progression is counted per person as a SET, never as an order", () => {
+  const reader = (ip, ...paths) => [
+    row({ ip, path: "/", time: "09:00:00" }),
+    row({ ip, path: "/_next/static/x.js", time: "09:00:01", contentType: "text/javascript" }),
+    ...paths.map((path, i) => row({ ip, path, time: `09:0${i + 1}:00` })),
+  ];
+  const rows = parse(
+    // Reads 00 only.
+    ...reader("198.51.100.1", "/learn/00-prereqs"),
+    // Reads 03 first, then 00 — the same SET as the next reader, deliberately.
+    ...reader("198.51.100.2", "/learn/03-algorithms", "/learn/00-prereqs"),
+    ...reader("198.51.100.3", "/learn/00-prereqs", "/learn/03-algorithms"),
+  );
+  const s = summarizeDay(rows, buildRangeIndex([]), { day: "2026-08-19" });
+
+  assert.equal(s.humans, 3);
+  assert.deepEqual(s.sectionReach, { "00-prereqs": 3, "03-algorithms": 2 });
+  assert.deepEqual(s.sectionDepth, { 1: 1, 2: 2 }, "one reader saw one section, two saw two");
+  assert.deepEqual(s.furthestSection, { "00-prereqs": 1, "03-algorithms": 2 });
+  // No value may exceed the number of people counted that day.
+  for (const map of [s.sectionReach, s.sectionDepth, s.furthestSection, s.notebookOpens]) {
+    for (const n of Object.values(map)) assert.ok(n <= s.humans);
+  }
+});
+
+test("a wrong-window response is a gap, not a mislabelled row", () => {
+  // Amplify's GenerateAccessLogs was observed under concurrency returning
+  // another in-flight call's window: a fetch for 2026-09-01 came back
+  // byte-identical to 09-02, every date column reading 09-02, and the tool
+  // printed a plausible row and exited 0. The rows say which day they are, so
+  // naming a day now filters on it — and the mismatch surfaces as the
+  // already-alarmed requests: 0 with offSiteRequests > 0.
+  const rows = parse(
+    row({ date: "2026-09-02", ip: "198.51.100.4", path: "/" }),
+    row({ date: "2026-09-02", ip: "198.51.100.4", path: "/_next/static/x.js", contentType: "text/javascript" }),
+  );
+  const wrong = summarizeDay(rows, buildRangeIndex([]), { day: "2026-09-01" });
+  assert.equal(wrong.requests, 0);
+  assert.equal(wrong.offSiteRequests, 2, "the shape the matched-nothing alarm fires on");
+  assert.equal(wrong.humans, 0);
+
+  const right = summarizeDay(rows, buildRangeIndex([]), { day: "2026-09-02" });
+  assert.equal(right.requests, 2);
+  assert.equal(right.humans, 1);
+
+  // With no day named — the test and ops path — nothing is filtered by date.
+  assert.equal(summarizeDay(rows, buildRangeIndex([])).requests, 2);
+});
+
+test("summarizeDay hands back curriculum maps, never a path or an address", () => {
+  const rows = parse(
+    row({ ip: "198.51.100.4", path: "/" }),
+    row({ ip: "198.51.100.4", path: "/_next/static/x.js", contentType: "text/javascript" }),
+    row({ ip: "198.51.100.4", path: "/lab/files/05-quantum-chemistry/notebooks/03-vqe-h2.ipynb", contentType: "application/octet-stream" }),
+  );
+  const s = summarizeDay(rows, buildRangeIndex([]), { day: "2026-08-19" });
+  const written = JSON.stringify({
+    notebookOpens: s.notebookOpens,
+    sectionReach: s.sectionReach,
+    sectionDepth: s.sectionDepth,
+    furthestSection: s.furthestSection,
+  });
+  assert.equal(written.includes("198.51.100.4"), false);
+  assert.equal(written.includes("/lab/"), false);
+  assert.equal(written.includes(".ipynb"), false);
+  for (const key of Object.keys(s.notebookOpens)) assert.ok(NOTEBOOKS.has(key));
+  for (const key of Object.keys(s.sectionReach)) assert.ok(SECTIONS.has(key));
 });

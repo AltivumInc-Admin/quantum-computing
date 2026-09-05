@@ -132,17 +132,31 @@ With those two trade-offs in hand, the devices on Braket sort into three physica
 sitting at a different point in the space.
 
 **IonQ — trapped ions.** Individual charged atoms held in electromagnetic fields; qubits encoded
-in their energy levels, gates driven by laser pulses. *Forte* (36 qubits) is on Braket — its
-predecessor *Aria* (25 qubits) is now retired — with native gates GPi, GPi2, and the Mølmer–Sørensen (MS) entangler. Their superpower is
+in their energy levels, gates driven by laser pulses. Braket carries two 36-qubit *Forte*
+machines: **Forte Enterprise 1** (Basel), which is online, and **Forte 1** (Maryland), which is
+offline for maintenance as this is written. Their predecessor *Aria* (25 qubits) is retired for
+good. Native gates are GPi, GPi2, and the Mølmer–Sørensen (MS) entangler. Their superpower is
 **all-to-all connectivity** (no SWAP tax) and high fidelity (single-qubit >99.5%, two-qubit
 >97%) with coherence measured in *seconds*. The cost: slow, microsecond-scale gates, and fewer
 qubits. Best for circuits where connectivity and fidelity matter more than raw speed.
 
+A second trapped-ion vendor sits in the same family: **AQT** (Innsbruck) runs *IBEX Q1*, 12
+qubits, native PRx, XX and RZ, fully connected. Twelve qubits is small, but it is the same
+physics and the same wiring story, and a 12-qubit machine you can actually get onto is worth
+more than a 36-qubit one in a maintenance window.
+
 **IQM — superconducting.** Tiny transmon circuits cooled to ~15 millikelvin, driven by microwave
-pulses. *Garnet* (20 qubits, square lattice) is on Braket with native gates CZ and PRx. Gates run
-in *nanoseconds* — orders of magnitude faster — and the fabrication leverages decades of
-semiconductor manufacturing. The cost: **nearest-neighbor connectivity** (the SWAP tax above) and
-~100-microsecond coherence. Best for circuits with local structure where speed wins.
+pulses. *Garnet* (20 qubits, square lattice, Espoo) and its larger sibling *Emerald* (54 qubits,
+Munich) are both on Braket with native gates CZ and PRx. Gates run in *nanoseconds* — orders of
+magnitude faster — and the fabrication leverages decades of semiconductor manufacturing. The
+cost: **nearest-neighbor connectivity** (the SWAP tax above) and ~100-microsecond coherence.
+Best for circuits with local structure where speed wins.
+
+**Rigetti** builds on the same physics and is back on Braket with *Cepheus-1-108Q* (California),
+native RX, RZ and CZ on a lattice — the largest gate-model machine in the fleet. Bigger lattice,
+bigger SWAP tax: routing cost grows with the distance between the qubits your circuit wants to
+entangle, so a hundred-qubit lattice does not make a dense-graph problem cheap. It makes a
+*locally structured* problem bigger.
 
 **QuEra — neutral atoms (analog).** Arrays of rubidium atoms held in optical tweezers. *Aquila*
 (256 atoms) is fundamentally different: it does **not** run gate circuits. Instead you place the
@@ -171,6 +185,44 @@ Either way, the machine is graded against the same ideal output — name it:
 }
 ```
 
+### The fleet changes under you
+
+Every specification above is a snapshot. Machines come online, drop offline for recalibration,
+and get retired outright; the fleet you get is whatever Braket exposes to your account and
+region on the day you ask. Here is that snapshot as of 2026-09-04:
+
+| Device | Vendor | Family | Qubits | Wiring | Region | Status |
+| --- | --- | --- | ---: | --- | --- | --- |
+| Forte Enterprise 1 | IonQ | Trapped ion | 36 | all-to-all | `us-east-1` | ONLINE |
+| Forte 1 | IonQ | Trapped ion | 36 | all-to-all | `us-east-1` | OFFLINE |
+| IBEX Q1 | AQT | Trapped ion | 12 | all-to-all | `eu-north-1` | ONLINE |
+| Garnet | IQM | Superconducting | 20 | lattice | `eu-north-1` | ONLINE |
+| Emerald | IQM | Superconducting | 54 | lattice | `eu-north-1` | ONLINE |
+| Cepheus-1-108Q | Rigetti | Superconducting | 107 | lattice | `us-west-1` | ONLINE |
+| Aquila | QuEra | Neutral atom (analog) | 256 | geometric | `us-east-1` | ONLINE |
+| SV1 | AWS | Simulator (state vector) | 34 | — | four regions | ONLINE |
+| DM1 | AWS | Simulator (density matrix) | 17 | — | four regions | ONLINE |
+| TN1 | AWS | Simulator (tensor network) | 50 | — | — | **RETIRED** |
+
+Three rows in that table carry the whole lesson.
+
+**`OFFLINE` is temporary; `RETIRED` is permanent.** Forte 1 is offline — a maintenance or
+recalibration window, and it will come back. TN1 and IonQ's Aria are retired: their ARNs still
+parse, the machines are gone, and a task submitted to either simply fails. Nothing in the ARN
+string tells you which case you are in. Only `status` does, and only at the moment you ask.
+
+**The name is not the spec.** Rigetti's *Cepheus-1-108Q* reports `qubitCount = 107`. Read the
+number off the device, not off the label.
+
+**So resolve devices; do not retype them.** Every table in this GUIDE — including the one above
+— is teaching material with a date on it. Working code should ask the service:
+`AwsDevice.get_devices()` returns the live fleet with each machine's `status`, and
+`python 02-hardware/scripts/device_status.py` prints exactly that. Inside this repo, device
+identity lives in one file, `lib/hardware/devices.py`, so there is one place to fix when a
+machine is retired instead of a dozen hardcoded copies to hunt down. TN1's retirement is the
+reason that rule exists rather than a style preference: it was a rung of the simulator ladder
+below, taught in a notebook, quoted in three files, and none of them found out from the ARN.
+
 ## The simulator ladder — your defense
 
 Given all of the above, you almost never start on a QPU. You climb a ladder of classical
@@ -182,8 +234,12 @@ simulators, each a defense against wasting time and money on real hardware:
   at a scale your laptop can't hold.
 - **DM1** (density matrix, up to 17 qubits, $0.075/min) — the only simulator that models **noise**.
   This is where you study the decay you saw above before paying a real machine to show it to you.
-- **TN1** (tensor network, up to ~50 qubits, $0.275/min) — efficient for large but lightly
-  entangled circuits.
+- **TN1** (tensor network, up to ~50 qubits, $0.275/min) — **RETIRED by AWS; you can no longer
+  submit to it.** It stays in this ladder because its reasoning is the most transferable part:
+  a tensor-network simulator's cost tracks how *entangled* a circuit is, not how many qubits it
+  has, which is why "how big is my circuit" is the wrong question about classical simulability.
+  Practically, though, the managed ladder now stops at SV1's 34 qubits. Above that you are on
+  your own tensor-network software or on hardware.
 
 ```qcard
 {"id":"hw-dm1-noise-sim-1","prompt":"Which managed Braket simulator can model noise, and why can it when SV1 cannot?","answer":"`DM1`, the density-matrix simulator. A density matrix can represent mixed (noisy) states, so DM1 can apply noise channels like depolarizing and amplitude damping. `SV1` is an exact, noiseless state-vector simulator."}
@@ -299,7 +355,8 @@ Putting it together, a quick decision flow:
 1. **Developing or debugging?** Local simulator. Always.
 2. **Validating a gate circuit at scale, noiselessly?** SV1.
 3. **Studying how noise affects results?** DM1.
-4. **Large but lightly entangled circuit?** TN1.
+4. **Large but lightly entangled circuit?** There is no managed rung for this any more — TN1
+   is retired. Run it on your own tensor-network simulator, or move to hardware.
 5. **Ready for real hardware, densely connected problem (e.g. dense-graph QAOA)?** IonQ —
    all-to-all connectivity, high fidelity.
 6. **Real hardware, local structure, speed matters?** IQM.
@@ -378,13 +435,13 @@ Check yourself:
 
 4. **`notebooks/04-quera-analog.ipynb`** — Define atom arrangements with `AnalogHamiltonianSimulation`. Set driving fields (Rabi frequency, detuning). Solve a small Maximum Independent Set problem.
 
-5. **`notebooks/05-simulator-comparison.ipynb`** — Run the same circuit on SV1, DM1 (with noise), TN1, and local simulator. Compare results, runtime, and cost. Understand when each is appropriate.
+5. **`notebooks/05-simulator-comparison.ipynb`** — Run the same circuit on the local simulator and compare it against SV1 and DM1 (with noise), plus the retired TN1 rung. Compare results, runtime, and cost. Understand when each is appropriate — and what a retirement removes.
 
 6. **`notebooks/06-noise-and-errors.ipynb`** — Add noise channels (depolarizing, amplitude damping) to circuits on DM1. Compare noisy vs. ideal results. Introduction to error mitigation (zero-noise extrapolation concept).
 
 **Scripts:**
 - `scripts/device_status.py` — Run from terminal: `python 02-hardware/scripts/device_status.py` to check current device availability without opening a notebook
-- `scripts/cost_estimator.py` — Estimate costs: `python 02-hardware/scripts/cost_estimator.py --device IonQ --shots 1000`. `--device` takes a **provider** name from the pricing table (`IonQ`, `IQM`, `QuEra`, `Rigetti`, `SV1`, `DM1`, `TN1`, `LocalSimulator`) — these are capitalized, unlike the lowercase device short-names (`ionq_forte`, `iqm_garnet`) that `run_circuit` takes. Run it with `--help` to see the accepted values.
+- `scripts/cost_estimator.py` — Estimate costs: `python 02-hardware/scripts/cost_estimator.py --device IonQ --shots 1000`. `--device` takes a **provider** name from the pricing table (`IonQ`, `IQM`, `IQM_Emerald`, `AQT`, `QuEra`, `Rigetti`, `SV1`, `DM1`, `TN1`, `LocalSimulator`) — these are capitalized, unlike the lowercase device short-names (`ionq_forte`, `iqm_garnet`) that `run_circuit` takes. `TN1` is still priced there so the retired rung stays costable for teaching; it is not submittable. Run it with `--help` to see the accepted values.
 
 ## Where this goes next
 
@@ -400,7 +457,7 @@ you just learned, exactly as the workflow prescribes.
 ### AWS Documentation
 - [Amazon Braket supported devices](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices.html) — Complete list of available hardware and regions
 - [Amazon Braket pricing](https://aws.amazon.com/braket/pricing/) — Current per-shot and per-task pricing for all devices
-- [Testing with simulators](https://docs.aws.amazon.com/braket/latest/developerguide/braket-test.html) — SV1, DM1, TN1 capabilities and limits
+- [Testing with simulators](https://docs.aws.amazon.com/braket/latest/developerguide/braket-test.html) — SV1 and DM1 capabilities and limits
 - [IonQ device properties](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices-ionq.html) — Native gates, connectivity, specifications
 - [IQM device properties](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices-iqm.html) — Topology, native gates, compilation
 - [QuEra Aquila documentation](https://docs.aws.amazon.com/braket/latest/developerguide/braket-devices-quera.html) — Analog Hamiltonian simulation setup

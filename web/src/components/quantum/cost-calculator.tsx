@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { PRICING, Provider, estimateCost, isPerShot } from "./cost";
+import { PRICING, Provider, estimateCost, isPerShot, isRetired, providerLabel } from "./cost";
 import { EyebrowLabel, WidgetCard, fieldClass } from "./widget-ui";
 
 const PROVIDERS = Object.keys(PRICING) as Provider[];
@@ -96,12 +96,26 @@ export function CostCalculator({ source }: { source: string }) {
               onChange={(e) => setProvider(e.target.value as Provider)}
               className={`${fieldClass} px-2 py-1.5 text-sm`}
             >
+              {/* The option VALUE stays the PRICING key (the fenced-block
+                  contract and every test select by it); the option TEXT goes
+                  through providerLabel so a rate key like IQM_Emerald is never
+                  what a learner reads. */}
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
-                  {p}
+                  {providerLabel(p)}
                 </option>
               ))}
             </select>
+            {/* Retired rates stay selectable — the arithmetic is the lesson — but
+                the calculator must never let one read as a quote for a run the
+                learner could actually make. Text only, no dollar figure, so the
+                bold total stays the sole money element in the DOM. */}
+            {isRetired(provider) && (
+              <p className="text-[11px] text-caption">
+                {providerLabel(provider)} is retired — AWS withdrew it, so this
+                prices a run you can no longer submit.
+              </p>
+            )}
           </div>
 
           {/* Tasks (always shown) */}

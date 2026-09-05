@@ -9,9 +9,17 @@
       "per_task": 0.3,
       "per_shot": 0.00145
     },
+    "IQM_Emerald": {
+      "per_task": 0.3,
+      "per_shot": 0.0016
+    },
     "QuEra": {
       "per_task": 0.3,
       "per_shot": 0.01
+    },
+    "AQT": {
+      "per_task": 0.3,
+      "per_shot": 0.0235
     },
     "Rigetti": {
       "per_task": 0.3,
@@ -80,6 +88,30 @@
       "cost": 18.20025
     },
     {
+      "provider": "IQM_Emerald",
+      "shots": 1,
+      "minutes": 0.0,
+      "cost": 0.3016
+    },
+    {
+      "provider": "IQM_Emerald",
+      "shots": 30,
+      "minutes": 0.0,
+      "cost": 0.348
+    },
+    {
+      "provider": "IQM_Emerald",
+      "shots": 1000,
+      "minutes": 0.0,
+      "cost": 1.9000000000000001
+    },
+    {
+      "provider": "IQM_Emerald",
+      "shots": 12345,
+      "minutes": 0.0,
+      "cost": 20.052000000000003
+    },
+    {
       "provider": "QuEra",
       "shots": 1,
       "minutes": 0.0,
@@ -102,6 +134,30 @@
       "shots": 12345,
       "minutes": 0.0,
       "cost": 123.75
+    },
+    {
+      "provider": "AQT",
+      "shots": 1,
+      "minutes": 0.0,
+      "cost": 0.3235
+    },
+    {
+      "provider": "AQT",
+      "shots": 30,
+      "minutes": 0.0,
+      "cost": 1.005
+    },
+    {
+      "provider": "AQT",
+      "shots": 1000,
+      "minutes": 0.0,
+      "cost": 23.8
+    },
+    {
+      "provider": "AQT",
+      "shots": 12345,
+      "minutes": 0.0,
+      "cost": 290.4075
     },
     {
       "provider": "Rigetti",

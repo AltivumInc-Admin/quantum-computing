@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "files": ["index.mjs", "classify.mjs", "retrieve.mjs"],
+  "files": ["index.mjs", "classify.mjs", "curriculum.mjs", "retrieve.mjs"],
   "scripts": {
     "test": "node --test"
   },

@@ -86,9 +86,9 @@ export const GLOSSARY_ES: Record<string, string> = {
   "Amazon Braket":
     "El servicio gestionado de computación cuántica de AWS que expone un único SDK y API para ejecutar circuitos en simuladores y en QPUs de varios proveedores de hardware.",
   QPU:
-    "Una Quantum Processing Unit — hardware cuántico real; en Braket son los dispositivos de IonQ, IQM y QuEra, facturados por tarea más por shot.",
+    "Una Quantum Processing Unit — hardware cuántico real; en Braket son los dispositivos de IonQ, IQM, Rigetti, AQT y QuEra, facturados por tarea más por shot.",
   "Quantum simulator":
-    "Software clásico que calcula el resultado de un circuito; Braket ofrece SV1 (vector de estado exacto), DM1 (matriz de densidad, modela ruido) y TN1 (red tensorial).",
+    "Software clásico que calcula el resultado de un circuito; Braket ofrece SV1 (vector de estado exacto) y DM1 (matriz de densidad, modela ruido). Un tercero, TN1 (red tensorial), está retirado — AWS lo dio de baja, así que la escalera ahora termina en SV1 para circuitos grandes.",
   LocalSimulator:
     "El simulador gratuito e instantáneo de Braket que se ejecuta en tu propia máquina; el valor por defecto recomendado para desarrollar y depurar circuitos de hasta unos 25 cúbits.",
   "Qubit connectivity":

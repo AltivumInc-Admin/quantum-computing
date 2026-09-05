@@ -1,7 +1,13 @@
 """Tests for lib/utils/cost.py."""
 
 import pytest
-from lib.utils.cost import estimate_cost, format_cost_warning
+from lib.utils.cost import (
+    PRICING,
+    RETIRED_PROVIDERS,
+    estimate_cost,
+    format_cost_warning,
+    is_retired,
+)
 
 
 class TestEstimateCost:
@@ -19,7 +25,18 @@ class TestEstimateCost:
 
     def test_rigetti_cost(self):
         cost = estimate_cost("Rigetti", shots=1000)
-        assert cost == 0.30 + 0.000425 * 1000  # Rigetti Cepheus
+        assert cost == 0.30 + 0.000425 * 1000  # Rigetti Cepheus-1-108Q
+
+    def test_aqt_cost(self):
+        cost = estimate_cost("AQT", shots=1000)
+        assert cost == 0.30 + 0.0235 * 1000  # AQT IBEX Q1
+
+    def test_iqm_emerald_cost_is_not_garnets(self):
+        # Emerald bills more per shot than Garnet. Pinned as its own arithmetic so a future
+        # "simplification" that folds the two IQM keys together fails here.
+        cost = estimate_cost("IQM_Emerald", shots=1000)
+        assert cost == 0.30 + 0.0016 * 1000
+        assert cost != estimate_cost("IQM", shots=1000)
 
     def test_sv1_cost(self):
         cost = estimate_cost("SV1", shots=1000, estimated_minutes=2.0)
@@ -29,7 +46,11 @@ class TestEstimateCost:
         cost = estimate_cost("DM1", shots=1000, estimated_minutes=3.0)
         assert cost == 0.075 * 3.0
 
-    def test_tn1_cost(self):
+    def test_tn1_cost_is_still_computable_after_retirement(self):
+        # TN1 is retired, but its rate stays in PRICING: the simulator ladder is a lesson,
+        # and every historical $0.275/min figure in the curriculum is validated against this
+        # table by tests/test_pricing_prose.py. estimate_cost keeps doing the arithmetic;
+        # it is format_cost_warning and lib.hardware that refuse to present it as live.
         cost = estimate_cost("TN1", shots=1000, estimated_minutes=1.5)
         assert cost == 0.275 * 1.5
 
@@ -94,6 +115,42 @@ class TestFormatCostWarning:
 
     def test_per_minute_warning_omits_shots_and_shows_rate(self):
         # Per-minute pricing ignores shots; the warning must not quote a misleading shots count.
-        warning = format_cost_warning("TN1", shots=5000, estimated_minutes=3.0)
+        warning = format_cost_warning("DM1", shots=5000, estimated_minutes=3.0)
         assert "5000 shots" not in warning
         assert "/min" in warning
+
+
+class TestRetiredProviders:
+    """A retired device keeps its rate for teaching, but never quotes as a live price."""
+
+    def test_tn1_is_marked_retired(self):
+        assert is_retired("TN1") is True
+        assert "TN1" in RETIRED_PROVIDERS
+        assert "TN1" in PRICING, "the historical rate must be KEPT, not deleted"
+
+    def test_live_providers_are_not_marked_retired(self):
+        for provider in PRICING:
+            if provider == "TN1":
+                continue
+            assert is_retired(provider) is False, f"{provider} is not retired"
+
+    def test_is_retired_rejects_an_unknown_provider(self):
+        with pytest.raises(ValueError, match="Unknown provider"):
+            is_retired("FakeQuantumCo")
+
+    def test_a_retired_warning_never_reads_as_a_live_quote(self):
+        # "Estimated cost" is the phrase this project reserves for a run that can actually
+        # be submitted and billed. A retired device must not borrow it — that is the exact
+        # shape of advertising what the deployed system cannot do.
+        warning = format_cost_warning("TN1", shots=5000, estimated_minutes=3.0)
+        assert "Estimated cost" not in warning
+        assert "RETIRED" in warning
+        assert "Historical cost" in warning
+        assert "$0.8250" in warning  # the arithmetic is still shown: 0.275 * 3.0
+        assert "5000 shots" not in warning  # still per-minute, so shots stay out of it
+        assert "/min" in warning
+
+    def test_a_live_simulator_warning_is_unchanged_by_the_retirement_branch(self):
+        warning = format_cost_warning("SV1", shots=500, estimated_minutes=2.0)
+        assert "Estimated cost" in warning
+        assert "RETIRED" not in warning

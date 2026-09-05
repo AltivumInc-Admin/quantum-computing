@@ -52,6 +52,23 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-04-fleet-that-exists",
+    shipped: "2026-09-04",
+    kind: "fixed",
+    title: "The device pages now describe the machines Amazon Braket actually has",
+    body: "The device tables, the cost estimator and the hybrid-job backend picker had drifted away from the real fleet. Several machines AWS has since retired were still listed as though you could send them work, and four that are live \u2014 IonQ's Forte Enterprise, IQM's Emerald, AQT's IBEX Q1 and Rigetti's Cepheus \u2014 had no entry at all. Every device now carries its true status, a retired one says so plainly instead of quietly vanishing, and the estimator prices only what exists. The hardware lesson, the glossary and the affected notebooks were corrected to match, and a nightly check now compares the tables against Amazon Braket so they cannot drift again unnoticed.",
+    href: "/learn/02-hardware",
+    section: "02-hardware",
+  },
+  {
+    id: "2026-09-04-privacy-lists-every-total",
+    shipped: "2026-09-04",
+    kind: "improved",
+    title: "The privacy policy now lists every daily total we keep",
+    body: "Our servers keep a small daily tally of how the site is used, worked out after the fact from ordinary web-host access logs and containing no addresses, no identifiers and nothing that links one day to another. We have started counting more than before: alongside how many people arrived and how many signed in, the tally now also records how many opened each lesson notebook, how many opened each course section, how many sections a day's visitors reached, and which section that day's readers got furthest into. We want to know whether the curriculum is actually being read to the end. Nothing was added to the page to do it \u2014 no script, no cookie, no identifier \u2014 and the policy names every one of these totals before the first is kept.",
+    href: "/privacy",
+  },
+  {
     id: "2026-09-03-google-sign-in-stall",
     shipped: "2026-09-03",
     kind: "fixed",

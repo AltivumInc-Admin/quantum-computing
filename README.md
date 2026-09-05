@@ -28,7 +28,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 - **In-browser, zero-install notebooks**: 32 of the 45 notebooks run entirely in your browser via **JupyterLite + Pyodide**, with a custom NumPy simulator (`qcsim`) that drop-in replaces the Braket SDK.
 - **A shared Python toolkit** (`lib/`) of circuits, device abstractions, QML, and quantum-chemistry building blocks the notebooks import instead of reinventing.
 - **Production AWS infrastructure as code** (`infra/`) — least-privilege IAM, encrypted result storage with lifecycle cleanup, and a hard monthly budget alarm.
-- **Four serverless backends** (`lambda/`) — the streaming lesson tutor (Bedrock), per-user progress sync, the hard-capped real-QPU submission path, and an opt-in review-email sender — each an independently tested Node.js Lambda with its own SAM template.
+- **Six serverless backends** (`lambda/`) — the streaming lesson tutor, per-user progress sync, the hard-capped real-QPU submission path, an opt-in review-email sender, the Stripe checkout/webhook, and product analytics — each an independently tested Node.js Lambda with its own SAM template.
 - **A CI gate and an auto-deploy pipeline** so `main` is always green and the live site is always built from a passing commit.
 
 > **Philosophy:** prototype on the **free local simulator** first, validate, then spend. Real QPU/managed-simulator runs are always opt-in and cost-estimated before execution. (Hardware runs are not currently available on quantum.altivum.ai; in this repo, running against your own AWS account bills you.)
@@ -44,7 +44,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 | **Math-native portal** | KaTeX everywhere, plus `​```qsim` fenced blocks that become **live circuit simulators** (probability bars, Dirac state, Bloch dial, θ slider) right inside the prose. |
 | **Simulator parity, proven** | `qcsim` (Python) and `math.ts` (TypeScript) both mirror Braket's conventions and are **tested for parity** against the real SDK to 4σ / `1e-10`. |
 | **Cost-safe by construction** | Per-provider cost estimators, a `make cost` Cost-Explorer report, and a CloudFormation **budget alarm** at 50 % / 80 % / 100 %. |
-| **Real engineering rigor** | 4-job CI (Python + web + Lambda backends + build-smoke), protected `main` with required checks, a "runnable-notebook contract" that statically *and* dynamically proves browser-runnability, `nbstripout` clean diffs, and `ruff`. |
+| **Real engineering rigor** | 4-job CI (Python + web + a per-backend Lambda matrix + build-smoke) with every `scripts/` guard runnable locally as `make guards`, protected `main` with required checks, a "runnable-notebook contract" that statically *and* dynamically proves browser-runnability, `nbstripout` clean diffs, and `ruff`. |
 
 ---
 
@@ -189,7 +189,7 @@ print(result.measurement_counts)
 
 ## 🌐 Run notebooks in your browser (JupyterLite + qcsim)
 
-The headline feature: **32 notebooks run with zero install**, directly in the browser. The site is a fully static export, and every circuit, simulator, and grader executes client-side on a WebAssembly Python kernel — the only servers involved are the four small [serverless backends](#-the-serverless-backends-lambda) powering optional, env-gated features (tutor, progress sync, QPU submission, review email). The learning core needs nothing but a browser tab.
+The headline feature: **32 notebooks run with zero install**, directly in the browser. The site is a fully static export, and every circuit, simulator, and grader executes client-side on a WebAssembly Python kernel — the only servers involved are the small [serverless backends](#-the-serverless-backends-lambda) powering optional, env-gated features (tutor, progress sync, QPU submission, review email, checkout, analytics). The learning core needs nothing but a browser tab.
 
 ### How it works
 
@@ -262,7 +262,7 @@ flowchart TB
     end
 
     subgraph aws["☁ AWS (opt-in)"]
-        braket["Amazon Braket<br/>SV1·DM1·TN1 · IonQ·IQM·QuEra"]
+        braket["Amazon Braket<br/>SV1·DM1 · IonQ·IQM·QuEra·Rigetti·AQT"]
         infra["CloudFormation<br/>S3 · IAM · Budget · Notebook"]
         amplify["Amplify Hosting"]
     end
@@ -368,10 +368,10 @@ quantum-computing/
 |---|---|
 | `get_device(name="local")` | `LocalSimulator` for `"local"`, else `AwsDevice`; raises on unknown names |
 | `run_circuit(circuit, device_name="local", shots=1000, s3_location=None)` | Run and return results. **Fails fast** on an unknown device, an analog-only device, out-of-range `shots`, or a missing `s3_location` (so CI needs no credentials). On a billable device it **blocks** until the task leaves the queue (the SDK's 5-day `poll_timeout_seconds` default) and raises `RuntimeError` if the task produced no result — use `get_device(name).run(...)` for the un-awaited `AwsQuantumTask` |
-| `shot_bounds(device_name)` | `(min, max)` shots per task Braket accepts for that device (e.g. Garnet `(1, 20000)`, IonQ `(100, 100000)`) |
+| `shot_bounds(device_name)` | `(min, max)` shots per task Braket accepts for that device (e.g. Garnet `(1, 20000)`, IonQ `(100, 5000)`) |
 | `list_available_devices()` | The **full** device fleet with each row's `ONLINE`/`OFFLINE`/`RETIRED` status — no status filter is applied, so check it before dispatching (needs AWS) |
 | `allowlisted_gate_devices()` · `cheapest_allowlisted_device(shots)` | The gate QPUs approved for the hard-capped QPU-submit path, and the cheapest of them (derived from `PRICING`) |
-| `DEVICE_ARNS` | `dict` of short names → ARNs: `sv1, dm1, tn1, ionq_forte, iqm_garnet, quera_aquila` |
+| `DEVICE_ARNS` | `dict` of short names → ARNs, derived from `DEVICES`: `sv1`, `dm1`, `tn1`, `ionq_forte`, `ionq_forte_enterprise`, `iqm_garnet`, `iqm_emerald`, `aqt_ibex_q1`, `rigetti_cepheus`, `quera_aquila`. `lib/hardware/devices.py` is the single source of truth; rows for retired (`tn1`) and offline (`ionq_forte`) machines stay so the curriculum can still teach them, and `run_circuit` refuses to dispatch to one — `dispatchable_devices()` is the ONLINE subset |
 </details>
 
 <details>
@@ -466,19 +466,21 @@ npm run build    # static export → web/out/
 
 ## 🔌 The serverless backends (`lambda/`)
 
-The static site is backed by four small, independently deployed Node.js Lambdas — each a self-contained npm package with its own SAM `template.yaml`, tests that stub AWS, and (where noted) a README with deploy and ops details:
+The static site is backed by six small, independently deployed Node.js Lambdas — each a self-contained npm package with its own SAM `template.yaml`, tests that stub AWS, and (where noted) a README with deploy and ops details. CI matrixes over all six:
 
 | Backend | What it does | Docs |
 |---|---|---|
-| [`lambda/tutor/`](lambda/tutor/) | "Ask the margin" — a stateless, response-streaming lesson tutor grounded in the current lesson via Amazon Bedrock | [`README`](lambda/tutor/README.md) |
+| [`lambda/tutor/`](lambda/tutor/) | "Ask the margin" — a stateless, response-streaming lesson tutor grounded in the current lesson, calling Anthropic's first-party API | [`README`](lambda/tutor/README.md) |
 | [`lambda/sync/`](lambda/sync/) | Versioned per-user KV for progress snapshots with optimistic concurrency; identity from the API's Cognito JWT authorizer | header comment in [`index.mjs`](lambda/sync/index.mjs) |
 | [`lambda/qpu/`](lambda/qpu/) | The hard-capped, server-side path by which a learner runs a circuit on real QPU hardware | [`README`](lambda/qpu/README.md) |
 | [`lambda/review-email/`](lambda/review-email/) | Scheduled sender that emails only opted-in learners with spaced-repetition cards actually due, with tokenized unsubscribe | [`README`](lambda/review-email/README.md) |
+| [`lambda/stripe/`](lambda/stripe/) | Checkout + the signed webhook behind the credit wallet — exactly-once grants, refund/dispute clawback | header comment in [`index.mjs`](lambda/stripe/index.mjs) |
+| [`lambda/analytics/`](lambda/analytics/) | Aggregation endpoint for first-party product analytics | header comment in [`index.mjs`](lambda/analytics/index.mjs) |
 
 Local dev loop for any of them:
 
 ```bash
-cd lambda/<tutor|sync|qpu|review-email>
+cd lambda/<tutor|sync|qpu|review-email|stripe|analytics>
 npm ci
 npm test        # node --test, offline (AWS clients stubbed)
 ```
@@ -494,11 +496,17 @@ The portal treats these as optional: front-end features gate on their configurat
 | Command | What it does |
 |---|---|
 | `make setup` | `pip install -e .[dev]` + `pip install -e ./qcsim`, validate AWS creds, install the `nbstripout` git filter |
+| `make git-filters` | Re-wire the `nbstripout` clean/textconv filters at the in-repo wrapper (re-runnable; `make setup` calls it) |
 | `make lab` | Launch JupyterLab at the repo root (`jupyter lab --notebook-dir=.`) |
 | `make test` | Run the pytest suite (`pytest tests/ -v`) |
-| `make devices` | Print the Braket device fleet + provider, status (`ONLINE`/`OFFLINE`/`RETIRED`) and type |
-| `make cost` | Current month's Braket spend via Cost Explorer (`infra/scripts/cost-report.py`) |
+| `make guards` | **Every `scripts/` guard CI runs, locally** — all `scripts/**/*.test.mjs` suites (discovered, not listed) + the content-manifest check. Offline, no credentials, ~1 s |
 | `make lint` | `ruff check .` **and** `ruff format --check .` |
+| `make devices` | Print the Braket device fleet + provider, status (`ONLINE`/`OFFLINE`/`RETIRED`) and type |
+| `make fleet` | Ask **Braket itself** whether the fleet this repo teaches still exists (read-only, 5 regions). `0` current · `1` divergent · `2` could not check; prints SKIPPED with no credentials |
+| `make cost` | Current month's Braket spend via Cost Explorer (`infra/scripts/cost-report.py`) |
+| `make drift` | Is what is **running** what is in git — plus deployed rate-card parity, value-blind. Defaults to `AWS_PROFILE=ql-prod` and names the profile before it reads; override with `AWS_PROFILE=… make drift` |
+| `make stripe-parity` | Does the Stripe **Dashboard** match the code (webhook event set + catalog/copy)? Read-only; needs `ACCOUNT=live\|sandbox` and a key |
+| `make design-sync` | Design-sync preflight (which of the two identically-named projects is targeted) then restage. A red preflight **stops** the run |
 | `make deploy-infra` | Interactive CloudFormation deploy (budget, email, optional notebook) |
 | `make teardown-infra` | Delete the stack (guarded — type `delete` to confirm) |
 | `make lock-container` | Recompile the hybrid-jobs container lockfile with `pip-compile` |
@@ -526,14 +534,14 @@ The portal treats these as optional: front-end features gate on their configurat
 
 ## ✅ Testing & CI
 
-Every PR and every push to `main` runs four jobs ([`ci.yml`](.github/workflows/ci.yml)); `main` is a **protected branch** with required status checks, so Amplify only ever builds a commit that already passed CI.
+Every PR and every push to `main` runs four jobs ([`ci.yml`](.github/workflows/ci.yml)) — but the `lambdas` job is a **matrix** that fans out over every backend in `lambda/`, so the four jobs produce more than four status-check contexts. `main` is a **protected branch** with required status checks, so Amplify only ever builds a commit that already passed CI.
 
 ```mermaid
 flowchart LR
     pr["PR / push to main"] --> ci{"CI — 4 jobs"}
-    ci --> py["<b>python</b><br/>pytest + ruff<br/>.[dev,full] + qcsim"]
-    ci --> wb["<b>web</b><br/>jest + eslint"]
-    ci --> lm["<b>lambdas</b><br/>node --test × 4 backends"]
+    ci --> py["<b>python</b><br/>pytest + ruff<br/>.[dev,full] + qcsim<br/>+ manifest check"]
+    ci --> wb["<b>web</b><br/>jest + eslint<br/>+ script guards<br/>+ changelog guard"]
+    ci --> lm["<b>lambdas</b><br/>matrix: node --test<br/>× 6 backends"]
     ci --> sm["<b>build-smoke</b><br/>JupyterLite build<br/>+ next build"]
     py --> ok{"all green?"}
     wb --> ok
@@ -543,9 +551,19 @@ flowchart LR
     merge --> amp["Amplify auto-build & deploy"]
 ```
 
-**Python test suite ([`tests/`](tests/)):** one pytest module per concern, covering the `lib/` toolkit (circuits, devices, cost math, results, visualization), QML and chemistry (gated on the PennyLane / OpenFermion extras), and the platform's own guarantees — `test_qcsim_parity.py` (**`qcsim` vs the real Braket SDK** to 4σ, plus exact state-vector / norm / adjoint checks), `test_notebook_contract.py` (static AST scan + manifest drift guard + **live execution** of every runnable notebook), and content guards (notebook links, pricing prose, the `00-prereqs` invariants). Browse `tests/` for the full, current list.
+**Python test suite ([`tests/`](tests/)):** one pytest module per concern, covering the `lib/` toolkit (circuits, devices, cost math, results, visualization), QML and chemistry (gated on the PennyLane / OpenFermion extras), and the platform's own guarantees — `test_qcsim_parity.py` (**`qcsim` vs the real Braket SDK** to 4σ, plus exact state-vector / norm / adjoint checks), `test_notebook_contract.py` (static AST scan + manifest drift guard + **live execution** of every runnable notebook), and content guards (notebook links, pricing prose, the `00-prereqs` invariants). Browse `tests/` for the full, current list. Braket's fleet changes underneath all of that, so it is checked against the live service rather than against itself: [`scripts/check-device-fleet.mjs`](scripts/check-device-fleet.mjs) (`make fleet`, and nightly via [`.github/workflows/device-fleet.yml`](.github/workflows/device-fleet.yml)) calls `braket:SearchDevices` in every Braket region and fails when a device this repo teaches has been retired or taken offline, or when a device the service now offers has no row here.
 
-Pinning: **Python 3.12** (matches the Amplify image; `pyscf`/`openfermionpyscf` wheels exist for 3.12), **Node 20**. Run the fast subset locally with `pytest -m "not slow"`.
+**The `scripts/` guards ([`make guards`](Makefile)):** the operator scripts under [`scripts/`](scripts/) carry their own `node --test` suites — the Founding-Ten credit issuer and the sub-remap migration (**both move or rewrite money rows**), the changelog guard's matching rules, the design-sync target pin, the deployed-vs-git drift rules, and the Stripe parity guards' decision logic — and whatever lands next, because the list is *discovered*, not written down. `pytest` never sees any of them and neither does `npm test`, so for a long time CI was the *only* thing that ran them and a broken guard could be pushed before anyone found out. `make guards` is that missing local entry point: it runs every suite plus `python scripts/validate_runnable.py --check`, offline, with no credentials and nothing to install, in about a second.
+
+```bash
+make guards     # every scripts/ guard suite + the content-manifest check, ~1 s
+```
+
+Both `make guards` and the CI step **discover** the suites with `find`, never with a hardcoded list, so a new `scripts/<dir>/*.test.mjs` directory is picked up on both sides at once and can never be silently unrun. Both also **fail** when discovery returns zero files. That is not paranoia: an unmatched glob handed to `node --test` exits `1` on Node 20 but exits `0` printing `tests 0` on Node 22+, and a glob that expands to nothing leaves `node --test` with no arguments at all — at which point it runs its *own* repo-wide discovery instead. Either way the "guard" reports green while guarding nothing, so an explicit zero-file failure is the only honest floor.
+
+Pinning: **Python 3.12** (matches the Amplify image; `pyscf`/`openfermionpyscf` wheels exist for 3.12), **Node 20**.
+
+> **`make test` is the run that proves something** — it is what CI runs, with no marker filter. For a tight inner loop, `pytest -m "not slow"` finishes in seconds instead of minutes, but know exactly what it drops: **every test that executes a notebook.** In this repo the `slow` marker means "runs a notebook through nbclient", so deselecting it removes both exercise gates (`test_exercise_checks.py` — canonical solutions must pass, unsolved must not), the live qcsim execution of every runnable notebook (`test_notebook_contract.py`), and the real-Braket-SDK sample tier (`test_notebook_real_sdk.py`). What survives in those modules is static structure, AST and manifest checking; **no notebook is executed at all**. pytest reports this only as an unlabelled `(N deselected)` line — no category, no names — so it is easy to mistake for a clean run. A green `pytest -m "not slow"` is never a basis for saying the notebooks work — run `make test` before you claim that, and before you push.
 
 ---
 
@@ -577,17 +595,24 @@ flowchart TB
 
 **Always prototype on the free local simulator, then escalate only when validated.** Helper utilities (`lib.utils.cost`, the per-section `cost_estimator.py`, and `make cost`) estimate spend before you submit.
 
-| Backend | Price (on-demand, verified 2026-07-06) |
-|---|---|
-| **Local simulator** (`LocalSimulator`) | **Free** |
-| SV1 / DM1 (managed) | $0.075 / minute |
-| TN1 (tensor-network) | $0.275 / minute |
-| IonQ (Forte 36q) | $0.30 / task + $0.08 / shot |
-| IQM (Garnet 20q) | $0.30 / task + $0.00145 / shot |
-| QuEra (Aquila 256q) | $0.30 / task + $0.01 / shot |
-| Rigetti *(reference only — not dispatchable via `lib.hardware`)* | $0.30 / task + $0.000425 / shot |
+Rates below are what **AWS charges us**, verified 2026-09-04 against the Braket Price List API and each device's live `deviceCapabilities`. They are not customer prices. Status is Braket's own `deviceStatus`, checked by `make fleet`.
 
-Recommended workflow: **local sim → SV1 for larger circuits → DM1/TN1 → QPU only once the algorithm is validated.** Check `make cost` regularly.
+| Backend | Status | Price (on-demand) |
+|---|---|---|
+| **Local simulator** (`LocalSimulator`) | always available | **Free** |
+| SV1 (state vector, 34q) / DM1 (density matrix, 17q) | ONLINE | $0.075 / minute |
+| TN1 (tensor-network, 50q) | **RETIRED** in every region — kept in the curriculum as the ladder's top rung, and `run_circuit` refuses to dispatch to it | $0.275 / minute |
+| IonQ Forte 1 (36q, all-to-all) | **OFFLINE** — a reversible calibration state, not a retirement | $0.30 / task + $0.08 / shot |
+| IonQ Forte Enterprise 1 (36q, all-to-all) | ONLINE — same qubit count, gate set and rate as Forte 1 | $0.30 / task + $0.08 / shot |
+| IQM Garnet (20q, lattice) | ONLINE | $0.30 / task + $0.00145 / shot |
+| IQM Emerald (54q, lattice) | ONLINE | $0.30 / task + $0.0016 / shot — **not Garnet's rate**; the two IQM devices are priced separately |
+| QuEra Aquila (256q, analog only) | ONLINE | $0.30 / task + $0.01 / shot |
+| Rigetti Cepheus-1-108Q (107q, lattice) | ONLINE | $0.30 / task + $0.000425 / shot |
+| AQT IBEX Q1 (12q, all-to-all) | ONLINE | $0.30 / task + $0.0235 / shot |
+
+IonQ Aria and Harmony, Rigetti's Aspen and Ankaa families, Oxford's Lucy, Xanadu's Borealis and every D-Wave device are retired and carry no row in this repo's device tables. (Scope is deliberate: this sentence is about `lib/hardware/devices.py` and the curriculum tables derived from it. The published customer rate sheet is a separate surface with its own owner, and `scripts/check-device-fleet.mjs` does not read it — see [`docs/followup-retired-device-on-pricing-sheet.md`](docs/followup-retired-device-on-pricing-sheet.md).) Per-task shot ceilings differ sharply by device (Aquila 1,000; AQT 2,000; IonQ 5,000; IQM 20,000; SV1/DM1/Rigetti 50,000) — `shot_bounds()` is the authority, and `run_circuit` rejects an out-of-range request before it costs anything.
+
+Recommended workflow: **local sim → SV1 for larger circuits → DM1 when you need noise → QPU only once the algorithm is validated.** Check `make cost` regularly, and `make fleet` before you rely on a device being there.
 
 ---
 
@@ -606,7 +631,7 @@ Because `main` is protected by the CI gate, **only CI-green commits ever deploy.
 ## 🤝 Contributing
 
 1. **Branch from `main`** (it's protected — changes land via PR with CI green).
-2. **`make setup`** then `make test` / `make lint`; for web changes, `cd web && npm test && npm run lint`.
+2. **`make setup`** then `make test` / `make lint` / `make guards`; for web changes, `cd web && npm test && npm run lint`. `make guards` is the fast one (~1 s, offline) and it is the half of CI that has no other local entry point.
 3. **Notebooks** are committed **output-stripped** automatically via the `nbstripout` git filter (installed by `make setup`) — keep diffs clean.
 4. **Making a notebook browser-runnable?** Add `<!-- browser-runnable -->` to its first markdown cell, ensure it imports only the qcsim-supported Braket surface, then run `python scripts/validate_runnable.py --write-manifest` and commit the updated `content-manifest.json`. CI will reject drift.
 5. **Python** is `ruff`-formatted (line length 100, target py310); notebooks are excluded from linting and validated by `test_notebook_contract.py` instead.

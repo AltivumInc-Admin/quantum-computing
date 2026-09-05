@@ -4,6 +4,7 @@
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 import { JobExplorer } from "@/components/quantum/job-explorer";
+import { dispatchableDevices } from "@/components/quantum/devices";
 
 // jsdom does not implement matchMedia; the widget's reduced-motion hook needs it.
 function mockMatchMedia(reduced: boolean) {
@@ -68,14 +69,34 @@ describe("JobExplorer", () => {
     expect(screen.getByText("1000 shots")).toBeInTheDocument();
   });
 
-  it("offers only providers the device catalog actually lists", () => {
+  it("offers only providers with a device that is online today", () => {
     render(<JobExplorer source="" />);
     const select = screen.getByLabelText(/quantum provider/i);
     const options = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options).toEqual(["IonQ", "IQM", "QuEra"]);
-    // Rigetti is priced in cost.ts as reference-only (no dispatchable device,
-    // asserted in devices.test.ts), so it must not be offered as a job backend.
-    expect(options).not.toContain("Rigetti");
+    // Derived from dispatchableDevices() intersected with the per-shot rates,
+    // in catalog order. Rigetti and AQT earned their place on 2026-09-04 when
+    // Cepheus-1-108Q and IBEX Q1 came online.
+    expect(options).toEqual([
+      "IonQ",
+      "AQT",
+      "IQM Garnet",
+      "IQM Emerald",
+      "Rigetti",
+      "QuEra",
+    ]);
+  });
+
+  it("does not offer a backend whose devices are all retired or offline", () => {
+    render(<JobExplorer source="" />);
+    const select = screen.getByLabelText(/quantum provider/i);
+    const values = Array.from(select.querySelectorAll("option")).map((o) => o.getAttribute("value"));
+    // TN1 is per-minute so it was never a candidate; the real assertion is that
+    // the picker is built from live devices, so a future all-offline vendor
+    // drops out instead of advertising a backend the service will refuse.
+    for (const v of values) {
+      const live = dispatchableDevices().some((d) => d.provider === v);
+      expect(live).toBe(true);
+    }
   });
 
   it("carries the rounded minute into the hour instead of rendering '1h 60m'", () => {

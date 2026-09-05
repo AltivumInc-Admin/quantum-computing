@@ -5,6 +5,7 @@
  * — the same arrangement classify.test.mjs has, and the reason both callers can
  * share one implementation without either growing a fixture on disk.
  */
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -69,4 +70,24 @@ test("any other failure propagates untouched — narrowing would hide it", async
   );
   assert.equal(calls, 1, "a real failure is not retried");
   assert.equal(SIZE_REFUSAL.test("AccessDeniedException"), false);
+});
+
+test("a row shape change cannot reach retrieval — it holds no DynamoDB at all", async () => {
+  // Asserted rather than assumed, because the shape DID change on 2026-09-04
+  // (four curriculum maps were added to the daily row) and the seven rows from
+  // 2026-08-28 to 2026-09-03 carry none of them. Retrieval is the Amplify
+  // log-window fetcher: it never reads the history table, so an old row and a
+  // new one are equally invisible to it and it cannot break on either. The
+  // pinning matters because the obvious future "improvement" — reading the last
+  // written row here to decide what to fetch — would couple the two and quietly
+  // make an absent attribute a crash.
+  const src = readFileSync(new URL("./retrieve.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /dynamodb|DynamoDB|GetItem|PutItem|Query|Scan/);
+  const mod = await import("./retrieve.mjs");
+  assert.deepEqual(Object.keys(mod).sort(), ["MAX_BISECTIONS", "SIZE_REFUSAL", "fetchDayCsv"]);
+
+  // And the retrieval it does perform is driven entirely by the injected
+  // fetchWindow, so a caller holding rows of EITHER shape gets the same CSV.
+  const csv = await fetchDayCsv("2026-08-29", async () => [HEADER, line("10:00:00")].join("\n"));
+  assert.equal(csv.split("\n").length, 2);
 });

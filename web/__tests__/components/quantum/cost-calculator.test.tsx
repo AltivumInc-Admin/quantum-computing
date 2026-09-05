@@ -31,6 +31,14 @@ describe("CostCalculator", () => {
     expect(screen.getByLabelText(/shots/i)).toHaveValue(1000);
     expect(screen.queryByText(/error/i)).not.toBeInTheDocument();
   });
+  it("says so when the selected device is retired, instead of quoting it silently", () => {
+    render(<CostCalculator source={""} />);
+    expect(screen.queryByText(/retired/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/device/i), { target: { value: "TN1" } });
+    expect(screen.getByText(/TN1 is retired/i)).toBeInTheDocument();
+    // The arithmetic still runs — the historical rate is the lesson.
+    expect(screen.getByText(/\$0\.28/)).toBeInTheDocument();
+  });
   it("silently falls back to defaults for malformed JSON (lenient by design)", () => {
     render(<CostCalculator source={"{not json"} />);
     expect(screen.getByLabelText(/device/i)).toHaveValue("IonQ");

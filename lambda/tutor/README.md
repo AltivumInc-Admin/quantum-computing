@@ -30,7 +30,13 @@ site stays a static export; this is the only server-side surface.
   prebuild copy, `web/src/lib/tutor-core.generated.ts` (see Notes).
 - `corpus.json` — generated grounding text, **not committed** (gitignored). Build it
   before packaging: `npm --prefix lambda/tutor run build:corpus`. `npm run deploy`
-  chains it for you (see below), so you should rarely need it on its own.
+  chains it for you (see below). It is the ONLY thing the tutor is allowed to
+  answer from, so a stale copy is not a cosmetic problem — it is the deployed
+  product asserting something the curriculum no longer says. See
+  [The corpus gate](#the-corpus-gate).
+- `corpus-freshness.test.mjs` — the offline half of that gate. Rebuilds the corpus
+  into a temp dir and fails if `corpus.json` on disk differs, or if any section
+  carries the withdrawn sponsored-hardware wording. Runs under `npm test`.
 - `template.yaml` — AWS SAM (recommended). `trust.json` / `policy.json` — for the
   raw AWS CLI path.
 
@@ -86,15 +92,114 @@ npm run build:corpus \
 # LogRetentionInDays sets the (now stack-managed) log group's retention.
 ```
 
+### Redeploying the live QL-Prod stack
+
+The stack already exists (`quantum-tutor`, us-east-2, QL-Prod) and carries ten
+parameters set by hand during the domain flip. **Pass no `--parameter-overrides`
+at all.** SAM sends `UsePreviousValue=True` for every parameter absent from the
+overrides (`samcli/commands/deploy/deploy_context.py`, verified against the
+installed 1.162.1), so an argument-free deploy preserves all ten. The template's
+`AlertEmail` default is still `christian.perez@altivum.io` while the live stack
+carries `hq@quantumlearner.dev` with a CONFIRMED SNS subscription; anything that
+resolves defaults instead of previous values replaces that subscription and
+starts the 48-hour unconfirmed-then-silently-deleted clock, taking every tutor
+alarm dark. Same reasoning for `AllowedOrigin`.
+
+```bash
+rm -rf lambda/tutor/.aws-sam      # never let a stale build tree be reused
+cd lambda/tutor
+npm install
+npm run deploy -- \
+  --stack-name quantum-tutor \
+  --region us-east-2 \
+  --profile ql-prod \
+  --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+  --resolve-s3 \
+  --no-fail-on-empty-changeset
+```
+
+`npm run deploy` — never a bare `sam` — is the whole point; see
+[The corpus gate](#the-corpus-gate). npm appends the `--` arguments to the end of
+the script string, so they land on `sam deploy`. `edge.yaml` (us-east-1) is NOT
+part of this: the corpus lives in the function, not the distribution.
+
+After it lands, verify rather than assume: `CodeSha256` changed, the packaged
+`corpus.json` contains no `sponsored budget`, the SNS subscription still reads
+CONFIRMED, all ten parameters unchanged — and then ask the deployed edge a
+`02-hardware` question about hardware access and read the answer.
+
 > **First deploy after the log group was added to the template:** the
 > `/aws/lambda/quantum-tutor` group was auto-created by Lambda before it was in
 > `template.yaml`, so a plain `sam deploy` now fails `TutorLogGroup ... already
 > exists`. Resolve it once — see [Log retention (now in the template)](#log-retention).
 
+## The corpus gate
+
+**A bare `sam build` / `sam deploy` runs NO preflight.** npm fires `predeploy`
+only for `npm run deploy`; typing the SAM commands yourself skips the rebuild and
+skips `deploy-check.mjs` entirely. That is not hypothetical — it is what shipped
+to QL-Prod on 2026-08-29. The build tree left behind at `lambda/tutor/.aws-sam/`
+(28 Aug 22:18, two minutes before the function's `LastModified`) held a
+`corpus.json` byte-identical to the running artifact, and that corpus predated
+2026-08-19. Every `.mjs` in the package matched git; only the derived grounding
+text was wrong. It told learners a free account came with a sponsored budget on
+IQM Garnet and that the platform pays Amazon Braket — withdrawn from the GUIDE
+fourteen hours earlier, unfunded by the wallet, unsellable through a closed
+storefront — and it described library APIs deleted ten days before that.
+
+Nothing else could see it. `make drift` compares only `.mjs`/`.js` source bytes
+(`scripts/drift/rules.mjs`), so it reported the stack clean; widening that filter
+to `.json` would NOT have helped, because drift diffs the artifact against the
+working tree and the working tree held the same stale file. The only correct
+comparison is deployed-or-on-disk corpus vs a **fresh build from the GUIDEs**.
+
+### What is guarded, and what is not
+
+Read the scope column before trusting this table. Every guard below is real, but
+**none of them sits on the `sam build && sam deploy` path** — the exact command
+that caused the incident.
+
+| Guard | Where | Catches | Scope |
+| --- | --- | --- | --- |
+| `npm run deploy` | `package.json` | The gate is chained INSIDE the `deploy` script as well as in `predeploy`, so `--ignore-scripts` does not strip it. | Only when you deploy through npm. |
+| `npm test` | `corpus-freshness.test.mjs` | A stale `corpus.json` in your working tree, offline, no credentials. Fails on the exact 2026-08-29 artifact. | Your machine, before you deploy. Not a deploy path. |
+| CI | `.github/workflows/tutor-corpus.yml` | A GUIDE edit that never reached the corpus — rebuilds on a clean checkout and runs the real preflight. | Pull requests and `main`. Cannot see your working tree. |
+| `node deploy-check.mjs` | manual / chained | Missing, empty, orphaned, stale or truncated sections; withdrawn sponsorship wording; Bedrock-prefixed roster model ids. | Only when something runs it. |
+
+If any of them goes red, **fix the content source and rebuild**. Relaxing the
+guard restores the failure it was written for.
+
+> **THE 2026-08-29 BYPASS IS NOT CLOSED MECHANICALLY. The protection on that path
+> is procedural — this paragraph — and nothing else.** `template.yaml` declares
+> `CodeUri: ./` with no `BuildMethod`, so `sam build` is a plain zip of the
+> `files` list in `package.json`; it executes no npm script and runs no gate. A
+> hand-typed `sam build && sam deploy` still ships whatever `corpus.json` happens
+> to be on disk, exactly as it did on 2026-08-29. This was re-tested on
+> 2026-09-04 by planting the withdrawn sentence in `corpus.json` and running a
+> bare `sam build`: it landed verbatim in `.aws-sam/build/TutorFunction/corpus.json`.
+>
+> **So: deploy this function with `npm run deploy`, or run the two lines under
+> [Deploy (raw CLI, fallback)](#deploy-raw-cli-fallback) yourself first. There is
+> no mechanism that will stop you if you do not.** Closing it for real means giving
+> the function a `BuildMethod: makefile` whose build target runs `deploy-check.mjs`,
+> or making a wrapper script the only documented deploy path. Both change how the
+> function is packaged, so neither is a thing to try for the first time on a deploy
+> day — it is owed work, not a decision that has been made and implemented.
+
+The content bar is the one guard that is NOT about freshness. A GUIDE that
+*reintroduces* the withdrawn sponsored-hardware promise rebuilds into a perfectly
+fresh corpus, so the freshness comparison passes it. `WITHDRAWN_CLAIM_PATTERNS` in
+`deploy-check.mjs` is the single definition of that bar; `corpus-freshness.test.mjs`
+imports it rather than holding a second copy. It used to live only in the test,
+which meant `npm run deploy` — the path this README recommends — would have shipped
+the promise.
+
 ## Deploy (raw CLI, fallback)
 
 ```bash
+# Both lines, always. The build is not the gate; deploy-check.mjs is.
 npm --prefix lambda/tutor run build:corpus
+node lambda/tutor/deploy-check.mjs
 cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . -x '*.test.mjs' 'deploy-check.mjs' && cd ../..
 
 aws iam create-role --role-name quantum-tutor-role \
@@ -142,6 +247,9 @@ cd lambda/tutor && npm install && npm test
 #                         shape, and the usage-report reader
 #  - tutor-core.test.mjs  strip/heading/system-prompt + corpus-entry logic
 #  - deploy-check.test.mjs the deploy preflight (model-id + corpus-freshness) validators
+#  - corpus-freshness.test.mjs
+#                         the corpus ON DISK vs a fresh rebuild of the GUIDEs,
+#                         plus a content bar on the withdrawn sponsorship wording
 ```
 
 Live end-to-end (deployed Function URL):

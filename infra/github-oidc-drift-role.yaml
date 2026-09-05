@@ -1,18 +1,55 @@
+# Read-only role for the GitHub Actions checks that compare this repository against
+# what actually exists. Two callers, two grants, deliberately in one role: the
+# deployed-vs-git drift check (drift.yml) reads Lambda code locations and
+# configuration, and the nightly device-fleet check (device-fleet.yml) lists Amazon
+# Braket's device catalog. It can read those two things and nothing else — it cannot
+# invoke, update, or delete anything, and it can submit no quantum task.
+#
+# The account already has the GitHub OIDC provider
+# (token.actions.githubusercontent.com, audience sts.amazonaws.com), so this template
+# only adds the role. It does NOT create the provider — creating a second one for the
+# same URL fails, and the existing one is shared with the account's other repositories.
+#
+# The Lambda grant is EXACTLY the functions the drift check reads, in one region. Both
+# Lambda reads return Environment.Variables in full, so a name-prefix grant would hand a
+# public repository's workflow every value any current or future quantum-* function keeps
+# in its environment. The Braket grant is Resource "*" because SearchDevices admits no
+# other value; the statement itself explains why that is safe here.
+#
+# DEPLOYING A CHANGE TO THIS FILE IS AN IAM POLICY CHANGE on a live account. Deploy it
+# deliberately, not as a side effect of something else:
+#
+#   aws cloudformation deploy \
+#     --template-file infra/github-oidc-drift-role.yaml \
+#     --stack-name quantum-ci-drift-role \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --profile <the account that already holds quantum-ci-drift-check>
+#
+# Resolve that account by reading the existing AWS_DRIFT_ROLE_ARN repository variable
+# (`gh variable list`) rather than from memory. The number is deliberately not written
+# here: this repository is public, and account ids live in deployed configuration and
+# the founder's private notes, never in version control.
+#
+# Then read the RoleArn output and set BOTH repository variables, because one role now
+# serves two workflows and only one of them has ever been wired up:
+#
+#   gh variable set AWS_DRIFT_ROLE_ARN --body "<RoleArn>"
+#   gh variable set AWS_FLEET_ROLE_ARN --body "<RoleArn>"
+#
+# Confirm with `gh variable list`. Until AWS_FLEET_ROLE_ARN exists, device-fleet.yml
+# skips every night and says so with a warning annotation — a green badge that compared
+# nothing. That is the state the fleet check shipped in on 2026-09-04.
+
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Read-only role for the GitHub Actions deployed-vs-git drift check. Lets CI answer
-  "is what is running what is in git?" and nothing else — it can read Lambda code
-  locations and configuration, and cannot invoke, update, or delete anything.
-
-  The account already has the GitHub OIDC provider
-  (token.actions.githubusercontent.com, audience sts.amazonaws.com), so this template
-  only adds the role. It does NOT create the provider — creating a second one for the
-  same URL fails, and the existing one is shared with the account's other repositories.
-
-  The grant is EXACTLY the functions the drift check reads, in one region. Both Lambda
-  reads return Environment.Variables in full, so a name-prefix grant would hand a public
-  repository's workflow every value any current or future quantum-* function keeps in
-  its environment.
+  Read-only role for the GitHub Actions checks that compare this repository against what
+  actually exists. Two callers, two grants, deliberately in one role: the deployed-vs-git
+  drift check (drift.yml) reads Lambda code locations and configuration, and the nightly
+  device-fleet check (device-fleet.yml) lists Amazon Braket's device catalog. It can read
+  those two things and nothing else - it cannot invoke, update or delete anything, and it
+  can submit no quantum task. Deploying a change to this file is an IAM policy change on a
+  live account; the runbook and the reasoning are in the comment block above this template,
+  which CloudFormation's 1024-character Description limit cannot hold.
 
 Parameters:
   GitHubRepo:
@@ -40,7 +77,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: quantum-ci-drift-check
-      Description: Read-only Lambda inspection for the CI drift check. No mutating actions.
+      Description: Read-only Lambda inspection and Braket device listing for the CI checks. No mutating actions.
       # 3600 is the IAM MINIMUM and cannot be lowered here. The job runs for about a
       # minute, so the credential is capped on the REQUEST side instead, by
       # role-duration-seconds in .github/workflows/drift.yml.
@@ -96,8 +133,39 @@ Resources:
               # nothing in the repo has ever called it — the drift check works from a list
               # it already has. sts:GetCallerIdentity, which the check now calls to prove
               # WHICH account it is reading, requires no grant at all.
+        - PolicyName: list-braket-devices-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # For .github/workflows/device-fleet.yml, which asks Braket what devices
+              # exist and compares the answer to lib/hardware/devices.py. Without this the
+              # workflow has no role to name, AWS_FLEET_ROLE_ARN stays unset, and the job
+              # skips every night behind a warning annotation — which is exactly the state
+              # it shipped in.
+              #
+              # Resource MUST be "*". SearchDevices is the one Braket read with NO resource
+              # types in the service authorization reference (verified 2026-09-04 against
+              # docs.aws.amazon.com/service-authorization/latest/reference/list_braket.html:
+              # its "Resource types" column is empty, access level List), so an ARN here
+              # would deny every call. This is NOT the same as GetDevice, which does take
+              # `device*` and could be scoped — the fleet script deliberately calls only
+              # SearchDevices, and widening it to GetDevice would need its own diff.
+              #
+              # Scope check, because Resource "*" deserves one: this grants the ability to
+              # LIST a public service catalog — the same names, statuses and regions any
+              # Braket customer sees, and the same list this public repository already
+              # prints in README.md. It reads no account data, no task, no job and no cost,
+              # and it creates nothing. CreateQuantumTask and CreateJob are the actions that
+              # spend money, and neither is here, so this role cannot reach hardware.
+              - Effect: Allow
+                Action: braket:SearchDevices
+                Resource: "*"
 
 Outputs:
   RoleArn:
-    Description: Set as the AWS_DRIFT_ROLE_ARN repository variable in GitHub.
+    Description: >
+      Set as BOTH the AWS_DRIFT_ROLE_ARN and the AWS_FLEET_ROLE_ARN repository
+      variable in GitHub — one role serves drift.yml and device-fleet.yml. Until
+      AWS_FLEET_ROLE_ARN is set the nightly fleet job skips behind a warning
+      annotation; see the deploy note at the top of this file.
     Value: !GetAtt DriftCheckRole.Arn
