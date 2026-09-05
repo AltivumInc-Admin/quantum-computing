@@ -106,60 +106,68 @@ jobs:
       - name: Test
         run: npm test
 
-      # Operator scripts that move money. Deliberately a STEP of this job, not
-      # a job of its own: a new job means a new required-status context, which
-      # means a branch-protection change, and a money guard that is awkward to
-      # add is a money guard someone skips. Zero dependencies — the issuer
-      # takes its DynamoDB client by injection, so `node --test` needs no
-      # node_modules and there is nothing to install.
-      - name: Founding-credit issuance tests
+      # Every scripts/<dir>/*.test.mjs suite in the repo, DISCOVERED rather
+      # than listed. This one step replaced six hardcoded ones, and the local
+      # `make guards` runs the identical find, so CI and a developer's machine
+      # can never diverge and a new suite directory is never silently unrun.
+      #
+      # Deliberately a STEP of this job, not a job of its own: a new job means a
+      # new required-status context, which means a branch-protection change, and
+      # a money guard that is awkward to add is a money guard someone skips.
+      # Zero dependencies, which is why no `npm ci` precedes it: every one of
+      # these modules is pure, takes its AWS clients by injection, and reads only
+      # source text and plain JSON, so `node --test` needs no node_modules.
+      #
+      # `find`, not a shell glob or a pattern handed to `node --test`: an
+      # unmatched pattern exits 1 on the Node 20 pinned above but exits 0
+      # printing "tests 0" on Node 22+ (drift.yml and device-fleet.yml already
+      # run 22), so a NODE_VERSION bump would silently disarm this step. An
+      # unmatched glob that expands to nothing is worse still — `node --test`
+      # with no file arguments falls back to its own repo-wide discovery. Hence
+      # the explicit zero-file failure below: a vacuous green is the failure
+      # mode this step exists to prevent.
+      #
+      # What is under scripts/ and why it is guarded here:
+      #   founding-credit/ — an operator script that MOVES MONEY (the Founding
+      #     Ten credit issuance); migration/ — rewrites learner wallet rows onto
+      #     new Cognito subs during the QL-Prod migration; both money-adjacent,
+      #     neither exercised anywhere else in CI.
+      #   changelog/ — the changelog guard's own matching rules (pure functions
+      #     over path strings), used by the `Changelog guard` step below.
+      #   design-sync/ — the target pin. Two claude.ai projects share the name
+      #     "Quantum Learner Design System" and a driver run against the
+      #     hand-authored one deletes what it cannot regenerate; the pin lives in
+      #     scripts/design-sync/targets.mjs and the target in
+      #     .design-sync/config.json, and this asserts they still agree, so a
+      #     one-sided edit — including one the sync skill writes back into the
+      #     config on an aborted run — fails the merge instead of waiting for an
+      #     operator to remember the preflight.
+      #   drift/ — the deployed-vs-git guard's rules: what counts as source,
+      #     which drift is HELD, when a hold has gone stale, and what a run exits
+      #     with when several are true at once. The scripts themselves need AWS
+      #     and cannot run here; the rules do not, which is why they were split.
+      #   fleet/ — the nightly device-fleet check's rules, split out for the same
+      #     reason drift/ was: the script needs Braket and cannot run here, the
+      #     rules do not. Its three-way partition is what stops an unreadable
+      #     region from being reported as a confirmed device retirement.
+      #   stripe/ — the Stripe guards' decision logic: the pricing.ts parser, the
+      #     event-set diff, the product-copy audit, and the account ids the usage
+      #     examples name. A parse failure inside those does not look like a
+      #     parse failure, it looks like DRIFT reported against Stripe. No
+      #     network and no Stripe key: pure functions plus a scan of source text.
+      - name: Script guard tests
         working-directory: .
-        run: node --test scripts/founding-credit/*.test.mjs
-
-      # Another money-adjacent operator script: rewrites learner rows onto new
-      # Cognito subs during the QL-Prod migration. Same rationale as the step
-      # above — zero dependencies, DynamoDB clients taken by injection — so
-      # `node --test` needs no node_modules here either.
-      - name: Sub-remap migration tests
-        working-directory: .
-        run: node --test scripts/migration/*.test.mjs
-
-      # Unit tests for the guard's own matching rules. Zero dependencies — pure
-      # functions over path strings, so `node --test` needs no node_modules.
-      # Its own glob: the founding-credit line above matches only that directory.
-      - name: Changelog guard tests
-        working-directory: .
-        run: node --test scripts/changelog/*.test.mjs
-
-      # Two claude.ai projects share the name "Quantum Learner Design System",
-      # and a driver run against the hand-authored one deletes what it cannot
-      # regenerate. The pin lives in scripts/design-sync/targets.mjs and the
-      # target in .design-sync/config.json; this asserts they still agree, so a
-      # one-sided edit — including one the sync skill writes back into the
-      # config on an aborted run — fails the merge instead of waiting for an
-      # operator to remember the preflight command. Zero dependencies: the
-      # module is pure and the config is plain JSON.
-      - name: Design-sync target pin tests
-        working-directory: .
-        run: node --test scripts/design-sync/*.test.mjs
-
-      # The deployed-vs-git guard's own rules: what counts as source, which
-      # drift is HELD, when a hold has gone stale, and what a run exits with
-      # when several of those are true at once. The scripts themselves need AWS
-      # and cannot run here — the rules do not, which is why they were split
-      # out. Zero dependencies, same as the three steps above.
-      - name: Drift guard tests
-        working-directory: .
-        run: node --test scripts/drift/*.test.mjs
-
-      # The Stripe guards' decision logic: the pricing.ts parser, the event-set
-      # diff, the product-copy audit, and the account ids the usage examples name.
-      # A parse failure inside those does not look like a parse failure — it looks
-      # like DRIFT reported against Stripe. Zero dependencies, no network, no
-      # Stripe key: pure functions plus a scan of source text.
-      - name: Stripe guard rule tests
-        working-directory: .
-        run: node --test scripts/stripe/*.test.mjs
+        shell: bash
+        run: |
+          files=$(find scripts -type f -name '*.test.mjs' | sort)
+          if [ -z "$files" ]; then
+            echo "discovered NO scripts/**/*.test.mjs — discovery is broken or the"
+            echo "suites moved. Refusing to pass vacuously; nothing was verified."
+            exit 1
+          fi
+          echo "Running $(printf '%s\n' "$files" | wc -l | tr -d ' ') node test file(s):"
+          printf '  %s\n' $files
+          node --test $files
 
       # A learner-visible pull request must say what changed, or record in
       # SILENT why it needs no announcement. The diff is computed HERE rather

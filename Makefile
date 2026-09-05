@@ -1,4 +1,4 @@
-.PHONY: setup git-filters lab test devices cost lint stripe-parity drift fleet design-sync deploy-infra teardown-infra lock-container
+.PHONY: setup guards git-filters lab test devices cost lint stripe-parity drift fleet design-sync deploy-infra teardown-infra lock-container
 
 setup:
 	@echo "Installing dependencies..."
@@ -76,12 +76,34 @@ drift:
 	@# second check compares them value-blind (no value, no digest — rule 6).
 	@# Both ALWAYS run — code drift is the normal state mid-cutover, and stopping there
 	@# would leave rate parity unchecked in exactly the window it matters most.
-	@# WHICH ACCOUNT: the default AWS profile on this machine is NOT the one serving
-	@# learners, and every function name checked here exists in both. Export
-	@# DRIFT_EXPECT_ACCOUNT (it is inherited from your shell — the number stays out of
-	@# this public repo) and both checks refuse a mismatch instead of reporting green
-	@# about the wrong account. Unset is allowed, and prints as "account unverified".
-	@code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
+	@# WHICH ACCOUNT, and why this target does not use your default profile. The
+	@# default AWS profile on this machine is ALTIVUM production — a different org
+	@# from the one serving learners — and every function name checked here exists
+	@# in both accounts. A bare `make drift` therefore used to produce a confident,
+	@# fully green report about the wrong account, and that output was misread as
+	@# describing QL-Prod inside this repo's own history. So the target defaults to
+	@# the ql-prod profile rather than to whatever the shell happens to carry.
+	@# Override explicitly, either way round:
+	@#   AWS_PROFILE=ql-braket make drift
+	@#   make drift AWS_PROFILE=ql-braket
+	@# and the profile is ANNOUNCED before either check reads anything, so the
+	@# answer to "which account is this about?" arrives before the report does.
+	@# The second, independent guard is DRIFT_EXPECT_ACCOUNT: exported from your
+	@# shell (the number stays out of this public repo), it makes both checks refuse
+	@# a mismatch instead of reporting green about the wrong account. Unset is
+	@# allowed and prints as "account unverified". It is deliberately LOCAL-ONLY —
+	@# never a CI or repo variable, because GitHub echoes step env into a log that
+	@# is world-readable on a public repo.
+	@profile="$${AWS_PROFILE:-ql-prod}"; \
+	 echo "drift: about to read the account reached by AWS profile '$$profile'"; \
+	 if [ -n "$$DRIFT_EXPECT_ACCOUNT" ]; then \
+	   echo "       DRIFT_EXPECT_ACCOUNT is set; both checks will refuse a mismatch."; \
+	 else \
+	   echo "       DRIFT_EXPECT_ACCOUNT is unset; this run cannot say WHICH account it read."; \
+	 fi; \
+	 echo "       Override with: AWS_PROFILE=<profile> make drift"; \
+	 export AWS_PROFILE="$$profile"; \
+	 code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
 	 node scripts/check-rate-parity.mjs || code=$$?; \
 	 exit $$code
 
@@ -127,3 +149,49 @@ fleet:
 	@# pin nothing here. Runs nightly in .github/workflows/device-fleet.yml.
 	@# Exit: 0 current  1 divergent  2 could not check.
 	node scripts/check-device-fleet.mjs
+
+GUARD_ROOT ?= scripts
+
+# `python` is NOT on a stock macOS PATH — only `python3` is — so `make guards` used
+# to exit 127 for anyone who had not activated some virtualenv, and to run under
+# whatever interpreter happened to be first on PATH for anyone who had. The manifest
+# check imports stdlib only (argparse, ast, json, re, sys, pathlib), so it needs no
+# project venv at all. `devices` and `cost` deliberately still use `python`: those
+# need the Braket SDK, and therefore the venv.
+PYTHON ?= python3
+
+guards:
+	@# Everything CI runs about scripts/, runnable in one local command. Before
+	@# this target existed there was NO local entry point for any of it: `make
+	@# test` is pytest alone, there is no root package.json, and no git hook —
+	@# so the only thing that ever ran these suites was ci.yml, and a broken
+	@# guard could be written, committed and pushed before anyone found out.
+	@# .github/workflows/ci.yml runs the same discovery in a single step; the
+	@# two must stay the same shape, which is why neither hardcodes a list.
+	@# DISCOVERY IS `find`, NOT A GLOB, and that is load-bearing. A recursive
+	@# shell glob (scripts/**/*.test.mjs) needs globstar, and passing the
+	@# pattern through to `node --test` is worse: an unmatched pattern exits 1
+	@# on Node 20 but exits 0 printing "tests 0" on Node 22+, so the same
+	@# command silently stops testing anything on a newer runtime. find is
+	@# uniform, and the emptiness check below is explicit rather than inherited
+	@# from an interpreter's glob semantics.
+	@# A NEW scripts/<dir>/*.test.mjs directory is picked up with no edit here.
+	@# Zero discovered files is a FAILURE, not a pass: a vacuous green is the
+	@# exact outcome this target exists to make impossible.
+	@# Both halves ALWAYS run and the exit codes accumulate — same shape as
+	@# `drift` below, for the same reason: a red node suite must not hide a
+	@# drifted content manifest, since the two fail for unrelated causes.
+	@files=$$(find $(GUARD_ROOT) -type f -name '*.test.mjs' | sort); \
+	 if [ -z "$$files" ]; then \
+	   echo "make guards: discovered NO *.test.mjs under '$(GUARD_ROOT)/' — refusing to pass vacuously."; \
+	   echo "  Either discovery is broken or the suites moved. Nothing was verified."; \
+	   exit 1; \
+	 fi; \
+	 n=$$(printf '%s\n' "$$files" | wc -l | tr -d ' '); \
+	 echo "Running $$n node test file(s) under $(GUARD_ROOT)/:"; \
+	 printf '  %s\n' $$files; \
+	 code=0; \
+	 node --test $$files || code=$$?; \
+	 echo "Checking content manifests: $(PYTHON) scripts/validate_runnable.py --check"; \
+	 $(PYTHON) scripts/validate_runnable.py --check || code=$$?; \
+	 exit $$code
