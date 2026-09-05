@@ -65,7 +65,7 @@ export const CHANGELOG: readonly ChangeEntry[] = [
     shipped: "2026-09-04",
     kind: "improved",
     title: "The privacy policy now lists every daily total we keep",
-    body: "Our servers keep a small daily tally of how the site is used, worked out after the fact from ordinary web-host access logs and containing no addresses, no identifiers and nothing that links one day to another. The policy described only part of it. It now names each total: how many people arrived, how many signed in, how many opened each lesson notebook, how many opened each course section, how many sections a day's visitors reached, and which section that day's readers got furthest into. Nothing new is being collected \u2014 this closes the gap between what the page said and what was already being counted.",
+    body: "Our servers keep a small daily tally of how the site is used, worked out after the fact from ordinary web-host access logs and containing no addresses, no identifiers and nothing that links one day to another. We have started counting more than before: alongside how many people arrived and how many signed in, the tally now also records how many opened each lesson notebook, how many opened each course section, how many sections a day's visitors reached, and which section that day's readers got furthest into. We want to know whether the curriculum is actually being read to the end. Nothing was added to the page to do it \u2014 no script, no cookie, no identifier \u2014 and the policy names every one of these totals before the first is kept.",
     href: "/privacy",
   },
   {
