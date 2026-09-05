@@ -128,6 +128,40 @@ const NO_CREDENTIALS = [
   /session associated with this profile has expired/i,
 ];
 
+/**
+ * Can a SUCCESSFUL SearchDevices response be believed as the region's whole catalog?
+ *
+ * Returns a reason string, or "" when the response is authoritative. The caller treats
+ * a reason exactly like a region that threw: unreadable, never authoritative.
+ *
+ * THE FAULT THIS EXISTS FOR reaches the old defect through a 200, not a failure. A
+ * region counted as scanned the moment the CLI exited 0 and the JSON carried a devices
+ * array — and nothing asked whether the array was plausible. An HTTP-200 `{"devices":
+ * []}` from ONE region therefore printed "(5/5 regions read)", then STALE iqm_garnet,
+ * STALE iqm_emerald, STALE aqt_ibex_q1, "3 divergence(s)", exit 1: the same three
+ * devices, the same count and the same exit code an outage used to produce, including
+ * the only QPU lambda/qpu is fenced to, with the workflow telling the operator to go
+ * edit lib/hardware/devices.py. An empty catalog is not evidence of retirement — no
+ * Braket region has ever listed zero devices — so it cannot be allowed to become one.
+ *
+ * nextToken is the same class one step earlier: a truncated page is indistinguishable
+ * from a short catalog, and this check does not follow pages. AWS CLI v2 paginates on
+ * its own, so a token in the output means something changed about that assumption;
+ * refusing the answer is the honest response, not silently comparing a partial list.
+ */
+export function unusableResponse(parsed) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.devices)) {
+    return "SearchDevices returned no devices array";
+  }
+  if (parsed.nextToken) {
+    return "SearchDevices returned a nextToken; this check does not follow pages, so the catalog read was partial";
+  }
+  if (parsed.devices.length === 0) {
+    return "SearchDevices returned an empty catalog; no Braket region has ever listed zero devices";
+  }
+  return "";
+}
+
 export function classifyAwsFailure(err) {
   const stderr = String(err?.stderr ?? "");
   const message = String(err?.message ?? "");

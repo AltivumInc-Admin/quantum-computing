@@ -20,6 +20,7 @@ import {
   lastLine,
   render,
   unscannedDevices,
+  unusableResponse,
   verdict,
 } from "./rules.mjs";
 
@@ -130,6 +131,63 @@ test("FULL OUTAGE: no region readable is exit 2 with zero divergences", () => {
   assert.match(r.out, /NOT CHECKED — no region that could list this ARN answered/);
   assert.match(r.out, /\(us-east-1, us-west-1, us-west-2, eu-west-2, eu-north-1; the ARN names no region/);
   assert.doesNotMatch(r.out, /STALE/);
+});
+
+/* ------------------------------------ a SUCCESSFUL answer that means nothing */
+
+test("a region that answers 200 with an EMPTY catalog is unreadable, never authoritative", () => {
+  // The same defect as the partial outage, reached through a success. A region was
+  // counted as scanned the moment the CLI exited 0 and the JSON carried a devices
+  // array; nothing asked whether the array was plausible. An HTTP-200 `{"devices": []}`
+  // from eu-north-1 alone printed "(5/5 regions read)" — asserting FULL coverage — then
+  // STALE iqm_garnet / iqm_emerald, "divergence(s)", exit 1, and the workflow told the
+  // operator to edit devices.py. Garnet is the only QPU lambda/qpu is fenced to.
+  const detail = unusableResponse({ devices: [] });
+  assert.match(detail, /empty catalog/);
+
+  const r = run({
+    devices: DEVICES,
+    live: withoutRegion(fullCatalog(), "eu-north-1"),
+    regions: REGIONS,
+    unreadable: [{ region: "eu-north-1", detail }],
+  });
+
+  assert.equal(r.exitCode, 2, "an empty catalog is could-not-check, never divergence");
+  assert.deepEqual(r.bad, [], "no row may be reported as a divergence");
+  assert.deepEqual(r.unchecked.map((row) => row.name).sort(), ["iqm_emerald", "iqm_garnet"]);
+  assert.match(r.out, /4\/5 regions read/, "the header must not claim full coverage");
+  assert.match(r.out, /could not read — SearchDevices returned an empty catalog/);
+  assert.doesNotMatch(r.out, /STALE/);
+  assert.doesNotMatch(r.out, /divergence\(s\):/);
+});
+
+test("EVERY region answering with an empty catalog is exit 2 with zero divergences", () => {
+  // Ten STALE rows and exit 1 was the measured behaviour before the sanity floor.
+  const detail = unusableResponse({ devices: [] });
+  const r = run({
+    devices: DEVICES,
+    live: new Map(),
+    regions: REGIONS,
+    unreadable: REGIONS.map((region) => ({ region, detail })),
+  });
+  assert.equal(r.exitCode, 2);
+  assert.deepEqual(r.bad, []);
+  assert.equal(r.unchecked.length, Object.keys(DEVICES).length);
+  assert.match(r.out, /0\/5 regions read/);
+  assert.doesNotMatch(r.out, /STALE/);
+});
+
+test("a response that cannot be believed is named; a real catalog is believed", () => {
+  // nextToken: searchDevices() reads only `parsed.devices` and follows no page, so a
+  // truncated answer is indistinguishable from a short catalog — which is the mechanism
+  // that turns a partial read into confirmed retirements. AWS CLI v2 auto-paginates, so
+  // a token appearing at all means that assumption changed; refuse rather than compare.
+  assert.match(unusableResponse({ devices: [], nextToken: "abc" }), /nextToken/);
+  assert.match(unusableResponse({ devices: [{ deviceArn: SV1 }], nextToken: "abc" }), /nextToken/);
+  assert.match(unusableResponse({}), /no devices array/);
+  assert.match(unusableResponse(null), /no devices array/);
+  assert.match(unusableResponse({ devices: "not-an-array" }), /no devices array/);
+  assert.equal(unusableResponse({ devices: [{ deviceArn: SV1, deviceStatus: "ONLINE" }] }), "");
 });
 
 test("a partial outage in a region that could not have listed the device changes nothing", () => {

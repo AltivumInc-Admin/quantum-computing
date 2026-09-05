@@ -21,21 +21,20 @@ name: Device fleet
 # repository variable. If it is absent the job skips loudly rather than failing, so
 # this file can merge before the role exists.
 #
-# NOTE ON THE ROLE: quantum-ci-drift-check (infra/github-oidc-drift-role.yaml) does
-# NOT currently grant braket:SearchDevices — its policy is lambda:GetFunction /
-# GetFunctionConfiguration on eleven named functions and nothing else. So this
-# workflow reads its OWN variable rather than reusing AWS_DRIFT_ROLE_ARN, which would
-# assume a role that can only fail with AccessDenied and paint the nightly red for a
-# permissions reason rather than a fleet reason. Adding the statement below to that
-# role and pointing AWS_FLEET_ROLE_ARN at the same ARN is a perfectly good way to wire
-# this up — braket:SearchDevices is a catalog read that exposes no account data:
+# NOTE ON THE ROLE: quantum-ci-drift-check (infra/github-oidc-drift-role.yaml) DOES
+# grant braket:SearchDevices — the list-braket-devices-only policy, added in the same
+# commit as this workflow and deployed. Resource is "*" because SearchDevices admits no
+# other value, and no region is scoped because the check reads five and the region lives
+# in the endpoint, not an ARN. So pointing AWS_FLEET_ROLE_ARN at that same role is the
+# intended wiring, and it works today.
 #
-#   - Effect: Allow
-#     Action: braket:SearchDevices
-#     Resource: "*"          # SearchDevices has no resource types; "*" is the only form
-#
-# Region is not scoped by that statement because the check reads five regions and the
-# region lives in the endpoint, not the ARN.
+# This workflow still reads its OWN variable rather than reusing AWS_DRIFT_ROLE_ARN, for
+# a reason that outlives the missing grant: the two nightlies must be able to be turned
+# on, off and re-pointed independently. A fleet check assuming a role scoped for the
+# drift check would fail with AccessDenied and paint the nightly red for a permissions
+# reason rather than a fleet reason — which is the same class of mistake as reporting an
+# outage as a device retirement, and the check itself now refuses to make that one (an
+# unread region is UNCHECKED, exit 2, never STALE).
 
 on:
   schedule:
@@ -137,16 +136,26 @@ jobs:
         env:
           FLEET_CODE: ${{ steps.fleet.outputs.code }}
         run: |
+          # The two codes mean OPPOSITE things and must never be annotated alike. 1 is
+          # "the table is wrong, go edit it"; 2 is "we could not read the fleet, so the
+          # table may be perfectly fine". Telling an operator to fix devices.py because
+          # eu-north-1 threw an AccessDenied is how a real machine gets deleted from the
+          # curriculum during an outage — the check no longer produces that report, and
+          # this annotation must not reintroduce it in prose.
           if [ "$FLEET_CODE" = "1" ]; then
-            echo "::error::The curriculum's device table and Amazon Braket disagree. A STALE"
-            echo "::error::row is a dispatch bug (run_circuit prints a cost estimate and submits"
-            echo "::error::to a machine the service will refuse). An UNKNOWN device is curriculum"
-            echo "::error::drift. Run 'make fleet' locally for the same report, then either fix"
+            echo "::error title=Device table is stale::The curriculum's device table and Amazon"
+            echo "::error::Braket disagree, and every region that could list the device answered."
+            echo "::error::A STALE row is a dispatch bug (run_circuit prints a cost estimate and"
+            echo "::error::submits to a machine the service will refuse). An UNKNOWN device is"
+            echo "::error::curriculum drift. Run 'make fleet' locally for the same report, then fix"
             echo "::error::lib/hardware/devices.py or add an ACKNOWLEDGED entry with a reason."
           elif [ "$FLEET_CODE" = "2" ]; then
-            echo "::error::The fleet check could not READ what it needed — a region that did not"
-            echo "::error::answer, or a devices.py it could not parse. It says NOTHING about"
-            echo "::error::whether the table is current. Read the report's rows."
+            echo "::error title=Could not read the fleet::The fleet check could not READ what it"
+            echo "::error::needed — a region that did not answer, an aws CLI it could not run, or a"
+            echo "::error::devices.py it could not parse. NOTHING here says the table is stale:"
+            echo "::error::rows it could not check print as UNCHECKED, never STALE. Do NOT edit"
+            echo "::error::lib/hardware/devices.py on the strength of this run. Read the report's"
+            echo "::error::'??' rows for the region and the reason, then re-run."
           fi
 
       # The counterpart to the skip warning above: an executed run says so on the run
@@ -167,5 +176,8 @@ jobs:
             echo ""
             echo "| check | exit |"
             echo "| --- | --- |"
-            echo "| repo fleet vs live Braket (0 current, 1 divergent, 2 could not check) | ${FLEET_CODE:-did not run} |"
+            echo "| repo fleet vs live Braket (0 current, 1 divergent, 2 could not read) | ${FLEET_CODE:-did not run} |"
+            echo ""
+            echo "Exit 2 is NOT a stale table: it means a region, the aws CLI or devices.py"
+            echo "could not be read, and the rows it covers print as \`UNCHECKED\`."
           } >> "$GITHUB_STEP_SUMMARY"
