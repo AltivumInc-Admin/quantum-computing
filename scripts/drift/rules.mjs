@@ -70,16 +70,21 @@ export const FUNCTIONS = [
   // the sign-up front door, nothing said so. A deployed-vs-git comparison would
   // not have caught THAT bug either (the broken code was faithfully deployed),
   // but a function with that failure mode is the last one to leave unwatched.
+  //
+  // This entry carried a `grantPending` block from the moment it was registered
+  // until 2026-09-06, because a template in git is not a policy in IAM: the CI
+  // role could not read this function until infra/github-oidc-drift-role.yaml
+  // was redeployed. That deploy landed the same day (one resource, Modify, no
+  // replacement), and the proof the block asks for arrived in the next dispatched
+  // run: the CI role itself — not an admin profile — read the function and
+  // printed "OK quantum-signup-alert … 1 compared". The block is gone, so a drift
+  // in this function now fails the run like any other. The mechanism stays
+  // (isMissingGrant, clearedGrants, the summary's readable/pending split) for the
+  // next function that is registered before its grant is deployed.
   {
     fn: "quantum-signup-alert",
     dir: "infra/workspace",
     inline: { template: "cognito.yaml", file: "index.js" },
-    grantPending: {
-      reason:
-        "quantum-ci-drift-check's read-lambda-code-only policy is DEPLOYED with eleven function ARNs. infra/github-oidc-drift-role.yaml now names twelve, but a template in git is not a policy in IAM — until that stack is redeployed the nightly run gets AccessDenied here and can say nothing about this function.",
-      clearsWhen:
-        "someone deploys infra/github-oidc-drift-role.yaml (an IAM change on a live account — the runbook is in that file's header comment). Then DELETE this grantPending block; the row starts comparing for real, and a drift in it fails the run like any other.",
-    },
   },
 ];
 
