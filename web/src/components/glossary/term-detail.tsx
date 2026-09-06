@@ -1,26 +1,50 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { TransitionLink } from "@/components/transition-link";
 import {
   termsInSection,
   termSlug,
   type GlossaryTerm,
 } from "@/lib/glossary";
-import { GLOSSARY_ES, GLOSSARY_TERM_ES } from "@/lib/glossary-es";
-import { InlineMarkdown } from "./inline-markdown";
+import { GLOSSARY_TERM_ES } from "@/lib/glossary-es";
 import { CategoryChip } from "./category-chip";
 import { SeeAlsoLinks } from "./see-also-links";
 import { CopyLinkButton } from "./copy-link-button";
 import { WorkspaceCta } from "./workspace-cta";
 import { useLocale } from "@/i18n";
 
-export function TermDetail({ term }: { term: GlossaryTerm }) {
+/**
+ * Client shell for one glossary term page. Everything it renders itself is
+ * either interactive (copy link, workspace CTA) or a plain localized string, so
+ * a locale flip is a re-render of labels and nothing more.
+ *
+ * The DEFINITION is the one thing this component must NOT render. Definitions
+ * are markdown with $math$, and calling InlineMarkdown from inside this "use
+ * client" module drags react-markdown + remark-math + rehype-katex across the
+ * boundary — precisely the regression inline-markdown.tsx warns about, and the
+ * one that put a 384 KB (112 KB gz) KaTeX chunk on all 89 term pages. Both
+ * locales therefore arrive already rendered, as ReactNode props built by the
+ * SERVER page component (the glossary index's <Glossary> pattern); this picks
+ * one. They are required props, not optional, so the pipeline cannot creep back
+ * in through a caller that simply forgot to pass them.
+ */
+export function TermDetail({
+  term,
+  definitionEn,
+  definitionEs,
+}: {
+  term: GlossaryTerm;
+  /** Server-rendered English definition (markdown + KaTeX already resolved). */
+  definitionEn: ReactNode;
+  /** Server-rendered Spanish definition; falls back to English at the call site. */
+  definitionEs: ReactNode;
+}) {
   const { locale, t } = useLocale();
   const related = termsInSection(term.section, term.term);
   const displayTerm =
     locale === "es" ? (GLOSSARY_TERM_ES[term.term] ?? term.term) : term.term;
-  const definition =
-    locale === "es" ? (GLOSSARY_ES[term.term] ?? term.definition) : term.definition;
+  const definition = locale === "es" ? definitionEs : definitionEn;
   const seeAlsoLabels = Object.fromEntries(
     (term.seeAlso ?? []).map((r) => [
       r,
@@ -58,7 +82,7 @@ export function TermDetail({ term }: { term: GlossaryTerm }) {
       </div>
 
       <div className="mt-6 text-lg text-gray-700 dark:text-gray-200 leading-relaxed [&_code]:rounded [&_code]:bg-gray-100 dark:[&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em]">
-        <InlineMarkdown>{definition}</InlineMarkdown>
+        {definition}
       </div>
 
       <SeeAlsoLinks refs={term.seeAlso} labels={seeAlsoLabels} />

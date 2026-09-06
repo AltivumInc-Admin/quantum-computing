@@ -13,6 +13,13 @@ from lib.chemistry.hamiltonians import (  # noqa: E402
     build_h2_hamiltonian,
     hamiltonian_info,
 )
+from tests.conftest import pyscf_group  # noqa: E402
+
+# Every test below calls build_h2_hamiltonian, and openfermionpyscf saves its
+# result to one path shared by all of them regardless of bond length — see
+# pyscf_group() in tests/conftest.py. Under `make test` (-n auto) that is a race
+# on os.remove + shutil.move; the shared group pins these four to one worker.
+pytestmark = pyscf_group()
 
 
 def test_h2_hamiltonian_returns_correct_shape():

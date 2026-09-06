@@ -146,9 +146,58 @@ function walk(dir: string, acc: string[] = []): string[] {
  * destructuring or a property access), whereas a call can be aliased —
  * `const { applyOnce: write } = store` — and vanish. applyOnceRetrying is in
  * because it forwards its args unchanged, so a deltaCredits rides it.
+ *
+ * WHY THIS IS THREE REGEXES AND NOT ONE — do not fuse them back.
+ *
+ * The "WALLET# key AND a DynamoDB update" rule used to be one alternative
+ * inside a single pattern, spelled with a whole-file lookahead:
+ *
+ *   (?=[\s\S]*(?:`WALLET#\$\{|\bwalletKey\())[\s\S]*(?:update-item|…)
+ *
+ * That is quadratic. `.test()` retries the whole alternation at every start
+ * offset, and at each offset the lookahead's `[\s\S]*` walks to end of file
+ * looking for the key, then the body's `[\s\S]*` walks to end of file again
+ * looking for the update. One pass per character, over files that reach 67 KB.
+ * Measured over the scan below (~320 files, ~2.1 MB): the fused pattern took
+ * TENS OF SECONDS — 30 s and 76 s on two different loaded machines, with the
+ * single worst file (web/src/components/quantum/qpu-submit-panel.tsx, 67 KB,
+ * which contains neither spelling and so pays the full worst case) accounting
+ * for seconds of it on its own. The split form below takes single-digit
+ * MILLISECONDS over the same corpus and returns the identical nine matches.
+ * Only the order of magnitude is a durable claim: every figure here is
+ * wall-clock off a loaded machine and re-measuring will not reproduce the
+ * decimals. Four orders of magnitude is the point.
+ *
+ * Splitting is exactly semantics-preserving here, and the reason is worth
+ * stating so nobody has to re-derive it. `(?=[\s\S]*K)[\s\S]*U` succeeds at
+ * offset p iff K occurs at or after p AND U occurs at or after p. If that
+ * holds for any p it holds for p = 0, so over the whole subject the alternative
+ * is true iff K occurs anywhere and U occurs anywhere — which is what
+ * `WALLET_KEY.test(s) && DDB_UPDATE.test(s)` asks directly. The alternation
+ * order cannot matter either, because every call site is a boolean `.test()`
+ * (none of the three patterns is global, and none is ever handed to `.exec`,
+ * `.match`, or a `lastIndex`/match-index read — the `/g` regexes elsewhere in
+ * this file are the comment-strippers, which never touch these three), so
+ * which alternative wins is unobservable. Verified rather
+ * than reasoned alone: old and new were run over this exact corpus and agreed
+ * file-for-file, and over 200k randomized token strings built from every
+ * fragment of the pattern.
+ *
+ * If you are tempted to write this as one readable regex again: the readability
+ * is not worth thirty seconds on every test run, and a lookahead that spans the
+ * whole subject is the specific shape that costs it.
  */
-const CREDIT_WRITE =
-  /ADD\s+credits\b|adds\.push\("credits |(?=[\s\S]*(?:`WALLET#\$\{|\bwalletKey\())[\s\S]*(?:update-item|UpdateItemCommand)|\bcreateWalletStore\b|\bapplyOnce(?:Retrying)?\b/;
+/** The spellings that are a credit write on their own, wherever they appear. */
+const CREDIT_WRITE_DIRECT =
+  /ADD\s+credits\b|adds\.push\("credits |\bcreateWalletStore\b|\bapplyOnce(?:Retrying)?\b/;
+/** Constructs the wallet row's key — the literal template, or the exported builder. */
+const WALLET_KEY = /`WALLET#\$\{|\bwalletKey\(/;
+/** Issues a DynamoDB update, however the expression itself was assembled. */
+const DDB_UPDATE = /update-item|UpdateItemCommand/;
+
+/** True when a source file can move a wallet balance. */
+const isCreditWrite = (src: string): boolean =>
+  CREDIT_WRITE_DIRECT.test(src) || (WALLET_KEY.test(src) && DDB_UPDATE.test(src));
 
 describe("credit-writer allowlist", () => {
   const offenders: string[] = [];
@@ -158,7 +207,7 @@ describe("credit-writer allowlist", () => {
       const rel = file.slice(REPO.length + 1).replace(/\\/g, "/");
       if (/\.test\.|__tests__|__fixtures__/.test(rel)) continue;
       const src = readFileSync(file, "utf8");
-      if (CREDIT_WRITE.test(src) && !ALLOWED.has(rel)) offenders.push(rel);
+      if (isCreditWrite(src) && !ALLOWED.has(rel)) offenders.push(rel);
     }
   }
 
@@ -170,7 +219,7 @@ describe("credit-writer allowlist", () => {
     // Keeps the list honest: a stale entry would quietly widen the allowlist.
     for (const [rel] of ALLOWED) {
       const src = readFileSync(join(REPO, rel), "utf8");
-      expect(CREDIT_WRITE.test(src)).toBe(true);
+      expect(isCreditWrite(src)).toBe(true);
     }
   });
 
@@ -195,10 +244,10 @@ describe("credit-writer allowlist", () => {
       'import { CLAWBACK_RETRY, receiptKey } from "./wallet-store.mjs";',
       "export const look = (ddb, tableName, pi) => ddb.send(new GetItemCommand({ TableName: tableName, Key: receiptKey(pi) }));",
     ].join("\n");
-    expect(CREDIT_WRITE.test(imports)).toBe(true);
-    expect(CREDIT_WRITE.test(rides)).toBe(true);
-    expect(CREDIT_WRITE.test(aliases)).toBe(true);
-    expect(CREDIT_WRITE.test(reader)).toBe(false);
+    expect(isCreditWrite(imports)).toBe(true);
+    expect(isCreditWrite(rides)).toBe(true);
+    expect(isCreditWrite(aliases)).toBe(true);
+    expect(isCreditWrite(reader)).toBe(false);
   });
 
   it("the gift lives OUTSIDE the internet-facing billing Lambda", () => {
@@ -235,4 +284,49 @@ describe("credit-writer allowlist", () => {
       .replace(/^\s*\/\/.*$/gm, "");
     expect(code).not.toMatch(/\btier\b/);
   });
+
+  it("the matcher stays linear — no whole-file lookaround", () => {
+    // The shape that cost tens of seconds, pinned so it cannot come back under
+    // the banner of "one readable regex". This bans lookaround outright, which
+    // is broader than the defect: a BOUNDED lookaround such as
+    // `\bapplyOnce(?!Retrying)\b` is perfectly linear and would be refused
+    // here too. That is deliberate and it is a blunt instrument — the
+    // quadratic case is an UNBOUNDED one (`[\s\S]*` inside the lookahead)
+    // against a whole-file subject, and distinguishing the two by pattern
+    // inspection is not worth the machinery. If you genuinely need a bounded
+    // lookaround, the bounded-time test below is the check that matters;
+    // narrow this assertion to unbounded quantifiers rather than deleting it.
+    // Asserted on the compiled patterns rather than on this file's text, so it
+    // holds however the source is formatted and cannot trip on itself.
+    for (const pattern of [CREDIT_WRITE_DIRECT, WALLET_KEY, DDB_UPDATE]) {
+      expect(pattern.source).not.toMatch(/\(\?<?[=!]/);
+      expect(pattern.global).toBe(false); // a stateful lastIndex would make .test() alternate
+    }
+  });
+
+  it(
+    "the matcher answers a large near-miss file in bounded time",
+    () => {
+      // A structural check catches the lookaround specifically; this catches any
+      // other catastrophic shape (a nested quantifier, say) that a future edit
+      // might introduce. The input is the worst case: 100 KB that DOES build a
+      // wallet key and does NOT issue an update, so a pattern that pairs the two
+      // by scanning has to walk to end of file from every offset before it can
+      // answer false. The fused form took SECONDS on a real 67 KB file; the
+      // budget here is 2 s against a measured cost well under a millisecond, so
+      // it is an order-of-magnitude tripwire and not a benchmark. A wall-clock
+      // assertion can never be flake-proof — a swapping machine or a long GC
+      // pause could in principle spend 2 s here — but at roughly four orders of
+      // magnitude of headroom, a red result is overwhelmingly more likely to
+      // mean a pattern went quadratic again than to mean the machine hiccuped.
+      // Check the structural assertion above before suspecting flake.
+      const nearMiss = "walletKey(sub);\n" + "const filler = someValue + 1;\n".repeat(3500);
+      expect(nearMiss.length).toBeGreaterThan(100_000);
+
+      const started = Date.now();
+      expect(isCreditWrite(nearMiss)).toBe(false);
+      expect(Date.now() - started).toBeLessThan(2_000);
+    },
+    30_000, // so a regression reports the budget, rather than dying on Jest's default timeout
+  );
 });

@@ -62,6 +62,20 @@ jobs:
       #     engine `make setup` installs locally. This tier exists because a
       #     qcsim-only idiom (e.g. `sv = circuit.state_vector()`) can be fully
       #     green under the contract tests yet crash for every local learner.
+      #
+      # Those two tiers plus the exercise-check tier are ~98% of this job's wall
+      # clock (125 fresh-kernel notebook runs), and they used to make this the
+      # only job on the critical path — 12m19s against 2m19s for everything
+      # else. `make test` now runs them under pytest-xdist at `-n auto`, which
+      # resolves to the hosted runner's own CPU count rather than a number
+      # hardcoded here that would go stale when GitHub resizes the runner. If
+      # this job ever starts failing intermittently in the notebook tiers, read
+      # notebook_group() in tests/conftest.py before suspecting a notebook:
+      # parallel execution is only safe because every test that executes a given
+      # notebook is pinned to one worker, and --dist=loadgroup is the only
+      # scheduler that honours that pin. `make test` passes the flag and
+      # tests/conftest.py refuses to start under any other distributed
+      # scheduler, so this cannot regress silently into an intermittent failure.
       - name: Run tests
         run: make test
 

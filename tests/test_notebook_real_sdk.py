@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import notebook_group
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # One per track that used the divergent state_vector() idiom, chosen for
@@ -29,21 +31,23 @@ SAMPLE = [
     "04-quantum-ml/notebooks/01-data-encoding.ipynb",
     "05-quantum-chemistry/notebooks/03-vqe-h2.ipynb",
 ]
+# Grouped by notebook like the other two tiers. None of these three writes a
+# file today, so nothing here would corrupt if it ran alongside its qcsim twin
+# — but the rule stated as "every execution of a notebook shares one worker" is
+# one a future sample can neither forget nor quietly violate, and an exception
+# list is exactly the maintenance the grouping exists to avoid.
+_PARAMS = [pytest.param(rel, id=rel, marks=notebook_group(rel)) for rel in SAMPLE]
 
 
 @pytest.fixture(scope="session")
-def real_sdk_kernel() -> str:
+def real_sdk_kernel(install_notebook_kernel) -> str:
     """A kernelspec bound to the current interpreter (same env as the tests),
     mirroring test_notebook_contract's fixture."""
-    from ipykernel.kernelspec import install
-
-    name = "real-sdk-sample"
-    install(user=True, kernel_name=name)
-    return name
+    return install_notebook_kernel("real-sdk-sample")
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("rel_path", SAMPLE)
+@pytest.mark.parametrize("rel_path", _PARAMS)
 def test_notebook_executes_under_real_sdk(rel_path: str, real_sdk_kernel: str):
     """The sampled notebook runs end-to-end with real Braket — no qcsim."""
     nbformat = pytest.importorskip("nbformat")
