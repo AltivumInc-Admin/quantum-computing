@@ -19,7 +19,7 @@
 import { targetLabel } from "./account.mjs";
 
 /**
- * Deployed function -> the source directory it is built from. One entry per function,
+ * Deployed function -> the source it is built from. One entry per function,
  * because several stacks ship more than one function from a single directory.
  *
  * It lives HERE, in the pure module, for one reason: this is a hand-maintained
@@ -27,6 +27,16 @@ import { targetLabel } from "./account.mjs";
  * that lambda/stripe was missed in two of the others for three weeks. A
  * registry needs a guard, and a guard needs to import it without AWS.
  * registryGaps() below compares it to what the templates actually declare.
+ *
+ * Two optional fields, both carried by exactly one entry today:
+ *
+ *  - `inline: { template, file }` — the source is not a directory of modules but
+ *    a `Code: ZipFile: |` block inside a CloudFormation template, which the
+ *    service writes to a single file in the package. See zipFileSource().
+ *  - `grantPending: { reason, clearsWhen }` — the DEPLOYED CI policy does not
+ *    grant lambda:GetFunction on this function yet, so the nightly run under
+ *    quantum-ci-drift-check reads nothing about it. Such a row prints as not
+ *    checked, never as OK, and does not fail the run. See verdict().
  */
 export const FUNCTIONS = [
   { fn: "quantum-stripe", dir: "lambda/stripe" },
@@ -45,6 +55,62 @@ export const FUNCTIONS = [
   { fn: "quantum-review-email-prefs", dir: "lambda/review-email" },
   { fn: "quantum-review-email-sender", dir: "lambda/review-email" },
   { fn: "quantum-review-email-unsubscribe", dir: "lambda/review-email" },
+  // The TWELFTH function, and for nine days the only production Lambda nothing
+  // compared against git. It is the user pool's PostConfirmation trigger, live in
+  // QL-Prod since 2026-08-29, and its source is a `Code: ZipFile: |` block inside
+  // infra/workspace/cognito.yaml rather than a directory under lambda/. The
+  // registry guard walked `lambda/` only, so nothing ever noticed: the run read
+  // eleven functions and printed "All 8 unheld functions match git" while a
+  // twelfth ran unwatched.
+  //
+  // It is exactly the function that most needed watching. From 2026-08-29 to
+  // 2026-09-02 every single invocation died at module load — an ESM `import` in a
+  // file the runtime loads as CommonJS — so no signup alert was ever sent, and
+  // because the handler's whole design is to swallow failures rather than break
+  // the sign-up front door, nothing said so. A deployed-vs-git comparison would
+  // not have caught THAT bug either (the broken code was faithfully deployed),
+  // but a function with that failure mode is the last one to leave unwatched.
+  {
+    fn: "quantum-signup-alert",
+    dir: "infra/workspace",
+    inline: { template: "cognito.yaml", file: "index.js" },
+    grantPending: {
+      reason:
+        "quantum-ci-drift-check's read-lambda-code-only policy is DEPLOYED with eleven function ARNs. infra/github-oidc-drift-role.yaml now names twelve, but a template in git is not a policy in IAM — until that stack is redeployed the nightly run gets AccessDenied here and can say nothing about this function.",
+      clearsWhen:
+        "someone deploys infra/github-oidc-drift-role.yaml (an IAM change on a live account — the runbook is in that file's header comment). Then DELETE this grantPending block; the row starts comparing for real, and a drift in it fails the run like any other.",
+    },
+  },
+];
+
+/**
+ * Function names a template DECLARES that this check deliberately does not read,
+ * each with a reason and a clears-when.
+ *
+ * The opposite direction from UNDERIVABLE, and rarer. This check reads ONE
+ * account in ONE region (the role's FunctionRegion), so a function this
+ * repository declares into a DIFFERENT account is not something a deploy can
+ * fix — registering it would produce a permanent "could not check" row, which is
+ * the allowlist-nobody-prunes failure in a different costume.
+ *
+ * Keep it at the length it is, and keep every entry falsifiable: each names
+ * where the function actually lives and what would put it back in scope.
+ */
+export const OUT_OF_SCOPE = [
+  {
+    fn: "quantumlearner-redirect-canary",
+    reason:
+      "declared by infra/redirect/quantumlearner-dev.yaml and deployed in the LEGACY Altivum account (verified 2026-09-06: us-east-1, stack quantumlearner-dev-redirect), not in the account this check reads. CLAUDE.md records that stack as genuinely orphaned and removable — which is not the same thing as the vanity DOMAIN and its redirect, which are permanent.",
+    clearsWhen:
+      "the stack is torn down (then delete this entry and the template), or the redirect is re-created inside the account and region the drift role grants — at which point it belongs in FUNCTIONS instead.",
+  },
+  {
+    fn: "quantum-altivum-ai-redirect-canary",
+    reason:
+      "declared by infra/redirect/quantum-altivum-ai.yaml, the quantum.altivum.ai redirect's uptime canary. Searched 2026-09-06 and found in NO account this session can reach — not QL-Prod (us-east-2, us-east-1, us-west-2, eu-north-1) and not Altivum (us-east-1, us-east-2) — so the template is ahead of any deployment, and it certainly is not in the one region the drift role grants.",
+    clearsWhen:
+      "it is deployed into the account and region the drift role grants (move it to FUNCTIONS), or the template is deleted along with the redirect it monitors.",
+  },
 ];
 
 /**
@@ -69,18 +135,92 @@ export const UNDERIVABLE = [
 ];
 
 /**
- * Every function a CloudFormation template declares with a LITERAL name, and
- * the entry point it declares for it.
+ * The bytes a `Code: ZipFile: |` block becomes once CloudFormation writes it out,
+ * or null if this text carries no such block in a form that can be reproduced.
  *
- * Split on top-level resource keys so a Handler is attributed to the function
- * in its own block and not to a neighbour's.
+ * This is the whole of the "normalisation" the inline comparison needs, and it is
+ * not a heuristic: it is YAML's own literal block scalar, undone. The indentation
+ * is taken from the FIRST non-empty line (which is what YAML does — NOT the
+ * marker's indent plus two, which would leave stray leading spaces on every line
+ * of a body indented by four and produce a confident, wrong diff), a line
+ * indented further keeps its extra spaces, and clip chomping means trailing empty
+ * lines are dropped and exactly one newline is kept.
+ *
+ * ONLY a bare `|` is accepted. `|-`, `|+`, `|2`, `>` and `!Sub |` each produce
+ * different bytes, so returning "the body" for them would be a comparison of the
+ * wrong thing — the false green this whole file exists to prevent. They return
+ * null instead, which the caller must report as unreadable rather than as a
+ * match; scripts/drift/registry.test.mjs pins that the real template still parses,
+ * so a rewrite fails in CI with no AWS involved rather than at 13:00 UTC.
+ *
+ * Verified against reality on 2026-09-06: the block in infra/workspace/cognito.yaml
+ * run through this function is byte-identical (sha256) to index.js inside the
+ * package quantum-signup-alert is actually running in QL-Prod.
+ */
+export function zipFileSource(text) {
+  const lines = String(text).split("\n");
+  const at = lines.findIndex((l) => /^ *ZipFile: \|$/.test(l));
+  if (at === -1) return null;
+  const indentOf = (l) => l.length - l.replace(/^ +/, "").length;
+  const markerIndent = indentOf(lines[at]);
+  const body = [];
+  let indent = null;
+  for (let i = at + 1; i < lines.length; i++) {
+    const line = lines[i];
+    // A blank line is part of the block wherever it appears; it never ends one and
+    // it never sets the indentation. But "blank" is not the same as "empty": YAML
+    // strips exactly `indent` characters, so a whitespace-only line INDENTED PAST
+    // the block indent keeps the extra spaces as content. Pushing "" for it drops
+    // bytes the deployed artifact has, and the comparison then reports DRIFT on a
+    // handler nobody touched — the confident, wrong diff this function's docstring
+    // says it exists to prevent. Checked against a real parser: PyYAML on a body
+    // line of six spaces under a four-space block yields " ", not "".
+    //
+    // Before the indent is known, a blank line cannot be measured against it yet,
+    // so it contributes "" — which is correct, because YAML takes the indent from
+    // the first NON-empty line and any blank line above that one is empty content.
+    if (line.trim() === "") {
+      body.push(indent === null ? "" : line.slice(indent));
+      continue;
+    }
+    if (indent === null) {
+      if (indentOf(line) <= markerIndent) return null; // an empty block scalar
+      indent = indentOf(line);
+    } else if (indentOf(line) < indent) {
+      break;
+    }
+    body.push(line.slice(indent));
+  }
+  while (body.length && body[body.length - 1] === "") body.pop();
+  return body.length ? body.join("\n") + "\n" : null;
+}
+
+/**
+ * Every function a CloudFormation template declares with a LITERAL name, the
+ * entry point it declares for it, and its inline source if it has one.
+ *
+ * Split on top-level resource keys so a Handler — and a ZipFile body — is
+ * attributed to the function in its own block and not to a neighbour's.
+ *
+ * The name is any literal, not just `quantum-*`. It was `quantum-[...]` until
+ * 2026-09-06, which meant `quantumlearner-redirect-canary` (a real Lambda, in a
+ * real stack, declared in this repository) matched nothing and was invisible to
+ * the registry guard by accident rather than by decision. A blind spot that
+ * nobody chose is the kind this file exists to remove: every literal is seen now,
+ * and anything deliberately not read is written down in OUT_OF_SCOPE with a
+ * reason. `!Ref`/`!GetAtt`/`!Sub` values still do not match — they start with
+ * `!`, not a letter — so an AWS::Lambda::Permission is not a declaration.
  */
 export function declaredFunctions(template) {
   const declared = [];
   for (const block of String(template).split(/^ {2}(?=[A-Za-z0-9]+: *$)/m)) {
-    const fn = block.match(/^ *FunctionName: *(quantum-[A-Za-z0-9-]+) *$/m)?.[1];
+    const fn = block.match(/^ *FunctionName: *([A-Za-z][A-Za-z0-9-]*) *$/m)?.[1];
     if (!fn) continue;
-    declared.push({ fn, handler: block.match(/^ *Handler: *(\S+) *$/m)?.[1] });
+    declared.push({
+      fn,
+      handler: block.match(/^ *Handler: *(\S+) *$/m)?.[1],
+      inline: zipFileSource(block),
+    });
   }
   return declared;
 }
@@ -109,11 +249,16 @@ export const handlerMismatch = (deployed, declared) =>
  * match git" — a green report that silently excludes it. A name here that no
  * template declares is either a typo or a function that no longer exists, and
  * both read as "could not check" forever.
+ *
+ * Each direction has ONE escape hatch, and both cost a written reason:
+ * `underivable` excuses a registered name no template spells out, `outOfScope`
+ * excuses a declared name this check deliberately never reads.
  */
-export function registryGaps(declared, registered, underivable = UNDERIVABLE) {
+export function registryGaps(declared, registered, underivable = UNDERIVABLE, outOfScope = OUT_OF_SCOPE) {
   const excused = new Set(underivable.map((u) => u.fn));
+  const elsewhere = new Set(outOfScope.map((o) => o.fn));
   const byName = new Map(registered.map((r) => [r.fn, r]));
-  const unregistered = declared.filter((d) => !byName.has(d.fn));
+  const unregistered = declared.filter((d) => !byName.has(d.fn) && !elsewhere.has(d.fn));
   const underived = registered.filter((r) => !excused.has(r.fn) && !declared.some((d) => d.fn === r.fn));
   const misdirected = declared
     .filter((d) => byName.has(d.fn) && byName.get(d.fn).dir !== d.dir)
@@ -122,16 +267,33 @@ export function registryGaps(declared, registered, underivable = UNDERIVABLE) {
 }
 
 /**
- * Strip any URL from text bound for a public log.
+ * Strip anything from text bound for a public log that does not belong there.
+ *
+ * TWO shapes, both learned from a real leak rather than imagined:
  *
  * execFileSync's thrown message is literally "Command failed: " + the whole
  * argv, and the argv of the download step carries the PRESIGNED package URL —
  * X-Amz-Signature and X-Amz-Security-Token included — which would grant an
  * anonymous reader of a public Actions log the production deployment package
- * for the URL's validity window. Redacting by shape, rather than by knowing
- * which call is risky, is what keeps a future subprocess from regressing it.
+ * for the URL's validity window.
+ *
+ * And an AWS authorization failure names the CALLER in full: "User:
+ * arn:aws:sts::<account>:assumed-role/... is not authorized to perform ...".
+ * Every row here reports the child's own stderr, so an AccessDenied prints the
+ * account id straight into a world-readable log for a repository whose whole
+ * convention is that account numbers live in deployed configuration and private
+ * notes, never in version control. That was a once-in-a-while risk until a
+ * function was registered whose grant is not deployed yet: an expected
+ * AccessDenied every single night is a scheduled disclosure. Twelve consecutive
+ * digits is the shape, and nothing this check legitimately reports has it.
+ *
+ * Redacting by SHAPE, rather than by knowing which call is risky, is what keeps
+ * a future subprocess from regressing either one.
  */
-export const redact = (text) => String(text ?? "").replace(/https?:\/\/\S+/g, "<url redacted>");
+export const redact = (text) =>
+  String(text ?? "")
+    .replace(/https?:\/\/\S+/g, "<url redacted>")
+    .replace(/\b\d{12}\b/g, "<account>");
 
 /**
  * What to print for a step that threw: the child's own first stderr line.
@@ -149,6 +311,25 @@ export function failureReason(err, stage) {
     .find(Boolean);
   return redact(line || stage).slice(0, 200);
 }
+
+/**
+ * Is this row's failure the MISSING READ GRANT its grantPending declares, and
+ * nothing else?
+ *
+ * grantPending used to ride on the row, which meant it excused every read
+ * failure for that function rather than the one it was written for. Observed,
+ * not theorised: with the grant absent, a ResourceNotFoundException for
+ * quantum-signup-alert printed "the CI role has no read grant for this function
+ * yet" and exited 0 — so during the pending window the check could not report
+ * that a live PostConfirmation trigger had been DELETED. That is the exact
+ * false-all-clear this whole change exists to remove, reintroduced one row down.
+ *
+ * So the excuse is now conditioned on the error text as well. Anything else —
+ * the function is gone, the region is wrong, the zip would not fetch — is a real
+ * could-not-check and reddens the run like any other.
+ */
+export const isMissingGrant = (r) =>
+  Boolean(r.grantPending) && /AccessDenied|not authorized to perform/i.test(String(r.error ?? ""));
 
 /** Hand-written source among these filenames: .mjs/.js at the top level, minus tests. */
 export const sourceFiles = (names) =>
@@ -200,6 +381,23 @@ export const staleHolds = (held, results) =>
   held.filter((h) => !results.some((r) => r.held && h.fn.test(r.fn)));
 
 /**
+ * A row that carries a grantPending declaration and was nevertheless READ.
+ *
+ * The counterpart to staleHolds, and deliberately more careful about what it
+ * claims. A hold goes stale when the drift it excuses disappears, which any run
+ * can see. A pending GRANT is about the CI role's policy, and a run under an
+ * administrative profile (which is what `make drift` uses locally) reads the
+ * function whether or not that policy has been deployed — so a successful read
+ * is evidence only when the reader WAS the CI role. render() says exactly that
+ * rather than instructing anyone to delete something on ambiguous evidence.
+ */
+export const clearedGrants = (results) => results.filter((r) => r.grantPending && !r.error);
+
+/** A row that declares a pending grant but failed for some OTHER reason. */
+export const misattributedGrant = (results) =>
+  results.filter((r) => r.grantPending && r.error && !isMissingGrant(r));
+
+/**
  * The verdict for a finished run: exit code and the summary partitions.
  *
  * `results` must be stamped (see stampHolds); `held` is needed only to report
@@ -216,14 +414,39 @@ export function verdict(results, held = []) {
   const vacuous = checked.filter(isVacuous);
   const bad = checked.filter((r) => !r.ok && !isVacuous(r) && !r.held);
   const heldRows = checked.filter((r) => r.held);
+  // `unchecked` splits the same way `bad` splits into DRIFT and HELD, and for the
+  // same reason: a declared, expected instance of the condition is not an
+  // incident. A function whose read grant is not in the deployed CI policy yet
+  // cannot be read by the nightly job, and it will be unreadable every night
+  // until an IAM change is deployed — which is a different person's action on a
+  // different stack, so reddening the job for everyone in the meantime is how a
+  // check gets muted. It still prints, and it still suppresses the all-clear
+  // line, so it can never be mistaken for a function that matched.
+  // isMissingGrant, NOT r.grantPending: the declaration says which function is
+  // expected to be unreadable, the error text says whether THIS failure is that
+  // expectation. A row that declares a pending grant and then fails for any other
+  // reason belongs in `blocked`, where it reddens the run.
+  const pending = unchecked.filter(isMissingGrant);
+  const blocked = unchecked.filter((r) => !isMissingGrant(r));
   // Drift and could-not-check are accumulated SEPARATELY: one Math.max let an
   // unrelated credentials failure promote a real drift exit of 1 to 2, and one
   // plain assignment let a later clean row demote a 2 to 1. Drift wins, because
   // "somebody owes a deploy" is the actionable half and must not be hidden
   // behind an infrastructure excuse.
   const drifted = bad.length > 0 || vacuous.length > 0;
-  const exitCode = drifted ? 1 : unchecked.length ? 2 : 0;
-  return { exitCode, bad, vacuous, unchecked, checked, held: heldRows, staleHolds: staleHolds(held, results) };
+  const exitCode = drifted ? 1 : blocked.length ? 2 : 0;
+  return {
+    exitCode,
+    bad,
+    vacuous,
+    unchecked,
+    pending,
+    blocked,
+    checked,
+    held: heldRows,
+    staleHolds: staleHolds(held, results),
+    clearedGrants: clearedGrants(results),
+  };
 }
 
 /**
@@ -240,6 +463,26 @@ export function render(results, held, target) {
   for (const r of results) {
     if (r.error) {
       lines.push(`  ??  ${r.fn.padEnd(34)} could not check — ${r.error}`);
+      // isMissingGrant, not r.grantPending. A row can declare a pending grant and
+      // then fail for a completely different reason — the function deleted, the
+      // region wrong — and printing "the CI role has no read grant for this
+      // function yet" there is an explanation that is affirmatively FALSE about
+      // the cause, attached to a real incident. Observed before this guard: a
+      // ResourceNotFoundException on the live PostConfirmation trigger printed
+      // exactly that. Such a row now falls through to the plain "?? could not
+      // check" line and reddens the run.
+      if (isMissingGrant(r)) {
+        // Said in full, on the row, because "??" alone reads as an incident and
+        // this one is a known state with a named owner. What must never happen
+        // here is the row reading as OK — so the wording claims nothing about
+        // whether the function matches git, and the summary below withholds the
+        // all-clear line for exactly as long as this row exists.
+        lines.push(`         NOT CHECKED, AND EXPECTED — the CI role has no read grant for this`);
+        lines.push(`         function yet. This run says NOTHING about ${r.fn};`);
+        lines.push(`         it is not drift, and no deploy of the FUNCTION is owed.`);
+        lines.push(`         why:   ${r.grantPending.reason}`);
+        lines.push(`         until: ${r.grantPending.clearsWhen}`);
+      }
       continue;
     }
     const vacuous = isVacuous(r);
@@ -252,7 +495,13 @@ export function render(results, held, target) {
       lines.push(`         NOTHING WAS COMPARED — this row says nothing about ${r.fn}.`);
       lines.push(`         Did the source directory move, or the package layout change?`);
     }
-    for (const f of r.drifted) lines.push(`         DIFFERS from git: ${r.dir}/${f}`);
+    // Where to LOOK, which for an inline function is not a file that exists.
+    // "DIFFERS from git: infra/workspace/index.js" sends the reader to a path
+    // with nothing at it; the source is a block inside the stack template, and
+    // the fix is a stack deploy rather than a function deploy.
+    const where = (f) =>
+      r.inline ? `${r.dir}/${r.inline.template} — the ZipFile block deployed as ${f}` : `${r.dir}/${f}`;
+    for (const f of r.drifted) lines.push(`         DIFFERS from git: ${where(f)}`);
     for (const f of r.extra ?? []) lines.push(`         ONLY IN THE PACKAGE: ${f}`);
     if (r.handlerDrift) {
       lines.push(
@@ -270,11 +519,24 @@ export function render(results, held, target) {
     }
   }
   const v = verdict(results, held);
-  if (v.unchecked.length) {
+  if (v.blocked.length) {
     lines.push(
-      `\n  ${v.unchecked.length} of ${results.length} functions could NOT be checked. The report above says\n` +
+      `\n  ${v.blocked.length} of ${results.length} functions could NOT be checked. The report above says\n` +
         `  NOTHING about them: their artifacts were never read. That is credentials,\n` +
         `  permissions or the network — not a deploy anyone owes.`,
+    );
+  }
+  if (v.pending.length) {
+    // The positive claim is stated HERE rather than by the all-clear line below,
+    // which stays suppressed: "All N unheld functions match git" must never be
+    // printed in a run that never opened one of the functions.
+    lines.push(
+      `\n  ${v.pending.length} of ${results.length} functions were NOT READ because the CI role's grant for\n` +
+        `  them is not deployed yet (see the rows above). This run makes no claim about\n` +
+        `  those, and does not fail on them — the outstanding action is an IAM deploy,\n` +
+        `  not a function deploy.\n` +
+        `  Of the ${v.checked.length} it did read, ${v.checked.length - v.held.length - v.bad.length - v.vacuous.length} unheld match git` +
+        (v.held.length ? ` and ${v.held.length} are held on purpose.` : `.`),
     );
   }
   if (v.vacuous.length) {
@@ -289,6 +551,9 @@ export function render(results, held, target) {
     );
   } else if (v.vacuous.length === 0 && v.unchecked.length === 0) {
     // Only claimable when every row was read AND actually compared something.
+    // `unchecked`, not `blocked`: a row whose CI grant is merely pending was
+    // still never read, and this sentence is the one a reader takes at face
+    // value. The pending block above makes the narrower, true claim instead.
     lines.push(
       `\n  All ${v.checked.length - v.held.length} unheld functions match git.` +
         (v.held.length ? ` ${v.held.length} held on purpose (see above).\n` : `\n`),
@@ -298,6 +563,19 @@ export function render(results, held, target) {
     lines.push(
       `  NOTE: the HELD entry matching ${h.fn} no longer matches any drifting function.\n` +
         `        The hold has served its purpose — delete it from scripts/check-lambda-drift.mjs.\n`,
+    );
+  }
+  for (const r of v.clearedGrants) {
+    // Deliberately conditional. An administrative profile reads this function
+    // whether or not the CI policy has been deployed, so a successful read here
+    // is not by itself evidence that the grant landed — and telling someone to
+    // delete the declaration on that evidence would silently re-red the nightly
+    // job for everyone.
+    lines.push(
+      `  NOTE: ${r.fn} carries a grantPending declaration and WAS read by this run.\n` +
+        `        If this run used the CI role (quantum-ci-drift-check), the grant has landed:\n` +
+        `        delete grantPending from its FUNCTIONS entry in scripts/drift/rules.mjs.\n` +
+        `        A run under an administrative profile reads it either way and proves nothing.\n`,
     );
   }
   return lines;

@@ -25,6 +25,15 @@
  * compared to the template's, because a repointed entry point changes what executes
  * while leaving every compared byte identical.
  *
+ * "Hand-written source" is USUALLY a directory under lambda/, and for one function it is
+ * a `Code: ZipFile: |` block inside a CloudFormation template. Both are compared the same
+ * way; only where the git side comes from differs (see gitSource below). That function —
+ * quantum-signup-alert, the user pool's PostConfirmation trigger — was outside this check
+ * entirely until 2026-09-06, because the registry guard walked lambda/ and never opened
+ * infra/. It is the one that most needed to be inside it: it swallows its own failures by
+ * design so a broken notifier can never break the sign-up front door, so when every
+ * invocation died at module load for four days in August, nothing at all said so.
+ *
  * Usage:  node scripts/check-lambda-drift.mjs [--json]
  * Exit:   0 = every function matches git   1 = drift found   2 = could not check
  *
@@ -121,6 +130,11 @@ const sourceFiles = (dir) => {
   return filterSources(readdirSync(dir)).filter((f) => statSync(join(dir, f)).isFile());
 };
 
+/** Every template a registered function is built from, deduplicated. */
+const TEMPLATE_PATHS = [
+  ...new Set(FUNCTIONS.map((f) => join(REPO, f.dir, f.inline?.template ?? "template.yaml"))),
+].filter((path) => existsSync(path));
+
 /**
  * Entry point each function's template declares, by function name.
  *
@@ -129,12 +143,38 @@ const sourceFiles = (dir) => {
  * nothing here and its rows carry no entry-point claim (see UNDERIVABLE).
  */
 const DECLARED_HANDLERS = new Map(
-  [...new Set(FUNCTIONS.map((f) => f.dir))]
-    .map((dir) => join(REPO, dir, "template.yaml"))
-    .filter((path) => existsSync(path))
-    .flatMap((path) => declaredFunctions(readFileSync(path, "utf8")))
-    .map((d) => [d.fn, d.handler]),
+  TEMPLATE_PATHS.flatMap((path) => declaredFunctions(readFileSync(path, "utf8"))).map((d) => [d.fn, d.handler]),
 );
+
+/**
+ * The GIT side of one function, as filename -> contents.
+ *
+ * Two shapes, because two functions are built two ways. Most are a directory of
+ * hand-written modules under lambda/. quantum-signup-alert is a `Code: ZipFile: |`
+ * block inside a CloudFormation template, which the service writes to a single
+ * index.js — so its git side is one entry whose contents come from undoing the
+ * YAML block scalar (zipFileSource), not from a file on disk.
+ *
+ * That normalisation is exact rather than approximate, and it was verified against
+ * the running artifact before this path was written: the dedented block and the
+ * index.js inside the package quantum-signup-alert is actually running in QL-Prod
+ * hash identically. It is not a fuzzy comparison and it must never become one — if
+ * the block is ever rewritten in a form zipFileSource cannot reproduce byte for
+ * byte it returns null, and this throws rather than comparing the wrong bytes.
+ */
+const gitSource = ({ fn, dir, inline }) => {
+  const srcDir = join(REPO, dir);
+  if (!inline) return new Map(sourceFiles(srcDir).map((f) => [f, readFileSync(join(srcDir, f), "utf8")]));
+  // Matched by function NAME, not by "the first block that has one": a template
+  // may carry several inline functions, and attributing one function's source to
+  // another would compare two real files and call the mismatch drift.
+  const declared = declaredFunctions(readFileSync(join(srcDir, inline.template), "utf8")).find((d) => d.fn === fn);
+  if (!declared) throw new Error(`${dir}/${inline.template} no longer declares ${fn}`);
+  if (!declared.inline) {
+    throw new Error(`${fn}'s ZipFile block in ${dir}/${inline.template} is not a reproducible \`|\` literal`);
+  }
+  return new Map([[inline.file, declared.inline]]);
+};
 
 // WHICH account is this report about? The names below exist in more than one,
 // and the answer comes from ambient credentials — so the expectation is stated
@@ -157,8 +197,8 @@ if (identity.refuse) process.exit(2);
 
 const results = [];
 
-for (const { fn, dir } of FUNCTIONS) {
-  const srcDir = join(REPO, dir);
+for (const entry of FUNCTIONS) {
+  const { fn, dir, inline, grantPending } = entry;
   let tmp;
   // Which step failed, for the row's message when one does. The child's stderr
   // is preferred over its message; this is the fallback (see failureReason).
@@ -166,7 +206,7 @@ for (const { fn, dir } of FUNCTIONS) {
   try {
     // ONE control-plane call per function. get-function already returns the
     // configuration, so asking for LastModified and Handler separately was a
-    // second round trip for fields the first response carried — eleven of them
+    // second round trip for fields the first response carried — one per function
     // per run, every morning. --output text prints the three tab-separated.
     const [url, lastModified, deployedHandler] = shRetry("aws", ["lambda", "get-function",
       "--function-name", fn, "--region", REGION,
@@ -194,14 +234,17 @@ for (const { fn, dir } of FUNCTIONS) {
     stage = "unzip failed";
     sh("unzip", ["-oq", join(tmp, "fn.zip"), "-d", join(tmp, "fn")]);
 
-    const gitFiles = sourceFiles(srcDir);
+    // Read AFTER the package, so a template that stopped yielding a comparable
+    // ZipFile block reports as a could-not-check row with its own reason rather
+    // than aborting the loop.
+    stage = "could not read the git side";
+    const git = gitSource(entry);
     const drifted = [];
     const missing = [];
     let compared = 0;
-    for (const file of gitFiles) {
+    for (const [file, a] of git) {
       const deployedPath = join(tmp, "fn", file);
       if (!existsSync(deployedPath)) { missing.push(file); continue; }
-      const a = readFileSync(join(srcDir, file), "utf8");
       const b = readFileSync(deployedPath, "utf8");
       compared += 1;
       if (a !== b) drifted.push(file);
@@ -211,7 +254,10 @@ for (const { fn, dir } of FUNCTIONS) {
     // top-level module that ships in the package and exists nowhere in the
     // repository — a leftover, a hand-edited file, a build artifact — is never
     // looked at, and the run still reports the function as matching.
-    const extra = sourceFiles(join(tmp, "fn")).filter((f) => !gitFiles.includes(f));
+    // For an inline function this is also the check that the ZipFile block is the
+    // WHOLE package: a second module shipped beside index.js has no counterpart
+    // in the template and shows up here rather than passing unseen.
+    const extra = sourceFiles(join(tmp, "fn")).filter((f) => !git.has(f));
 
     const handlerDrift = handlerMismatch(deployedHandler, DECLARED_HANDLERS.get(fn));
 
@@ -223,9 +269,13 @@ for (const { fn, dir } of FUNCTIONS) {
     // of nothing. `compared` is what makes the difference visible, here and on
     // every printed row.
     const ok = compared > 0 && drifted.length === 0 && extra.length === 0 && !handlerDrift;
-    results.push({ fn, dir, ok, compared, drifted, extra, missing, handlerDrift, lastModified });
+    // grantPending rides on BOTH shapes of row on purpose. On the error row it is
+    // what stops an expected AccessDenied from reddening the nightly job; on the
+    // success row it is what lets the report notice the declaration has outlived
+    // its cause (see clearedGrants).
+    results.push({ fn, dir, inline, grantPending, ok, compared, drifted, extra, missing, handlerDrift, lastModified });
   } catch (err) {
-    results.push({ fn, dir, ok: false, error: failureReason(err, stage) });
+    results.push({ fn, dir, inline, grantPending, ok: false, error: failureReason(err, stage) });
   } finally {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
   }
@@ -236,13 +286,14 @@ for (const { fn, dir } of FUNCTIONS) {
 // ONCE here, so the printer, both summary lists and the --json payload report
 // the same verdict instead of each re-deriving it.
 const stamped = stampHolds(results, HELD);
-const { exitCode, staleHolds } = verdict(stamped, HELD);
+const { exitCode, staleHolds, pending, clearedGrants } = verdict(stamped, HELD);
 
 if (JSON_OUT) {
   // The JSON says everything the human report says: which rows are held and
   // why, which holds have gone stale, and what the process is about to exit
   // with. It used to carry only ok:false, which a reader could not tell from
-  // real drift.
+  // real drift. `notRead` is here for the same reason: exitCode 0 with a
+  // function nobody opened is a claim a machine reader must be able to see.
   console.log(
     JSON.stringify(
       {
@@ -254,6 +305,8 @@ if (JSON_OUT) {
           reason: h.reason,
           clearsWhen: h.clearsWhen,
         })),
+        notRead: pending.map((r) => r.fn),
+        clearedGrants: clearedGrants.map((r) => r.fn),
         results: stamped,
       },
       null,

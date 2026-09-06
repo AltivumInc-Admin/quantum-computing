@@ -36,8 +36,8 @@ jobs:
   drift:
     name: Deployed-vs-git drift
     runs-on: ubuntu-latest
-    # Eleven package downloads and roughly two dozen API calls; a minute is
-    # typical. A cap means a hung child fails visibly instead of holding the
+    # One package download per readable function and roughly two API calls each;
+    # a minute is typical. A cap means a hung child fails visibly instead of holding the
     # concurrency group until GitHub's six-hour default expires.
     timeout-minutes: 15
     steps:
@@ -162,11 +162,27 @@ jobs:
           DRIFT_CODE: ${{ steps.lambda.outputs.code }}
           PARITY_CODE: ${{ steps.parity.outputs.code }}
         run: |
-          count=$(node -e 'import("./scripts/drift/rules.mjs").then((m) => console.log(m.FUNCTIONS.length))')
+          # Registered vs actually-readable, NOT just FUNCTIONS.length. A function
+          # whose read grant is not in the deployed CI policy yet is registered and
+          # never opened, so printing one number would assert in a PUBLIC run summary
+          # that N functions were compared when one of them was not — the same
+          # false-all-clear the report itself is careful to avoid, relocated into the
+          # summary. This line self-corrects when the grant lands and the
+          # grantPending block is deleted.
+          counts=$(node -e 'import("./scripts/drift/rules.mjs").then((m) => {
+            const pending = m.FUNCTIONS.filter((f) => f.grantPending).length;
+            console.log(`${m.FUNCTIONS.length - pending} ${pending}`);
+          })')
+          readable=${counts% *}
+          pending=${counts#* }
           {
             echo "### Deployed-vs-git drift"
             echo ""
-            echo "Compared **$count** deployed functions against this commit."
+            if [ "$pending" -gt 0 ]; then
+              echo "Compared **$readable** deployed functions against this commit. **$pending** more are registered but not yet readable by the CI role — see the report for which, and what deploy clears it."
+            else
+              echo "Compared **$readable** deployed functions against this commit."
+            fi
             echo ""
             echo "| check | exit |"
             echo "| --- | --- |"

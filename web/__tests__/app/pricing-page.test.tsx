@@ -7,6 +7,12 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import PricingPage, { metadata } from "@/app/pricing/page";
 import { LocaleProvider, getDict, localeCode } from "@/i18n";
 import { TIERS, CREDIT_USD, formatCreditNumber } from "@/lib/pricing";
+import {
+  UNDELIVERABLE_CLAIMS,
+  modelEntitlement,
+  presentTenseMetering,
+  undeliverableClaimHits,
+} from "../_support/undeliverable-claims";
 
 // Only the network calls are stubbed. billingUrl/isBillingConfigured stay real
 // so the env-gating tests below still exercise the actual gate; getWallet in
@@ -292,6 +298,14 @@ describe("PricingPage", () => {
  * Copy honesty — the storefront may not advertise a capability the deployed system
  * cannot perform.
  *
+ * THE BAN LIST ITSELF NOW LIVES IN __tests__/_support/undeliverable-claims.ts, shared
+ * with the hardware-surface guard. It was a `const` in this file, which meant it
+ * guarded exactly one route: the at-cost clause retired from this page in 2026-09
+ * (commit d216724) went on shipping in six places on the two HARDWARE money surfaces,
+ * because nothing over there imported it. Read that file for the patterns, the
+ * evidence behind each one, and the long list of what a denylist cannot catch. What
+ * stays here is what is specific to this PAGE.
+ *
  * This guard asserts on RENDERED text, not on data. Its predecessor asserted on
  * `Tier.features` in lib/pricing.ts, which the page never read (it resolves
  * `pricingUi.{tier}F{i}` from the dictionaries instead), so the guard passed while the
@@ -315,246 +329,14 @@ describe("PricingPage", () => {
  * shipping surfaces, one of them guarded, is how a green run kept being mistaken for
  * clearance — so the same patterns now run over both.
  *
- * ---------------------------------------------------------------------------
- * WHAT THIS GUARD DOES NOT CATCH — read this before trusting a green run.
- *
- * It is a denylist of phrasings, run over two surfaces (rendered body, metadata
- * export). A denylist cannot be complete, and a passing run is NOT evidence that the
- * page is honest. Specifically it will miss:
- *
- *   - Any reworded claim. The patterns below aim at capability CONCEPTS rather than the
- *     exact sentences that were removed, which widens them, but a synonym or an unusual
- *     sentence shape still walks straight through. ("Front-of-line hardware scheduling"
- *     is caught; some phrasing nobody thought of is not.)
- *   - Claims made in a language whose vocabulary is not enumerated here. Both shipped
- *     locales are rendered, but the patterns must spell out both languages' words; a
- *     third locale would render with essentially no coverage until its terms are added.
- *     The metadata export is English-only and shipped once, so it gets English coverage
- *     only — a localized metadata export would arrive unguarded.
- *   - Any OTHER shipping surface. Two are covered, and the page ships more: the root
- *     layout's default/template metadata that Next merges over this export, the OG
- *     image itself, JSON-LD, sitemap and robots output, the Stripe checkout page's own
- *     product copy, and every other route (the welcome page and the lesson pages sell
- *     the same wallet). None of those is read here. Adding a surface to the product
- *     does not add it to this guard.
- *   - Non-textual claims. A capability implied by a control, a chip, a table column, or
- *     an icon has no words for `textContent` to catch. The "Tier" column removed below
- *     is exactly that failure, and it needed its own structural assertion.
- *   - Placement. A true sentence can still mislead by WHERE it renders: "Before you
- *     buy:" was accurate copy sitting after all three purchase controls, and a scan of
- *     `textContent` cannot see position. That one needed its own structural assertion
- *     (see the disclosure-ordering test below, which is now document-scoped because the
- *     section-scoped version did not examine a purchase control added outside its
- *     section at all) — assume the next placement defect will need one too.
- *   - Absolute promises. A sentence can be undeliverable by being unconditional rather
- *     than by naming a capability: "nothing else will ever cost credits" was a FREE
- *     promise a buyer could hold us to, contradicted by this page's own rate table. One
- *     pattern below bars that exact shape; the category is wide open, and note the
- *     direction — most patterns here bar overselling, and this one bars overpromising
- *     free, which review tends not to look for.
- *   - Arithmetic. The guard reads words, never numbers. That the estimator says 197
- *     credits ($1.97) where the pre-flight says $1.75 is invisible here; only the
- *     PHRASINGS that assert the two agree are barred, not the divergence itself. When
- *     wallet billing ships, the two tables must be reconciled and the pre-flight must
- *     display whichever number is actually charged — no regex will tell you that.
- *   - Anything true-sounding but stale: a claim that WAS true and quietly stopped being
- *     true only has a pattern here once somebody has noticed and written one. The
- *     parity, live-rate-feed and present-tense-metering patterns below were all added
- *     that way, after the fact — which is the point: they are proof the category
- *     exists, not proof it is covered.
- *   - Source comments and docs. A maintainer's docstring can assert the opposite of
- *     what these patterns bar (cost-estimator.tsx's did) and no test reads it.
- *
- * So this catches regressions of known-false claims on two of the page's surfaces.
- * Judging new copy is still a human job: check it against what the deployed Lambdas
- * actually do.
- * ---------------------------------------------------------------------------
- *
- * Adding a pattern: only bar a claim you have confirmed the code cannot deliver, and
- * say where you confirmed it. A claim that becomes true belongs out of this list, not
- * worked around.
+ * Two of this page's surfaces are covered; the page ships more. The root layout's
+ * default/template metadata that Next merges over this export, the OG image itself,
+ * JSON-LD, sitemap and robots output, and the Stripe checkout page's own product copy
+ * are all read by nothing here. Placement is likewise invisible to a text scan — "Before
+ * you buy:" was accurate copy sitting after all three purchase controls — which is why
+ * the disclosure-ordering test below is structural and document-scoped rather than a
+ * phrase check.
  */
-/** Words that assert entitlement, in both shipped languages. */
-const ENTITLEMENT =
-  "(?:includes?|included|access to|available (?:on|in|with)|incluye|incluid[oa]s?|acceso a|disponible (?:en|con))";
-const TUTOR_MODEL = "(?:haiku|sonnet|opus|fable)";
-
-/**
- * Either order inside ONE sentence: "Plus includes Opus" and "Opus, included with
- * Plus" are the same claim. The first draft of this pattern only matched the first
- * order, and "Claude Sonnet included in the tutor" passed it.
- */
-const modelEntitlement = new RegExp(
-  `\\b${ENTITLEMENT}\\b[^.!?]{0,60}\\b${TUTOR_MODEL}\\b` +
-    `|\\b${TUTOR_MODEL}\\b[^.!?]{0,60}\\b${ENTITLEMENT}\\b`,
-  "i",
-);
-
-/**
- * Metering asserted in the PRESENT tense. Nothing meters anything: lambda/tutor's
- * metering is gated on deployed configuration it does not have (WalletTableName and
- * RATE_CARD are both empty, so `metering` is undefined, every paid model is refused
- * and every question is answered free), lambda/qpu grants no allowance
- * (LIFETIME_CAP_MICROS = 0) and refuses every submit it cannot fund, and no
- * code path outside lambda/stripe touches the wallet. So
- * every metering sentence on this page has to be future tense, and this is the pattern
- * the page metadata needed — its description read "one credit wallet METERS the only two
- * things that cost real money" for four review rounds.
- *
- * The lookbehinds are what make it usable: "will meter" / "would meter" is the honest
- * copy this page is full of, and matching a bare "meter(s)" without excluding those
- * would redden every truthful sentence. "metered" and "metering" are deliberately not
- * matched — they appear almost exclusively in negations ("nothing is metered yet") and
- * in "once metering ships", and a denylist reading raw text cannot see a negation.
- *
- * The Spanish arm needs its own negation lookbehind and was written without one: the
- * honest "Nada más costará créditos jamás — y hoy tampoco SE MIDE ninguna de esas dos"
- * matched, because the negation sits outside the span (the same trap documented on the
- * wallet-spend pattern below). Excluding "no/nada/tampoco/nunca/ni [se] mide" leaves the
- * affirmative "la billetera mide…" caught and the denial uncaught.
- */
-const presentTenseMetering = new RegExp(
-  `\\b(?:wallet|credits?)\\b[^.!?]{0,40}\\b(?<!\\b(?:will|would|shall|to|never)\\s)meters?\\b` +
-    `|\\b(?:billetera|créditos?|saldo)\\b[^.!?]{0,40}\\b(?<!\\b(?:no|nada|tampoco|nunca|ni)\\s(?:se\\s)?)(?:mide|miden)\\b`,
-  "i",
-);
-
-const UNDELIVERABLE_CLAIMS: { pattern: RegExp; why: string }[] = [
-  {
-    // The at-cost / no-markup framing. CLAUDE.md rules 5 and 9 retired it: every
-    // metered surface debits at one shared factor over true cost, so "at cost" is
-    // not what this page sells, and rule 6 forbids the repo from carrying the
-    // spread that would make any such claim checkable. scripts/stripe/
-    // check-catalog-parity.mjs already bars the same three phrasings on the Stripe
-    // product descriptions; this is the same denylist pointed at the page.
-    //
-    // The Spanish arm anchors on "a costo" / "a precio de costo" rather than the
-    // bare noun: es.ts is full of honest cost talk ("te muestra su costo", "el
-    // costo exacto"), and a pattern that fired on those would redden truthful copy.
-    pattern:
-      /\b(at cost|cost price|no mark-?up|without mark-?up|sin (margen|recargo|sobreprecio)|a (precio de )?costo)\b/i,
-    why: "at-cost/no-markup pricing: CLAUDE.md rules 5 and 9 retired that framing, and rule 6 keeps the spread out of this repo entirely",
-  },
-  {
-    pattern: presentTenseMetering,
-    why: "present-tense metering: the tutor charges nothing, the QPU lambda refuses unfunded submits, and nothing outside lambda/stripe reads the wallet",
-  },
-  {
-    // The withdrawn promise. lambda/qpu/qpu-core.mjs sets LIFETIME_CAP_MICROS = 0 and
-    // no wallet table is wired, so no new learner holds a platform-funded allowance and
-    // every hardware submit without one is refused (402). Sponsorship copy kept
-    // shipping for weeks after the withdrawal precisely because the old tests locked
-    // its PRESENCE — this bars it from coming back, in either locale.
-    // Stem-matched (\w*): "sponsoring", "sponsorships" and Spanish finite verb
-    // forms (patrocina, patrocinamos) must not walk past a suffix list.
-    pattern: /\b(sponsor\w*|patrocin\w*)\b/i,
-    why: "sponsored hardware: LIFETIME_CAP_MICROS is 0 and no wallet is wired — nobody gets a platform-funded run",
-  },
-  {
-    // lib/pricing.ts SIMULATOR_RATES publishes SV1 and DM1 at 8.4 credits/minute and
-    // this page's own rate table renders both, so "credits will meter exactly two
-    // things ... nothing else will ever cost credits" was contradicted a section later
-    // by the page itself. Note the direction: this bars an absolute promise of FREE, a
-    // claim a buyer can hold us to, not an oversell. It is the narrow shape only —
-    // "everything else is free" phrased without the credit noun walks through.
-    pattern:
-      /\b(?:nothing|anything|everything) else\b[^.!?]{0,50}\b(?:credits?|cost|costs|charged?)\b|\bnada más\b[^.!?]{0,50}\b(?:cr[ée]ditos?|cuesta|costar[áa])\b/i,
-    why: "blanket free promise: SIMULATOR_RATES publishes SV1/DM1 per minute in credits, in this page's own rate table",
-  },
-  {
-    // The parity claim's other shape: not "the same estimate" but a definite article
-    // pointing back at the credit figure the estimator just rendered — "The estimate is
-    // always shown before you commit", in a paragraph about the published credit rate.
-    // What a learner is actually shown before a run is qpu-budget.ts `costMicros` in
-    // AWS dollars. The approval gate is real; the identity of the number is not.
-    pattern:
-      /\b(?:the|that|this) estimate\b[^.!?]{0,50}\bbefore you (?:commit|buy|pay|run|submit|approve)\b|\bla estimación\b[^.!?]{0,50}\bantes de (?:confirmar|comprar|pagar|ejecutar|aprobar|enviar)\b/i,
-    why: "estimate parity by definite article: the number shown before a run is AWS dollars from qpu-budget.ts, not this page's credit figure",
-  },
-  {
-    // lambda/tutor/index.mjs DOES read body.model and gate it on ROSTER by the
-    // caller's tier — but only when `metering` is defined, which needs a wallet
-    // table and a rate card the deployed function does not have. Without them
-    // every paid model is refused (METERING_UNAVAILABLE) and every question is
-    // answered free on the free-tier default, so an "unlocked" claim is one a
-    // buyer cannot cash. Retire this when that configuration ships, not before.
-    pattern: /\b(unlock(ed|s|ing)?|desbloquea\w*)\b/i,
-    why: "tutor model unlocks: the deployed tutor has no wallet table or rate card, so it refuses every paid model",
-  },
-  {
-    // Same reason, said the other way round: a model presented as bundled with a plan.
-    // Bounded to one sentence so it cannot span unrelated copy.
-    pattern: modelEntitlement,
-    why: "model entitlement: every question is answered by the one hardcoded tutor model",
-  },
-  {
-    // lambda/qpu/qpu-core.mjs hardcodes DEVICE = "iqm_garnet".
-    pattern: /any (quantum )?backend from your balance/i,
-    why: "wallet-billed multi-backend runs: the QPU lambda is hardcoded to IQM Garnet",
-  },
-  {
-    pattern: /choose the physics your budget/i,
-    why: "backend selection: only IQM Garnet is submittable",
-  },
-  {
-    // grep finds no queue, priority, or scheduling concept in lambda/qpu or infra.
-    // Braket task submission is FIFO to the provider; we control nothing about it.
-    pattern:
-      /\b(priority|prioriti[sz]ed|front[- ]of[- ]line|skip the (line|queue)|prioridad|prioritari[oa]s?)\b/i,
-    why: "priority/queue position: no queue or scheduling concept exists in the codebase",
-  },
-  {
-    // Nothing reads quantum-stripe-wallet except lambda/stripe and the wallet badge.
-    pattern: /early access to new backends|acceso anticipado a (nuevos )?backends/i,
-    why: "backend early access: there is no per-tier backend gating",
-  },
-  {
-    // The defect this guard was extended for: ask-tutor.tsx (473 lines) renders no
-    // cost, credit, price, or wallet value anywhere. A present-tense claim that the
-    // tutor surface displays a price is false.
-    // Both languages' word for the surface, or the pattern only guards English: the
-    // Spanish twin of the same sentence ("el margen muestra el costo…") passed until
-    // "margen" was added here.
-    pattern:
-      /\b(margin|margen|tutor)\b[^.!?]{0,60}\b(shows?|displays?|muestra\w*)\b[^.!?]{0,30}\b(cost|price|credits?|costo|precio|créditos?)\b/i,
-    why: "live cost display in the tutor: ask-tutor.tsx renders no cost, credit, or price",
-  },
-  {
-    // Nothing outside lambda/stripe reads the wallet: the credit balance has no sink,
-    // so a present-tense "this spends your credits" is false today.
-    //
-    // Deliberately the narrowest pattern here, and the weakest. A bare
-    // /debits?.{0,40}wallet/ reddened the FAQ's honest "No part of the platform debits
-    // your wallet today" — the negation lives OUTSIDE the matched span, and a denylist
-    // reading raw text cannot see it. So this matches only affirmative sales
-    // constructions. Cost: a false claim phrased some third way walks through.
-    pattern:
-      /\b(spends?|spending|uses?) (your|tu|su) (credits?|balance|wallet|saldo|billetera)\b|\b(comes? out of|billed (to|from)|charged to|deducted from|se (cobra|descuenta|debita) de)\b[^.!?]{0,30}\b(balance|wallet|saldo|billetera)\b/i,
-    why: "wallet spend: nothing outside lambda/stripe reads the wallet, so nothing debits it",
-  },
-  {
-    // Estimate parity. This page's estimator prices CREDITS from lib/pricing.ts
-    // (IQM Garnet: 0.163 credits/shot + the 34-credit task fee = 197 credits for a
-    // 1,000-shot run). The pre-flight a learner actually meets prices USD from
-    // lib/qpu-budget.ts `costMicros`, whose rates come from PRICING.IQM in
-    // components/quantum/cost.ts ($0.30/task + $0.00145/shot = $1.75) — a different
-    // table, a different currency, ~12.6% apart. Two of the eight backends priced here
-    // are not even submittable, so for those no "real submission" exists to precede.
-    // Retire this pattern only when one table feeds both surfaces.
-    pattern:
-      /\b(the |that |this )?(same|identical|misma|mismo|idéntic[oa])\b[^.!?]{0,25}\b(estimate|estimation|quote|number|figure|price|estimación|cotización|cifra|número|precio)\b|\b(estimate|estimación)\b[^.!?]{0,40}\b(matches|is the same|coincide|es la misma)\b/i,
-    why: "estimate parity: the page prices credits, the pre-flight prices AWS dollars — different tables",
-  },
-  {
-    // A live rate feed. lib/pricing.ts is a hardcoded array stamped `PRICES_AS_OF`, and
-    // components/quantum/cost.ts is a hardcoded const; both compile into the static
-    // export. Nothing anywhere fetches a provider rate, at submission time or ever — a
-    // reprice takes a code change and a redeploy.
-    pattern:
-      /\b(live|real[- ]?time|up[- ]to[- ]the[- ]minute|en vivo|en tiempo real)\b[^.!?]{0,40}\b(rates?|prices?|pricing|tarifas?|precios?)\b|\b(rates?|prices?|estimate|tarifas?|precios?|estimación)\b[^.!?]{0,50}\b(at submission time|in real[- ]?time|automatically|al momento del envío|en tiempo real|vigente|automáticamente)\b/i,
-    why: "live rate feed: both rate tables are hardcoded constants compiled into the static export",
-  },
-];
 
 /** Shipped storefront locales — the guard must read every one of them. */
 const SHIPPED_LOCALES = ["en", "es"] as const;
@@ -594,18 +376,16 @@ describe("PricingPage copy honesty", () => {
    * `locale` is really "which surface" — a locale code for the rendered scans, a
    * metadata path for the export scan — so a failure says where to go.
    *
-   * Every pattern is evaluated before asserting, rather than one expect per pattern.
-   * Failing on the first match reports one pattern and hides the rest, and the first to
-   * fire is not necessarily the one whose `why` names the real defect: reintroducing
-   * the blanket "Nada más costará créditos jamás" reported the present-tense-metering
-   * pattern instead, which would have sent a maintainer after the wrong root cause.
+   * The shared matcher evaluates EVERY pattern before this asserts, rather than one
+   * expect per pattern: failing on the first match reports one pattern and hides the
+   * rest, and the first to fire is not necessarily the one whose `why` names the real
+   * defect — reintroducing the blanket "Nada más costará créditos jamás" reported the
+   * present-tense-metering pattern instead, which would have sent a maintainer after
+   * the wrong root cause. That property is documented on `undeliverableClaimHits`;
+   * keep it there rather than reimplementing the loop here.
    */
   function assertNoUndeliverableClaims(text: string, locale: string) {
-    const advertised = UNDELIVERABLE_CLAIMS.flatMap(({ pattern, why }) => {
-      const hit = text.match(pattern);
-      return hit ? [`[${locale}] advertised "${hit[0]}" — ${why}`] : [];
-    });
-    expect(advertised).toEqual([]);
+    expect(undeliverableClaimHits(text, locale)).toEqual([]);
   }
 
   it("advertises no capability the deployed system cannot perform in the METADATA export", () => {

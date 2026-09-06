@@ -288,10 +288,23 @@ function Panel({ className }: { className?: string }) {
  * catch a claim phrased without the vocabulary, which is why the test that guards
  * this asserts the sentence.
  *
- * What does NOT change between the two branches: the at-cost, no-markup pricing and
- * the hardware description. Those are true either way, and they are the part that
- * earns trust — a learner paying their own way has more reason to care that the
- * price is unmarked-up, not less.
+ * What does NOT change between the two branches: the device description and the
+ * Amazon Braket rate the PLATFORM's own AWS account is billed. Those are facts about
+ * the hardware and about our bill, true either way, and they are public.
+ *
+ * What used to sit here and does not any more: "You pay for these runs at cost. We
+ * add nothing on top", "— with no markup", and "That exact figure is what comes out
+ * of your wallet". All three are one commercial promise said three ways — that our
+ * spread over provider cost is zero — and CLAUDE.md rules 5 and 9 retired it: every
+ * metered surface debits at ONE shared factor over true cost, and rule 6 keeps that
+ * factor out of this public repo, so no reader and no test here could ever check the
+ * claim anyway. The pricing page dropped the clause in 2026-09 (commit d216724) and
+ * these two hardware surfaces kept shipping it for want of a guard that looked at
+ * them; __tests__/infra/hardware-copy-honesty.test.ts is now that guard.
+ *
+ * The replacement makes NO margin claim in either direction. "We add a margin" would
+ * be exactly as wrong here as "we add nothing" — the honest sentence says only that a
+ * run is priced from the Amazon Braket rate, and stops.
  */
 function SponsorNote({ sponsored }: { sponsored: boolean }) {
   return (
@@ -302,18 +315,18 @@ function SponsorNote({ sponsored }: { sponsored: boolean }) {
         <span className="font-semibold text-(--ink)">
           {sponsored
             ? "The platform pays for these runs. You are never charged."
-            : "You pay for these runs at cost. We add nothing on top."}
+            : "You pay for these runs."}
         </span>{" "}
         IQM Garnet is a 20-qubit superconducting quantum processor in Amazon&apos;s{" "}
         <span className="tabular-nums">eu-north-1</span> region. Every run bills the
-        platform&apos;s AWS account at the exact Amazon Braket price —{" "}
+        platform&apos;s AWS account at the Amazon Braket rate —{" "}
         <span className="tabular-nums font-medium">
           {PER_TASK_USD} per task + {PER_SHOT_USD} per shot
-        </span>{" "}
-        — with no markup.{" "}
+        </span>
+        .{" "}
         {sponsored
           ? "The budget below is an allowance we fund, not an invoice: one lifetime allowance per learner, not a monthly credit. It does not refill."
-          : "That exact figure is what comes out of your wallet — the credit cost below is the AWS price converted at $0.01 per credit, and it is charged only when a run is submitted."}{" "}
+          : "You see a run's credit cost before you submit it."}{" "}
         Nothing here is a subscription or a simulation.
       </p>
     </div>
@@ -345,14 +358,14 @@ function WalletBar({ budget }: { budget: Budget }) {
       <p className="mt-2 text-xs text-caption">
         {credits != null && credits >= runCost ? (
           <>
-            Runs are billed at the Amazon Braket price with no markup — a 100-shot run
-            costs <span className="tabular-nums">{runCost}</span> credits.
+            A 100-shot run costs <span className="tabular-nums">{runCost}</span> credits,
+            priced from the Amazon Braket rate.
           </>
         ) : (
           <>
             You need credits to run on real hardware. A 100-shot run costs{" "}
-            <span className="tabular-nums">{runCost}</span> credits, billed at the
-            Amazon Braket price with no markup.{" "}
+            <span className="tabular-nums">{runCost}</span> credits, priced from the
+            Amazon Braket rate.{" "}
             <Link href="/pricing" className="link-underline">
               Top up
             </Link>
@@ -783,7 +796,7 @@ function BudgetSpent({ budget }: { budget: Budget }) {
           <Link href="/pricing" className="link-underline">
             Pricing page
           </Link>{" "}
-          — credits fund every run at the same Braket rates, with no markup.
+          — credits fund runs on the same device, priced from the Amazon Braket rate.
         </p>
       )}
     </div>
@@ -1332,8 +1345,13 @@ function CostBreakdown({ shots, micros }: { shots: number; micros: number }) {
         <dd className="font-semibold tabular-nums text-(--ink)">{usd(micros)}</dd>
       </div>
       <p className="mt-2 text-[0.7rem] text-caption">
-        The exact Amazon Braket charge, to the nearest cent. The platform pays it — this is what
-        your run costs us.
+        {/* States the DEVICE charge and stops. It used to continue "The platform pays
+            it — this is what your run costs us", which is two claims the panel cannot
+            make: who pays is the sponsored/unsponsored question this footnote has no
+            access to (and with LIFETIME_CAP_MICROS at 0 nobody is sponsored), and
+            "what your run costs us" is a cost-basis disclosure that rule 6 keeps out
+            of this public repo. */}
+        The Amazon Braket charge for this run, to the nearest cent.
       </p>
     </dl>
   );

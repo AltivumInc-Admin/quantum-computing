@@ -129,6 +129,13 @@ Resources:
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-prefs
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-sender
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-unsubscribe
+                  # Added 2026-09-06, and NOT YET DEPLOYED at the time it was added.
+                  # The drift check's FUNCTIONS entry for quantum-signup-alert carries a
+                  # matching `grantPending` block for exactly that gap: until this stack
+                  # is redeployed the nightly job gets AccessDenied on this ARN, reports
+                  # the function as not checked, and does not fail. Deploying this file
+                  # and deleting that block are the same change and belong in one commit.
+                  - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-signup-alert
               # No lambda:ListFunctions. It was this template's only Resource: "*", and
               # nothing in the repo has ever called it — the drift check works from a list
               # it already has. sts:GetCallerIdentity, which the check now calls to prove

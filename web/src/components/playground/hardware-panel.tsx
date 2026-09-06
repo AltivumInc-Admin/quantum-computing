@@ -116,9 +116,18 @@ export function HardwarePanel({
             </p>
           )}
           <p className="mt-3 text-xs leading-relaxed text-caption">
-            Runs on IQM Garnet ({costLabel("IQM")}) — billed to your credits at cost, no markup.
-            Signing in, and a one-time cost-estimate credential, may come first on the
-            workspace.
+            {/* "billed to your credits at cost, no markup" until 2026-09. That is a
+                commercial promise — our spread over provider cost is zero — and
+                CLAUDE.md rules 5 and 9 retired it, while rule 6 keeps the actual
+                factor out of this public repo so nothing here could substantiate it
+                either way. The rate itself is Amazon's own published price and stays;
+                what we add to it is not this sentence's business, in EITHER
+                direction. Guarded by __tests__/infra/hardware-copy-honesty.test.ts —
+                the pricing page's ban list was scoped to the pricing page, which is
+                exactly how this line outlived the same clause's removal there. */}
+            Runs on IQM Garnet ({costLabel("IQM")}) — priced from that Amazon Braket
+            rate. Signing in, and a one-time cost-estimate credential, may come first
+            on the workspace.
           </p>
         </div>
       ) : (

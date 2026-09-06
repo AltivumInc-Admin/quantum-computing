@@ -31,6 +31,7 @@ jest.mock("@/lib/qpu-client", () => ({
 import * as client from "@/lib/qpu-client";
 import { PRICING, estimateCost } from "@/components/quantum/cost";
 import { LocaleProvider, translate } from "@/i18n";
+import { claimById } from "../../_support/undeliverable-claims";
 import {
   QpuSubmitPanel,
   IQM_TASK_MICROS,
@@ -119,14 +120,45 @@ function expectNeverSaysTheLearnerPays() {
   expect(text).not.toMatch(/double-charge/i);
   expect(text).not.toMatch(/every cent runs your circuit/i);
   expect(text).not.toMatch(/that's a lot of real hardware runs/i);
-  // NB: "the exact Amazon Braket price" is APPROVED copy and must NOT be banned —
-  // in the SponsorNote its subject is the PLATFORM's AWS account ("Every run bills
-  // the platform's AWS account at the exact Amazon Braket price"). The lie was the
-  // old subject: "YOU PAY the exact Amazon Braket price", which /you pay/i catches.
+  // NB: "the Amazon Braket rate" is APPROVED copy and must NOT be banned — in the
+  // SponsorNote its subject is the PLATFORM's AWS account ("Every run bills the
+  // platform's AWS account at the Amazon Braket rate"). The lie was the old subject:
+  // "YOU PAY the exact Amazon Braket price", which /you pay/i catches. The word
+  // "exact" went with the margin claim in 2026-09: with "with no markup" removed from
+  // the same sentence, "the EXACT price" was the last thing still inviting the reader
+  // to equate our bill with their charge.
   // Any surviving "charged" must be the negated one.
   for (const match of text.matchAll(/\S+\s+\S*charged/gi)) {
     expect(match[0]).toMatch(/never charged/i);
   }
+}
+
+/**
+ * The retired at-cost promise, asserted ABSENT.
+ *
+ * This replaces three `expect(screen.getByText(/no markup/i)).toBeInTheDocument()`
+ * assertions that PINNED the promise in place, one of them commented "The at-cost,
+ * no-markup promise is true under BOTH funding models and must survive the switch".
+ * It is not true under either: CLAUDE.md rules 5 and 9 settle that every metered
+ * surface debits at one shared factor over true cost, and rule 6 keeps that factor out
+ * of this public repo, so the claim was never checkable here in the first place. The
+ * pricing page retired the same clause in 2026-09 (commit d216724); these two hardware
+ * surfaces kept shipping it, and a presence assertion is exactly how a withdrawn
+ * promise outlives its withdrawal — the sponsorship copy did the same thing for weeks
+ * for the same reason. So the assertion is inverted rather than deleted.
+ *
+ * The pattern is the SHARED one, imported rather than retyped: if the ban list widens,
+ * the rendered tree is measured against the wider list without anyone editing this
+ * file. And it reads `document.body.textContent`, not `queryByText`, because
+ * testing-library matches an element's own text nodes — a phrase interrupted by a
+ * `<span>` (which is exactly how "— with no markup" was written) would slip a
+ * queryByText and not a textContent scan.
+ *
+ * The source side of the same rule is __tests__/infra/hardware-copy-honesty.test.ts,
+ * which sees the branches no test's props select.
+ */
+function expectNoAtCostPromise() {
+  expect(document.body.textContent ?? "").not.toMatch(claimById("at-cost").pattern);
 }
 
 beforeEach(() => {
@@ -192,7 +224,11 @@ test("states plainly that the PLATFORM pays and the learner is never charged", a
   render(<QpuSubmitPanel />);
   expect(await screen.findByText(/the platform pays for these runs/i)).toBeInTheDocument();
   expect(screen.getByText(/you are never charged/i)).toBeInTheDocument();
-  expect(screen.getByText(/no markup/i)).toBeInTheDocument();
+  // What the note DOES say about price: the rate the platform's own AWS account is
+  // billed, which is Amazon's published figure and public. What it no longer says is
+  // anything about our spread over that figure — see expectNoAtCostPromise.
+  expect(screen.getByText(/at the Amazon Braket rate/i)).toBeInTheDocument();
+  expectNoAtCostPromise();
   expect(screen.getByText(/an allowance we fund, not an invoice/i)).toBeInTheDocument();
   // The quoted rate line derives from PRICING, so a reprice updates the prose.
   expect(
@@ -211,11 +247,15 @@ test("tells a SIGNED-OUT visitor they pay, because the allowance is withdrawn", 
   m.getCredentialChallenge.mockRejectedValue(new client.NotSignedInError());
   render(<QpuSubmitPanel />);
   await screen.findByText(/sign in to your workspace/i);
-  expect(screen.getByText(/you pay for these runs at cost/i)).toBeInTheDocument();
+  expect(screen.getByText(/you pay for these runs\./i)).toBeInTheDocument();
   expect(screen.queryByText(/you are never charged/i)).not.toBeInTheDocument();
-  // The at-cost, no-markup promise is true under BOTH funding models and must survive
-  // the switch — it is the part a paying learner has most reason to care about.
-  expect(screen.getByText(/no markup/i)).toBeInTheDocument();
+  // The device and rate facts are unconditional and must survive the switch — they are
+  // what a learner paying their own way has most reason to want. The MARGIN claim that
+  // used to sit beside them ("at cost", "with no markup") is asserted gone instead: it
+  // was pinned here as something that "must survive", and it is precisely what could
+  // not.
+  expect(screen.getByText(/at the Amazon Braket rate/i)).toBeInTheDocument();
+  expectNoAtCostPromise();
 });
 
 test("NEVER tells the learner they pay — in the uncredentialed gate state", async () => {
@@ -1092,6 +1132,11 @@ test("a spent allowance with ZERO credits shows the terminal card WITH a top-up 
   render(<QpuSubmitPanel />);
   expect(await screen.findByText(/hardware budget spent/i)).toBeInTheDocument();
   expect(screen.getByText(/top up/i)).toBeInTheDocument();
+  // The continuation line ended "at the same Braket rates, with no markup" — a margin
+  // claim on the one card a learner reads at the moment they are being asked to pay.
+  // What is true and worth saying is that the credits buy runs on the SAME device.
+  expect(screen.getByText(/credits fund runs on the same device/i)).toBeInTheDocument();
+  expectNoAtCostPromise();
 });
 
 test("the confirm step discloses wallet funding BEFORE the money is committed", async () => {
@@ -1409,9 +1454,11 @@ describe("a rate-limited hardware surface says WAIT, not 'broken'", () => {
     // The who-pays banner must survive this branch — a throttle must not blank the
     // trust surface. It now fails closed on the funding line (the budget read is the
     // thing that just failed, so sponsorship is exactly what we cannot confirm), but
-    // the at-cost pricing fact is unconditional and must still be there.
-    expect(screen.getByText(/you pay for these runs at cost/i)).toBeInTheDocument();
-    expect(screen.getByText(/no markup/i)).toBeInTheDocument();
+    // the who-pays sentence and the Braket rate are unconditional and must still be
+    // there. The margin claim that used to be asserted here is asserted ABSENT.
+    expect(screen.getByText(/you pay for these runs\./i)).toBeInTheDocument();
+    expect(screen.getByText(/at the Amazon Braket rate/i)).toBeInTheDocument();
+    expectNoAtCostPromise();
   });
 
   it("still reports a REAL outage as an outage", async () => {
@@ -1460,6 +1507,36 @@ describe("with the sponsored allowance withdrawn", () => {
     await screen.findByRole("button", { name: /review this run/i });
     expect(screen.queryAllByText(/sponsored/i)).toHaveLength(0);
     expect(screen.getByText(/400 credits/i)).toBeInTheDocument();
+  });
+
+  it("prices the wallet caption from the Braket rate, and claims nothing about our margin", async () => {
+    // The caption said "Runs are billed at the Amazon Braket price with no markup" in
+    // the fundable branch and repeated the clause in the top-up branch. Both were the
+    // retired at-cost promise (CLAUDE.md rules 5, 9 and 6). What replaces them says
+    // only what is public — the rate a run is priced FROM — so this asserts the new
+    // sentence and the absence of the old claim, in the same breath: a surface with
+    // neither would pass a ban list and tell the learner nothing.
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 0, spentMicros: 0, remainingMicros: 0, walletCredits: 400 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    expect(screen.getByText(/priced from the Amazon Braket rate/i)).toBeInTheDocument();
+    expectNoAtCostPromise();
+  });
+
+  it("prices the caption the same way when the wallet cannot fund a run", async () => {
+    // The second branch of the same caption, which a ban list scoped to whichever
+    // branch a test happens to render would miss entirely — the reason the source
+    // guard in __tests__/infra/hardware-copy-honesty.test.ts exists alongside this.
+    m.getBudget.mockResolvedValue(
+      budget({ capMicros: 0, spentMicros: 0, remainingMicros: 0, walletCredits: 0 }),
+    );
+    render(<QpuSubmitPanel />);
+    await screen.findByRole("button", { name: /review this run/i });
+    expect(screen.getByText(/you need credits to run on real hardware/i)).toBeInTheDocument();
+    expect(screen.getByText(/priced from the Amazon Braket rate/i)).toBeInTheDocument();
+    expectNoAtCostPromise();
   });
 
   it("does not tell a learner who pays for their own runs that they are never charged", async () => {

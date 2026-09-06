@@ -117,8 +117,7 @@ blocks degenerate content that would mint schedule cards for zero effort.
 Claude answer grounded in the lesson being read, live behind CloudFront. Metering
 is implemented but not deployed: reserve-before-stream, settle on real Bedrock
 token usage, with a tier-gated model roster (free tier metered at zero as the
-funnel; paid tiers add stronger models). Charged at cost — the margin is the
-subscription, not a markup on inference. **The roster is the product claim and is
+funnel; paid tiers add stronger models). **The roster is the product claim and is
 test-asserted.**
 
 **Commercial model.** Three tiers — Free, Plus, Pro — at the prices published in
@@ -139,9 +138,12 @@ money has ever moved.
 34 credits per task and 0.163 credits per shot on IQM Garnet. This sits above the
 underlying Braket cost ($0.30/task + $0.00145/shot, which the Lambda debits as 30
 credits + 0.145/shot), so **compute carries a margin alongside the
-subscription**. Two consequences are work, not facts: the Lambda's debit rates
-and the published sheet must be reconciled to one number, and the QPU panel's
-"You pay for these runs at cost. We add nothing on top." must be retired.
+subscription**. One consequence is still work, not fact: the Lambda's debit
+rates and the published sheet must be reconciled to one number. The QPU panel's
+"You pay for these runs at cost. We add nothing on top." was retired on
+2026-09-06, along with five more instances of the same promise on the two
+hardware surfaces, and `web/__tests__/infra/hardware-copy-honesty.test.ts` now
+holds them out.
 
 **Sponsorship is withdrawn.** As of 2026-07-28 the platform no longer funds
 learner hardware runs; a new learner's lifetime allowance is zero, test-locked,

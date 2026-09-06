@@ -20,6 +20,7 @@ import {
   staleHolds,
   stampHolds,
   verdict,
+  zipFileSource,
 } from "./rules.mjs";
 
 const TARGET = { region: "us-east-2", accountVerified: true };
@@ -201,6 +202,25 @@ test("a presigned URL never reaches the report", () => {
   assert.equal(redact(undefined), "");
 });
 
+test("an account id never reaches the report either", () => {
+  // OBSERVED, not imagined. Running this check under a session scoped to the
+  // eleven ARNs the deployed CI policy actually names produced exactly this line
+  // for the twelfth function — and this job's log is world-readable on a public
+  // repository whose stated convention is that account numbers live in deployed
+  // configuration and private notes, never in version control. An expected
+  // AccessDenied every night would be a scheduled disclosure, so the shape is
+  // stripped rather than the one call being special-cased.
+  const message =
+    "An error occurred (AccessDeniedException) when calling the GetFunction operation: " +
+    "User: arn:aws:sts::123456789012:assumed-role/OrganizationAccountAccessRole/s is not authorized";
+  assert.doesNotMatch(redact(message), /\d{12}/);
+  assert.match(redact(message), /arn:aws:sts::<account>:assumed-role/);
+  // The diagnosis survives redaction — the row still says WHY it could not read.
+  assert.match(redact(message), /AccessDeniedException/);
+  // A short number is not an account id and is left alone.
+  assert.equal(redact("timed out after 180 seconds"), "timed out after 180 seconds");
+});
+
 test("the row reports the child's stderr, so a deleted function reads as one", () => {
   const err = {
     message: "Command failed: aws lambda get-function --function-name quantum-tutor",
@@ -277,4 +297,183 @@ test("a stamped row survives JSON, hold and all", () => {
   const round = JSON.parse(JSON.stringify(stamped));
   assert.equal(round[0].ok, false);
   assert.equal(round[0].held.reason, HOLD[0].reason);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * The inline function: quantum-signup-alert, whose source is a `Code: ZipFile`
+ * block in a CloudFormation template rather than a directory under lambda/.
+ *
+ * Everything here is about ONE risk. A comparison of the wrong bytes is worse
+ * than no comparison at all: it reports an artifact of the reader as drift, an
+ * operator deploys to "fix" it, and the next person learns to ignore the check.
+ * So the block-scalar undo is exact or it is nothing.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+test("a ZipFile literal block is undone exactly, dedent and chomping included", () => {
+  const template = [
+    "      Code:",
+    "        ZipFile: |",
+    "          exports.handler = async () => {",
+    "            return { ok: true };",
+    "          };",
+    "      Tags:",
+    "        - Key: Project",
+  ].join("\n");
+  assert.equal(zipFileSource(template), "exports.handler = async () => {\n  return { ok: true };\n};\n");
+});
+
+test("an empty line inside a ZipFile block belongs to the body, and never ends it", () => {
+  // A blank line has no indentation to compare, so a naive "less indented ends
+  // the block" rule truncates the source at the first paragraph break — and the
+  // surviving prefix then differs from the deployed file from that point on.
+  // The real handler is full of blank lines.
+  const template = ["        ZipFile: |", "          const a = 1;", "", "          const b = 2;", "      Tags: x"].join("\n");
+  assert.equal(zipFileSource(template), "const a = 1;\n\nconst b = 2;\n");
+});
+
+test("trailing blank lines are chomped to exactly one newline", () => {
+  const template = ["        ZipFile: |", "          const a = 1;", "", "", "      Tags: x"].join("\n");
+  assert.equal(zipFileSource(template), "const a = 1;\n");
+});
+
+test("indentation comes from the body's first line, not from the marker plus two", () => {
+  // A body indented by four under a marker at eight is legal YAML and identical
+  // in meaning. Dedenting by "marker + 2" would leave two stray spaces on every
+  // single line — a diff on every line of a file nobody touched.
+  const template = ["        ZipFile: |", "            const a = 1;", "              const b = 2;", "      Tags: x"].join("\n");
+  assert.equal(zipFileSource(template), "const a = 1;\n  const b = 2;\n");
+});
+
+test("only a bare `|` is reproducible; every other block form is refused", () => {
+  // `|-` drops the final newline, `|+` keeps every trailing one, `>` folds lines
+  // into spaces, and `!Sub` substitutes before the service ever sees it. Each
+  // deploys DIFFERENT bytes, so returning "the body" for them would be a
+  // confident comparison against something that was never deployed.
+  for (const marker of ["|-", "|+", "|2", ">", "!Sub |"]) {
+    const template = [`        ZipFile: ${marker}`, "          const a = 1;", "      Tags: x"].join("\n");
+    assert.equal(zipFileSource(template), null, `${marker} must not be treated as a plain literal block`);
+  }
+  assert.equal(zipFileSource("      Code:\n        S3Bucket: b\n"), null);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * A read grant that is declared in git but not yet deployed.
+ *
+ * Two failures to avoid, in this order. Reporting the function as OK would be a
+ * false all-clear about a function nobody opened — the exact thing this check
+ * exists to make impossible. Failing the run would red the nightly job every
+ * morning for an action nobody on the receiving end can take (it is an IAM
+ * deploy on a live account, done deliberately and separately), and a check that
+ * is red every morning is a check nobody reads by Thursday.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+const PENDING = {
+  reason: "the deployed CI policy does not name this function yet — a template in git is not a policy in IAM",
+  clearsWhen: "infra/github-oidc-drift-role.yaml is deployed; then delete this block from the FUNCTIONS entry",
+};
+// The error text matters, not just the declaration: `pending` is decided by
+// isMissingGrant, which requires BOTH a grantPending block and an error that is
+// actually an authorization failure. A fixture carrying a generic error would be
+// asserting the old, wrong behavior — that the declaration alone excuses anything.
+const ungranted = (fn) => ({
+  ...errored(fn),
+  error:
+    "An error occurred (AccessDeniedException) when calling the GetFunction operation: " +
+    "User: arn:aws:sts::<acct>:assumed-role/quantum-ci-drift-check/x is not authorized to perform: lambda:GetFunction",
+  grantPending: PENDING,
+});
+
+/** Declares a pending grant, then fails for a DIFFERENT reason. */
+const ungrantedButGone = (fn) => ({
+  ...errored(fn),
+  error: "An error occurred (ResourceNotFoundException) when calling the GetFunction operation",
+  grantPending: PENDING,
+});
+
+test("an expected AccessDenied is not checked, and does not fail the run", () => {
+  const results = stampHolds([clean("quantum-tutor"), ungranted("quantum-signup-alert")], []);
+  const v = verdict(results, []);
+  assert.equal(v.exitCode, 0);
+  assert.equal(v.pending.length, 1);
+  assert.equal(v.blocked.length, 0);
+  assert.equal(v.bad.length, 0);
+  // And it is counted among the rows that matched in no partition at all.
+  assert.ok(!v.checked.some((r) => r.fn === "quantum-signup-alert"));
+});
+
+test("a pending row never reads as OK, and withholds the all-clear line", () => {
+  const out = render(stampHolds([clean("quantum-tutor"), ungranted("quantum-signup-alert")], []), [], TARGET).join("\n");
+  // The sentence a reader takes at face value must not appear while a function
+  // was never opened. This is the assertion that stops the mute button from
+  // becoming the false green it exists beside.
+  assert.doesNotMatch(out, /All \d+ unheld functions match git/);
+  assert.match(out, /could not check/);
+  assert.match(out, /NOT CHECKED, AND EXPECTED/);
+  assert.match(out, /says NOTHING about quantum-signup-alert/);
+  assert.match(out, /a template in git is not a policy in IAM/);
+  assert.match(out, /github-oidc-drift-role\.yaml is deployed/);
+  // ...and the narrower, true claim is made in its place.
+  assert.match(out, /1 of 2 functions were NOT READ/);
+  assert.match(out, /Of the 1 it did read, 1 unheld match git/);
+});
+
+test("a pending grant excuses only its own row, never a neighbour's outage", () => {
+  const results = stampHolds([ungranted("quantum-signup-alert"), errored("quantum-tutor")], []);
+  const v = verdict(results, []);
+  assert.equal(v.exitCode, 2);
+  assert.deepEqual(v.blocked.map((r) => r.fn), ["quantum-tutor"]);
+  assert.match(render(results, [], TARGET).join("\n"), /1 of 2 functions could NOT be checked/);
+});
+
+test("a pending grant excuses ONLY an authorization failure, not any other outage", () => {
+  // The declaration says which function is expected to be unreadable; the error
+  // text says whether THIS failure is that expectation. Without the second half,
+  // grantPending muted every read failure on its row — so during the pending
+  // window a DELETED PostConfirmation trigger reported "the CI role has no read
+  // grant yet" and exited 0. That is the false all-clear this whole change
+  // exists to remove, reintroduced one row down.
+  const v = verdict(stampHolds([clean("quantum-tutor"), ungrantedButGone("quantum-signup-alert")], []), []);
+  assert.equal(v.exitCode, 2, "a function that has VANISHED must redden, not be excused");
+  assert.deepEqual(v.pending.map((r) => r.fn), []);
+  assert.deepEqual(v.blocked.map((r) => r.fn), ["quantum-signup-alert"]);
+});
+
+test("a non-authorization failure gets no pending explanation attached to it", () => {
+  // The explanation and the exit code must be decided by the SAME predicate. A
+  // row that declares a pending grant and then fails because the function is gone
+  // used to print "the CI role has no read grant for this function yet" — an
+  // explanation that is affirmatively false about the cause, sitting on a real
+  // incident.
+  const out = render(stampHolds([ungrantedButGone("quantum-signup-alert")], []), [], TARGET).join("\n");
+  assert.match(out, /could not check — .*ResourceNotFound/);
+  assert.doesNotMatch(out, /no read grant/);
+  assert.doesNotMatch(out, /NOT CHECKED, AND EXPECTED/);
+});
+
+test("real drift still fails even when another function's grant is pending", () => {
+  // Drift wins over could-not-read, and a mute button on one row must never
+  // lower the verdict on another.
+  assert.equal(verdict(stampHolds([ungranted("quantum-signup-alert"), drifting("quantum-stripe")], []), []).exitCode, 1);
+});
+
+test("a pending grant on a row that WAS read is reported, conditionally", () => {
+  // The stale-declaration notice, and the one place this mechanism deliberately
+  // refuses to instruct. `make drift` runs under an administrative profile that
+  // reads the function whether or not the CI policy was ever deployed, so a
+  // successful read is evidence ONLY when the reader was the CI role.
+  const row = { ...clean("quantum-signup-alert", "infra/workspace"), grantPending: PENDING };
+  const v = verdict(stampHolds([row], []), []);
+  assert.deepEqual(v.clearedGrants.map((r) => r.fn), ["quantum-signup-alert"]);
+  const out = render(stampHolds([row], []), [], TARGET).join("\n");
+  assert.match(out, /carries a grantPending declaration and WAS read/);
+  assert.match(out, /If this run used the CI role/);
+  assert.match(out, /proves nothing/);
+});
+
+test("an ordinary row carries no pending declaration and produces no notice", () => {
+  const results = stampHolds([clean("quantum-tutor")], []);
+  const v = verdict(results, []);
+  assert.deepEqual(v.pending, []);
+  assert.deepEqual(v.clearedGrants, []);
+  assert.doesNotMatch(render(results, [], TARGET).join("\n"), /grantPending|NOT READ/);
 });
