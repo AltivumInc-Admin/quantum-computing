@@ -5,6 +5,8 @@ import { getContent, getContentSummary } from "@/lib/content";
 import { articleMetadata, truncateAtWord } from "@/lib/seo";
 import { Sidebar } from "@/components/sidebar";
 import { LessonBody } from "@/components/lesson-body";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
+import { extractHeadings, lineSlugMapFrom } from "@/lib/extract-headings";
 import { SITE_NAME } from "@/lib/site";
 import { LESSON_CONTENT_ID } from "@/lib/layout-regions";
 
@@ -54,6 +56,17 @@ export default async function SectionPage({ params }: PageProps) {
   // globals.css).
   const hue = hueFor(section.index);
 
+  // Both GUIDEs are rendered HERE, on the server, at build — markdown, KaTeX and
+  // syntax highlighting resolved once per locale. The client <LessonBody> only
+  // picks which finished tree to show, so react-markdown and its four plugins
+  // never reach the browser; rendering them from inside that client shell is
+  // what loaded a 384 KB KaTeX chunk on every lesson page. The outline is
+  // extracted here too and handed down: the renderer needs the line→slug map to
+  // stamp heading ids, the table of contents needs the same headings, and
+  // deriving both from one scan per locale keeps the two from drifting apart.
+  const headingsEn = extractHeadings(content.markdown);
+  const headingsEs = extractHeadings(content.markdownEs);
+
   return (
     <div className="flex" style={{ "--hue": hue } as React.CSSProperties}>
       {/* Reading-progress rail — its width tracks scroll depth through the lesson
@@ -66,8 +79,20 @@ export default async function SectionPage({ params }: PageProps) {
         <LessonBody
           slug={slug}
           sectionDir={section.dirName}
-          markdownEn={content.markdown}
-          markdownEs={content.markdownEs}
+          bodyEn={
+            <MarkdownRenderer
+              content={content.markdown}
+              lineSlugs={lineSlugMapFrom(headingsEn)}
+            />
+          }
+          bodyEs={
+            <MarkdownRenderer
+              content={content.markdownEs}
+              lineSlugs={lineSlugMapFrom(headingsEs)}
+            />
+          }
+          headingsEn={headingsEn}
+          headingsEs={headingsEs}
           notebooks={content.notebooks}
         />
       </div>

@@ -62,8 +62,47 @@ jobs:
       #     engine `make setup` installs locally. This tier exists because a
       #     qcsim-only idiom (e.g. `sv = circuit.state_vector()`) can be fully
       #     green under the contract tests yet crash for every local learner.
+      #
+      # Those two tiers plus the exercise-check tier are ~98% of this job's wall
+      # clock (125 fresh-kernel notebook runs), and they used to make this the
+      # only job on the critical path — 12m19s against 2m19s for everything
+      # else. `make test` now runs them under pytest-xdist at `-n auto`, which
+      # resolves to the hosted runner's own CPU count rather than a number
+      # hardcoded here that would go stale when GitHub resizes the runner. If
+      # this job ever starts failing intermittently in the notebook tiers, read
+      # notebook_group() in tests/conftest.py before suspecting a notebook:
+      # parallel execution is only safe because every test that executes a given
+      # notebook is pinned to one worker, and --dist=loadgroup is the only
+      # scheduler that honours that pin. `make test` passes the flag and
+      # tests/conftest.py refuses to start under any other distributed
+      # scheduler, so this cannot regress silently into an intermittent failure.
       - name: Run tests
-        run: make test
+        # 5 workers, not `auto`: xdist's auto asked this runner and got 2.
+        #
+        # Oversubscribing 2 cores by 2.5x is deliberate, and the arithmetic is
+        # worth keeping because the obvious objection is right in general and
+        # wrong here. A 16-worker local run reports ~290s of CPU over ~68s of
+        # wall — 4.3 cores busy out of 16 — so this suite really does spend most
+        # of its life blocked on out-of-process Jupyter kernels rather than
+        # computing. Scaling that CPU total by this runner's ~1.8x slower core
+        # (655s serial here against 355s locally) puts CI's floor near 260s, and
+        # 2 workers delivered 379s. The gap is idle time, which is what the
+        # extra workers are for.
+        #
+        # MEASURED, and the estimate above was optimistic: 5 workers gave 351s
+        # against 2 workers' 379s. 28 seconds, not the ~80 the idle-time
+        # arithmetic predicted. So most of that 379s was NOT idle — this suite
+        # is closer to CPU-bound on a 2-core runner than the local profile
+        # suggests, and/or the slowest xdist_group is already the binding
+        # constraint (every execution of one notebook is pinned to one worker,
+        # and 04-vqe-lih alone is ~131s of CI).
+        #
+        # Kept at 5 because 28s is still free and costs only memory. But the
+        # lever is spent: raising it further will do nothing until the slowest
+        # group is split, and each worker holds a kernel with pennylane and
+        # pyscf loaded. Change this number only against a measured CI run, and
+        # do not trust the paragraph above over this one.
+        run: PYTEST_WORKERS=5 make test
 
       - name: Lint
         run: make lint

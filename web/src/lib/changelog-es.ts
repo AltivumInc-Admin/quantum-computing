@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-06-lighter-pages": {
+    title: "Las p\u00e1ginas de lecciones y del glosario llegan con una fracci\u00f3n de la descarga",
+    body: "Cada p\u00e1gina de lecci\u00f3n, y las 89 p\u00e1ginas del glosario, le entregaban a tu navegador toda la maquinaria para componer las f\u00f3rmulas matem\u00e1ticas y colorear el c\u00f3digo, y luego la ejecutaban en tu dispositivo \u2014 aunque el texto no cambia nunca una vez escrito. Ese trabajo ahora se hace una sola vez, al construir el sitio, y lo que te llega es la p\u00e1gina ya terminada. Un t\u00e9rmino del glosario llega con alrededor de la vig\u00e9sima parte de lo que descargaba antes, y una p\u00e1gina de lecci\u00f3n con alrededor de la cuarta parte. Nada se ve ni se comporta distinto: las matem\u00e1ticas, el c\u00f3digo resaltado y el cambio entre ingl\u00e9s y espa\u00f1ol siguen igual. Lo \u00fanico que cuesta algo m\u00e1s es pasar directamente de una lecci\u00f3n a la siguiente, porque ahora ambos idiomas se preparan por adelantado.",
+  },
   "2026-09-04-fleet-that-exists": {
     title: "Las p\u00e1ginas de dispositivos ahora describen las m\u00e1quinas que Amazon Braket tiene de verdad",
     body: "Las tablas de dispositivos, el estimador de costos y el selector de backend para trabajos h\u00edbridos se hab\u00edan alejado de la flota real. Varias m\u00e1quinas que AWS ya retir\u00f3 segu\u00edan apareciendo como si pudieras enviarles trabajo, y cuatro que s\u00ed est\u00e1n activas \u2014 la Forte Enterprise de IonQ, la Emerald de IQM, la IBEX Q1 de AQT y la Cepheus de Rigetti \u2014 no ten\u00edan ninguna entrada. Cada dispositivo lleva ahora su estado verdadero, uno retirado lo dice con claridad en lugar de desaparecer sin m\u00e1s, y el estimador solo pone precio a lo que existe. La lecci\u00f3n de hardware, el glosario y los cuadernos afectados se corrigieron para coincidir, y una comprobaci\u00f3n nocturna compara ahora las tablas con Amazon Braket para que no vuelvan a desviarse sin que nadie lo note.",

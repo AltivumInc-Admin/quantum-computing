@@ -32,6 +32,21 @@ interface MarkdownRendererProps {
 // the package; unknown languages are handled by that internal catch.)
 const HIGHLIGHT_OPTIONS = { plainText: [...WIDGET_LANGS] };
 
+/**
+ * SERVER Component, and the same rule inline-markdown.tsx states: react-markdown
+ * plus remark-gfm, remark-math, rehype-katex and rehype-highlight is by far the
+ * heaviest thing this app can import, and it only ever needs to run at build —
+ * a GUIDE is a fixed string. Rendering it from inside a "use client" module
+ * ships all of it to the browser instead: lesson-body.tsx did exactly that, and
+ * until 2026-09-05 every one of the seven lesson pages loaded TWO chunks for
+ * it — the markdown/KaTeX pipeline at 384 KB (112 KB gz) and highlight.js at
+ * 221 KB (63 KB gz), 169 KB gz between them. learn/[section]/page.tsx now calls
+ * this on the server, once per locale, and passes the finished trees into
+ * <LessonBody> as props.
+ *
+ * markdown-renderer-is-server.test.ts enforces this, because a comment saying
+ * it is what was already there when both callers broke it.
+ */
 export function MarkdownRenderer({ content, lineSlugs: propLineSlugs }: MarkdownRendererProps) {
   // Computed once per render (Server Component): the renderer assigns heading ids
   // from the same slug source the table of contents reads, so anchors line up.

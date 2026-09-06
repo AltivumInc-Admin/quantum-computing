@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -32,8 +33,15 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import validate_runnable as vr  # noqa: E402
 
+from tests.conftest import notebook_group  # noqa: E402
+
 RUNNABLE = vr.find_runnable_notebooks()
 _IDS = [p.relative_to(REPO_ROOT).as_posix() for p in RUNNABLE]
+# Same group name test_exercise_checks.py uses for the same notebook -- that is
+# the point. xdist groups are a global namespace, so naming both after the
+# notebook's repo-relative path is what pins this tier's qcsim execution onto
+# the same worker as that tier's solved/unsolved executions of the same file.
+_PARAMS = [pytest.param(p, id=rel, marks=notebook_group(rel)) for p, rel in zip(RUNNABLE, _IDS)]
 
 
 def test_found_runnable_notebooks():
@@ -41,7 +49,7 @@ def test_found_runnable_notebooks():
     assert RUNNABLE, "no <!-- browser-runnable --> notebooks discovered"
 
 
-@pytest.mark.parametrize("nb_path", RUNNABLE, ids=_IDS)
+@pytest.mark.parametrize("nb_path", _PARAMS)
 def test_runnable_notebook_static_contract(nb_path: Path):
     """Marked notebooks must not use APIs qcsim cannot run in the browser."""
     violations = vr.scan_notebook(nb_path)
@@ -73,22 +81,23 @@ def test_manifest_in_sync():
 
 
 @pytest.fixture(scope="session")
-def contract_kernel() -> str:
+def contract_kernel(install_notebook_kernel) -> str:
     """Register an ipykernel spec bound to the current interpreter.
 
     Using the current ``sys.executable`` guarantees the kernel runs in the same
     environment as the test (where qcsim + the curriculum deps are installed),
     independent of whatever ``python3`` kernelspec may exist on the machine.
-    """
-    from ipykernel.kernelspec import install
 
-    name = "qcsim-contract"
-    install(user=True, kernel_name=name)
-    return name
+    Installed into this pytest process's private Jupyter home rather than the
+    developer's, because installing a spec is an rmtree of the destination and
+    xdist workers would otherwise race for it — see install_notebook_kernel in
+    tests/conftest.py.
+    """
+    return install_notebook_kernel("qcsim-contract")
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("nb_path", RUNNABLE, ids=_IDS)
+@pytest.mark.parametrize("nb_path", _PARAMS)
 def test_runnable_notebook_executes_under_qcsim(nb_path: Path, contract_kernel: str):
     """Each marked notebook executes end-to-end under qcsim with no cell error."""
     nbformat = pytest.importorskip("nbformat")
@@ -127,3 +136,25 @@ def test_runnable_notebook_executes_under_qcsim(nb_path: Path, contract_kernel: 
             f"{nb_path.relative_to(REPO_ROOT).as_posix()} failed to execute under "
             f"qcsim (it is marked browser-runnable):\n{exc}"
         )
+    except Exception as exc:  # noqa: BLE001 - re-raised below with context
+        # Anything that is NOT a cell raising is a HARNESS failure: a kernel that
+        # would not start, one that died mid-notebook, a client timeout. Those
+        # read as "this notebook is broken" unless the message says otherwise,
+        # and under -n auto they are also the only failures that can be
+        # load-dependent — which makes them the ones most likely to be dismissed
+        # as flake and least likely to be diagnosed.
+        #
+        # This exists because one such failure was seen once, at 16 workers, on a
+        # machine also running a web build and a JS suite, and was never
+        # explained: it did not recur in 12 further full runs (6 idle, 4 loaded),
+        # and the two obvious causes were measured and ruled out (kernel startup
+        # is ~1s against a 60s timeout at 16-way concurrency; matplotlib's font
+        # cache is lock-protected upstream). If it happens again, the exception
+        # type and the worker id are the two facts nobody had, so name them.
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "serial")
+        raise RuntimeError(
+            f"HARNESS failure executing "
+            f"{nb_path.relative_to(REPO_ROOT).as_posix()} under qcsim on worker "
+            f"{worker}: {type(exc).__name__}: {exc}. This is the notebook "
+            f"harness failing, not a cell in the notebook raising."
+        ) from exc

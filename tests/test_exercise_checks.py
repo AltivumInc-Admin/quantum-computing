@@ -44,6 +44,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import validate_runnable as vr  # noqa: E402
 
+from tests.conftest import notebook_group  # noqa: E402
+
 SOLUTIONS_DIR = Path(__file__).resolve().parent / "solutions"
 
 SCAFFOLD_RE = re.compile(r"^# Exercise (\d+):")
@@ -97,6 +99,11 @@ def is_converted(nb_path: Path) -> bool:
 ALL = all_notebooks()
 CONVERTED = [p for p in ALL if is_converted(p)]
 _IDS = [p.relative_to(REPO_ROOT).as_posix() for p in CONVERTED]
+# One xdist group per notebook, so the solved and unsolved executions of the
+# same notebook never run at the same time and clobber the files it writes into
+# its own directory. See notebook_group() in tests/conftest.py for the four
+# paths this protects and why grouping beats a per-run temp cwd here.
+_PARAMS = [pytest.param(p, id=rel, marks=notebook_group(rel)) for p, rel in zip(CONVERTED, _IDS)]
 
 
 def solutions_path(nb_path: Path) -> Path:
@@ -143,7 +150,7 @@ def test_all_notebooks_converted():
     )
 
 
-@pytest.mark.parametrize("nb_path", CONVERTED, ids=_IDS)
+@pytest.mark.parametrize("nb_path", _PARAMS)
 def test_structure(nb_path: Path):
     """Converted notebooks follow the three-cell unit exactly."""
     parsed = parse_exercises(nb_path)
@@ -199,13 +206,9 @@ def test_structure(nb_path: Path):
 
 
 @pytest.fixture(scope="session")
-def contract_kernel() -> str:
+def contract_kernel(install_notebook_kernel) -> str:
     """Kernel bound to this interpreter (same pattern as the contract test)."""
-    from ipykernel.kernelspec import install
-
-    name = "qcsim-contract"
-    install(user=True, kernel_name=name)
-    return name
+    return install_notebook_kernel("qcsim-contract")
 
 
 def _bootstrap_source(nb_path: Path, strict: bool) -> str:
@@ -253,7 +256,7 @@ def _skip_if_unexecutable(nb_path: Path):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("nb_path", CONVERTED, ids=_IDS)
+@pytest.mark.parametrize("nb_path", _PARAMS)
 def test_checks_pass_with_canonical_solutions(nb_path: Path, contract_kernel: str):
     """With the CORRECT answers inserted, every check must pass — strictly."""
     _skip_if_unexecutable(nb_path)
@@ -269,7 +272,7 @@ def test_checks_pass_with_canonical_solutions(nb_path: Path, contract_kernel: st
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("nb_path", CONVERTED, ids=_IDS)
+@pytest.mark.parametrize("nb_path", _PARAMS)
 def test_checks_do_not_pass_unsolved(nb_path: Path, contract_kernel: str):
     """Unsolved, every check must say 'not attempted' — never 'correct'."""
     _skip_if_unexecutable(nb_path)

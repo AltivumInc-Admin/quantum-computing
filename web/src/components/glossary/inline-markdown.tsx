@@ -16,7 +16,12 @@ import "katex/dist/katex.min.css";
  * strings, so the whole react-markdown + remark-math + rehype-katex pipeline
  * runs once at build and ships as prerendered markup — none of it lands in the
  * client bundle. Keep it out of "use client" modules or the pipeline is
- * dragged back onto every glossary page.
+ * dragged back onto every glossary page. That is not hypothetical: term-detail.tsx
+ * imported this from inside its "use client" boundary and put a 384 KB (112 KB
+ * gz) KaTeX chunk on all 89 /glossary/<term> pages until 2026-09-05. Both
+ * callers now render from a server component and hand the finished node down as
+ * a prop — glossary/page.tsx into <Glossary>, glossary/[term]/page.tsx into
+ * <TermDetail>.
  */
 export function InlineMarkdown({ children }: { children: string }) {
   return (

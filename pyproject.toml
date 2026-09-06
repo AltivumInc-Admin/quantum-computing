@@ -16,6 +16,12 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
+    # Notebook execution is ~98% of this suite's wall clock and every run is an
+    # out-of-process Jupyter kernel, so the suite is almost entirely idle-waiting
+    # and parallelises nearly linearly. `make test` runs it at -n auto with
+    # --dist=loadgroup; the scheduler is what makes that SAFE, not what makes it
+    # faster. See the ini section below for why the flag is not in addopts.
+    "pytest-xdist>=3.5",
     # Pin below 0.16: 0.16.0 tightens RUF100/default rules and fails make lint
     # on pre-existing test-only noqa noise when CI pip-installs latest.
     "ruff>=0.5,<0.16",
@@ -54,6 +60,21 @@ extend-exclude = ["*.ipynb"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# NO addopts. --dist=loadgroup is a correctness requirement of this suite (see
+# notebook_group() in tests/conftest.py), so putting it here is the obvious
+# move — and it is wrong, because addopts is parsed before any plugin check:
+# `pytest -m "not slow"` in an environment without pytest-xdist then dies with
+# `error: unrecognized arguments: --dist=loadgroup`, naming this file and not
+# the missing package. That environment is not hypothetical — it is every
+# developer .venv created before xdist joined the dev extra above.
+#
+# So the flag lives on the Makefile's command line, and tests/conftest.py
+# refuses to run distributed under any other scheduler. That guard is the part
+# that cannot be forgotten; the flag is just how you satisfy it. Setting
+# `config.option.dist` from a conftest hook LOOKS like a cleaner fix and does
+# not work: the value is read again in each worker (xdist/remote.py
+# `setup_config`), so the mark is silently ignored and the group splits across
+# workers. Measured, not assumed — two tests in one group landed on gw0/gw1.
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]

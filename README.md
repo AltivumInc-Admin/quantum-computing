@@ -498,7 +498,7 @@ The portal treats these as optional: front-end features gate on their configurat
 | `make setup` | `pip install -e .[dev]` + `pip install -e ./qcsim`, validate AWS creds, install the `nbstripout` git filter |
 | `make git-filters` | Re-wire the `nbstripout` clean/textconv filters at the in-repo wrapper (re-runnable; `make setup` calls it) |
 | `make lab` | Launch JupyterLab at the repo root (`jupyter lab --notebook-dir=.`) |
-| `make test` | Run the pytest suite (`pytest tests/ -v`) |
+| `make test` | Run the pytest suite in parallel (`pytest tests/ -v -n auto --dist=loadgroup`). `PYTEST_WORKERS=0 make test` turns distribution off for a clean, ordered failure log |
 | `make guards` | **Every `scripts/` guard CI runs, locally** — all `scripts/**/*.test.mjs` suites (discovered, not listed) + the content-manifest check. Offline, no credentials, ~1 s |
 | `make lint` | `ruff check .` **and** `ruff format --check .` |
 | `make devices` | Print the Braket device fleet + provider, status (`ONLINE`/`OFFLINE`/`RETIRED`) and type |
@@ -563,7 +563,7 @@ Both `make guards` and the CI step **discover** the suites with `find`, never wi
 
 Pinning: **Python 3.12** (matches the Amplify image; `pyscf`/`openfermionpyscf` wheels exist for 3.12), **Node 20**.
 
-> **`make test` is the run that proves something** — it is what CI runs, with no marker filter. For a tight inner loop, `pytest -m "not slow"` finishes in seconds instead of minutes, but know exactly what it drops: **every test that executes a notebook.** In this repo the `slow` marker means "runs a notebook through nbclient", so deselecting it removes both exercise gates (`test_exercise_checks.py` — canonical solutions must pass, unsolved must not), the live qcsim execution of every runnable notebook (`test_notebook_contract.py`), and the real-Braket-SDK sample tier (`test_notebook_real_sdk.py`). What survives in those modules is static structure, AST and manifest checking; **no notebook is executed at all**. pytest reports this only as an unlabelled `(N deselected)` line — no category, no names — so it is easy to mistake for a clean run. A green `pytest -m "not slow"` is never a basis for saying the notebooks work — run `make test` before you claim that, and before you push.
+> **`make test` is the run that proves something** — it is what CI runs, with no marker filter. For a tight inner loop, `pytest -m "not slow"` finishes in seconds instead of minutes (it needs no `-n`; the notebook tiers are what parallelism buys, and this drops all of them), but know exactly what it drops: **every test that executes a notebook.** In this repo the `slow` marker means "runs a notebook through nbclient", so deselecting it removes both exercise gates (`test_exercise_checks.py` — canonical solutions must pass, unsolved must not), the live qcsim execution of every runnable notebook (`test_notebook_contract.py`), and the real-Braket-SDK sample tier (`test_notebook_real_sdk.py`). What survives in those modules is static structure, AST and manifest checking; **no notebook is executed at all**. pytest reports this only as an unlabelled `(N deselected)` line — no category, no names — so it is easy to mistake for a clean run. A green `pytest -m "not slow"` is never a basis for saying the notebooks work — run `make test` before you claim that, and before you push.
 
 ---
 

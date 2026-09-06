@@ -26,8 +26,22 @@ git-filters:
 lab:
 	jupyter lab --notebook-dir=.
 
+# pytest-xdist worker count. `auto` is one worker per CPU, which is the right
+# default in both places this target runs: 16 on a developer laptop, and
+# whatever the GitHub hosted runner reports (4 today) in CI, so a runner resize
+# never leaves a stale number here. Oversubscription is not the risk it looks like —
+# each worker spends nearly all of its time blocked on an out-of-process Jupyter
+# kernel, which is where the actual compute happens. Undersubscribing a 16-core
+# machine for a suite that is 98% notebook execution is the real cost.
+#
+# Override to pin it (PYTEST_WORKERS=4 on a memory-tight box; each worker holds
+# a kernel with pennylane + pyscf loaded), or set PYTEST_WORKERS=0 to turn
+# distribution off entirely, which is what you want when a failure needs a
+# clean, ordered log instead of eight interleaved ones.
+PYTEST_WORKERS ?= auto
+
 test:
-	pytest tests/ -v
+	pytest tests/ -v -n $(PYTEST_WORKERS) --dist=loadgroup
 
 devices:
 	python 02-hardware/scripts/device_status.py
