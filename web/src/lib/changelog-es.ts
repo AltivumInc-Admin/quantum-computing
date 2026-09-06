@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-06-hardware-pricing-copy": {
+    title: "Los paneles de hardware describen los precios con m\u00e1s cuidado",
+    body: "Los paneles del espacio de trabajo y del laboratorio que describen el dispositivo IQM Garnet inclu\u00edan una frase sobre c\u00f3mo se calcular\u00eda el precio de una ejecuci\u00f3n. Se escribi\u00f3 antes del modelo de precios actual y ya no era cierta, as\u00ed que se ha eliminado en lugar de reformularla: esos paneles ahora indican la tarifa publicada por Amazon Braket para el dispositivo y no afirman nada m\u00e1s. Nada de lo que puedes hacer cambia y nada te cobra hoy \u2014 es una correcci\u00f3n de lo que dicen las p\u00e1ginas, no de lo que hacen.",
+  },
   "2026-09-06-lighter-pages": {
     title: "Las p\u00e1ginas de lecciones y del glosario llegan con una fracci\u00f3n de la descarga",
     body: "Cada p\u00e1gina de lecci\u00f3n, y las 89 p\u00e1ginas del glosario, le entregaban a tu navegador toda la maquinaria para componer las f\u00f3rmulas matem\u00e1ticas y colorear el c\u00f3digo, y luego la ejecutaban en tu dispositivo \u2014 aunque el texto no cambia nunca una vez escrito. Ese trabajo ahora se hace una sola vez, al construir el sitio, y lo que te llega es la p\u00e1gina ya terminada. Un t\u00e9rmino del glosario llega con alrededor de la vig\u00e9sima parte de lo que descargaba antes, y una p\u00e1gina de lecci\u00f3n con alrededor de la cuarta parte. Nada se ve ni se comporta distinto: las matem\u00e1ticas, el c\u00f3digo resaltado y el cambio entre ingl\u00e9s y espa\u00f1ol siguen igual. Lo \u00fanico que cuesta algo m\u00e1s es pasar directamente de una lecci\u00f3n a la siguiente, porque ahora ambos idiomas se preparan por adelantado.",

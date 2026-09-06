@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-06-hardware-pricing-copy",
+    shipped: "2026-09-06",
+    kind: "fixed",
+    title: "The hardware panels describe pricing more carefully",
+    body: "The workspace and playground panels that describe the IQM Garnet device carried a sentence about how a run would be priced. It was written before the current pricing model and no longer held, so it has been removed rather than reworded around it: those panels now state Amazon Braket's own published rate for the device and claim nothing beyond it. Nothing you can do changes and nothing charges you today \u2014 this is a correction to what the pages say, not to what they do.",
+    href: "/workspace",
+  },
+  {
     id: "2026-09-06-lighter-pages",
     shipped: "2026-09-06",
     kind: "improved",

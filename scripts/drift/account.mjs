@@ -2,8 +2,8 @@
  * WHICH ACCOUNT is this report about?
  *
  * Both drift guards target a function by NAME plus region, and the account
- * comes entirely from ambient credentials. Since the QL-Prod cutover the same
- * eleven names exist in us-east-2 in TWO accounts, and this machine's default
+ * comes entirely from ambient credentials. Since the QL-Prod cutover most of these
+ * names exist in us-east-2 in TWO accounts, and this machine's default
  * profile is the Altivum one — so `make drift` with no profile produces a
  * confidently green report about an account that no longer serves learners,
  * and nightly CI reports on whatever AWS_DRIFT_ROLE_ARN happens to name. A

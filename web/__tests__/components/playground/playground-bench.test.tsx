@@ -12,6 +12,7 @@ import { sampleCounts } from "@/components/quantum/shots";
 import { mulberry32 } from "@/components/quantum/rng";
 import { formatPercent } from "@/components/quantum/format";
 import { costLabel } from "@/components/quantum/cost";
+import { claimById } from "../../_support/undeliverable-claims";
 
 const pushMock = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -345,6 +346,15 @@ describe("PlaygroundBench", () => {
     // Honest, PRICING-derived rate line (never hand-typed dollars)
     const rate = costLabel("IQM");
     expect(screen.getByText((t) => t.includes(rate))).toBeInTheDocument();
+    // That caption read "— billed to your credits at cost, no markup" until 2026-09.
+    // "at cost" is a commercial promise CLAUDE.md rules 5 and 9 retired, and rule 6
+    // keeps the figure that would settle it out of this public repo, so the sentence
+    // could never be checked either way. It states the RATE a run is priced from,
+    // which is Amazon's own published price, and stops there. Asserted as an absence
+    // as well as a presence: locking a promise's PRESENCE in a test is exactly how the
+    // withdrawn sponsorship copy outlived its own withdrawal.
+    expect(screen.getByText(/priced from that Amazon Braket rate/i)).toBeInTheDocument();
+    expect(document.body.textContent ?? "").not.toMatch(claimById("at-cost").pattern);
     fireEvent.change(screen.getByLabelText("Circuit name"), { target: { value: "Bell to fly" } });
     const send = screen.getByRole("button", { name: "Send to real hardware" });
     expect(send).toBeEnabled();

@@ -16,27 +16,65 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { FUNCTIONS, UNDERIVABLE, declaredFunctionNames, declaredFunctions, registryGaps } from "./rules.mjs";
+import { dirname, join, relative } from "node:path";
+import {
+  FUNCTIONS,
+  OUT_OF_SCOPE,
+  UNDERIVABLE,
+  declaredFunctionNames,
+  declaredFunctions,
+  registryGaps,
+} from "./rules.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** The one IAM policy this repository declares, and the CI role it defines. */
 const ROLE_TEMPLATE = join(REPO, "infra", "github-oidc-drift-role.yaml");
 
-/** Every { fn, dir, handler } a lambda template declares as a literal. */
-const declaredInTemplates = () => {
-  const declared = [];
+/**
+ * Every CloudFormation template in this repository that could declare a Lambda
+ * function, as absolute paths.
+ *
+ * TWO roots, and the second one is the whole point of this helper. Until
+ * 2026-09-06 this walked `lambda/` ALONE — `infra/` was never opened — so a
+ * function declared anywhere else was invisible to every assertion below, and
+ * one was: `quantum-signup-alert`, live in QL-Prod since 2026-08-29 as the user
+ * pool's PostConfirmation trigger, declared inline in
+ * infra/workspace/cognito.yaml, absent from FUNCTIONS, and therefore never
+ * downloaded while the run printed "All 8 unheld functions match git". The one
+ * production Lambda nothing compared against git was also the one that had
+ * already failed silently once: an ESM `import` inside a CommonJS Code.ZipFile
+ * killed every invocation from 2026-08-29 to 2026-09-02, and no alert was sent.
+ *
+ * `lambda/` is still walked one level deep to exactly `<dir>/template.yaml`,
+ * because those directories carry node_modules and a recursive walk there would
+ * read thousands of files to find nothing. `infra/` carries no node_modules and
+ * does not name its templates uniformly (budget.yaml, cognito.yaml,
+ * quantumlearner-dev.yaml), so it is walked recursively for every *.yaml.
+ */
+const templatePaths = () => {
+  const paths = [];
   for (const entry of readdirSync(join(REPO, "lambda"), { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const template = join(REPO, "lambda", entry.name, "template.yaml");
-    if (!existsSync(template)) continue;
-    for (const d of declaredFunctions(readFileSync(template, "utf8"))) {
-      declared.push({ ...d, dir: `lambda/${entry.name}` });
-    }
+    if (existsSync(template)) paths.push(template);
   }
-  return declared;
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.ya?ml$/.test(entry.name)) paths.push(full);
+    }
+  };
+  walk(join(REPO, "infra"));
+  return paths.sort();
 };
+
+/** Every { fn, dir, handler, inline } a template in this repository declares as a literal. */
+const declaredInTemplates = () =>
+  templatePaths().flatMap((path) =>
+    declaredFunctions(readFileSync(path, "utf8")).map((d) => ({ ...d, dir: relative(REPO, dirname(path)) })),
+  );
 
 test("the templates still declare function names (this guard must not no-op)", () => {
   // A regex that matches nothing would let every assertion below pass forever.
@@ -77,15 +115,93 @@ test("the only excused names are the parameterized stripe pair, each with a reas
   assert.deepEqual(declaredFunctionNames(stripe), []);
 });
 
+test("the walk opens infra/, not lambda/ alone", () => {
+  // The regression pin for 2026-09-06. Every assertion in this file is only as
+  // wide as this walk, and for as long as it read lambda/ alone a whole class of
+  // function — anything declared inline in a stack template — was outside the
+  // guard while looking fully covered. Naming the file, not just the count, means
+  // a future refactor that quietly narrows the roots fails here.
+  const paths = templatePaths();
+  assert.ok(
+    paths.some((p) => p.endsWith(join("infra", "workspace", "cognito.yaml"))),
+    "infra/workspace/cognito.yaml is not being read — the walk has narrowed back to lambda/",
+  );
+  assert.ok(paths.some((p) => p.endsWith(join("lambda", "tutor", "template.yaml"))));
+  const declared = declaredInTemplates();
+  assert.ok(
+    declared.some((d) => d.fn === "quantum-signup-alert" && d.dir === "infra/workspace"),
+    "the inline signup alerter is no longer derived from infra/workspace/cognito.yaml",
+  );
+});
+
+test("the inline signup alerter is registered, and its source is reproducible from git", () => {
+  // Option (a): the function stays declared inline and the CHECK learns to read
+  // it. The whole comparison rests on this one property — that the `ZipFile: |`
+  // block can be turned back into the exact bytes CloudFormation writes — so it
+  // is asserted here, deterministically, rather than discovered at 13:00 UTC.
+  // A rewrite of the block into `|-`, `|+`, `>` or `!Sub |` yields null and fails
+  // right here, which is the point: the alternative is comparing wrong bytes and
+  // reporting the difference as drift.
+  const entry = FUNCTIONS.find((f) => f.fn === "quantum-signup-alert");
+  assert.ok(entry, "quantum-signup-alert is not registered for the drift check");
+  assert.deepEqual(entry.inline, { template: "cognito.yaml", file: "index.js" });
+  const declared = declaredInTemplates().find((d) => d.fn === "quantum-signup-alert");
+  assert.equal(typeof declared.inline, "string", "the ZipFile block is no longer a plain `|` literal block");
+  assert.match(declared.inline, /exports\.handler = async \(event\) =>/);
+  assert.match(declared.inline, /\n$/, "clip chomping: the body ends in exactly one newline");
+  assert.doesNotMatch(declared.inline, /\n\n$/);
+  // Dedented to column zero. A body left with its YAML indentation would differ
+  // from the deployed file on every single line.
+  assert.doesNotMatch(declared.inline, /^ +\/\/ THIS HANDLER MUST NEVER THROW/m);
+  assert.match(declared.inline, /^\/\/ THIS HANDLER MUST NEVER THROW\./m);
+});
+
+test("a pending CI grant is a written declaration, not a bare flag", () => {
+  // grantPending stops an expected AccessDenied from reddening the nightly job
+  // for everyone. That is a mute button, so it costs the same two sentences a
+  // HELD entry costs: why the read fails, and what makes it stop failing.
+  for (const f of FUNCTIONS.filter((f) => f.grantPending)) {
+    assert.ok(f.grantPending.reason?.length > 40, `${f.fn}'s grantPending needs a written reason`);
+    assert.ok(f.grantPending.clearsWhen?.length > 40, `${f.fn}'s grantPending needs a written clears-when`);
+  }
+});
+
+test("every out-of-scope name is really declared, with a reason and a clears-when", () => {
+  // The escape hatch in the other direction, and the one that could hide a real
+  // gap. An entry for a name no template declares any more is dead weight that
+  // would silently excuse a future function of the same name.
+  assert.deepEqual(OUT_OF_SCOPE.map((o) => o.fn).sort(), [
+    "quantum-altivum-ai-redirect-canary",
+    "quantumlearner-redirect-canary",
+  ]);
+  const declared = new Set(declaredInTemplates().map((d) => d.fn));
+  for (const o of OUT_OF_SCOPE) {
+    assert.ok(declared.has(o.fn), `${o.fn} is excused but no template declares it — delete the entry`);
+    assert.ok(o.reason?.length > 40, `${o.fn} needs a written reason`);
+    assert.ok(o.clearsWhen?.length > 40, `${o.fn} needs a written clears-when`);
+  }
+});
+
+// The fourth argument is passed EXPLICITLY in every fixture test, never left to
+// default. registryGaps(declared, registered, underivable, outOfScope = OUT_OF_SCOPE)
+// defaults to the real excuse list, so a three-argument call silently consults
+// production: a future fixture named after a listed entry would be excused, and the
+// test asserting "this gap is caught" would pass while the gap was quietly forgiven.
 test("a function present in a template but missing from the registry is caught", () => {
   const declared = [{ fn: "quantum-newthing", dir: "lambda/newthing" }];
-  assert.deepEqual(registryGaps(declared, [], []).unregistered, declared);
+  assert.deepEqual(registryGaps(declared, [], [], []).unregistered, declared);
+});
+
+test("an out-of-scope name is excused, and only by being on the list", () => {
+  const declared = [{ fn: "quantum-elsewhere", dir: "infra/redirect" }];
+  assert.deepEqual(registryGaps(declared, [], [], []).unregistered, declared);
+  assert.deepEqual(registryGaps(declared, [], [], [{ fn: "quantum-elsewhere", reason: "x" }]).unregistered, []);
 });
 
 test("a registered name no template declares is caught, unless excused", () => {
   const registered = [{ fn: "quantum-ghost", dir: "lambda/ghost" }];
-  assert.deepEqual(registryGaps([], registered, []).underived, registered);
-  assert.deepEqual(registryGaps([], registered, [{ fn: "quantum-ghost", reason: "x" }]).underived, []);
+  assert.deepEqual(registryGaps([], registered, [], []).underived, registered);
+  assert.deepEqual(registryGaps([], registered, [{ fn: "quantum-ghost", reason: "x" }], []).underived, []);
 });
 
 test("a registry entry pointing at the wrong directory is caught", () => {
@@ -131,8 +247,37 @@ test("a Handler is attributed to the function in its own resource block", () => 
     "      Handler: beta.handler",
   ].join("\n");
   assert.deepEqual(declaredFunctions(template), [
-    { fn: "quantum-alpha", handler: "alpha.handler" },
-    { fn: "quantum-beta", handler: "beta.handler" },
+    { fn: "quantum-alpha", handler: "alpha.handler", inline: null },
+    { fn: "quantum-beta", handler: "beta.handler", inline: null },
+  ]);
+});
+
+test("an inline ZipFile body is attributed to the function in its own block", () => {
+  // Same property as the Handler above, and it matters more: attributing one
+  // function's inline source to another compares two real files and calls the
+  // difference drift, which reads exactly like a missed deploy.
+  const template = [
+    "Resources:",
+    "  AlphaFunction:",
+    "    Type: AWS::Lambda::Function",
+    "    Properties:",
+    "      FunctionName: quantum-alpha",
+    "      Handler: index.handler",
+    "      Code:",
+    "        ZipFile: |",
+    "          exports.handler = async () => 'alpha';",
+    "  BetaFunction:",
+    "    Type: AWS::Lambda::Function",
+    "    Properties:",
+    "      FunctionName: quantum-beta",
+    "      Handler: index.handler",
+    "      Code:",
+    "        ZipFile: |",
+    "          exports.handler = async () => 'beta';",
+  ].join("\n");
+  assert.deepEqual(declaredFunctions(template), [
+    { fn: "quantum-alpha", handler: "index.handler", inline: "exports.handler = async () => 'alpha';\n" },
+    { fn: "quantum-beta", handler: "index.handler", inline: "exports.handler = async () => 'beta';\n" },
   ]);
 });
 
@@ -168,7 +313,7 @@ test("the CI role names no ListFunctions and no wildcarded region", () => {
  * read the previous non-blank line. Its commit message claimed "a wildcard on
  * any other action still fails". That was FALSE, and not narrowly:
  *
- *   - appending one `- "*"` to the eleven-ARN lambda list — account-wide
+ *   - appending one `- "*"` to the lambda ARN list — account-wide
  *     GetFunction and GetFunctionConfiguration, i.e. every environment
  *     variable of every function in the region, which is the exact blast
  *     radius the policy's own comment cites — matched no line the guard read;
@@ -212,7 +357,7 @@ const WILDCARD_PATH = "Resources.DriftCheckRole.Properties.Policies.1.PolicyDocu
  * default defeated both halves of this guard at once while every pinned literal stayed
  * byte-identical:
  *
- *   - FunctionRegion: "*" resolves the eleven lambda ARNs to
+ *   - FunctionRegion: "*" resolves every lambda ARN to
  *     arn:aws:lambda:*:<acct>:function:quantum-* — account-wide GetFunction and
  *     GetFunctionConfiguration, in EVERY region, which is exactly what the test named
  *     "no ListFunctions and no wildcarded region" claims to prevent and what the
@@ -722,7 +867,7 @@ test("the widenings that defeated the positional guard are all rejected", () => 
   const base = roleTemplateText();
   const bypasses = [
     [
-      "a bare wildcard appended to the eleven lambda ARNs",
+      "a bare wildcard appended to the lambda ARNs",
       (t) => t.replace(/( *)(- !Sub arn:aws:lambda:[^\n]*quantum-review-email-unsubscribe\n)/, '$1$2$1- "*"\n'),
     ],
     ["braket:* in place of braket:SearchDevices", (t) => t.replace("Action: braket:SearchDevices", "Action: braket:*")],
@@ -747,7 +892,7 @@ test("the widenings that defeated the positional guard are all rejected", () => 
       (t) => t.replace(/\n( *)Resource:\n(?:\1  - !Sub[^\n]*\n)+/, "\n$1Resource: >\n$1  *\n"),
     ],
     [
-      "lambda:* on the eleven correctly scoped ARNs",
+      "lambda:* on the correctly scoped ARNs",
       (t) => t.replace(/( *)- lambda:GetFunction\n *- lambda:GetFunctionConfiguration\n/, "$1- lambda:*\n"),
     ],
     [
@@ -867,7 +1012,7 @@ test("the widenings that defeated the positional guard are all rejected", () => 
     ],
     [
       "the FunctionRegion default widened to a wildcard, with every literal untouched",
-      // Resolves the eleven ARNs to arn:aws:lambda:*:<acct>:function:quantum-* — the
+      // Resolves every ARN to arn:aws:lambda:*:<acct>:function:quantum-* — the
       // deploy runbook in this template's header passes no --parameter-overrides, so
       // the Default is what deploys. The sibling text assertion never sees it either.
       (t) => t.replace("    Default: us-east-2\n", '    Default: "*"\n'),
@@ -903,7 +1048,7 @@ test("a repointed parameter DEFAULT is named, and the ARN it resolves to is audi
   );
   assert.ok(
     region.findings.some((f) => /Policies\.0\.PolicyDocument\.Statement\.0 .*is not one of the pinned grants/.test(f)),
-    "the eleven ARNs resolve to arn:aws:lambda:*:<acct>:function:quantum-* and must fail the allowlist",
+    "every ARN resolves to arn:aws:lambda:*:<acct>:function:quantum-* and must fail the allowlist",
   );
 
   const repo = auditRoleTemplate(
