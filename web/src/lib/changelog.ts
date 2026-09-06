@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-06-lighter-pages",
+    shipped: "2026-09-06",
+    kind: "improved",
+    title: "Lesson and glossary pages arrive with a fraction of the download",
+    body: "Every lesson page, and all 89 glossary pages, used to hand your browser the whole machinery for typesetting mathematics and colouring code, then run it on your device \u2014 even though the text never changes once it is written. That work now happens once, when the site is built, and the finished page is what reaches you. A glossary term arrives with roughly a twentieth of the download it needed before, and a lesson page with roughly a quarter. Nothing looks or behaves differently: the mathematics, the highlighted code and the English/Spanish switch are all unchanged. The one thing that costs a little more is stepping straight from one lesson to the next, because both languages are now prepared ahead of time.",
+    href: "/glossary",
+  },
+  {
     id: "2026-09-04-fleet-that-exists",
     shipped: "2026-09-04",
     kind: "fixed",

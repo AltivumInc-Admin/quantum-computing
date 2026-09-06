@@ -77,7 +77,24 @@ jobs:
       # tests/conftest.py refuses to start under any other distributed
       # scheduler, so this cannot regress silently into an intermittent failure.
       - name: Run tests
-        run: make test
+        # 5 workers, not `auto`: xdist's auto asked this runner and got 2.
+        #
+        # Oversubscribing 2 cores by 2.5x is deliberate, and the arithmetic is
+        # worth keeping because the obvious objection is right in general and
+        # wrong here. A 16-worker local run reports ~290s of CPU over ~68s of
+        # wall — 4.3 cores busy out of 16 — so this suite really does spend most
+        # of its life blocked on out-of-process Jupyter kernels rather than
+        # computing. Scaling that CPU total by this runner's ~1.8x slower core
+        # (655s serial here against 355s locally) puts CI's floor near 260s, and
+        # 2 workers delivered 379s. The gap is idle time, which is what the
+        # extra workers are for.
+        #
+        # It is NOT purely I/O-bound though, so the gain is bounded: expect a
+        # move toward ~300s, not toward zero. Two things cap it — the slowest
+        # xdist_group (every execution of one notebook is pinned to one worker)
+        # and memory, since each worker holds a kernel with pennylane and pyscf
+        # loaded. Change this number only against a measured CI run.
+        run: PYTEST_WORKERS=5 make test
 
       - name: Lint
         run: make lint
