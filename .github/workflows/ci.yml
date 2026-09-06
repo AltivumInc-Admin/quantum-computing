@@ -89,11 +89,19 @@ jobs:
         # 2 workers delivered 379s. The gap is idle time, which is what the
         # extra workers are for.
         #
-        # It is NOT purely I/O-bound though, so the gain is bounded: expect a
-        # move toward ~300s, not toward zero. Two things cap it — the slowest
-        # xdist_group (every execution of one notebook is pinned to one worker)
-        # and memory, since each worker holds a kernel with pennylane and pyscf
-        # loaded. Change this number only against a measured CI run.
+        # MEASURED, and the estimate above was optimistic: 5 workers gave 351s
+        # against 2 workers' 379s. 28 seconds, not the ~80 the idle-time
+        # arithmetic predicted. So most of that 379s was NOT idle — this suite
+        # is closer to CPU-bound on a 2-core runner than the local profile
+        # suggests, and/or the slowest xdist_group is already the binding
+        # constraint (every execution of one notebook is pinned to one worker,
+        # and 04-vqe-lih alone is ~131s of CI).
+        #
+        # Kept at 5 because 28s is still free and costs only memory. But the
+        # lever is spent: raising it further will do nothing until the slowest
+        # group is split, and each worker holds a kernel with pennylane and
+        # pyscf loaded. Change this number only against a measured CI run, and
+        # do not trust the paragraph above over this one.
         run: PYTEST_WORKERS=5 make test
 
       - name: Lint
