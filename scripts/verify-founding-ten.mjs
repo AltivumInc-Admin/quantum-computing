@@ -33,7 +33,20 @@ if (WHO && IN_CI) {
   process.exit(2);
 }
 
-const POOL_ID = process.env.QUANTUM_USER_POOL_ID ?? "us-east-2_aRydPmAjj";
+// The default is QL-Prod's quantum-workspace pool, where every learner has
+// lived since the 2026-08-31 cutover. Until 2026-09-06 it was the Altivum-era
+// pool: under QL-Prod credentials that id does not exist, so this script would
+// have failed every standby build with ResourceNotFoundException (fail-closed,
+// as the header above demands, but for the wrong reason, and forever). The
+// CodeBuild standby sets QUANTUM_USER_POOL_ID from the same template parameter
+// that scopes its cognito-idp:ListUsers grant, so this literal decides only a
+// LOCAL run, and a local run now needs QL-Prod credentials
+// (AWS_PROFILE=ql-prod): this machine's default profile is Altivum, where the
+// id below does not exist either, and the script fails loudly there rather
+// than verifying badges against a pool nobody signs up to any more.
+// scripts/ci-standby/parity.test.mjs holds this literal equal to the template's
+// default and refuses the retired id in both.
+const POOL_ID = process.env.QUANTUM_USER_POOL_ID ?? "us-east-2_FXKkSoPHw";
 const REGION = process.env.AWS_REGION ?? "us-east-2";
 
 const registry = JSON.parse(readFileSync(new URL("../web/src/data/founding-ten.json", import.meta.url)));

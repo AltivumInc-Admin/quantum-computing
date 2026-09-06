@@ -16,6 +16,18 @@ Parameters:
     Type: String
     Default: https://github.com/AltivumInc-Admin/quantum-computing.git
     Description: HTTPS clone URL of the GitHub repository to mirror CI for.
+  FoundingTenUserPoolId:
+    Type: String
+    Default: us-east-2_FXKkSoPHw
+    AllowedPattern: ^us-east-2_[A-Za-z0-9]+$
+    Description: >-
+      Cognito user pool that scripts/verify-founding-ten.mjs checks issued
+      badges against. The default is QL-Prod's quantum-workspace pool, where
+      every learner has lived since the 2026-08-31 cutover. One value scopes
+      the founding-ten-verify IAM statement AND reaches the build as
+      QUANTUM_USER_POOL_ID, so the grant and the script cannot name different
+      pools. scripts/ci-standby/parity.test.mjs holds this default equal to
+      the script's own.
 
 Resources:
   CacheBucket:
@@ -99,11 +111,16 @@ Resources:
             Statement:
               # scripts/verify-founding-ten.mjs reads live Cognito users to
               # confirm every issued badge still resolves — read-only, scoped
-              # to the single quantum-workspace user pool it checks against.
+              # to the single pool the parameter names. That pool was a
+              # literal here until 2026-09-06, and the literal was the
+              # Altivum-era pool: deployed to QL-Prod, where that id does not
+              # exist, the grant would have covered nothing and the script
+              # would have failed every build with ResourceNotFoundException
+              # (fail-closed, as it is designed to, but for the wrong reason).
               - Effect: Allow
                 Action:
                   - cognito-idp:ListUsers
-                Resource: !Sub arn:aws:cognito-idp:us-east-2:${AWS::AccountId}:userpool/us-east-2_aRydPmAjj
+                Resource: !Sub arn:aws:cognito-idp:us-east-2:${AWS::AccountId}:userpool/${FoundingTenUserPoolId}
 
   Project:
     Type: AWS::CodeBuild::Project
@@ -135,10 +152,19 @@ Resources:
         EnvironmentVariables:
           - Name: CI
             Value: "true"
+          # The pool the verify script reads is the pool the IAM grant above
+          # names, from ONE parameter. The script's own hardcoded default is
+          # for a local run; this build never relies on it.
+          - Name: QUANTUM_USER_POOL_ID
+            Value: !Ref FoundingTenUserPoolId
       Source:
         Type: GITHUB
         Location: !Ref RepoUrl
-        GitCloneDepth: 1
+        # 0 = full history (the repository's whole pack is ~15 MB). The
+        # changelog guard in the buildspec diffs a pull request from its
+        # merge-base with the base branch, and a depth-1 clone has no history
+        # to find that merge-base in.
+        GitCloneDepth: 0
         ReportBuildStatus: true
         BuildStatusConfig:
           Context: CI (CodeBuild standby)
@@ -149,16 +175,53 @@ Resources:
         # standby must be able to build any commit (including PR heads opened
         # before this stack existed) and must not be breakable by a PR that
         # edits or deletes a buildspec file. Trade-off: when ci.yml changes,
-        # update this mirror and redeploy the stack (see README).
+        # update this mirror and redeploy the stack (see README) — and
+        # scripts/ci-standby/parity.test.mjs now fails the merge until the
+        # mirror is updated, so the redeploy is the only step left to remember.
         #
         # NOTE: no Fn::Sub here — the buildspec is full of shell ${...} which
         # must reach CodeBuild verbatim.
         BuildSpec: |
           version: 0.2
-          # Mirror of .github/workflows/ci.yml (jobs: web, lambdas, python,
-          # build-smoke) as one sequential build, ordered fastest-fail-first.
-          # Every command is self-contained (explicit cd) — no reliance on
-          # cwd or env persisting between commands.
+          # Mirror of .github/workflows/ci.yml (jobs: python, web, lambdas, build-smoke)
+          # as one sequential build, ordered fastest-fail-first.
+          #
+          # scripts/ci-standby/parity.test.mjs holds this block to ci.yml: every
+          # `run:` step there must appear here as the same command lines under
+          # the same working directory, or through one of the translations that
+          # test spells out with a reason, or be excused by name below; the job
+          # list in the line above must equal ci.yml's job keys; the runtime
+          # pins must match ci.yml's env. It runs in `make guards`, in ci.yml's
+          # script-guard step, and in THIS build's script-guard step, so a
+          # standby that has drifted from ci.yml fails its own build. The gap it
+          # closed: from 2026-08-05 to 2026-09-06 the script-guard step here ran
+          # 1 of 13 suites through a bare glob while ci.yml discovered all of
+          # them, and nothing in the repository could notice.
+          #
+          # NOT mirrored, and why (the parity test excuses exactly these, by name):
+          #   - "Resolve the Playwright version": writes to $GITHUB_OUTPUT to key
+          #     actions/cache; here /root/.cache/ms-playwright is cached by path.
+          #   - "Upload the Playwright report and traces": actions/upload-artifact
+          #     has no CodeBuild counterpart without an artifacts bucket, so a red
+          #     browser suite leaves only the `list` reporter's stdout in
+          #     CloudWatch. A known gap, stated rather than faked.
+          #   - actions/checkout, setup-python, setup-node and actions/cache are
+          #     runner plumbing: the Source, runtime-versions and the S3 cache.
+          #   - `PYTEST_WORKERS=5` is kept verbatim even though this container
+          #     has 8 vCPUs against the hosted runner's 2: the mirror's job is
+          #     the same tests, not the same speed, and ci.yml's own comment
+          #     records how reasoning from the core count went. Change it
+          #     against a measured standby build.
+          #
+          # Every command is self-contained (explicit cd) — no reliance on cwd
+          # or env persisting between commands. A multi-line block fails only on
+          # its LAST status, so each one exits 1 itself where an earlier line
+          # must stop it.
+          env:
+            # bash, not the image's /bin/sh (dash): the changelog guard needs
+            # `set -o pipefail`, the same two-layer failure ci.yml's
+            # `shell: bash` buys it, and dash 0.5.11 has no pipefail.
+            shell: bash
           phases:
             install:
               runtime-versions:
@@ -170,20 +233,82 @@ Resources:
                 - cd "$CODEBUILD_SRC_DIR/web" && npm ci
                 - cd "$CODEBUILD_SRC_DIR/web" && npm run lint
                 - cd "$CODEBUILD_SRC_DIR/web" && npm test
-                # Operator scripts that move money. Mirrors the step of the
-                # same name in ci.yml's `web` job; no install needed (the
-                # issuer takes its DynamoDB client by injection).
-                - cd "$CODEBUILD_SRC_DIR" && node --test scripts/founding-credit/*.test.mjs
+                # Every scripts/**/*.test.mjs suite, DISCOVERED with the find
+                # ci.yml's "Script guard tests" step and `make guards` use, and
+                # the same refusal to pass on zero files. Never a pattern handed
+                # to `node --test`: an unmatched one exits 0 printing "tests 0"
+                # on Node 22+, which is how this step ran one suite of thirteen
+                # for five weeks and stayed green. Zero dependencies, so no
+                # `npm ci` precedes it (every suite is pure and reads only
+                # source text and plain JSON).
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  files=$(find scripts -type f -name '*.test.mjs' | sort)
+                  if [ -z "$files" ]; then
+                    echo "discovered NO scripts/**/*.test.mjs — discovery is broken or the"
+                    echo "suites moved. Refusing to pass vacuously; nothing was verified."
+                    exit 1
+                  fi
+                  echo "Running $(printf '%s\n' "$files" | wc -l | tr -d ' ') node test file(s):"
+                  printf '  %s\n' $files
+                  node --test $files
+                # Changelog guard, pull requests only (ci.yml gates it on
+                # `github.event_name == 'pull_request'`; a push to main has no
+                # base to diff against). NOT ci.yml's `HEAD^1 HEAD`: Actions
+                # checks out the pull request's MERGE commit, whose first parent
+                # is the base, so HEAD^1 is the base there. CodeBuild checks out
+                # the pull request HEAD (refs/pull/N/head), where HEAD^1 is the
+                # branch's previous commit and the diff would cover only the last
+                # push — a learner-visible change in an earlier commit would pass
+                # vacuously. So fetch the base and diff from the merge-base,
+                # which is what GitCloneDepth 0 on the Source is for. Both the
+                # webhook (CODEBUILD_WEBHOOK_BASE_REF set) and failover.sh's
+                # manual `start-build --source-version pr/N` (unset; main is the
+                # only branch the gate protects) land here. The fetch is
+                # unauthenticated: this repository is public, and CodeBuild does
+                # not offer its credential helper to webhook builds of a public
+                # repo. If the repository ever goes private the fetch fails the
+                # build loudly rather than skipping the guard.
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  case "${CODEBUILD_SOURCE_VERSION:-}" in
+                    pr/*)
+                      base="${CODEBUILD_WEBHOOK_BASE_REF:-refs/heads/main}"
+                      git fetch --no-tags origin "+${base}:refs/remotes/origin/changelog-base" || exit 1
+                      merge_base=$(git merge-base refs/remotes/origin/changelog-base HEAD) || exit 1
+                      echo "changelog guard: diffing ${merge_base} (merge-base with ${base}) .. HEAD"
+                      ( set -o pipefail; git -c core.quotePath=false diff --name-only "$merge_base" HEAD | node scripts/changelog/check.mjs )
+                      ;;
+                    *)
+                      echo "changelog guard: skipped, '${CODEBUILD_SOURCE_VERSION:-}' is not a pull request (ci.yml runs it on pull_request only)"
+                      ;;
+                  esac
                 # Live gate: fails the build if an issued Founding Ten badge no
                 # longer matches an enabled Cognito user (see the script's own
                 # header for why — email-bound, not sub-bound). No-ops offline;
-                # here it has real AWS creds via the founding-ten-verify policy.
+                # here it has real AWS creds via the founding-ten-verify policy
+                # and reads the pool QUANTUM_USER_POOL_ID names. Standby-only:
+                # GitHub Actions holds no AWS credentials, so ci.yml cannot run
+                # it without printing "skipping" on every run (README).
                 - cd "$CODEBUILD_SRC_DIR" && node scripts/verify-founding-ten.mjs
-                # --- Lambda tests (every directory under lambda/ — keep in
-                # sync with ci.yml's matrix; stripe guards the credit wallet) ---
+                # --- Lambda tests ---
+                # One suite per directory under lambda/, DERIVED from disk with
+                # the same find failover.sh's gha_contexts uses, and refusing to
+                # pass on none — so a new Lambda cannot go silently unrun here
+                # the way lambda/stripe went unrun for three weeks in ci.yml's
+                # literal matrix. No cross-check against that matrix in this
+                # block: the parity test asserts matrix == ls lambda/ on every
+                # pull request AND in the script-guard step above, so a drifted
+                # matrix fails this build before this loop starts.
                 - |
                   cd "$CODEBUILD_SRC_DIR"
-                  for d in tutor qpu sync review-email stripe analytics; do
+                  dirs=$(find lambda -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+                  if [ -z "$dirs" ]; then
+                    echo "discovered NO directories under lambda/ — discovery is broken or the Lambdas moved. Refusing to pass vacuously."
+                    exit 1
+                  fi
+                  echo "Running $(printf '%s\n' "$dirs" | wc -l | tr -d ' ') Lambda suite(s): $(printf '%s ' $dirs)"
+                  for d in $dirs; do
                     echo "=== lambda/$d ==="
                     (cd "lambda/$d" && npm ci && npm test) || exit 1
                   done
@@ -194,7 +319,7 @@ Resources:
                 - cd "$CODEBUILD_SRC_DIR" && pip install -e ".[dev,full]"
                 # qcsim is a separate package the parity + contract tests import.
                 - cd "$CODEBUILD_SRC_DIR" && pip install -e ./qcsim
-                - cd "$CODEBUILD_SRC_DIR" && make test
+                - cd "$CODEBUILD_SRC_DIR" && PYTEST_WORKERS=5 make test
                 - cd "$CODEBUILD_SRC_DIR" && make lint
                 # Drift gate: committed manifests must match a fresh scan.
                 - cd "$CODEBUILD_SRC_DIR" && python scripts/validate_runnable.py --check
@@ -227,13 +352,31 @@ Resources:
                   python3 -c "import json,sys; d=json.load(open('web/public/lab/pypi/all.json')); sys.exit(0 if 'comm' in d else 'comm missing from local piplite index')"
                   python3 -c "import json,sys; d=json.load(open('web/public/lab/jupyter-lite.json')); s=d.get('jupyter-config-data',d); ks=s['litePluginSettings']['@jupyterlite/pyodide-kernel-extension:kernel']; u=ks.get('pyodideUrl',''); assert 'jsdelivr' not in u and u.startswith('./'), 'pyodideUrl not same-origin: '+repr(u); assert ks.get('disablePyPIFallback') is True, 'disablePyPIFallback not set'; print('lab kernel same-origin OK: pyodideUrl='+u)"
                   echo "LAB self-host OK (Pyodide + closure + comm, no third-party CDN)"
-                # Static export (node_modules already installed by the web job).
+                # Static export. ci.yml's step runs `npm ci` first because it is
+                # a separate job; here node_modules is already installed by the
+                # web step above, and the parity test accepts that earlier line.
                 - cd "$CODEBUILD_SRC_DIR/web" && npm run build
                 - |
                   cd "$CODEBUILD_SRC_DIR"
                   test -d web/out || { echo "missing web/out (static export)"; exit 1; }
                   test -d web/public/lab || { echo "missing web/public/lab (JupyterLite)"; exit 1; }
                   echo "Build artifacts present: web/out/ and web/public/lab/"
+                # The math + syntax-highlight pipeline is observed NOWHERE else
+                # (every Jest suite mocks the renderer's plugins into no-ops), so
+                # grep the built artifact — same idiom as the Pyodide asserts.
+                - |
+                  cd "$CODEBUILD_SRC_DIR"
+                  page=web/out/learn/01-foundations.html
+                  test -f "$page" || { echo "missing $page"; exit 1; }
+                  grep -q 'katex-html' "$page" || { echo "no KaTeX visual output — remark-math/rehype-katex regressed"; exit 1; }
+                  grep -q 'katex-mathml' "$page" || { echo "no MathML tree — screen readers get nothing from the math"; exit 1; }
+                  grep -q '⟩' "$page" || { echo "no rendered ket glyph — KATEX_MACROS regressed"; exit 1; }
+                  grep -q 'hljs' "$page" || { echo "no hljs fences — rehype-highlight regressed"; exit 1; }
+                  grep -q 'hljs-' "$page" || { echo "fences carry no token spans — highlighting produced nothing"; exit 1; }
+                  if grep -rl 'katex-error' web/out --include='*.html'; then
+                    echo "katex-error span(s) shipped in the static export — see the page(s) above"; exit 1
+                  fi
+                  echo "Render path OK: katex + mathml + \\ket macro + hljs present, zero katex-error"
                 # Real in-browser smoke: a browser-runnable notebook under actual
                 # Pyodide + the local qcsim wheel, deterministic output asserted.
                 - cd "$CODEBUILD_SRC_DIR/web" && npx playwright install --with-deps chromium
@@ -252,3 +395,6 @@ Outputs:
     Value: CI (CodeBuild standby)
   CacheBucketName:
     Value: !Ref CacheBucket
+  FoundingTenUserPoolId:
+    Description: The Cognito pool the founding-ten verify step reads and the service role may list.
+    Value: !Ref FoundingTenUserPoolId
