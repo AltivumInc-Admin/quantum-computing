@@ -231,3 +231,17 @@ Deployment log (append, never rewrite):
 
 - 2026-09-06 — QL-Prod stack: not yet deployed at the time this section was
   written.
+- 2026-09-06 — **Deployed to QL-Prod.** Change set `initial-ql-prod`: exactly
+  four `Add`s (cache bucket, log group, project, service role), parameter
+  `FoundingTenUserPoolId=us-east-2_FXKkSoPHw`. `CREATE_COMPLETE`.
+- 2026-09-06 — **First drill on QL-Prod: `SUCCEEDED`.** Build
+  `quantum-ci-standby:e3e10470-6e74-43c7-8648-9239dc65f901` of `main` at
+  `dd918c2`; `BUILD` phase 844 s, about 15.5 min end to end (so re-measure the
+  cost paragraph above against this, not July's 14.1). Observed in the log and
+  on GitHub, not inferred: `founding-ten: all 1 issued badge(s) resolve to
+  live users` (the QL-Prod pool — the Altivum id does not exist here, so this
+  could only pass against the right one); the changelog guard correctly
+  skipped a non-PR source; and the commit status **`success · CI (CodeBuild
+  standby)`** was posted on `main`'s HEAD from QL-Prod, which is the signal the
+  merge gate would rely on. The Altivum stack is now redundant and is the next
+  thing to go.
