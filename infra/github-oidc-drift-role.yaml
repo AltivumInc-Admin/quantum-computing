@@ -129,12 +129,15 @@ Resources:
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-prefs
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-sender
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-review-email-unsubscribe
-                  # Added 2026-09-06, and NOT YET DEPLOYED at the time it was added.
-                  # The drift check's FUNCTIONS entry for quantum-signup-alert carries a
-                  # matching `grantPending` block for exactly that gap: until this stack
-                  # is redeployed the nightly job gets AccessDenied on this ARN, reports
-                  # the function as not checked, and does not fail. Deploying this file
-                  # and deleting that block are the same change and belong in one commit.
+                  # Added and DEPLOYED 2026-09-06. This one is declared inline in
+                  # infra/workspace/cognito.yaml (Code.ZipFile) rather than under lambda/,
+                  # which is how it went unwatched for a week while being the pool's
+                  # PostConfirmation trigger. Between the commit that added this line and
+                  # the deploy that made it true, the drift check's FUNCTIONS entry carried
+                  # a `grantPending` block so the nightly reported UNCHECKED rather than a
+                  # false OK or a red run; that block was deleted once the CI role was
+                  # observed reading the function. Do the same for the next one: register,
+                  # mark pending, deploy this file, prove the read, then delete the mark.
                   - !Sub arn:aws:lambda:${FunctionRegion}:${AWS::AccountId}:function:quantum-signup-alert
               # No lambda:ListFunctions. It was this template's only Resource: "*", and
               # nothing in the repo has ever called it — the drift check works from a list
