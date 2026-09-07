@@ -3,7 +3,8 @@
 ## About This Project
 
 This is a quantum computing learning and experimentation workspace using Amazon Braket.
-It follows a progressive learning path from circuit fundamentals (01-foundations) through
+It follows a progressive learning path from linear algebra (00-linear-algebra) and circuit
+fundamentals (01-foundations) through
 production hybrid quantum-classical workloads (06-hybrid-jobs), with focused tracks on
 Quantum Machine Learning and Quantum Chemistry.
 
@@ -461,7 +462,8 @@ Details and the re-sync procedure: `.design-sync/NOTES.md`.
 
 ## Structure
 
-- `00-prereqs/` through `06-hybrid-jobs/` — Progressive learning sections
+- `00-linear-algebra/` through `06-hybrid-jobs/` — Progressive learning sections. The two
+  on-ramps are `00-linear-algebra` (matrix arithmetic by hand, NumPy only) and `00-prereqs`.
 - `lib/` — Shared Python library (circuits, utils, hardware abstraction). `lib/grading.py` is the browser-safe exercise self-check runtime (`with check("Exercise N"):`).
 - `infra/` — CloudFormation templates and setup scripts
 - `tests/` — Pytest suite for lib/ (runs on local simulator only). `tests/solutions/` holds one canonical-answer file per notebook; `tests/test_exercise_checks.py` executes every notebook with those answers injected (checks must pass) and unsolved (checks must not pass).

@@ -137,7 +137,7 @@ export const en: TranslationDict = {
       one: "Review {{count}} card",
       other: "Review {{count}} cards",
     },
-    ctaStart: "Start Prerequisites",
+    ctaStart: "Start the curriculum",
     ctaContinue: "Continue {{title}}",
     ctaLab: "Open the lab",
     headlineNoTracked: "You have not graded a Rep yet.",
@@ -228,7 +228,7 @@ export const en: TranslationDict = {
     playgroundMockTitle: "Live editor",
     playgroundMockProbs: "Measurement probabilities",
     tutorMockTitle: "Ask the margin",
-    tutorMockReading: "Reading: 03 — Quantum Algorithms",
+    tutorMockReading: "Reading: 04 — Quantum Algorithms",
     tutorMockQuestion: "Why does Grover's search only need about √N queries?",
     tutorMockAnswer:
       "Each Grover iteration rotates the state a fixed angle toward the marked item, so its amplitude — not just its probability — grows with every step. Amplitudes square into probabilities, which is where the quadratic speedup lives: about π/4·√N iterations instead of N/2 checks.",
@@ -236,6 +236,11 @@ export const en: TranslationDict = {
   // Card display titles + short blurbs for the welcome curriculum grid.
   // Full GUIDE.md prose stays English until Phase 2 content translation.
   sections: {
+    "00-linear-algebra": {
+      title: "Linear Algebra: The Math Behind Quantum Computing",
+      summary:
+        "The language quantum computing is written in, built from high-school algebra. Linear equations, matrix arithmetic, multiplication and the transpose — pure NumPy, no quantum mechanics anywhere in it.",
+    },
     "00-prereqs": {
       title: "Prerequisites: From Zero to Ready-for-Quantum",
       summary:
@@ -274,6 +279,8 @@ export const en: TranslationDict = {
   },
   // Per-section gate pitches (why make an account) — richer than card summaries.
   pitches: {
+    "00-linear-algebra":
+      "Before the qubits, the grids of numbers. Four notebooks take you from solving two equations by hand to multiplying matrices, transposing them and reading a submatrix out of a larger one — with no calculus, no complex numbers and nothing quantum. If `A @ B` is unfamiliar, start here; every idea in Prerequisites is built out of it.",
     "00-prereqs":
       "Every piece of math the curriculum uses, built from zero: complex numbers, vectors and matrices, probability, and the Python you need to drive it all. No physics degree assumed — finish this section and nothing later will feel like a leap.",
     "01-foundations":
@@ -480,6 +487,7 @@ export const en: TranslationDict = {
     copyLinkAria: "Copy link to this term",
     seeAlso: "See also",
     short: {
+      "00-linear-algebra": "Linear Algebra",
       "00-prereqs": "Prerequisites",
       "01-foundations": "Foundations",
       "02-hardware": "Hardware",

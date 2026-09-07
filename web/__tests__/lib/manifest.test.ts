@@ -7,9 +7,10 @@ import {
 describe("manifest", () => {
   it("exposes every section from the generated content manifest", () => {
     const sections = getManifestSections();
-    expect(sections).toHaveLength(7);
-    expect(sections[0].slug).toBe("00-prereqs");
-    expect(sections[6].slug).toBe("06-hybrid-jobs");
+    expect(sections).toHaveLength(8);
+    expect(sections[0].slug).toBe("00-linear-algebra");
+    expect(sections[1].slug).toBe("00-prereqs");
+    expect(sections[7].slug).toBe("06-hybrid-jobs");
   });
 
   it("marks a contract-passing notebook runnable", () => {

@@ -9,6 +9,12 @@ probability, and the idea of a qubit as a unit vector in C^2, you can skip to
 [01-foundations](../01-foundations/GUIDE.md). The placement quiz at the bottom of this
 GUIDE will tell you for sure.
 
+Going the other way: this module moves quickly through matrices, and by notebook 02 it
+assumes you can already multiply two of them by hand and say why `A @ B` and `B @ A`
+differ. If that is not yet true, spend a few hours in
+[00-linear-algebra](../00-linear-algebra/GUIDE.md) first. It starts at solving two
+equations on paper and ends exactly where this module begins.
+
 ## Learning Objectives
 
 After completing this section, you will be able to:

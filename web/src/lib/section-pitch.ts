@@ -9,6 +9,8 @@
  * of truth for what exists.
  */
 const PITCHES: Record<string, string> = {
+  "00-linear-algebra":
+    "Before the qubits, the grids of numbers. Four notebooks take you from solving two equations by hand to multiplying matrices, transposing them and reading a submatrix out of a larger one — with no calculus, no complex numbers and nothing quantum. If `A @ B` is unfamiliar, start here; every idea in Prerequisites is built out of it.",
   "00-prereqs":
     "Every piece of math the curriculum uses, built from zero: complex numbers, vectors and matrices, probability, and the Python you need to drive it all. No physics degree assumed — finish this section and nothing later will feel like a leap.",
   "01-foundations":

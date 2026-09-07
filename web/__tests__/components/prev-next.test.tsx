@@ -48,9 +48,20 @@ describe("PrevNext", () => {
   });
 
   it("should not render a previous link for the first section", () => {
-    render(<PrevNext currentSlug="00-prereqs" />);
+    render(<PrevNext currentSlug="00-linear-algebra" />);
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(1);
+    expect(
+      screen.getByText("Prerequisites: From Zero to Ready-for-Quantum")
+    ).toBeInTheDocument();
+  });
+
+  it("should render both neighbours for the section after the first", () => {
+    render(<PrevNext currentSlug="00-prereqs" />);
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expect(
+      screen.getByText("Linear Algebra: The Math Behind Quantum Computing")
+    ).toBeInTheDocument();
     expect(screen.getByText("Quantum Computing Foundations")).toBeInTheDocument();
   });
 
