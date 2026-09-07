@@ -14,14 +14,16 @@
  * prefix; anything else is an exact path.
  *
  * No test-file exclusions are needed, and that was checked rather than assumed:
- * there are zero *.test.* files anywhere under any of the seven curriculum
+ * there are zero *.test.* files anywhere under any of the eight curriculum
  * directories, and zero colocated *.test.ts(x) files under web/src (every web
- * test lives in web/__tests__, outside these roots). The seven curriculum
+ * test lives in web/__tests__, outside these roots). The eight curriculum
  * directories are not uniform, for the record: 00-prereqs through
  * 05-quantum-chemistry each hold notebooks/, scripts/, GUIDE.md and
- * GUIDE.es.md, but 06-hybrid-jobs holds algorithms/, containers/, notebooks/,
- * GUIDE.md and GUIDE.es.md instead — no scripts/ subdirectory at all — and is
- * equally test-free. Add an exclusion here if colocated tests are ever
+ * GUIDE.es.md; 00-linear-algebra holds notebooks/, GUIDE.md and GUIDE.es.md
+ * with no scripts/ (its drill generator lives in lib/linalg_drills.py, shared
+ * with the rest of the curriculum); and 06-hybrid-jobs holds algorithms/,
+ * containers/, notebooks/, GUIDE.md and GUIDE.es.md instead — also no
+ * scripts/ — and all are equally test-free. Add an exclusion here if colocated tests are ever
  * introduced.
  *
  * THE lib/ ENTRIES ARE CONTENT, NOT PLUMBING. web/src/lib holds both, so it is
@@ -70,6 +72,7 @@ export const LEARNER_VISIBLE = [
   "web/src/lib/runbook.ts",
   "web/src/lib/section-pitch.ts",
   "web/src/lib/sections.ts",
+  "00-linear-algebra/",
   "00-prereqs/",
   "01-foundations/",
   "02-hardware/",

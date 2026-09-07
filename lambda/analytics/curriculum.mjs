@@ -3,8 +3,8 @@
  * survives per-notebook counting.
  *
  * summarizeDay reads request paths out of the access log the way it always has,
- * but what it may WRITE is bounded by the two sets below: seven section slugs
- * and forty-five notebook keys, all of them checked into this repository and
+ * but what it may WRITE is bounded by the two sets below: eight section slugs
+ * and forty-nine notebook keys, all of them checked into this repository and
  * all of them already public in the URL of a lesson page. A path that is not in
  * here cannot become a key, so a scanner's probe, a query string, a stray
  * redirect and a future route nobody has reviewed are all structurally
@@ -22,6 +22,7 @@
 
 /** Section directory names, in curriculum order. The order is the measure. */
 export const SECTION_SLUGS = [
+  "00-linear-algebra",
   "00-prereqs",
   "01-foundations",
   "02-hardware",
@@ -38,6 +39,11 @@ export const sectionIndex = (slug) => SECTION_SLUGS.indexOf(slug);
 
 /** "<section>/<notebook stem>" for every notebook the curriculum ships. */
 export const NOTEBOOKS = new Set([
+  // 00-linear-algebra
+  "00-linear-algebra/01-linear-equations",
+  "00-linear-algebra/02-matrices-add-subtract",
+  "00-linear-algebra/03-matrix-multiplication",
+  "00-linear-algebra/04-transpose-submatrix-properties",
   // 00-prereqs
   "00-prereqs/01-python-numpy-warmup",
   "00-prereqs/02-linear-algebra-for-quantum",

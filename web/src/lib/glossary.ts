@@ -1,6 +1,7 @@
 import { slugify } from "@/lib/slug";
 
 export type SectionSlug =
+  | "00-linear-algebra"
   | "00-prereqs"
   | "01-foundations"
   | "02-hardware"
@@ -19,8 +20,9 @@ export interface GlossaryTerm {
 
 // Short, chip-sized labels for each curriculum section. Abbreviates the long
 // manifest titles ("Prerequisites: From Zero to..." -> "Prerequisites"). The
-// glossary.test asserts these keys are exactly the 7 manifest slugs.
+// glossary.test asserts these keys are exactly the 8 manifest slugs.
 export const SECTION_SHORT_LABEL: Record<SectionSlug, string> = {
+  "00-linear-algebra": "Linear Algebra",
   "00-prereqs": "Prerequisites",
   "01-foundations": "Foundations",
   "02-hardware": "Hardware",
@@ -131,6 +133,41 @@ export const GLOSSARY: GlossaryTerm[] = [
   { term: "Variational quantum eigensolver", section: "05-quantum-chemistry", aliases: ["VQE"],
     definition: "A hybrid algorithm that measures a Hamiltonian's energy on a quantum device while a classical optimizer minimizes it to estimate the ground state.",
     seeAlso: ["Hamiltonian", "Ansatz"] },
+
+  // ----- 00-linear-algebra (Linear Algebra) -----
+  { term: "Linear equation", section: "00-linear-algebra", aliases: ["linear system", "system of equations"],
+    definition: "An equation in which every unknown stands alone, multiplied only by a number — no squares, no roots, no unknowns multiplied together; a system of two in two unknowns has exactly one solution, none, or infinitely many, and nothing else.",
+    seeAlso: ["Matrix", "Matrix multiplication"] },
+  { term: "Matrix", section: "00-linear-algebra", aliases: ["matrices", "grid of numbers"],
+    definition: "A rectangular grid of numbers indexed by row then column; states, gates and observables in quantum computing are all matrices once the notation is stripped away.",
+    seeAlso: ["Shape", "Entry", "Unitary matrix"] },
+  { term: "Shape", section: "00-linear-algebra", aliases: ["dimensions", "rows and columns"],
+    definition: "A matrix's row and column counts, written $(m, n)$ and read from `A.shape`; it is the first thing to check, because shape alone decides whether an operation is defined at all.",
+    seeAlso: ["Matrix", "Matrix multiplication", "Submatrix"] },
+  { term: "Entry", section: "00-linear-algebra", aliases: ["element", "component"],
+    definition: "A single number inside a matrix, written $a_{ij}$ for row $i$ and column $j$ and reached as `A[i, j]` — note the notation counts from one and the code counts from zero.",
+    seeAlso: ["Matrix", "Shape"] },
+  { term: "Identity matrix", section: "00-linear-algebra", aliases: ["unit matrix", "np.eye"],
+    definition: "The square matrix with ones down the diagonal and zeros everywhere else; it leaves every matrix it multiplies unchanged, which is what $U^\\dagger U = I$ is asserting when it says a gate is reversible.",
+    seeAlso: ["Matrix multiplication", "Zero matrix", "Unitary matrix"] },
+  { term: "Zero matrix", section: "00-linear-algebra", aliases: ["null matrix"],
+    definition: "The matrix whose every entry is zero; it is the additive identity, so adding it changes nothing — and it is a different object from the identity matrix, which is the multiplicative one.",
+    seeAlso: ["Identity matrix", "Scalar multiplication"] },
+  { term: "Scalar multiplication", section: "00-linear-algebra", aliases: ["scaling a matrix"],
+    definition: "Multiplying every entry of a matrix by one number, written `2 * A`; the shape never changes and the operation is always defined, which is exactly what makes it the easy case.",
+    seeAlso: ["Matrix multiplication", "Zero matrix"] },
+  { term: "Matrix multiplication", section: "00-linear-algebra", aliases: ["matmul", "rows times columns"],
+    definition: "The rows-times-columns product `A @ B`, defined only when A's column count equals B's row count; it is not entrywise multiplication (`A * B` is), and $AB \\neq BA$ in general — which is why the order of gates in a circuit changes the result.",
+    seeAlso: ["Shape", "Identity matrix", "Transpose"] },
+  { term: "Transpose", section: "00-linear-algebra", aliases: ["A.T", "transposed"],
+    definition: "The matrix obtained by swapping rows and columns, so $(A^T)_{ij} = A_{ji}$; it reverses the order of a product, $(AB)^T = B^T A^T$, and once complex conjugation is added it becomes the dagger used everywhere in quantum notation.",
+    seeAlso: ["Symmetric matrix", "Matrix multiplication", "Unitary matrix"] },
+  { term: "Symmetric matrix", section: "00-linear-algebra", aliases: ["symmetric"],
+    definition: "A square matrix equal to its own transpose, $A = A^T$; it is the real-number rehearsal for a Hermitian operator, which is the same statement with conjugation added.",
+    seeAlso: ["Transpose"] },
+  { term: "Submatrix", section: "00-linear-algebra", aliases: ["block", "slice"],
+    definition: "The smaller matrix left after keeping a chosen set of rows and columns, taken as `A[0:2, 1:3]`; reading a large operator one block at a time is how a multi-qubit gate is understood subsystem by subsystem.",
+    seeAlso: ["Matrix", "Entry", "Shape"] },
 
   // ----- 00-prereqs (Prerequisites) -----
   { term: "Hilbert space", section: "00-prereqs", aliases: ["state space"],

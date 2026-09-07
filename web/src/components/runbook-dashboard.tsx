@@ -148,7 +148,7 @@ function EmptyShell() {
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Link
-          href="/learn/00-prereqs"
+          href={`/learn/${getSections()[0].slug}`}
           className="inline-flex items-center rounded-control surface-accent px-4 py-2 text-sm font-medium interactive focus-ring"
         >
           {t("runbookUi.startLesson")}

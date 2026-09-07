@@ -48,6 +48,7 @@ QCSIM_INIT = REPO_ROOT / "qcsim" / "src" / "qcsim" / "__init__.py"
 # Curriculum section directories that hold authored notebooks. We list them
 # explicitly so we never scan the staged copies under web/jupyterlite-build/.
 SECTION_DIRS = [
+    "00-linear-algebra",
     "00-prereqs",
     "01-foundations",
     "02-hardware",

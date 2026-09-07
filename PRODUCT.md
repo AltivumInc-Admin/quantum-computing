@@ -94,9 +94,9 @@ the same kernel.
 
 ## Capabilities and Constraints
 
-**Curriculum.** Seven sections (00-prereqs → 06-hybrid-jobs, with QML and
-chemistry as sections 04 and 05 *inside* that sequence, not side tracks), 45
-notebooks, 32 browser-runnable. The 13 that are not — including all seven of
+**Curriculum.** Eight sections (00-linear-algebra → 06-hybrid-jobs, with QML and
+chemistry as sections 04 and 05 *inside* that sequence, not side tracks), 49
+notebooks, 36 browser-runnable. The 13 that are not — including all seven of
 06-hybrid-jobs — require the real `amazon-braket-sdk`. 133 graded exercises;
 every notebook carries at least one. The exercise convention is a fixed
 three-cell unit with two mandatory hint tiers that steer without solving; checks
@@ -246,7 +246,7 @@ every time one is opened. Requests are grouped by network address only while the
 day is being counted — to tell crawlers from people, and so one person opening
 the same notebook twice counts once — and those addresses are then discarded.
 What is written is keyed by curriculum identifiers from a checked-in allowlist
-(seven section slugs, forty-five notebook keys, all already public in lesson
+(eight section slugs, forty-nine notebook keys, all already public in lesson
 URLs), so a request path cannot become a stored key even in principle.
 
 **What it deliberately still does not measure, and will not from these rows:**
@@ -324,7 +324,7 @@ reveals and long ambient loops are decorative and reduced-motion-gated.
 
 - **Is Spanish a parity commitment or UI chrome?** Today chrome, glossary and
   pricing are bilingual with CI-enforced parity, but lesson prose, Rep prompts,
-  all 45 notebooks and the tutor's answers are English-only. The tutor locale
+  all 49 notebooks and the tutor's answers are English-only. The tutor locale
   pass is described in its spec as a one-line change with significant learner
   impact and has never shipped. Undecided.
 - **Should a Spanish-language browser auto-default via `navigator.language`, or

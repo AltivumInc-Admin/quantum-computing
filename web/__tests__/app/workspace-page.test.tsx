@@ -42,10 +42,10 @@ describe("WorkspacePage — THE BENCH", () => {
     expect(screen.getByRole("region", { name: /curriculum/i })).toBeInTheDocument();
   });
 
-  it("with no graded Reps, the Valve steers to Start Prerequisites", () => {
+  it("with no graded Reps, the Valve steers to the first module", () => {
     render(<WorkspacePage />);
-    const cta = screen.getByRole("link", { name: /start prerequisites/i });
-    expect(cta).toHaveAttribute("href", "/learn/00-prereqs");
+    const cta = screen.getByRole("link", { name: /start the curriculum/i });
+    expect(cta).toHaveAttribute("href", "/learn/00-linear-algebra");
     expect(cta).toHaveClass("surface-accent");
   });
 

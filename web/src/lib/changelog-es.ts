@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-07-linear-algebra-on-ramp": {
+    title: "Un nuevo primer módulo enseña el álgebra lineal que todo lo demás da por sabida",
+    body: "El plan de estudios empezaba con Prerrequisitos, que avanza rápido porque da por hecho que ya sabes multiplicar dos matrices y por qué importa el orden. Ahora hay un módulo nuevo delante que construye justamente eso, partiendo del álgebra de secundaria: ecuaciones lineales, sumar y escalar matrices, la regla de filas por columnas y la transpuesta. Sin cálculo, sin números complejos, sin nada cuántico y sin instalar nada — las cuatro lecciones se ejecutan en tu navegador. Si multiplicar matrices ya te resulta rutinario, sáltatelo y empieza donde empezabas antes; la página inicial del módulo te da cinco preguntas para decidirlo.",
+  },
   "2026-09-06-hardware-pricing-copy": {
     title: "Los paneles de hardware describen los precios con m\u00e1s cuidado",
     body: "Los paneles del espacio de trabajo y del laboratorio que describen el dispositivo IQM Garnet inclu\u00edan una frase sobre c\u00f3mo se calcular\u00eda el precio de una ejecuci\u00f3n. Se escribi\u00f3 antes del modelo de precios actual y ya no era cierta, as\u00ed que se ha eliminado en lugar de reformularla: esos paneles ahora indican la tarifa publicada por Amazon Braket para el dispositivo y no afirman nada m\u00e1s. Nada de lo que puedes hacer cambia y nada te cobra hoy \u2014 es una correcci\u00f3n de lo que dicen las p\u00e1ginas, no de lo que hacen.",

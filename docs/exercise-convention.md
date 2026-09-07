@@ -82,9 +82,9 @@ Rules:
 ## Section header
 
 The exercise block sits under a `## Exercises` header (numbered notebooks use
-`## N. Exercises`). The prereqs notebooks keep their appended `### Solutions`
-cell — visible worked answers are that section's deliberate on-ramp — but use
-the same three-cell unit above.
+`## N. Exercises`). The two on-ramp sections, `00-linear-algebra` and
+`00-prereqs`, keep their appended `### Solutions` cell — visible worked answers
+are what makes them an on-ramp — but use the same three-cell unit above.
 
 ## Canonical solutions
 

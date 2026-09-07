@@ -27,7 +27,8 @@ test("the sections are exactly the curriculum's, in curriculum order", () => {
   assert.deepEqual(SECTION_SLUGS, declared);
   assert.deepEqual([...SECTIONS].sort(), [...declared].sort());
   // Order is not decoration: furthestSection picks the maximum by this index.
-  assert.equal(sectionIndex("00-prereqs"), 0);
+  assert.equal(sectionIndex("00-linear-algebra"), 0);
+  assert.equal(sectionIndex("00-prereqs"), 1);
   assert.ok(sectionIndex("06-hybrid-jobs") > sectionIndex("03-algorithms"));
   assert.equal(sectionIndex("not-a-section"), -1);
 });

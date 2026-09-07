@@ -4,10 +4,35 @@
   "wheel": "qcsim-0.3.0-py3-none-any.whl",
   "sections": [
     {
+      "slug": "00-linear-algebra",
+      "dirName": "00-linear-algebra",
+      "title": "Linear Algebra: The Math Behind Quantum Computing",
+      "index": 0,
+      "notebookCount": 4,
+      "notebooks": [
+        {
+          "filename": "01-linear-equations.ipynb",
+          "runnable": true
+        },
+        {
+          "filename": "02-matrices-add-subtract.ipynb",
+          "runnable": true
+        },
+        {
+          "filename": "03-matrix-multiplication.ipynb",
+          "runnable": true
+        },
+        {
+          "filename": "04-transpose-submatrix-properties.ipynb",
+          "runnable": true
+        }
+      ]
+    },
+    {
       "slug": "00-prereqs",
       "dirName": "00-prereqs",
       "title": "Prerequisites: From Zero to Ready-for-Quantum",
-      "index": 0,
+      "index": 1,
       "notebookCount": 6,
       "notebooks": [
         {
@@ -40,7 +65,7 @@
       "slug": "01-foundations",
       "dirName": "01-foundations",
       "title": "Quantum Computing Foundations",
-      "index": 1,
+      "index": 2,
       "notebookCount": 5,
       "notebooks": [
         {
@@ -69,7 +94,7 @@
       "slug": "02-hardware",
       "dirName": "02-hardware",
       "title": "Quantum Hardware on Amazon Braket",
-      "index": 2,
+      "index": 3,
       "notebookCount": 6,
       "notebooks": [
         {
@@ -102,7 +127,7 @@
       "slug": "03-algorithms",
       "dirName": "03-algorithms",
       "title": "Quantum Algorithms",
-      "index": 3,
+      "index": 4,
       "notebookCount": 6,
       "notebooks": [
         {
@@ -135,7 +160,7 @@
       "slug": "04-quantum-ml",
       "dirName": "04-quantum-ml",
       "title": "Quantum Machine Learning",
-      "index": 4,
+      "index": 5,
       "notebookCount": 7,
       "notebooks": [
         {
@@ -172,7 +197,7 @@
       "slug": "05-quantum-chemistry",
       "dirName": "05-quantum-chemistry",
       "title": "Quantum Chemistry & Biochemistry",
-      "index": 5,
+      "index": 6,
       "notebookCount": 8,
       "notebooks": [
         {
@@ -213,7 +238,7 @@
       "slug": "06-hybrid-jobs",
       "dirName": "06-hybrid-jobs",
       "title": "Production Hybrid Quantum-Classical Jobs",
-      "index": 6,
+      "index": 7,
       "notebookCount": 7,
       "notebooks": [
         {

@@ -52,6 +52,15 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-07-linear-algebra-on-ramp",
+    shipped: "2026-09-07",
+    kind: "new",
+    title: "A new first module teaches the linear algebra everything else assumes",
+    body: "The curriculum used to open with Prerequisites, which moves quickly because it takes for granted that you can already multiply two matrices and know why the order matters. A new module now sits in front of it and builds exactly that, starting from high-school algebra: linear equations, adding and scaling matrices, the rows-times-columns rule, and the transpose. No calculus, no complex numbers, nothing quantum, and nothing to install — all four lessons run in your browser. If matrix multiplication is already routine for you, skip it and begin where you did before; the module's opening page gives you five questions to decide with.",
+    href: "/learn/00-linear-algebra",
+    section: "00-linear-algebra",
+  },
+  {
     id: "2026-09-06-hardware-pricing-copy",
     shipped: "2026-09-06",
     kind: "fixed",

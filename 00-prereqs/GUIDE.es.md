@@ -4,6 +4,8 @@ Este es el módulo de entrada. Si **no tienes formación en computación cuánti
 
 Si ya te sientes cómodo con números complejos, vectores, matrices, NumPy, probabilidad básica y la idea de un cúbit como un vector unitario en C^2, puedes saltar a [01-foundations](../01-foundations/GUIDE.md). El cuestionario de ubicación al final de esta GUIDE te lo confirmará.
 
+En sentido contrario: este módulo avanza rápido con las matrices y, para el cuaderno 02, da por hecho que ya sabes multiplicar dos a mano y explicar por qué `A @ B` y `B @ A` no coinciden. Si todavía no es así, dedica unas horas a [00-linear-algebra](../00-linear-algebra/GUIDE.md) primero. Empieza resolviendo dos ecuaciones en papel y termina justo donde empieza este módulo.
+
 ## Objetivos de aprendizaje
 
 Al completar esta sección, serás capaz de:

@@ -23,9 +23,9 @@
 
 A single repository that teaches quantum computing **from "I've never seen a complex number in code" to "I run production hybrid quantum-classical jobs on real QPUs"** — and ships the tooling to make every step real:
 
-- **A 7-module, 45-notebook curriculum** on [Amazon Braket](https://aws.amazon.com/braket/), strictly numbered and cumulative, with cost-awareness woven through every step.
+- **An 8-module, 49-notebook curriculum** on [Amazon Braket](https://aws.amazon.com/braket/), strictly numbered and cumulative, with cost-awareness woven through every step.
 - **A statically-exported Next.js learning portal** (`web/`) that renders each module's `GUIDE.md` as a math-native page with **live, interactive circuit widgets** and an **interactive placement quiz**.
-- **In-browser, zero-install notebooks**: 32 of the 45 notebooks run entirely in your browser via **JupyterLite + Pyodide**, with a custom NumPy simulator (`qcsim`) that drop-in replaces the Braket SDK.
+- **In-browser, zero-install notebooks**: 36 of the 49 notebooks run entirely in your browser via **JupyterLite + Pyodide**, with a custom NumPy simulator (`qcsim`) that drop-in replaces the Braket SDK.
 - **A shared Python toolkit** (`lib/`) of circuits, device abstractions, QML, and quantum-chemistry building blocks the notebooks import instead of reinventing.
 - **Production AWS infrastructure as code** (`infra/`) — least-privilege IAM, encrypted result storage with lifecycle cleanup, and a hard monthly budget alarm.
 - **Six serverless backends** (`lambda/`) — the streaming lesson tutor, per-user progress sync, the hard-capped real-QPU submission path, an opt-in review-email sender, the Stripe checkout/webhook, and product analytics — each an independently tested Node.js Lambda with its own SAM template.
@@ -39,7 +39,7 @@ A single repository that teaches quantum computing **from "I've never seen a com
 
 | | |
 |---|---|
-| **Truly beginner-first** | `00-prereqs` assumes *no* quantum background and *no* AWS account — just NumPy. Every formal symbol is taught **Plain English → Code first → Notation → Self-check**, with a Dirac↔NumPy "Rosetta stone." |
+| **Truly beginner-first** | `00-linear-algebra` starts at solving two equations by hand and `00-prereqs` assumes *no* quantum background and *no* AWS account — just NumPy. Every formal symbol is taught **Plain English → Code first → Notation → Self-check**, with a Dirac↔NumPy "Rosetta stone." |
 | **Notebooks that run anywhere** | 32 notebooks execute in the browser with no install (Pyodide + `qcsim`). The rest run locally on the free Braket `LocalSimulator`. |
 | **Math-native portal** | KaTeX everywhere, plus `​```qsim` fenced blocks that become **live circuit simulators** (probability bars, Dirac state, Bloch dial, θ slider) right inside the prose. |
 | **Simulator parity, proven** | `qcsim` (Python) and `math.ts` (TypeScript) both mirror Braket's conventions and are **tested for parity** against the real SDK to 4σ / `1e-10`. |
@@ -115,7 +115,7 @@ flowchart LR
 | **06** | **Production Hybrid Quantum-Classical Jobs** | 7 | 0/7 | Braket Hybrid Jobs, parametric compilation, checkpointing, custom containers, monitoring & cost controls |
 | | **Total** | **45** | **32** | |
 
-Each module's `GUIDE.md` follows the same shape: **Learning Objectives → Prerequisites → Concepts → Hands-On Exercises (numbered notebooks, each with a Scripts subsection) → References.** Reusable helper scripts (`scripts/`) keep shared logic out of the lessons. `00-prereqs` is the exception — it adds a Setup section and a Self-Assessment, and ends with a **10-question placement quiz** (rendered interactively in the portal): pass ≥ 7 unaided and skip straight to `01-foundations`.
+Each module's `GUIDE.md` follows the same shape: **Learning Objectives → Prerequisites → Concepts → Hands-On Exercises (numbered notebooks, each with a Scripts subsection) → References.** Reusable helper scripts (`scripts/`) keep shared logic out of the lessons. The two on-ramp modules are the exception — each adds a Setup section and a Self-Assessment. `00-prereqs` ends with a **10-question placement quiz** (rendered interactively in the portal): pass ≥ 7 unaided and skip straight to `01-foundations`. `00-linear-algebra` ends with a five-question self-check that sends you on to `00-prereqs`.
 
 ---
 
@@ -145,7 +145,7 @@ python 00-prereqs/scripts/check_prereqs.py          # verifies your environment
 jupyter lab 00-prereqs/notebooks                    # start learning
 ```
 
-Everything in `00-prereqs`, `01-foundations`, and the first three `03-algorithms` notebooks runs on the **free local simulator** — no AWS credentials needed.
+Everything in `00-linear-algebra`, `00-prereqs`, `01-foundations`, and the first three `03-algorithms` notebooks runs on the **free local simulator** — no AWS credentials needed.
 
 ### Path C — Full workspace (AWS Braket, real hardware)
 
@@ -247,7 +247,7 @@ This is a **dual-stack monorepo**: a Python curriculum/toolkit and a TypeScript 
 flowchart TB
     subgraph content["📚 Curriculum (repo root)"]
         guides["7 × GUIDE.md"]
-        nbs["45 notebooks"]
+        nbs["49 notebooks"]
         sci["per-section scripts/"]
     end
 
@@ -293,6 +293,7 @@ flowchart TB
 
 ```text
 quantum-computing/
+├── 00-linear-algebra/       # Matrices by hand, then in NumPy — no quantum (4 notebooks)
 ├── 00-prereqs/              # NumPy on-ramp — no AWS, no quantum SDK (6 notebooks)
 ├── 01-foundations/          # Qubits, gates, entanglement, Braket basics (5)
 ├── 02-hardware/             # QPUs, managed simulators, noise, cost (6)
@@ -443,7 +444,7 @@ Notebooks that import `braket.aws` **must not** be marked browser-runnable — t
 
 **Stack:** Next.js 16 · React 19 · Tailwind CSS v4 (configured entirely in `globals.css` via `@theme`/`@plugin`/`@variant`, no `tailwind.config`) · `next-themes` (dark default) · `react-markdown` + `remark-gfm`/`remark-math` + `rehype-katex`/`rehype-highlight` · KaTeX · fonts **Instrument Serif** (display) + **Plus Jakarta Sans** (body).
 
-**Content pipeline.** [`web/src/lib/sections.ts`](web/src/lib/sections.ts) is the 7-entry section manifest; [`content.ts`](web/src/lib/content.ts) reads each sibling `GUIDE.md` at build time and lists its notebooks (detecting the `<!-- browser-runnable -->` marker). `learn/[section]/page.tsx` is statically materialized via `generateStaticParams()`.
+**Content pipeline.** [`web/src/lib/sections.ts`](web/src/lib/sections.ts) is the 8-entry section manifest; [`content.ts`](web/src/lib/content.ts) reads each sibling `GUIDE.md` at build time and lists its notebooks (detecting the `<!-- browser-runnable -->` marker). `learn/[section]/page.tsx` is statically materialized via `generateStaticParams()`.
 
 **Two interactive Markdown extensions** (wired in [`markdown-renderer.tsx`](web/src/components/markdown-renderer.tsx) by overriding the `pre` renderer):
 

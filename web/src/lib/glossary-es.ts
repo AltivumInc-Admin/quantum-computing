@@ -193,6 +193,28 @@ export const GLOSSARY_ES: Record<string, string> = {
     "El ciclo repetitivo de un algoritmo variacional: preparar un estado parametrizado, medir el coste, dejar que el optimizador clásico elija nuevos parámetros, y repetir hasta la convergencia.",
   Checkpointing:
     "Guardar periódicamente el estado del optimizador de un job para que una ejecución larga que falle pueda reanudarse desde el último guardado en lugar de reiniciar; `save_job_checkpoint()` y `load_job_checkpoint()` en Braket.",
+  "Linear equation":
+    "Una ecuación en la que cada incógnita aparece sola, multiplicada solo por un número — sin cuadrados, sin raíces, sin incógnitas multiplicadas entre sí; un sistema de dos ecuaciones con dos incógnitas tiene exactamente una solución, ninguna o infinitas, y nada más.",
+  Matrix:
+    "Una cuadrícula rectangular de números indexada por fila y luego por columna; los estados, las compuertas y los observables de la computación cuántica son todos matrices una vez que se quita la notación.",
+  Shape:
+    "El número de filas y columnas de una matriz, escrito $(m, n)$ y leído con `A.shape`; es lo primero que hay que comprobar, porque solo la forma decide si una operación está definida.",
+  Entry:
+    "Un único número dentro de una matriz, escrito $a_{ij}$ para la fila $i$ y la columna $j$ y alcanzado como `A[i, j]` — la notación cuenta desde uno y el código cuenta desde cero.",
+  "Identity matrix":
+    "La matriz cuadrada con unos en la diagonal y ceros en todo lo demás; deja sin cambios a cualquier matriz que multiplique, que es lo que afirma $U^\\dagger U = I$ cuando dice que una compuerta es reversible.",
+  "Zero matrix":
+    "La matriz cuyas entradas son todas cero; es el elemento neutro de la suma, así que sumarla no cambia nada — y es un objeto distinto de la matriz identidad, que es el neutro del producto.",
+  "Scalar multiplication":
+    "Multiplicar cada entrada de una matriz por un número, escrito `2 * A`; la forma nunca cambia y la operación siempre está definida, que es justo lo que la hace el caso fácil.",
+  "Matrix multiplication":
+    "El producto de filas por columnas `A @ B`, definido solo cuando el número de columnas de A iguala al de filas de B; no es la multiplicación entrada a entrada (`A * B` sí lo es), y en general $AB \\neq BA$ — por eso el orden de las compuertas en un circuito cambia el resultado.",
+  Transpose:
+    "La matriz que se obtiene al intercambiar filas y columnas, de modo que $(A^T)_{ij} = A_{ji}$; invierte el orden de un producto, $(AB)^T = B^T A^T$, y al añadir la conjugación compleja se convierte en la daga que se usa en toda la notación cuántica.",
+  "Symmetric matrix":
+    "Una matriz cuadrada igual a su propia transpuesta, $A = A^T$; es el ensayo con números reales de un operador hermítico, que es la misma afirmación con la conjugación añadida.",
+  Submatrix:
+    "La matriz más pequeña que queda al conservar un conjunto elegido de filas y columnas, tomada como `A[0:2, 1:3]`; leer un operador grande bloque a bloque es como se entiende una compuerta multicúbit subsistema por subsistema.",
 };
 
 /** English term → preferred Spanish display form (learner-facing). */
@@ -293,4 +315,15 @@ export const GLOSSARY_TERM_ES: Record<string, string> = {
   "Mixer Hamiltonian": "Hamiltoniano mezclador",
   "Optimization loop": "Bucle de optimización",
   Checkpointing: "Checkpointing",
+  "Linear equation": "Ecuación lineal",
+  Matrix: "Matriz",
+  Shape: "Forma",
+  Entry: "Entrada",
+  "Identity matrix": "Matriz identidad",
+  "Zero matrix": "Matriz cero",
+  "Scalar multiplication": "Multiplicación por un escalar",
+  "Matrix multiplication": "Multiplicación de matrices",
+  Transpose: "Transpuesta",
+  "Symmetric matrix": "Matriz simétrica",
+  Submatrix: "Submatriz",
 };

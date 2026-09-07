@@ -102,14 +102,17 @@ describe("Sidebar", () => {
     expect(screen.getByText("Learning Path")).toBeInTheDocument();
   });
 
-  it("should render all 7 section links", () => {
+  it("should render all 8 section links", () => {
     render(<Sidebar />);
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(7);
+    expect(links).toHaveLength(8);
   });
 
   it("should render each section title", () => {
     render(<Sidebar />);
+    expect(
+      screen.getByText("Linear Algebra: The Math Behind Quantum Computing")
+    ).toBeInTheDocument();
     expect(screen.getByText("Quantum Computing Foundations")).toBeInTheDocument();
     expect(screen.getByText("Quantum Hardware on Amazon Braket")).toBeInTheDocument();
     expect(screen.getByText("Quantum Algorithms")).toBeInTheDocument();
@@ -121,9 +124,10 @@ describe("Sidebar", () => {
   it("should link each section to /learn/{slug}", () => {
     render(<Sidebar />);
     const links = screen.getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/learn/00-prereqs");
-    expect(links[1]).toHaveAttribute("href", "/learn/01-foundations");
-    expect(links[6]).toHaveAttribute("href", "/learn/06-hybrid-jobs");
+    expect(links[0]).toHaveAttribute("href", "/learn/00-linear-algebra");
+    expect(links[1]).toHaveAttribute("href", "/learn/00-prereqs");
+    expect(links[2]).toHaveAttribute("href", "/learn/01-foundations");
+    expect(links[7]).toHaveAttribute("href", "/learn/06-hybrid-jobs");
   });
 
   it("should render the mobile toggle button", () => {
@@ -254,7 +258,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     const bar = screen.getByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "2");
-    expect(bar).toHaveAttribute("aria-valuemax", "7");
+    expect(bar).toHaveAttribute("aria-valuemax", "8");
     expect(bar).toHaveAttribute("aria-valuemin", "0");
   });
 

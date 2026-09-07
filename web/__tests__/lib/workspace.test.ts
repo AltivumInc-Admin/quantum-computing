@@ -51,12 +51,14 @@ describe("resolveValve — deterministic precedence", () => {
     expect(v.external).toBe(true);
   });
 
-  it("4. tracked 0 → Start Prerequisites (checked BEFORE continue, even with an incomplete module)", () => {
+  it("4. tracked 0 → start the curriculum (checked BEFORE continue, even with an incomplete module)", () => {
     const v = resolveValve({ due: 0, tracked: 0, daysUntilNext: null, firstIncomplete: incomplete });
     expect(v.kind).toBe("start");
     expect(v.headline).toBe("You have not graded a Rep yet.");
-    expect(v.cta).toBe("Start Prerequisites");
-    expect(v.href).toBe("/learn/00-prereqs");
+    expect(v.cta).toBe("Start the curriculum");
+    // Derived from the manifest, never a hardcoded slug: a new first module
+    // moves this on its own. 00-linear-algebra became that module 2026-09-07.
+    expect(v.href).toBe("/learn/00-linear-algebra");
   });
 
   it("falls back to a generic line when nothing is pending (daysUntilNext null)", () => {
@@ -92,8 +94,8 @@ describe("readWorkspace — the single local read", () => {
     expect(m.valve.kind).toBe("start"); // tracked 0
     expect(m.sectionsTotal).toBe(getSections().length);
     // The catalog is present and honest even with no account.
-    expect(m.sections).toHaveLength(7);
-    expect(m.runnableTotal).toBe(32);
+    expect(m.sections).toHaveLength(8);
+    expect(m.runnableTotal).toBe(36);
   });
 
   it("builds a Lab launcher href that resolves to a real manifest notebook path", () => {

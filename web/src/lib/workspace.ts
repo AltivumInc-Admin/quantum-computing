@@ -54,6 +54,11 @@ export const SPARSE_THRESHOLD = 5;
  *  (which owns the manifest-derived link helpers) rather than spelled out twice. */
 export const LAB_HREF = LAB_INDEX_HREF;
 
+/** Where "start the curriculum" goes: the FIRST section in the manifest, never a
+ *  hardcoded slug. A new first module (00-linear-algebra, 2026-09-07) moved this
+ *  once already; deriving it means the next one moves nothing. */
+export const START_HREF = `/learn/${getManifestSections()[0].slug}`;
+
 export interface WorkspaceNotebook {
   filename: string;
   /** Zero-padded index parsed from the filename's leading NN- (e.g. "01"). */
@@ -142,9 +147,9 @@ export interface WorkspaceModel {
  *   1. due > 0               → "Review N cards"                         → /review
  *   2. due = 0, modules left  → "Nothing is due. Next Rep in N days."   → /learn/{next}
  *   3. due = 0, all complete  → same line                              → open the lab
- *   4. tracked = 0            → "You have not graded a Rep yet."        → /learn/00-prereqs
+ *   4. tracked = 0            → "You have not graded a Rep yet."        → START_HREF
  * (4 is checked before 2/3: a learner who has graded nothing is sent to start, not
- * "continue", even though 00-prereqs is also their first incomplete module.)
+ * "continue", even though the first module is also their first incomplete one.)
  */
 export function resolveValve(input: {
   due: number;
@@ -171,7 +176,7 @@ export function resolveValve(input: {
       kind: "start",
       headline: t("workspace.headlineNoTracked"),
       cta: t("workspace.ctaStart"),
-      href: "/learn/00-prereqs",
+      href: START_HREF,
       external: false,
     };
   }

@@ -138,7 +138,7 @@ export const es: TranslationDict = {
       one: "Repasar {{count}} tarjeta",
       other: "Repasar {{count}} tarjetas",
     },
-    ctaStart: "Comenzar Prerrequisitos",
+    ctaStart: "Comenzar el curso",
     ctaContinue: "Continuar {{title}}",
     ctaLab: "Abrir el laboratorio",
     headlineNoTracked: "Aún no has calificado un ejercicio.",
@@ -229,12 +229,17 @@ export const es: TranslationDict = {
     playgroundMockTitle: "Editor en vivo",
     playgroundMockProbs: "Probabilidades de medición",
     tutorMockTitle: "Pregunta al margen",
-    tutorMockReading: "Leyendo: 03 — Algoritmos cuánticos",
+    tutorMockReading: "Leyendo: 04 — Algoritmos cuánticos",
     tutorMockQuestion: "¿Por qué la búsqueda de Grover solo necesita unas √N consultas?",
     tutorMockAnswer:
       "Cada iteración de Grover rota el estado un ángulo fijo hacia el elemento marcado, de modo que su amplitud — no solo su probabilidad — crece en cada paso. Las amplitudes se elevan al cuadrado y se convierten en probabilidades: ahí vive la aceleración cuadrática, unas π/4·√N iteraciones en lugar de N/2 comprobaciones.",
   },
   sections: {
+    "00-linear-algebra": {
+      title: "Álgebra lineal: la matemática detrás de la computación cuántica",
+      summary:
+        "El idioma en el que está escrita la computación cuántica, construido desde el álgebra de secundaria. Ecuaciones lineales, aritmética de matrices, multiplicación y transpuesta — NumPy puro, sin mecánica cuántica en ninguna parte.",
+    },
     "00-prereqs": {
       title: "Prerrequisitos: de cero a listo para lo cuántico",
       summary:
@@ -272,6 +277,8 @@ export const es: TranslationDict = {
     },
   },
   pitches: {
+    "00-linear-algebra":
+      "Antes de los cúbits, las cuadrículas de números. Cuatro cuadernos te llevan de resolver dos ecuaciones a mano a multiplicar matrices, transponerlas y extraer una submatriz de otra mayor — sin cálculo, sin números complejos y sin nada cuántico. Si `A @ B` te resulta desconocido, empieza aquí; todo lo que hay en Prerrequisitos se construye sobre esto.",
     "00-prereqs":
       "Toda la matemática que usa el currículo, construida desde cero: números complejos, vectores y matrices, probabilidad y el Python que necesitas para manejarlo. Sin título en física — termina esta sección y nada de lo que sigue se sentirá como un salto.",
     "01-foundations":
@@ -476,6 +483,7 @@ export const es: TranslationDict = {
     copyLinkAria: "Copiar enlace a este término",
     seeAlso: "Véase también",
     short: {
+      "00-linear-algebra": "Álgebra lineal",
       "00-prereqs": "Prerrequisitos",
       "01-foundations": "Fundamentos",
       "02-hardware": "Hardware",
