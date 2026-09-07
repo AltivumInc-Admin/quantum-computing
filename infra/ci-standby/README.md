@@ -223,9 +223,9 @@ account-aware, the buildspec re-mirrored against `ci.yml` with
 `scripts/ci-standby/parity.test.mjs` to keep it that way, and the pool id
 corrected. Deployment to QL-Prod and the first drill are recorded below as
 they happen; until a line there says otherwise, treat the QL-Prod stack as
-not deployed. **The Altivum stack is still deployed.** It is to be torn down
-only after the first QL-Prod `drill` proves green — stale as it is, it is the
-only mirror that exists until then.
+not deployed. The Altivum stack stayed deployed until the first QL-Prod
+`drill` proved green — stale as it was, it was the only mirror that existed
+until then — and was torn down the same day; see the log.
 
 Deployment log (append, never rewrite):
 
@@ -245,3 +245,14 @@ Deployment log (append, never rewrite):
   standby)`** was posted on `main`'s HEAD from QL-Prod, which is the signal the
   merge gate would rely on. The Altivum stack is now redundant and is the next
   thing to go.
+- 2026-09-06 — **Altivum copy torn down.** Guarded first: QL-Prod's account id
+  was resolved by name through the organization and asserted NOT equal to the
+  account the deletes ran in, and the target stack's creation time was
+  asserted to be the 2026-07-16 July copy — either check failing would have
+  refused. Then `delete-stack quantum-ci-standby` (four resources; the cache
+  bucket was empty and unversioned) reached `DELETE_COMPLETE`, and the old
+  `quantum-github` connection there was deleted. Verified after: the Altivum
+  stack, project and connection are gone; QL-Prod's stack is
+  `CREATE_COMPLETE`, its project's last build is the green drill, and its
+  connection is `AVAILABLE`. There is now exactly one standby, and it is in
+  the account this project runs in.
