@@ -10,6 +10,31 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-07-linear-algebra-module-design.md`
 
+## Status — 2026-09-07
+
+**Tasks 1 through 9 are complete and committed** on `feat/linear-algebra-module`.
+
+| Gate | Result |
+|---|---|
+| Python suite (`pytest tests/`) | 924 passed |
+| Exercise harness, the four new notebooks | 12 passed (structure, solved, unsolved) |
+| Web suite | 228 suites, 2767 tests passed |
+| Analytics Lambda | 87 passed |
+| Drill generator | 110 passed |
+| `make guards`, ruff, ESLint | clean |
+| Static build | succeeds, `/learn/00-linear-algebra` renders, no KaTeX errors |
+
+Two things remain, both from Task 10 and neither blocking:
+
+1. **Run the four notebooks in the deployed browser lab after merge.** Green tests
+   are not proof the lesson works; this is.
+2. **Open the PR.**
+
+The two post-merge deploys named at the end of this plan are still blocked on the
+AWS Lambda outage.
+
+---
+
 ## Global Constraints
 
 - Every notebook imports **numpy only**. No braket, boto3, qiskit, cirq, pennylane, openfermion, pyscf. No `.state_vector()`, `.probability()`, `.expectation()`, `.amplitude()`, `.density_matrix()`, `.add_result_type()`.
@@ -51,7 +76,7 @@ These resolve contradictions the draft review surfaced. They are the authority; 
 
 **Interfaces produced:** `drill(kind, level=1, seed=None)` returning an object with `show()`, `check(answer) -> bool`, `reveal()`. Kinds: `add`, `subtract`, `scale`, `multiply`, `matvec`, `transpose`, `submatrix`, `defined`. Levels 1-3.
 
-- [ ] **Step 1: Run the suite**
+- [x] **Step 1: Run the suite**
 
 ```bash
 .venv/bin/python -m pytest tests/test_linalg_drills.py -q
@@ -59,7 +84,7 @@ These resolve contradictions the draft review surfaced. They are the authority; 
 
 Expected: 110 passed.
 
-- [ ] **Step 2: Lint**
+- [x] **Step 2: Lint**
 
 ```bash
 .venv/bin/python -m ruff check lib/linalg_drills.py tests/test_linalg_drills.py
@@ -68,7 +93,7 @@ Expected: 110 passed.
 
 Expected: clean, already formatted.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add lib/linalg_drills.py tests/test_linalg_drills.py
@@ -83,8 +108,8 @@ One task per notebook, each identical in shape. Build with `nbformat`, never raw
 
 **Per-notebook steps:**
 
-- [ ] **Step 1: Write the notebook and its solutions file** from the reviewed draft, applying every fix listed for it below.
-- [ ] **Step 2: Structure gate**
+- [x] **Step 1: Write the notebook and its solutions file** from the reviewed draft, applying every fix listed for it below.
+- [x] **Step 2: Structure gate**
 
 ```bash
 .venv/bin/python -m pytest tests/test_exercise_checks.py -q -k "structure and <stem>"
@@ -92,19 +117,19 @@ One task per notebook, each identical in shape. Build with `nbformat`, never raw
 
 Expected: PASS. This checks the three-cell unit, the hint tiers, and that `SOLUTIONS` keys match the scaffolds.
 
-- [ ] **Step 3: Solved gate** — every canonical answer must satisfy its check under strict grading.
+- [x] **Step 3: Solved gate** — every canonical answer must satisfy its check under strict grading.
 
 ```bash
 .venv/bin/python -m pytest tests/test_exercise_checks.py -q -k "canonical and <stem>"
 ```
 
-- [ ] **Step 4: Unsolved gate** — no check may pass, and the notebook must still execute cleanly.
+- [x] **Step 4: Unsolved gate** — no check may pass, and the notebook must still execute cleanly.
 
 ```bash
 .venv/bin/python -m pytest tests/test_exercise_checks.py -q -k "unsolved and <stem>"
 ```
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 **Task 2 — `01-linear-equations.ipynb`, 6 exercises.** Fixes required by review:
 - The proportionality claim is **false as written**. `4x + 5` and `y = 4 - 2x` are linear but not proportional. State the rule as "every unknown appears alone, to the first power" and confine doubling to the homogeneous example.
@@ -137,8 +162,8 @@ Expected: PASS. This checks the three-cell unit, the hint tiers, and that `SOLUT
 
 **Files:** `00-linear-algebra/GUIDE.md`, `00-linear-algebra/GUIDE.es.md`
 
-- [ ] **Step 1: Apply the corrections.** Settled decisions 1 through 3 (the five properties, the symmetric construction, drop antisymmetric). Soften the claim that `A @ B` and `A * B` always differ, since they coincide for the identity. Fix the two Spanish points: `es como miras` reads as a word-for-word mapping, and the same predicate takes feminine agreement in one card and masculine in another. Apply each change to **both** files.
-- [ ] **Step 2: Verify fence and id parity**
+- [x] **Step 1: Apply the corrections.** Settled decisions 1 through 3 (the five properties, the symmetric construction, drop antisymmetric). Soften the claim that `A @ B` and `A * B` always differ, since they coincide for the identity. Fix the two Spanish points: `es como miras` reads as a word-for-word mapping, and the same predicate takes feminine agreement in one card and masculine in another. Apply each change to **both** files.
+- [x] **Step 2: Verify fence and id parity**
 
 ```bash
 grep -c '"id"' 00-linear-algebra/GUIDE.md 00-linear-algebra/GUIDE.es.md
@@ -148,7 +173,7 @@ grep -c '^```' 00-linear-algebra/GUIDE.md 00-linear-algebra/GUIDE.es.md
 
 Expected: identical counts, and an empty diff.
 
-- [ ] **Step 3: Parse every fence body**
+- [x] **Step 3: Parse every fence body**
 
 ```bash
 .venv/bin/python - <<'PY'
@@ -162,7 +187,7 @@ for f in ["00-linear-algebra/GUIDE.md", "00-linear-algebra/GUIDE.es.md"]:
 PY
 ```
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ---
 
@@ -172,15 +197,15 @@ PY
 
 This is the edit that makes the browser-runnable marker, the manifest, the lab staging and the runnable-fence test see the section at all. Omitting it fails silently.
 
-- [ ] **Step 1:** Insert `"00-linear-algebra"` as the **first** entry of `SECTION_DIRS`.
-- [ ] **Step 2:** Regenerate the manifest. Never hand-edit it.
+- [x] **Step 1:** Insert `"00-linear-algebra"` as the **first** entry of `SECTION_DIRS`.
+- [x] **Step 2:** Regenerate the manifest. Never hand-edit it.
 
 ```bash
 .venv/bin/python scripts/validate_runnable.py --write-manifest
 ```
 
-- [ ] **Step 3:** Add `tests/test_linear_algebra.py` mirroring `tests/test_prereqs.py`: the GUIDE exists, all four notebooks parse, each carries at least one check cell, and the notebook count is four.
-- [ ] **Step 4: Gates**
+- [x] **Step 3:** Add `tests/test_linear_algebra.py` mirroring `tests/test_prereqs.py`: the GUIDE exists, all four notebooks parse, each carries at least one check cell, and the notebook count is four.
+- [x] **Step 4: Gates**
 
 ```bash
 .venv/bin/python -m pytest tests/test_content_manifest.py tests/test_notebook_contract.py \
@@ -188,7 +213,7 @@ This is the edit that makes the browser-runnable marker, the manifest, the lab s
   tests/test_pricing_prose.py tests/test_linear_algebra.py -q
 ```
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ---
 
@@ -196,11 +221,11 @@ This is the edit that makes the browser-runnable marker, the manifest, the lab s
 
 **Files:** `web/src/lib/glossary.ts`, `web/src/lib/sections.ts`, `web/src/lib/section-pitch.ts`, `web/src/lib/workspace.ts`, `web/src/lib/changelog.ts`, `web/src/lib/changelog-es.ts`, `web/src/components/runbook-dashboard.tsx`, `web/src/i18n/locales/en.ts`, `web/src/i18n/locales/es.ts`
 
-- [ ] **Step 1:** Add the slug to the `SectionSlug` union and `SECTION_SHORT_LABEL` (`"Linear Algebra"`). This is a compile-time requirement, not just a test.
-- [ ] **Step 2:** Add the eleven glossary terms this section owns: linear equation, matrix, shape, entry, identity matrix, zero matrix, scalar multiplication, matrix multiplication, transpose, symmetric matrix, submatrix. Do not re-home any existing prereqs term.
-- [ ] **Step 3:** English and Spanish locales: section title and summary, gate pitch, glossary short label. Spanish title `Álgebra Lineal: Las Matemáticas Detrás de la Computación Cuántica`, short label `Álgebra Lineal`. Fix the tutor sample string whose hand-written index shifts from 03 to 04.
-- [ ] **Step 4:** `section-pitch.ts` gains the English fallback pitch.
-- [ ] **Step 5: Hue.** Prepend one new hue to `sectionHue`, leaving the existing six at their current positions so no existing section changes color. **Measure, do not guess** — the contrast test reads the array and evaluates real colors:
+- [x] **Step 1:** Add the slug to the `SectionSlug` union and `SECTION_SHORT_LABEL` (`"Linear Algebra"`). This is a compile-time requirement, not just a test.
+- [x] **Step 2:** Add the eleven glossary terms this section owns: linear equation, matrix, shape, entry, identity matrix, zero matrix, scalar multiplication, matrix multiplication, transpose, symmetric matrix, submatrix. Do not re-home any existing prereqs term.
+- [x] **Step 3:** English and Spanish locales: section title and summary, gate pitch, glossary short label. Spanish title `Álgebra Lineal: Las Matemáticas Detrás de la Computación Cuántica`, short label `Álgebra Lineal`. Fix the tutor sample string whose hand-written index shifts from 03 to 04.
+- [x] **Step 4:** `section-pitch.ts` gains the English fallback pitch.
+- [x] **Step 5: Hue.** Prepend one new hue to `sectionHue`, leaving the existing six at their current positions so no existing section changes color. **Measure, do not guess** — the contrast test reads the array and evaluates real colors:
 
 ```bash
 cd web && npx jest token-contrast -t "inline-code chip"
@@ -208,15 +233,15 @@ cd web && npx jest token-contrast -t "inline-code chip"
 
 Try 330 first, then 120; keep the first that passes in both themes.
 
-- [ ] **Step 6:** Derive the start link from the first manifest section in `workspace.ts` and `runbook-dashboard.tsx` instead of hardcoding `/learn/00-prereqs`, and make the CTA copy section-neutral in both locales.
-- [ ] **Step 7:** Add the changelog entry in both locales, id `2026-09-07-linear-algebra`, kind `new`, href `/learn/00-linear-algebra`.
-- [ ] **Step 8: Update the pinned tests.** Section count 7 becomes 8; first slug becomes the new one; `03-algorithms` moves to index 4; sidebar link order, last link and the progress bar's `aria-valuemax` pin; the workspace runnable-notebook total rises by four; previous/next gains a neighbour; the glossary test's "7 slugs" wording.
+- [x] **Step 6:** Derive the start link from the first manifest section in `workspace.ts` and `runbook-dashboard.tsx` instead of hardcoding `/learn/00-prereqs`, and make the CTA copy section-neutral in both locales.
+- [x] **Step 7:** Add the changelog entry in both locales, id `2026-09-07-linear-algebra`, kind `new`, href `/learn/00-linear-algebra`.
+- [x] **Step 8: Update the pinned tests.** Section count 7 becomes 8; first slug becomes the new one; `03-algorithms` moves to index 4; sidebar link order, last link and the progress bar's `aria-valuemax` pin; the workspace runnable-notebook total rises by four; previous/next gains a neighbour; the glossary test's "7 slugs" wording.
 
 ```bash
 cd web && npm test
 ```
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
 
 ---
 
@@ -224,29 +249,29 @@ cd web && npm test
 
 **Files:** `lambda/analytics/curriculum.mjs`, `lambda/analytics/curriculum.test.mjs`, `scripts/changelog/rules.mjs`, `README.md`, `PRODUCT.md`, `CLAUDE.md`, `docs/exercise-convention.md`, `00-prereqs/GUIDE.md`
 
-- [ ] **Step 1:** Analytics: insert the slug first in `SECTION_SLUGS` and add all four notebook stems to `NOTEBOOKS`. Without this, page views on the new lesson are dropped and the furthest-section measure is wrong. Update its test pin.
+- [x] **Step 1:** Analytics: insert the slug first in `SECTION_SLUGS` and add all four notebook stems to `NOTEBOOKS`. Without this, page views on the new lesson are dropped and the furthest-section measure is wrong. Update its test pin.
 
 ```bash
 cd lambda/analytics && npm test
 ```
 
-- [ ] **Step 2:** Add the directory to `LEARNER_VISIBLE` in the changelog rules and fix the "seven curriculum directories" comment. This guard **fails open**: without the entry a future PR touching only this module merges unannounced.
-- [ ] **Step 3:** Prose: README, PRODUCT.md and CLAUDE.md each say "seven sections" and give notebook counts. Eight sections; four more notebooks, all browser-runnable. README line 118 must name both on-ramp modules.
-- [ ] **Step 4:** Widen `docs/exercise-convention.md` so the visible solutions cell covers both on-ramp sections.
-- [ ] **Step 5:** Add the cross-link in `00-prereqs/GUIDE.md` pointing down to this module for anyone who finds `A @ B` unfamiliar.
-- [ ] **Step 6: Commit.**
+- [x] **Step 2:** Add the directory to `LEARNER_VISIBLE` in the changelog rules and fix the "seven curriculum directories" comment. This guard **fails open**: without the entry a future PR touching only this module merges unannounced.
+- [x] **Step 3:** Prose: README, PRODUCT.md and CLAUDE.md each say "seven sections" and give notebook counts. Eight sections; four more notebooks, all browser-runnable. README line 118 must name both on-ramp modules.
+- [x] **Step 4:** Widen `docs/exercise-convention.md` so the visible solutions cell covers both on-ramp sections.
+- [x] **Step 5:** Add the cross-link in `00-prereqs/GUIDE.md` pointing down to this module for anyone who finds `A @ B` unfamiliar.
+- [x] **Step 6: Commit.**
 
 ---
 
 ### Task 10: Full verification
 
-- [ ] **Step 1: The whole Python suite**
+- [x] **Step 1: The whole Python suite**
 
 ```bash
 make test
 ```
 
-- [ ] **Step 2: Lint and drift guards**
+- [x] **Step 2: Lint and drift guards**
 
 ```bash
 make lint
@@ -255,7 +280,7 @@ make guards PYTHON=.venv/bin/python
 
 `PYTHON` defaults to `python3`, which on this machine is an unrelated interpreter.
 
-- [ ] **Step 3: Web suite and build**
+- [x] **Step 3: Web suite and build**
 
 ```bash
 cd web && npm test && npm run lint && npm run build
