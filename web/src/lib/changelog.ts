@@ -52,6 +52,14 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/;
 /** Newest first, as authored. A test asserts the ordering. */
 export const CHANGELOG: readonly ChangeEntry[] = [
   {
+    id: "2026-09-08-hero-buttons-clickable",
+    shipped: "2026-09-08",
+    kind: "fixed",
+    title: "The buttons on the home page work again",
+    body: "The three buttons at the top of the home page did nothing when clicked on a desktop browser. The curriculum dial behind them is drawn as one full-width layer, and that layer was quietly sitting on top of the buttons and catching every click meant for them. The dial still works exactly as before; it no longer covers anything else. Phones were never affected, because the dial is not drawn at that size.",
+    href: "/",
+  },
+  {
     id: "2026-09-07-linear-algebra-on-ramp",
     shipped: "2026-09-07",
     kind: "new",
