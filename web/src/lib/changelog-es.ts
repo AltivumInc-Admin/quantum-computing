@@ -17,6 +17,10 @@ export interface ChangeEntryEs {
 }
 
 export const CHANGELOG_ES: Record<string, ChangeEntryEs> = {
+  "2026-09-08-hero-buttons-clickable": {
+    title: "Los botones de la página de inicio vuelven a funcionar",
+    body: "Los tres botones de la parte superior de la página de inicio no hacían nada al pulsarlos en un navegador de escritorio. El dial del plan de estudios que está detrás se dibuja como una sola capa de ancho completo, y esa capa quedaba encima de los botones y se quedaba con cada clic dirigido a ellos. El dial sigue funcionando igual que antes; ya no tapa nada más. Los teléfonos nunca se vieron afectados, porque a ese tamaño el dial no se dibuja.",
+  },
   "2026-09-07-linear-algebra-on-ramp": {
     title: "Un nuevo primer módulo enseña el álgebra lineal que todo lo demás da por sabida",
     body: "El plan de estudios empezaba con Prerrequisitos, que avanza rápido porque da por hecho que ya sabes multiplicar dos matrices y por qué importa el orden. Ahora hay un módulo nuevo delante que construye justamente eso, partiendo del álgebra de secundaria: ecuaciones lineales, sumar y escalar matrices, la regla de filas por columnas y la transpuesta. Sin cálculo, sin números complejos, sin nada cuántico y sin instalar nada — las cuatro lecciones se ejecutan en tu navegador. Si multiplicar matrices ya te resulta rutinario, sáltatelo y empieza donde empezabas antes; la página inicial del módulo te da cinco preguntas para decidirlo.",
