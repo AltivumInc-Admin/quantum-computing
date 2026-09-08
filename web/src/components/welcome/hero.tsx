@@ -183,13 +183,13 @@ export function WelcomeHero({
           alt=""
           aria-hidden="true"
           fetchPriority="high"
-          className="animate-fog-drift absolute inset-0 h-full w-full object-cover opacity-55"
+          className="pointer-events-none animate-fog-drift absolute inset-0 h-full w-full object-cover opacity-55"
         />
         {/* Legibility wash — a spine scrim holds the data plate's left ground
             dark while the bloom breathes on the right; the radial keeps the
             frame's depth. Mobile runs text full-width, so the base variant
             spreads the scrim before sm: swaps in the two-layer desktop wash. */}
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(5,5,5,0.78)_0%,rgba(5,5,5,0.5)_55%,rgba(5,5,5,0.22)_100%)] sm:bg-[linear-gradient(90deg,rgba(5,5,5,0.82)_0%,rgba(5,5,5,0.55)_34%,transparent_62%),radial-gradient(120%_120%_at_78%_-10%,transparent_12%,rgba(5,5,5,0.5)_58%,rgba(5,5,5,0.9)_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(5,5,5,0.78)_0%,rgba(5,5,5,0.5)_55%,rgba(5,5,5,0.22)_100%)] sm:bg-[linear-gradient(90deg,rgba(5,5,5,0.82)_0%,rgba(5,5,5,0.55)_34%,transparent_62%),radial-gradient(120%_120%_at_78%_-10%,transparent_12%,rgba(5,5,5,0.5)_58%,rgba(5,5,5,0.9)_100%)]" />
 
         {/* The dial: rim circles, machined ticks, and the gold needle, which
             sweeps to the selected station (transform-box makes the CSS
@@ -396,13 +396,21 @@ export function WelcomeHero({
             selecting one sweeps the needle to it and opens its blurb. After
             the content in DOM order (see the doc comment); md+ only: the
             slice crop cuts the bezel's flanks on phones, and the curriculum
-            grid below carries the same destinations. */}
+            grid below carries the same destinations.
+
+            The ROOT is pointer-events-none and each station turns them back on
+            for itself. An <svg> root hit-tests across its whole box, not only
+            where it paints, so this full-bleed layer otherwise sits on top of
+            the hero's own CTAs and swallows every click on "Sign up free",
+            "Sign in" and "Explore the curriculum" — at md+ only, which is why
+            it never showed on a phone. See
+            __tests__/components/welcome/hero-overlay-hit-testing.test.ts. */}
         <svg
           viewBox="0 0 1440 780"
           preserveAspectRatio="xMidYMax slice"
           role="group"
           aria-label={dialLabel}
-          className="absolute inset-0 z-20 hidden h-full w-full md:block"
+          className="pointer-events-none absolute inset-0 z-20 hidden h-full w-full md:block"
         >
           {stations.map(({ s, deg }, i) => {
             const rad = (deg * Math.PI) / 180;
@@ -433,7 +441,7 @@ export function WelcomeHero({
                     select(i);
                   }
                 }}
-                style={{ cursor: "pointer", animation: `fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) ${(0.5 + i * 0.12).toFixed(2)}s both` }}
+                style={{ cursor: "pointer", pointerEvents: "auto", animation: `fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) ${(0.5 + i * 0.12).toFixed(2)}s both` }}
               >
                 <title>{s.title}</title>
                 {/* generous transparent hit target */}
