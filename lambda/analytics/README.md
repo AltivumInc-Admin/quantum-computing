@@ -200,7 +200,7 @@ operator remembering.
 
 ```sh
 cd lambda/analytics && npm ci && sam build
-sam deploy --stack-name quantum-analytics --region us-east-2 \
+sam deploy --stack-name quantum-analytics --region us-east-2 --profile ql-prod \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides AlertEmail=<operator email> \
     AmplifyAppId=d2o7mzaq4cktxf AmplifyDomain=quantumenv.dev \

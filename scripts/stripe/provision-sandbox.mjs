@@ -59,6 +59,7 @@ import {
 import { LIVE_ACCOUNT, resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, putSecretJson, stripeClient } from "./lib/preamble.mjs";
 import { priceNeedsReplacing, tierPrices } from "./lib/parity-rules.mjs";
+import { pinAwsAccount } from "../lib/aws-target.mjs";
 
 const { flag, has } = parseArgs(process.argv.slice(2));
 const dryRun = has("--dry-run");
@@ -74,6 +75,13 @@ try {
 const webhookUrl = flag("--webhook-url");
 const secretId = flag("--secret-id");
 const region = flag("--region") ?? "us-east-2";
+
+// WHICH AWS ACCOUNT, before Stripe or AWS is touched: both billing stacks, both
+// secrets and both wallet tables live in QL-Prod. QL_AWS_PROFILE overrides the
+// profile; the shell's AWS_PROFILE never chooses it. Only a run that will write
+// the signing secret touches AWS, so a --dry-run or a run without --secret-id
+// stays offline as before.
+if (secretId && !dryRun) pinAwsAccount({ defaultProfile: "ql-prod", accountName: "QL-Prod" });
 
 if (!key) die(2, "STRIPE_API_KEY is not set. Pass it by environment, never as an argument.");
 if (!expectAccount) die(2, "--expect-account <acct_...> is required. This script writes; it will not guess.");

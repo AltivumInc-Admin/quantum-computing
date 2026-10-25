@@ -159,7 +159,8 @@ make devices          # list available Braket devices + status
 make lab              # launch JupyterLab at the repo root
 
 # Optional: provision encrypted result storage, least-privilege IAM, and a budget alarm
-make deploy-infra     # interactive: budget, notification email, optional managed notebook
+QL_AWS_PROFILE=<your profile> QL_EXPECT_ACCOUNT=<your 12-digit account id> \
+  make deploy-infra   # interactive: budget, notification email, optional managed notebook
 make cost             # current month's Braket spend (Cost Explorer)
 ```
 
@@ -505,11 +506,11 @@ The portal treats these as optional: front-end features gate on their configurat
 | `make devices` | Print the Braket device fleet + provider, status (`ONLINE`/`OFFLINE`/`RETIRED`) and type |
 | `make fleet` | Ask **Braket itself** whether the fleet this repo teaches still exists (read-only, 5 regions). `0` current · `1` divergent · `2` could not check; prints SKIPPED with no credentials |
 | `make cost` | Current month's Braket spend via Cost Explorer (`infra/scripts/cost-report.py`) |
-| `make drift` | Is what is **running** what is in git — plus deployed rate-card parity, value-blind. Defaults to `AWS_PROFILE=ql-prod` and names the profile before it reads; override with `AWS_PROFILE=… make drift` |
+| `make drift` | Is what is **running** what is in git — plus deployed rate-card parity, value-blind. Defaults to the `ql-prod` profile (never the shell's `AWS_PROFILE`) and names it before it reads; override with `QL_AWS_PROFILE=… make drift` |
 | `make stripe-parity` | Does the Stripe **Dashboard** match the code (webhook event set + catalog/copy)? Read-only; needs `ACCOUNT=live\|sandbox` and a key |
 | `make design-sync` | Design-sync preflight (which of the two identically-named projects is targeted) then restage. A red preflight **stops** the run |
-| `make deploy-infra` | Interactive CloudFormation deploy (budget, email, optional notebook) |
-| `make teardown-infra` | Delete the stack (guarded — type `delete` to confirm) |
+| `make deploy-infra` | Interactive CloudFormation deploy (budget, email, optional notebook). Needs `QL_AWS_PROFILE` naming your profile, and refuses without it. Add `QL_EXPECT_ACCOUNT` to refuse any other account; without it the account reached is printed, unverified |
+| `make teardown-infra` | Delete the stack (guarded: the same variables, then type `delete` to confirm) |
 | `make lock-container` | Recompile the hybrid-jobs container lockfile with `pip-compile` |
 
 ### Web (`cd web`)

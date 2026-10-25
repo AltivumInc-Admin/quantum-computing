@@ -25,6 +25,7 @@ infra-as-code, cost-tagged, env-gated on the frontend.
 
 ```bash
 aws cloudformation deploy \
+  --profile ql-prod \
   --region us-east-2 \
   --stack-name quantum-workspace-auth \
   --template-file infra/workspace/cognito.yaml \
@@ -83,9 +84,9 @@ With the four vars in `web/.env.local`, run `npm run dev` and in a real browser:
 `DeletionProtection: ACTIVE` and `DeletionPolicy: Retain` guard the pool. To delete:
 
 ```bash
-aws cognito-idp update-user-pool --region us-east-2 --user-pool-id <id> \
+aws cognito-idp update-user-pool --profile ql-prod --region us-east-2 --user-pool-id <id> \
   --deletion-protection INACTIVE
-aws cloudformation delete-stack --region us-east-2 --stack-name quantum-workspace-auth
+aws cloudformation delete-stack --profile ql-prod --region us-east-2 --stack-name quantum-workspace-auth
 ```
 
 Deleting the stack also deletes `quantum-signup-alerts`, its email subscription and
@@ -150,7 +151,7 @@ server only enforces optimistic concurrency (409 on version conflict).
 
 Deploy (from `lambda/sync/`): `npm install && npm test` (9 offline handler
 tests), then `sam build` and `sam deploy --guided` with
-`--stack-name quantum-workspace-sync --region us-east-2
+`--profile ql-prod --stack-name quantum-workspace-sync --region us-east-2
 --capabilities CAPABILITY_IAM
 --tags Project=quantum Feature=workspace-sync CostCategory=workspace`.
 

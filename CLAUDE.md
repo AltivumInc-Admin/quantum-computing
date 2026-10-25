@@ -132,7 +132,7 @@ Name the account, never "Quantum Learner" — four accounts in this OU answer to
 |---|---|---|
 | `org-admin` | Delta Centric Org (management) | **Yes**, via `OrganizationAccountAccessRole` |
 | `personal-dev` | Christian Perez - Personal | **No** — AccessDenied |
-| *(default, no `--profile`)* | **Altivum** production | Different org entirely |
+| *(ambient, no `--profile`)* | Whatever the shell's `AWS_PROFILE` names (interactive shells are moving to `personal-dev`), else Altivum's `[default]` | **No**, and neither is a Quantum Learner account |
 
 `personal-dev` is a **delegated administrator for the Organizations service**, so it can
 `ListAccounts` and `DescribeOrganization` and therefore *looks* org-wide. It is not:
@@ -140,8 +140,19 @@ service delegation grants org reads, not `sts:AssumeRole` into sibling accounts.
 access with an actual `assume-role`, never from a successful `ListAccounts` — the same
 "a profile name is not evidence" rule the Stripe section states below.
 
-**The default profile is Altivum.** Any AWS command intended for Delta Centric that
-omits `--profile` runs against Altivum production instead, silently.
+**The ambient profile is never a Quantum Learner account.** It is whatever the shell's
+`AWS_PROFILE` names (interactive shells on this machine are moving to `personal-dev`), or
+Altivum's `[default]` where that is unset. Either way an AWS command that omits
+`--profile` runs outside this project's accounts, silently. The live runbooks
+(`lambda/*/README.md`, `infra/*/README.md`) target QL-Prod unless a command names another
+profile; pass `--profile ql-prod` (or `ql-braket` / `ql-hq`) on every call, read-only ones
+included. `docs/billing-cutover-runbook.md` and `docs/account-migration-runbook.md` are dated
+Altivum-era records: do not run their commands as written. The repo's own write and deploy
+scripts take their profile from `QL_AWS_PROFILE`, never `AWS_PROFILE`, and prove the account
+before acting (`scripts/lib/aws-target.sh`, `scripts/lib/aws-target.mjs`): by name against the
+organization for QL-Prod. The curriculum's own-account `make deploy-infra` /
+`make teardown-infra` / `build_and_push.sh` still require `QL_AWS_PROFILE`, assert
+`QL_EXPECT_ACCOUNT` when it is set, and otherwise print the account reached as unverified.
 
 **Deploying `infra/workspace/cognito.yaml` (stack `quantum-workspace-auth`, QL-Prod
 us-east-2): keep `SiteUrl` at its previous value.** The template declares ONE

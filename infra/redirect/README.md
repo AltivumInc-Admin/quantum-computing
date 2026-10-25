@@ -28,8 +28,12 @@ path and query string.
 
 ## Deploy
 
+This stack lives in the **Altivum** account (CLI profile `altivum-og`), not in the
+Delta Centric org; every command in this file names that profile.
+
 ```bash
 aws cloudformation deploy \
+  --profile altivum-og \
   --region us-east-1 \
   --stack-name quantumlearner-dev-redirect \
   --template-file infra/redirect/quantumlearner-dev.yaml \
@@ -56,7 +60,7 @@ works, clear the browser's HSTS entry for `quantumlearner.dev` and reload.
 ## Operate
 
 - **This distribution is IaC-only — never edit it in the console.** A manual
-  change is drift; run `aws cloudformation detect-stack-drift --region us-east-1
+  change is drift; run `aws cloudformation detect-stack-drift --profile altivum-og --region us-east-1
   --stack-name quantumlearner-dev-redirect` periodically to catch it.
 - The ACM cert **auto-renews** as long as the CFN-managed validation record
   stays in the zone (it does).
@@ -65,7 +69,7 @@ works, clear the browser's HSTS entry for `quantumlearner.dev` and reload.
 ## Rollback / teardown
 
 ```bash
-aws cloudformation delete-stack --region us-east-1 --stack-name quantumlearner-dev-redirect
+aws cloudformation delete-stack --profile altivum-og --region us-east-1 --stack-name quantumlearner-dev-redirect
 ```
 
 Removes the distribution, cert, DNS records, canary, alarms, and SNS topic.

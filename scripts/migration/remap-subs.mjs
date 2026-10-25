@@ -88,7 +88,9 @@
  * organization — it is a separate, unrelated AWS account — so its id cannot
  * be resolved by org name lookup the way QL-Prod's can. The two sides
  * therefore resolve differently:
- *   - source: `aws sts get-caller-identity` with NO --profile — the plan's
+ *   - source: `aws sts get-caller-identity --profile altivum-og` (the
+ *     profile migration.json names; pinned 2026-10-25, because the ambient
+ *     default on the founder's machine is no longer Altivum). The plan's
  *     Global Constraints state "The DEFAULT profile is the Altivum SOURCE"
  *     (docs/superpowers/plans/2026-08-28-platform-migration-qlprod.md), and
  *     the runbook's own `SRC_ACCOUNT` / task-3-brief.md's `SRC=$(aws sts
@@ -97,8 +99,8 @@
  *     ORG-MASTER credential (`altivum-mgmt`) is a DIFFERENT account — it
  *     manages Altivum's own organization but does not itself hold the source
  *     tables — so resolving through it here would check the wrong account
- *     and make this guard refuse a legitimate run. Do not name a profile for
- *     this side; let the operator's own ambient default/AWS_PROFILE resolve.
+ *     and make this guard refuse a legitimate run. Name altivum-og, never
+ *     altivum-mgmt and never the ambient default/AWS_PROFILE.
  *   - dest: `aws organizations list-accounts --profile org-admin` filtered to
  *     the account named "QL-Prod".
  * `--expect-source-account` / `--expect-dest-account` on the CLI override the
@@ -926,8 +928,9 @@ function makeAwsClient(profile, region) {
 
 function resolveAccountId(resolution) {
   if (resolution.method === "sts-get-caller-identity") {
-    // No --profile at all when resolution.profile is unset: that IS the
-    // point (see the header note above and migration.json) — the ambient
+    // migration.json names resolution.profile (altivum-og) since 2026-10-25;
+    // the unset branch below is kept only for a hand-written config. Unset,
+    // there is no --profile at all (see the header note above) — the ambient
     // default profile's own identity is the Altivum source account by the
     // plan's own Global Constraints, matching the established
     // `SRC=$(aws sts get-caller-identity --query Account --output text)`

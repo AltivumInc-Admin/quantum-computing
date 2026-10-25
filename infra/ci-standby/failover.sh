@@ -8,8 +8,11 @@
 # and `stand-down` restores the normal gate.
 #
 # WHICH ACCOUNT. The quantum-ci-standby stack belongs in QL-Prod (Delta Centric
-# org). On the machines that run this script the DEFAULT AWS profile is Altivum
-# production — a different org that still holds the July 2026 copy of this
+# org). On the machines that run this script the ambient profile is never
+# QL-Prod: interactive shells export AWS_PROFILE for an unrelated account (which
+# satisfies guard 1 below, so guard 2 is what refuses it), and without it the
+# chain is Altivum production — a different org that still holds the July 2026
+# copy of this
 # stack, under the same name, with a five-week-stale buildspec and the
 # Altivum-era Cognito pool id. Until 2026-09-06 this script used whatever
 # credentials were ambient, so a bare `./failover.sh engage` would have created

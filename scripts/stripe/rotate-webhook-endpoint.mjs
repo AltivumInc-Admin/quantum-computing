@@ -55,6 +55,12 @@ import { spawnSync } from "node:child_process";
 import { REQUIRED_WEBHOOK_EVENTS, STRIPE_API_VERSION } from "../../lambda/stripe/catalog.mjs";
 import { resolveAccount } from "./lib/accounts.mjs";
 import { assertAccount, die, parseArgs, putSecretJson, stripeClient } from "./lib/preamble.mjs";
+import { pinAwsAccount } from "../lib/aws-target.mjs";
+
+// WHICH AWS ACCOUNT, before Stripe or AWS is touched: both billing stacks, both
+// secrets and both wallet tables live in QL-Prod. QL_AWS_PROFILE overrides the
+// profile; the shell's AWS_PROFILE never chooses it.
+pinAwsAccount({ defaultProfile: "ql-prod", accountName: "QL-Prod" });
 
 const { flag, has } = parseArgs(process.argv.slice(2));
 const key = process.env.STRIPE_API_KEY;

@@ -81,7 +81,8 @@ described below.
 
 ## Deploy (operator-run — prod AWS; not runnable by the assistant)
 
-**Prerequisites** (all already present on the Altivum prod account):
+**Prerequisites** (all already present in QL-Prod, where this stack lives; every command
+below carries `--profile ql-prod`):
 
 1. **Braket results bucket** in **eu-north-1**, named `amazon-braket-eu-north-1-<account>`, so
    the Braket service-linked role can write results. This is the SAME-ACCOUNT
@@ -97,7 +98,7 @@ stacks resolve it by name (the value from `openssl` is never printed):
 ```
 V=$(openssl rand -hex 32); aws secretsmanager create-secret \
   --name quantum-qpu-edge-secret --secret-string "$V" \
-  --region us-east-2 --add-replica-regions Region=us-east-1
+  --region us-east-2 --add-replica-regions Region=us-east-1 --profile ql-prod
 ```
 
 **1. Main stack** (us-east-2):
@@ -110,7 +111,7 @@ V=$(openssl rand -hex 32); aws secretsmanager create-secret \
 
 ```
 cd lambda/qpu && npm ci && sam build
-sam deploy --stack-name quantum-qpu-submit --region us-east-2 \
+sam deploy --stack-name quantum-qpu-submit --region us-east-2 --profile ql-prod \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides ResultsBucket=amazon-braket-eu-north-1-<account> \
     SiteOrigin=https://learner.quantumenv.dev
@@ -139,7 +140,7 @@ confirm the two SNS email subscriptions from the inbox** (Budgets emails need no
 main stack's `QpuUrl` output as `ApiDomain`:
 
 ```
-sam deploy --template-file edge.yaml --stack-name quantum-qpu-edge --region us-east-1 \
+sam deploy --template-file edge.yaml --stack-name quantum-qpu-edge --region us-east-1 --profile ql-prod \
   --resolve-s3 --parameter-overrides ApiDomain=<host of QpuUrl>
 ```
 

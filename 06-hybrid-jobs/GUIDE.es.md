@@ -160,7 +160,7 @@ Reiniciar no es solo por dinero: es por corrección. El checkpoint almacena el $
 
 ## Trae tu propio entorno
 
-El contenedor por defecto de Braket trae el SDK y paquetes comunes, pero las cargas de trabajo reales tienen dependencias reales: el stack de química del módulo 05 (OpenFermion, PySCF), un framework de ML pesado, una versión fija de una librería. Para eso construyes un **contenedor personalizado**: parte de la imagen base de Braket, agrega tus dependencias, construye y sube a Amazon ECR, y pasa el URI de la imagen a `AwsQuantumJob.create(image_uri=...)`. El directorio `containers/` de aquí tiene un `Dockerfile` funcional y un `build_and_push.sh` para hacer exactamente eso. Las tareas enviadas desde dentro de tu contenedor siguen llevando el token de job, así que conservan el acceso prioritario y la facturación a tarifa de job en lugar de cobrarse como tareas independientes.
+El contenedor por defecto de Braket trae el SDK y paquetes comunes, pero las cargas de trabajo reales tienen dependencias reales: el stack de química del módulo 05 (OpenFermion, PySCF), un framework de ML pesado, una versión fija de una librería. Para eso construyes un **contenedor personalizado**: parte de la imagen base de Braket, agrega tus dependencias, construye y sube a Amazon ECR, y pasa el URI de la imagen a `AwsQuantumJob.create(image_uri=...)`. El directorio `containers/` de aquí tiene un `Dockerfile` funcional y un `build_and_push.sh` para hacer exactamente eso; ejecútalo desde ese directorio como `QL_AWS_PROFILE=<tu perfil> ./build_and_push.sh`. El script nunca sigue el `AWS_PROFILE` de tu shell, así que la imagen llega a la cuenta que indicaste y no a la que tu shell tenga configurada en ese momento. Las tareas enviadas desde dentro de tu contenedor siguen llevando el token de job, así que conservan el acceso prioritario y la facturación a tarifa de job en lugar de cobrarse como tareas independientes.
 
 ## Mantener la factura bajo control
 
@@ -246,7 +246,7 @@ Para circuitos de más de ~20 qubits en un simulador, **CUDA-Q** ofrece simulaci
 
 **Contenedores:**
 - `containers/Dockerfile` — Contenedor personalizado con OpenFermion, PySCF y herramientas adicionales de química
-- `containers/build_and_push.sh` — Script para construir la imagen Docker y subirla a ECR
+- `containers/build_and_push.sh` — Script para construir la imagen Docker y subirla a ECR (ejecútalo como `QL_AWS_PROFILE=<tu perfil> ./build_and_push.sh`)
 
 ---
 
