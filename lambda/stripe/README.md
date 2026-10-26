@@ -109,7 +109,7 @@ a secret is allowed; only *reading* `get-secret-value` is forbidden).
 ```bash
 # LIVE stack:
 SK=$(op read "op://Quantum Learner/Stripe/add more/Secret Key")
-aws secretsmanager create-secret --name quantum-stripe --region us-east-2 \
+aws secretsmanager create-secret --name quantum-stripe --region us-east-2 --profile ql-prod \
   --secret-string "$(jq -nc --arg sk "$SK" '{secretKey:$sk, webhookSecret:"whsec_PLACEHOLDER"}')"
 unset SK
 ```
@@ -119,7 +119,7 @@ unset SK
 # halves have to change together: the live key under a sandbox secret name makes
 # the sandbox function bill real customers.
 SK=$(op read "op://Quantum Learner/Stripe Sandbox/Secret Key")
-aws secretsmanager create-secret --name quantum-stripe-sandbox --region us-east-2 \
+aws secretsmanager create-secret --name quantum-stripe-sandbox --region us-east-2 --profile ql-prod \
   --secret-string "$(jq -nc --arg sk "$SK" '{secretKey:$sk, webhookSecret:"whsec_PLACEHOLDER"}')"
 unset SK
 ```
@@ -128,7 +128,7 @@ unset SK
 
 ```bash
 cd lambda/stripe && npm ci && sam build
-sam deploy --stack-name quantum-stripe --region us-east-2 \
+sam deploy --stack-name quantum-stripe --region us-east-2 --profile ql-prod \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides \
     StripeSecretName=quantum-stripe \

@@ -160,7 +160,7 @@ Restarting is not just about money — it is about correctness. The checkpoint s
 
 ## Bringing Your Own Environment
 
-The default Braket container ships the SDK and common packages, but real workloads have real dependencies — the chemistry stack from module 05 (OpenFermion, PySCF), a heavy ML framework, a pinned library version. For those you build a **custom container**: start from the Braket base image, add your dependencies, build and push to Amazon ECR, and pass the image URI to `AwsQuantumJob.create(image_uri=...)`. The `containers/` directory here has a working `Dockerfile` and a `build_and_push.sh` to do exactly that. Tasks submitted from inside your container still carry the job token, so they keep priority access and job-rate billing rather than being charged as standalone tasks.
+The default Braket container ships the SDK and common packages, but real workloads have real dependencies — the chemistry stack from module 05 (OpenFermion, PySCF), a heavy ML framework, a pinned library version. For those you build a **custom container**: start from the Braket base image, add your dependencies, build and push to Amazon ECR, and pass the image URI to `AwsQuantumJob.create(image_uri=...)`. The `containers/` directory here has a working `Dockerfile` and a `build_and_push.sh` to do exactly that; run it from that directory as `QL_AWS_PROFILE=<your profile> ./build_and_push.sh`. It never follows your shell's `AWS_PROFILE`, so the image lands in the account you named rather than whichever one your shell happens to point at. Tasks submitted from inside your container still carry the job token, so they keep priority access and job-rate billing rather than being charged as standalone tasks.
 
 ## Keeping the Bill in Check
 
@@ -246,7 +246,7 @@ For circuits beyond ~20 qubits on a simulator, **CUDA-Q** provides GPU-accelerat
 
 **Containers:**
 - `containers/Dockerfile` — Custom container with OpenFermion, PySCF, and additional chemistry tools
-- `containers/build_and_push.sh` — Script to build the Docker image and push to ECR
+- `containers/build_and_push.sh` — Script to build the Docker image and push to ECR (run as `QL_AWS_PROFILE=<your profile> ./build_and_push.sh`)
 
 ---
 

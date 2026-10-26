@@ -66,7 +66,8 @@ npm install
 npm run deploy
 ```
 
-`npm run deploy` is the whole recipe. npm runs `predeploy` first, which rebuilds
+`npm run deploy` is the whole recipe, and it deploys to QL-Prod (`--profile
+${QL_AWS_PROFILE:-ql-prod}`, never the shell's `AWS_PROFILE`). npm runs `predeploy` first, which rebuilds
 `corpus.json` from the current GUIDEs and then runs the preflight gate; a non-zero
 exit from either aborts before `sam build`, so you cannot ship a missing, stale or
 truncated corpus (the failure mode that answers OUT_OF_SCOPE to every learner), or a
@@ -80,7 +81,7 @@ Add `-- --guided` on a first deploy to set the parameters:
 npm run build:corpus \
   && node deploy-check.mjs \
   && sam build \
-  && sam deploy --guided \
+  && sam deploy --guided --profile ql-prod \
     --parameter-overrides \
       SecretId=quantum-tutor \
       MaxConcurrency=5 \
@@ -202,18 +203,18 @@ npm --prefix lambda/tutor run build:corpus
 node lambda/tutor/deploy-check.mjs
 cd lambda/tutor && npm install --omit=dev && zip -r ../tutor.zip . -x '*.test.mjs' 'deploy-check.mjs' && cd ../..
 
-aws iam create-role --role-name quantum-tutor-role \
+aws iam create-role --profile ql-prod --role-name quantum-tutor-role \
   --assume-role-policy-document file://lambda/tutor/trust.json
-aws iam put-role-policy --role-name quantum-tutor-role \
+aws iam put-role-policy --profile ql-prod --role-name quantum-tutor-role \
   --policy-name tutor --policy-document file://lambda/tutor/policy.json
 
-aws lambda create-function --function-name quantum-tutor \
+aws lambda create-function --profile ql-prod --function-name quantum-tutor \
   --runtime nodejs22.x --handler index.handler \
   --role arn:aws:iam::<ACCOUNT_ID>:role/quantum-tutor-role \
   --zip-file fileb://lambda/tutor.zip --timeout 60 --memory-size 512 \
   --environment "Variables={SECRET_ID=quantum-tutor}"
 
-aws lambda create-function-url-config --function-name quantum-tutor \
+aws lambda create-function-url-config --profile ql-prod --function-name quantum-tutor \
   --auth-type AWS_IAM --invoke-mode RESPONSE_STREAM \
   --cors '{"AllowOrigins":["https://quantum.altivum.ai"],"AllowMethods":["POST"],"AllowHeaders":["content-type","x-amz-content-sha256"],"MaxAge":3600}'
 # the returned FunctionUrl is your ORIGIN, not your endpoint: the browser talks
@@ -414,8 +415,8 @@ stack name with `aws cloudformation list-stacks`):
      existing name.
 - **Simplest, drops existing logs.**
   ```bash
-  aws logs delete-log-group --region us-east-2 --log-group-name /aws/lambda/quantum-tutor
-  sam deploy   # recreates it under the stack with the LogRetentionInDays retention
+  aws logs delete-log-group --profile ql-prod --region us-east-2 --log-group-name /aws/lambda/quantum-tutor
+  sam deploy --profile ql-prod   # recreates it under the stack with the LogRetentionInDays retention
   ```
 
 (The previous manual `aws logs put-retention-policy` step is no longer needed —

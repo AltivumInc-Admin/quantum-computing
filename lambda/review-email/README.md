@@ -93,7 +93,7 @@ refuses to send anything until it is granted (the sandbox guard). In
 cd lambda/review-email
 npm install
 sam build
-sam deploy --guided --region us-east-2
+sam deploy --guided --region us-east-2 --profile ql-prod
 ```
 
 Parameters to set at the guided prompt:

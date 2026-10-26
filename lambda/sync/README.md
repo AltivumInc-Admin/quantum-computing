@@ -75,7 +75,7 @@ christian.perez@altivum.io — override it to point the alarm emails elsewhere:
 
 ```bash
 cd lambda/sync && npm ci && sam build
-sam deploy --stack-name quantum-workspace-sync --region us-east-2 \
+sam deploy --stack-name quantum-workspace-sync --region us-east-2 --profile ql-prod \
   --capabilities CAPABILITY_IAM --resolve-s3 \
   --parameter-overrides AlertEmail=<operator email> \
     SiteOrigin=https://learner.quantumenv.dev

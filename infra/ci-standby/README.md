@@ -16,8 +16,10 @@ account that runs everything learners touch except Braket jobs. Every command
 in this file carries `--profile ql-prod` (or `AWS_PROFILE=ql-prod`), and
 `failover.sh` refuses to run without a profile.
 
-The default AWS profile on the machines that run this is **Altivum
-production**, a different org entirely, and it still holds the July 2026 copy
+The ambient AWS profile on the machines that run this is **never QL-Prod**.
+Interactive shells on the founder's machine export `AWS_PROFILE` for an
+unrelated account, and without it the chain falls back to **Altivum
+production**, a different org entirely, which still holds the July 2026 copy
 of this stack under the same name (see "History" below). A bare `aws` command
 or a bare `./failover.sh engage` therefore does not fail — it acts on the
 Altivum copy, silently, and reports success. `failover.sh` closes that path

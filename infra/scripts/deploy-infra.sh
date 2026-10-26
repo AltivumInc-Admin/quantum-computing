@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# WHICH ACCOUNT. This stack has no home account in this repo: it provisions
+# whichever account the operator names, so the operator must name it, and the
+# shell's AWS_PROFILE never does. Proven before the first prompt.
+source "$(cd "$(dirname "$0")/../../scripts/lib" && pwd)/aws-target.sh"
+ql_aws_target || exit 1
+
 STACK_NAME="braket-quantum-workspace"
 TEMPLATE_DIR="$(cd "$(dirname "$0")/../cloudformation" && pwd)"
 

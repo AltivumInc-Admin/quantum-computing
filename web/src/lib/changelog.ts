@@ -214,6 +214,11 @@ export interface SilentChange {
  */
 export const SILENT: readonly SilentChange[] = [
   {
+    pr: 273,
+    reason:
+      "Operator safety: the repo's write and deploy scripts stop following the shell's AWS_PROFILE and must be told which profile to use. The one piece a learner meets is the hybrid-jobs container script, which now runs as QL_AWS_PROFILE=<your profile> ./build_and_push.sh. A learner CAN see that, but the section 06 guide (both locales) and the custom-containers notebook now show that exact command where they would read it, and the script refuses with the same fix if it is left out, so an announcement would only repeat the lesson's own instructions.",
+  },
+  {
     pr: 254,
     reason:
       "The last link of the same shrink chain PR 253 fixed: flex on the account menu's wrapper so the button inside follows the wrapper's compression instead of parking its chevron under the language globe. Same-night polish of 2026-08-30-black-and-gold, same PR 244 precedent.",

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# WHICH ACCOUNT. The ECR repository and image land in whichever account the
+# operator names; the shell's AWS_PROFILE never chooses it.
+source "$(cd "$(dirname "$0")/../../scripts/lib" && pwd)/aws-target.sh"
+ql_aws_target || exit 1
+
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REPO_NAME="braket-quantum-workspace"

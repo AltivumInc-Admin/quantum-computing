@@ -23,8 +23,11 @@ git-filters:
 	@git config diff.ipynb.textconv "scripts/git/nbstripout-filter.sh -t"
 	@echo "  clean/textconv -> scripts/git/nbstripout-filter.sh"
 
+# Kernels inherit this environment, and real-hardware cells and hybrid-job notebooks
+# submit paid Braket work, so they get ql-braket (QL_AWS_PROFILE overrides), never
+# whatever AWS_PROFILE the shell happens to export.
 lab:
-	jupyter lab --notebook-dir=.
+	AWS_PROFILE="$${QL_AWS_PROFILE:-ql-braket}" jupyter lab --notebook-dir=.
 
 # pytest-xdist worker count. `auto` is one worker per CPU, which is the right
 # default in both places this target runs: 16 on a developer laptop, and
@@ -90,16 +93,17 @@ drift:
 	@# second check compares them value-blind (no value, no digest — rule 6).
 	@# Both ALWAYS run — code drift is the normal state mid-cutover, and stopping there
 	@# would leave rate parity unchecked in exactly the window it matters most.
-	@# WHICH ACCOUNT, and why this target does not use your default profile. The
-	@# default AWS profile on this machine is ALTIVUM production — a different org
-	@# from the one serving learners — and every function name checked here exists
-	@# in both accounts. A bare `make drift` therefore used to produce a confident,
+	@# WHICH ACCOUNT, and why this target ignores your shell's AWS_PROFILE. The
+	@# ambient profile on this machine is never QL-Prod: interactive shells export
+	@# AWS_PROFILE for an unrelated account, and without it the chain is ALTIVUM
+	@# production, a different org from the one serving learners. Every function
+	@# name checked here exists in more than one account. A bare `make drift` therefore used to produce a confident,
 	@# fully green report about the wrong account, and that output was misread as
 	@# describing QL-Prod inside this repo's own history. So the target defaults to
-	@# the ql-prod profile rather than to whatever the shell happens to carry.
-	@# Override explicitly, either way round:
-	@#   AWS_PROFILE=ql-braket make drift
-	@#   make drift AWS_PROFILE=ql-braket
+	@# the ql-prod profile, chosen by QL_AWS_PROFILE (which no shell exports by
+	@# default), never by AWS_PROFILE. Override explicitly, either way round:
+	@#   QL_AWS_PROFILE=ql-braket make drift
+	@#   make drift QL_AWS_PROFILE=ql-braket
 	@# and the profile is ANNOUNCED before either check reads anything, so the
 	@# answer to "which account is this about?" arrives before the report does.
 	@# The second, independent guard is DRIFT_EXPECT_ACCOUNT: exported from your
@@ -108,14 +112,17 @@ drift:
 	@# allowed and prints as "account unverified". It is deliberately LOCAL-ONLY —
 	@# never a CI or repo variable, because GitHub echoes step env into a log that
 	@# is world-readable on a public repo.
-	@profile="$${AWS_PROFILE:-ql-prod}"; \
+	@profile="$${QL_AWS_PROFILE:-ql-prod}"; \
 	 echo "drift: about to read the account reached by AWS profile '$$profile'"; \
 	 if [ -n "$$DRIFT_EXPECT_ACCOUNT" ]; then \
 	   echo "       DRIFT_EXPECT_ACCOUNT is set; both checks will refuse a mismatch."; \
 	 else \
 	   echo "       DRIFT_EXPECT_ACCOUNT is unset; this run cannot say WHICH account it read."; \
 	 fi; \
-	 echo "       Override with: AWS_PROFILE=<profile> make drift"; \
+	 echo "       Override with: QL_AWS_PROFILE=<profile> make drift"; \
+	 if [ -n "$${AWS_PROFILE:-}" ] && [ "$${AWS_PROFILE}" != "$$profile" ] && [ -z "$${QL_AWS_PROFILE:-}" ]; then \
+	   echo "       Note: your shell's AWS_PROFILE=$$AWS_PROFILE is ignored here; use QL_AWS_PROFILE."; \
+	 fi; \
 	 export AWS_PROFILE="$$profile"; \
 	 code=0; node scripts/check-lambda-drift.mjs || code=$$?; \
 	 node scripts/check-rate-parity.mjs || code=$$?; \

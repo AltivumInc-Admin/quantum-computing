@@ -10,6 +10,11 @@
 # Usage: DISTRIBUTION_ID=E123ABC ./grant-oac.sh
 set -euo pipefail
 
+# WHICH ACCOUNT. quantum-tutor runs in QL-Prod. QL_AWS_PROFILE overrides the
+# profile; the shell's AWS_PROFILE never chooses it. Proven by account name.
+source "$(cd "$(dirname "$0")/../../../scripts/lib" && pwd)/aws-target.sh"
+ql_aws_target --default-profile ql-prod --account-name QL-Prod || exit 1
+
 FUNCTION_NAME="${FUNCTION_NAME:-quantum-tutor}"
 REGION="${AWS_REGION:-us-east-2}"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
